@@ -50,6 +50,11 @@ async def main():
             print(f"get_team_state: {len(via_mcp['teams'])} teams, matches direct call length")
 
             via_mcp = _content(await session.call_tool(
+                "get_team_state", {"league_id": DYNASTY_LEAGUE, "owner_name": "dezdroppedit27"}))
+            assert len(via_mcp["teams"]) == 1 and via_mcp["teams"][0]["owner"] == "dezdroppedit27"
+            print("get_team_state (owner filter): 1 team returned, correctly filtered")
+
+            via_mcp = _content(await session.call_tool(
                 "get_trade_targets", {"league_id": DYNASTY_LEAGUE, "owner_name": "dezdroppedit27"}))
             assert via_mcp["mode"] == "buy"
             print("get_trade_targets: mode =", via_mcp["mode"])

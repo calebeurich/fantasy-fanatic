@@ -25,15 +25,21 @@ def check_league_format(league_id: str) -> dict:
 
 
 @mcp.tool()
-def get_team_state(league_id: str) -> dict:
-    """Win-Now / Middling / Rebuilding classification for every team in the league,
-    with each team's cornerstones (long-term foundation), sellable players (real
-    trade chips, split declining=urgent vs prime=situational), and tradeable surplus
-    (young non-core depth)."""
+def get_team_state(league_id: str, owner_name: str = None) -> dict:
+    """Win-Now / Middling / Rebuilding classification, with each team's cornerstones
+    (long-term foundation), sellable players (real trade chips, split declining=urgent
+    vs prime=situational), and tradeable surplus (young non-core depth). Pass
+    owner_name for a question about one team (much smaller result, and this IS the
+    authoritative classification - don't re-derive a team's window from
+    get_roster_detail instead). Omit owner_name only when you actually need every
+    team, e.g. comparing teams or finding trade partners."""
+    teams = team_state.classify_league(league_id)
+    if owner_name:
+        teams = [t for t in teams if owner_name.lower() in t["owner"].lower()]
     # Wrapped in a dict rather than returned as a bare list - this MCP SDK version
     # splits a top-level list return into one content block per item instead of one
     # JSON array, which is fragile to rely on. A dict always serializes as one block.
-    return {"teams": team_state.classify_league(league_id)}
+    return {"teams": teams}
 
 
 @mcp.tool()
