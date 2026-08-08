@@ -347,3 +347,23 @@ actually trades it - still useful context for whether a team could act on a clai
   nothing to grade) - revisit once the season starts, and start snapshotting values
   now if trade/waiver grading is wanted later, since that one can't be reconstructed
   retroactively.
+- **No handcuff / backup-RB-injury-upside concept.** A backup RB can have near-zero
+  current value and then become a startable asset overnight if the starter ahead of him
+  is hurt - RBs have this dynamic more cleanly than other positions (a backfield is
+  often a clean 1-2 hierarchy, not a committee). Right now a $200-value backup RB is
+  indistinguishable in our system from an actually-bad player worth $200 for good
+  reason, when he might really be a legitimate speculative hold. Two distinct use
+  cases, not one:
+  - **Speculative buy-low**: identifying handcuffs at all as a "worth stashing beyond
+    what raw value suggests" category, for `waiver_wire.py` and `tradeable_surplus`
+    both - a pure "is this better than my worst player" or "is this above replacement
+    level" comparison would correctly call most handcuffs replaceable-level and miss
+    the point of holding one.
+  - **Self-insurance for a Win-Now team**: deliberately rostering *your own* valuable
+    RB's direct backup to hedge against losing him - a distinct trade rationale
+    ("insure this asset") that's different from any buy/sell/upside framing we have
+    today, and only makes sense for a team that already owns the starter in question.
+  Data source exists and needs no new dependency: `nflreadpy.load_depth_charts()`
+  (same nflverse toolchain already used for contracts/usage stats) has `team` +
+  `pos_rank` per player - joinable via the same `gsis_id` crosswalk already built in
+  `nflverse_ids.py`. Not built yet.
