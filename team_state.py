@@ -50,21 +50,39 @@ def classify(roster: dict, players: dict[str, dict], threshold: float) -> dict:
     else:
         state = "Middling"
 
-    cornerstones, win_now_core = [], []
+    cornerstones, win_now_core, tradeable_surplus, all_declining = [], [], [], []
     for pid in all_ids:
         info = players.get(pid)
-        if info is None or info["value"] < threshold:
+        if info is None:
             continue
+        entry = {"name": info["name"], "position": info["position"], "value": info["value"]}
         bucket = age_bucket(info["position"], info["age"], info.get("usage_role"))
         if bucket == "declining":
-            win_now_core.append(info["name"])
+            # Unthresholded - a rebuilding team's cheap veteran depth (a committee
+            # back, a backup) is still a real, findable trade target, not just its
+            # blockbuster sell candidates.
+            all_declining.append(entry)
+        if info["value"] < threshold:
+            # Ascending but not valuable enough to be a real building block - a depth
+            # piece or lottery ticket, exactly what gets thrown into trades as filler.
+            if bucket == "ascending":
+                tradeable_surplus.append(entry)
+            continue
+        if bucket == "declining":
+            win_now_core.append(entry)
         else:
-            cornerstones.append(info["name"])
+            cornerstones.append(entry)
+    tradeable_surplus.sort(key=lambda e: -e["value"])
+    all_declining.sort(key=lambda e: -e["value"])
 
-    return {"state": state, "diff": round(diff), "cornerstones": cornerstones, "win_now_core": win_now_core}
+    return {"state": state, "diff": round(diff), "cornerstones": cornerstones, "win_now_core": win_now_core,
+            "tradeable_surplus": tradeable_surplus[:5], "all_declining": all_declining}
 
 
-def main(league_id: str) -> None:
+def classify_league(league_id: str) -> list[dict]:
+    """Full team-window report for every roster in the league, ranked by starter value.
+    Reused by anything downstream that needs to know each team's strategic posture
+    (e.g. matching trade targets across win-now/rebuild teams)."""
     league = sleeper.get_league(league_id)
     fmt = sleeper.describe_format(league)
     num_qbs = NUM_QBS[fmt["is_superflex"]]
@@ -73,31 +91,65 @@ def main(league_id: str) -> None:
     threshold = cornerstone_threshold(players)
 
     rosters = sleeper.get_rosters(league_id)
-    users = sleeper.get_users(league_id)
-    owner_names = {user["user_id"]: user["display_name"] for user in users}
+    owner_names = {user["user_id"]: user["display_name"] for user in sleeper.get_users(league_id)}
+
+    # Tanking for a better pick only helps a team if it still owns its own next 1st -
+    # if that pick's already been traded away, playing for a worse record just hands
+    # the upside to whoever holds it.
+    next_season = int(league["season"]) + 1
+    traded_picks = sleeper.get_traded_picks(league_id)
+    lost_own_first = {
+        p["roster_id"] for p in traded_picks
+        if p["round"] == 1 and int(p["season"]) == next_season and p["owner_id"] != p["roster_id"]
+    }
 
     rows = []
     for roster in rosters:
-        owner = owner_names.get(roster["owner_id"], "Unknown")
         starter_value, _ = split_starters_bench(roster, players)
         result = classify(roster, players, threshold)
-        rows.append((owner, starter_value, result))
+        rows.append({
+            "owner": owner_names.get(roster["owner_id"], "Unknown"),
+            "owner_id": roster["owner_id"],
+            "roster_id": roster["roster_id"],
+            "starter_value": starter_value,
+            "owns_next_first": roster["roster_id"] not in lost_own_first,
+            **result,
+        })
 
-    rows.sort(key=lambda r: r[1], reverse=True)
+    rows.sort(key=lambda r: r["starter_value"], reverse=True)
     num_teams = len(rows)
     bottom_third_rank = num_teams - num_teams // 3  # rank strictly greater than this = bottom third
 
-    print(f"{league['name']} - team windows (cornerstone threshold: value >= {threshold:.0f}):")
-    for rank, (owner, starter_value, result) in enumerate(rows, start=1):
-        is_thin = rank > bottom_third_rank and len(result["cornerstones"]) <= THIN_ROSTER_MAX_CORNERSTONES
-        label = result["state"] + (" (thin roster)" if is_thin else "")
-        print(f"  {rank}. {owner}: {label}  [starter value rank {rank}/{num_teams}, asc-dec diff={result['diff']}]")
-        if result["cornerstones"]:
-            print(f"       cornerstones: {', '.join(result['cornerstones'])}")
-        else:
-            print("       cornerstones: none")
-        if result["win_now_core"]:
-            print(f"       win-now core / sell candidates: {', '.join(result['win_now_core'])}")
+    for rank, row in enumerate(rows, start=1):
+        row["starter_value_rank"] = rank
+        row["is_thin"] = rank > bottom_third_rank and len(row["cornerstones"]) <= THIN_ROSTER_MAX_CORNERSTONES
+        # A thin roster can't realistically compete regardless of its age split, so
+        # treat it as a rebuild for any downstream strategy decision - the raw "state"
+        # is kept separate so the reasoning (why) stays visible.
+        row["effective_strategy"] = "Rebuilding" if row["is_thin"] else row["state"]
+
+    return rows
+
+
+def main(league_id: str) -> None:
+    league_name = sleeper.get_league(league_id)["name"]
+    rows = classify_league(league_id)
+
+    print(f"{league_name} - team windows:")
+    for row in rows:
+        label = row["state"] + (" (thin roster)" if row["is_thin"] else "")
+        tank_note = ""
+        if row["effective_strategy"] == "Rebuilding" and not row["owns_next_first"]:
+            tank_note = " [doesn't own next 1st - tanking wouldn't even help them]"
+        print(f"  {row['starter_value_rank']}. {row['owner']}: {label}{tank_note}  "
+              f"[effective: {row['effective_strategy']}, starter value rank {row['starter_value_rank']}/{len(rows)}, "
+              f"asc-dec diff={row['diff']}]")
+        names = lambda entries: ", ".join(e["name"] for e in entries)
+        print(f"       cornerstones: {names(row['cornerstones']) if row['cornerstones'] else 'none'}")
+        if row["win_now_core"]:
+            print(f"       win-now core / sell candidates: {names(row['win_now_core'])}")
+        if row["tradeable_surplus"]:
+            print(f"       tradeable surplus: {names(row['tradeable_surplus'])}")
 
 
 if __name__ == "__main__":
