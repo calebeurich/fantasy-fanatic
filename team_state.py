@@ -55,8 +55,17 @@ def classify(roster: dict, players: dict[str, dict], threshold: float) -> dict:
         info = players.get(pid)
         if info is None:
             continue
-        entry = {"name": info["name"], "position": info["position"], "value": info["value"]}
+        # bucket: lets trade_targets.py flag "production-priced" (declining) vs
+        # "upside-priced" (prime) buys - a prime player's dynasty value bakes in
+        # future growth a win-now buyer doesn't need, so it costs more per unit of
+        # current production than a declining player's value does.
+        # is_starter: a valuable-but-non-cornerstone starter (e.g. your QB2) isn't
+        # real surplus even though it clears the sellable bar - only bench value at
+        # this tier is safely offerable without weakening your actual lineup.
+        entry = {"name": info["name"], "position": info["position"], "value": info["value"],
+                 "is_starter": pid in starter_ids}
         bucket = age_bucket(info["position"], info["age"], info.get("usage_role"))
+        entry["bucket"] = bucket
         if info["value"] < threshold:
             # Not a foundational piece either way, but the two cases mean different
             # things: ascending-but-small is a lottery ticket you'd offer as filler;

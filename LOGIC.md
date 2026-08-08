@@ -166,13 +166,37 @@ have yet) - deferred rather than faked.
   and stockpile youth. Acquire targets = *tradeable surplus* (young, ascending, non-
   cornerstone) sitting on Win-Now/Middling rosters - those teams don't care about it,
   which is exactly what makes it gettable.
-- **Minimum trade relevance**: a target still has to clear *half* of `roster_needs`'
-  replacement-level threshold for its position - full replacement level means "startable
-  quality" (the bar for whether a team *has* a need), but a target doesn't need to be
-  startable to be worth a real trade conversation, just not worthless. Without this
-  floor at all, a near-zero-value washed-up veteran showed up as a "critical need" buy
-  target in testing (technically declining-bucket, but useless to anyone) - the fix
-  needed a real floor, just a much lower one than full replacement level.
+- **Minimum trade relevance, two different floors**: neither side of a suggested trade
+  should be roster filler indistinguishable from the waiver wire, but declining/prime
+  "sellable" value and ascending "surplus" value need different bars. Sellable value is
+  being offered as real current production, so it needs to clear *half* of
+  `roster_needs`' replacement-level threshold (full replacement level = "startable
+  quality," the bar for whether a team *has* a need - a target doesn't need to be
+  startable to be worth a conversation, just not worthless). Surplus value's appeal is
+  future upside, which the dynasty market legitimately prices lower right now, so it
+  only needs a *quarter* of replacement level - a higher bar would have excluded real,
+  validated trade chips. Both fractions were calibrated against real named examples
+  (a near-zero washed-up veteran that needed excluding; a legitimate but modest young
+  trade chip that needed including) rather than picked arbitrarily.
+- **What you could offer** pulls from two pools, not one: your own `tradeable_surplus`
+  (young depth, filtered by the surplus floor) plus your own bench-only `sellable`
+  players (filtered by the sellable floor). Starters are excluded from the second pool
+  even when they clear the value bar - a valuable-but-non-cornerstone *starter* isn't
+  surplus, it's your team. This was a validated real bug: a real team's 3rd QB in a
+  2-QB-max format was a genuine trade chip (pure roster-construction surplus,
+  independent of age) that the age-bucket-only view couldn't see, while the fix had to
+  avoid pulling in that same team's actual starting QB2 just because he sat below the
+  cornerstone threshold too.
+- **Production-priced vs. upside-priced labeling**: a buy target's raw dynasty value
+  doesn't say *why* it's valuable. A declining player's value is almost entirely current
+  production (the market has already priced out its future), so it's labeled
+  "production-priced." A prime player's value partly reflects future growth a win-now
+  buyer doesn't need, and an ascending player's value reflects that *even more* - so
+  a win-now buyer pays a real premium for upside they won't use. This doesn't filter
+  anything out; it surfaces the trade-off so a human (or the eventual agent) can judge
+  whether a specific overpay is worth it, rather than presenting a "safe" production
+  buy and a "expensive-in-disguise" upside buy as equivalent options in the same
+  ranked list.
 - Results are always sorted with trade activity first, value second - a bigger name from
   an owner who never trades is a worse real-world target than a smaller one from an
   active trader.
