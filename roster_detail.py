@@ -5,9 +5,8 @@ this is what actually makes up that aggregate. Usage: python roster_detail.py <l
 import sys
 
 import sleeper
-import fantasycalc
 import contracts
-from team_values import NUM_QBS, age_bucket
+from team_values import NUM_QBS, age_bucket, get_players_with_roles
 
 
 def find_roster(owner_name: str, rosters: list[dict], owner_names: dict[str, str]) -> dict:
@@ -24,19 +23,21 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
     rows = []
     for player_id in roster["players"] or []:
         info = players.get(player_id)
+        lineup_role = "starter" if player_id in starter_ids else "bench"
         if info is None:
             rows.append({"name": f"(unvalued player_id {player_id})", "position": "?", "value": 0,
-                         "age": None, "bucket": "n/a", "contract": None,
-                         "role": "starter" if player_id in starter_ids else "bench"})
+                         "age": None, "bucket": "n/a", "usage_role": None, "contract": None,
+                         "lineup_role": lineup_role})
             continue
         rows.append({
             "name": info["name"],
             "position": info["position"],
             "value": info["value"],
             "age": info["age"],
-            "bucket": age_bucket(info["position"], info["age"]),
+            "bucket": age_bucket(info["position"], info["age"], info.get("usage_role")),
+            "usage_role": info.get("usage_role"),
             "contract": contract_data.get(player_id),
-            "role": "starter" if player_id in starter_ids else "bench",
+            "lineup_role": lineup_role,
         })
     rows.sort(key=lambda r: r["value"], reverse=True)
     return rows
@@ -47,7 +48,7 @@ def main(league_id: str, owner_name: str) -> None:
     fmt = sleeper.describe_format(league)
     num_qbs = NUM_QBS[fmt["is_superflex"]]
 
-    players = fantasycalc.get_players(num_qbs, fmt["num_teams"], fmt["ppr"], fmt["is_dynasty"])
+    players = get_players_with_roles(num_qbs, fmt["num_teams"], fmt["ppr"], fmt["is_dynasty"])
     contract_data = contracts.get_contracts()
 
     rosters = sleeper.get_rosters(league_id)
@@ -61,7 +62,8 @@ def main(league_id: str, owner_name: str) -> None:
     print(f"{owner}'s roster in {league['name']}:")
     for row in rows:
         age = f"{row['age']:.1f}" if row["age"] is not None else "?"
-        line = f"  [{row['role']:<7}] {row['name']:<22} {row['position']:<3} value={row['value']:<6} age={age:<5} {row['bucket']}"
+        bucket = row["bucket"] + (f" ({row['usage_role']})" if row["usage_role"] else "")
+        line = f"  [{row['lineup_role']:<7}] {row['name']:<22} {row['position']:<3} value={row['value']:<6} age={age:<5} {bucket}"
         if row["contract"]:
             c = row["contract"]
             line += f"  ({c['years_remaining']}yr/${c['guaranteed']:.1f}M gtd)"

@@ -5,6 +5,7 @@ import sys
 import sleeper
 import fantasycalc
 import contracts
+import player_roles
 
 NUM_QBS = {True: 2, False: 1}  # superflex counts as a 2nd "QB" slot for value purposes
 
@@ -17,6 +18,13 @@ AGE_CURVE = {
     "TE": (25, 30),
 }
 
+# Usage-based overrides (see player_roles.py): mobile QBs lean on athleticism, so their
+# decline pulls forward; receiving-down RBs age more like WRs, so theirs pushes back.
+AGE_CURVE_OVERRIDES = {
+    "rushing_qb": (26, 31),
+    "pass_catching_rb": (24, 29),
+}
+
 # A "declining" player still on a multi-year deal is a weaker sell than the age curve
 # alone suggests - a team is still paying for the role, not just letting it expire.
 SECURE_YEARS_REMAINING = 2
@@ -26,10 +34,15 @@ SECURE_YEARS_REMAINING = 2
 FUTURE_DRAFT_YEARS = 2
 
 
-def age_bucket(position: str, age: float | None) -> str:
-    if age is None or position not in AGE_CURVE:
+def age_bucket(position: str, age: float | None, role: str | None = None) -> str:
+    if age is None:
         return "unknown"
-    young_cutoff, old_cutoff = AGE_CURVE[position]
+    if role in AGE_CURVE_OVERRIDES:
+        young_cutoff, old_cutoff = AGE_CURVE_OVERRIDES[role]
+    elif position in AGE_CURVE:
+        young_cutoff, old_cutoff = AGE_CURVE[position]
+    else:
+        return "unknown"
     if age < young_cutoff:
         return "ascending"
     if age >= old_cutoff:
@@ -54,7 +67,7 @@ def team_breakdown(player_ids: list[str], players: dict[str, dict]) -> dict:
         info = players.get(player_id)
         if info is None:
             continue
-        bucket = age_bucket(info["position"], info["age"])
+        bucket = age_bucket(info["position"], info["age"], info.get("usage_role"))
         totals[bucket] += info["value"]
     return totals
 
@@ -67,11 +80,19 @@ def find_outliers(player_ids: list[str], players: dict[str, dict], contract_data
         contract = contract_data.get(player_id)
         if info is None or contract is None:
             continue
-        if age_bucket(info["position"], info["age"]) != "declining":
+        if age_bucket(info["position"], info["age"], info.get("usage_role")) != "declining":
             continue
         if contract["years_remaining"] >= SECURE_YEARS_REMAINING:
             outliers.append(f"{info['name']} ({contract['years_remaining']}yr/${contract['guaranteed']:.1f}M gtd)")
     return outliers
+
+
+def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty: bool) -> dict[str, dict]:
+    players = fantasycalc.get_players(num_qbs, num_teams, ppr, is_dynasty)
+    for player_id, role in player_roles.get_roles().items():
+        if player_id in players:
+            players[player_id]["usage_role"] = role
+    return players
 
 
 def split_starters_bench(roster: dict, players: dict[str, dict]) -> tuple[int, int]:
@@ -104,7 +125,7 @@ def main(league_id: str) -> None:
     fmt = sleeper.describe_format(league)
     num_qbs = NUM_QBS[fmt["is_superflex"]]
 
-    players = fantasycalc.get_players(num_qbs, fmt["num_teams"], fmt["ppr"], fmt["is_dynasty"])
+    players = get_players_with_roles(num_qbs, fmt["num_teams"], fmt["ppr"], fmt["is_dynasty"])
     pick_values = fantasycalc.get_pick_values(num_qbs, fmt["num_teams"], fmt["ppr"], fmt["is_dynasty"])
     contract_data = contracts.get_contracts()
 
