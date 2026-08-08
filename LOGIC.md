@@ -205,6 +205,27 @@ have yet) - deferred rather than faked.
   trade chip (pure roster-construction surplus, independent of age) that an age-bucket-
   only view couldn't see, while the fix had to avoid pulling in that same team's actual
   starting QB2 just because he sat below the cornerstone threshold too.
+- **Never offer a position you yourself have a need at.** The offer pool didn't check
+  this originally - a real Win-Now team with a critical WR need was being told to offer
+  away its own WRs, which only moves the shortage around rather than fixing it. Applies
+  to both "thin" and "critical" needs, not just critical - a thin position is already at
+  the bare minimum, trading from it just makes it critical.
+- **Sell candidates split by urgency, not lumped into one list.** A declining player's
+  value only goes down from here - real urgency to move it. A prime player below the
+  cornerstone bar is often still a genuinely good player (e.g. a real starting-caliber
+  WR who just doesn't crack an unusually deep corps) - not losing value on a clock, so
+  it's a situational, take-a-fair-offer piece, not an urgent sell. Presenting both the
+  same way overstated how clear-cut the prime ones actually are - validated against a
+  real case where a startable prime WR was flatly listed alongside a player who's
+  actually declining.
+- **Middling teams get both paths, not a silent default.** A Middling team hasn't
+  committed to pushing or pivoting - showing only the buy path (like Win-Now) would be
+  picking a direction for them. `find_targets` runs `_buy_path` and `_pivot_path` and
+  returns both, sharing the exact same logic Win-Now/Rebuilding use individually
+  (no duplicated implementation, just composed differently). Which path actually makes
+  sense for a specific Middling team likely depends on something not built yet -
+  the season record (see below) - so showing both rather than guessing is the honest
+  answer until that exists.
 - Results are always sorted with trade activity first, value second - a bigger name from
   an owner who never trades is a worse real-world target than a smaller one from an
   active trader.
@@ -259,8 +280,9 @@ actually trades it - still useful context for whether a team could act on a clai
   current season no matter how its age composition reads - record should gate the
   classification, especially as the season progresses (early-season record is small-
   sample noise, late-season record is close to decisive). Matters most for Middling
-  teams, which are exactly the ones sitting on the fence between "push" and "sell."
-  The data already exists - `roster["settings"]` has `wins`/`losses`/`ties`/`fpts`,
+  teams, which are exactly the ones `trade_targets.py` now shows *both* the push and
+  pivot path for - record is the natural signal to eventually pick one instead of
+  always showing both. The data already exists - `roster["settings"]` has `wins`/`losses`/`ties`/`fpts`,
   already being pulled, just not used for this - but the logic can't be meaningfully
   built or validated until games are actually being played (every team is 0-0 in the
   current offseason data). Revisit once the season starts.
