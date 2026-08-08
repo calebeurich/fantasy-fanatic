@@ -5,15 +5,12 @@ to call, not whether a specific package is fair (see CLAUDE.md/prior discussion 
 a real value calculator is a separate, harder problem: roster construction means bench
 depth isn't fungible with a starter's value).
 
-Smoke test: python trade_targets.py <league_id> <owner_name>
+Smoke test: python -m analysis.trade_targets <league_id> <owner_name>
 """
 
 import sys
 
-import sleeper
-import team_state
-import roster_needs
-import trade_activity
+from . import team_state, roster_needs, trade_activity
 
 # Same VALUE_BASIS classification (team_state.py) drives both sides of a trade, just
 # phrased for who's on which side of it.

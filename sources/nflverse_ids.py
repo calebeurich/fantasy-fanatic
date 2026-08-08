@@ -1,6 +1,6 @@
 """Shared crosswalk from nflverse's gsis_id to Sleeper's player_id. Used by any module
 that pulls nflverse/OTC data (contracts, usage stats) and needs to join it to a roster.
-Smoke test: python nflverse_ids.py
+Smoke test: python -m sources.nflverse_ids
 """
 
 import nflreadpy as nfl

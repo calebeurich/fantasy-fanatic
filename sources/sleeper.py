@@ -1,4 +1,4 @@
-"""Minimal Sleeper API client. Smoke test: python sleeper.py <username> [year] [league_id]"""
+"""Minimal Sleeper API client. Smoke test: python -m sources.sleeper <username> [year] [league_id]"""
 
 import sys
 import requests

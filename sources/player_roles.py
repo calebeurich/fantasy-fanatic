@@ -6,7 +6,7 @@ carries/game and targets/game distributions - they land on the natural gap in ea
 Lamar Jackson/Josh Allen/Jalen Hurts clear 5 carries/game while pure pocket passers don't
 crack 3.
 
-Smoke test: python player_roles.py
+Smoke test: python -m sources.player_roles
 """
 
 from datetime import date
@@ -14,7 +14,7 @@ from datetime import date
 import nflreadpy as nfl
 import polars as pl
 
-from nflverse_ids import gsis_to_sleeper
+from .nflverse_ids import gsis_to_sleeper
 
 RUSHING_QB_CARRIES_PER_GAME = 5.0
 PASS_CATCHING_RB_TARGETS_PER_GAME = 4.0

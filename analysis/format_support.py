@@ -3,12 +3,12 @@ Built and validated before any agent exists, so format-safety is a deterministic
 fact the agent inherits later rather than something it has to reason its way into
 respecting on its own.
 
-Smoke test: python format_support.py <league_id>
+Smoke test: python -m analysis.format_support <league_id>
 """
 
 import sys
 
-import sleeper
+from sources import sleeper
 
 # Below this, percentile-based math (cornerstone/replacement thresholds) gets noisy -
 # a 4-team league's "90th percentile" is one player. Not validated against a real

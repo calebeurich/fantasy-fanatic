@@ -4,13 +4,13 @@ even if the aggregate number looks okay. "Usable" is relative to the league's ow
 the Nth-best player at a position leaguewide, where N = how many starting slots the whole
 league has at that position, sets the bar - not a hardcoded value cutoff.
 
-Smoke test: python roster_needs.py <league_id>
+Smoke test: python -m analysis.roster_needs <league_id>
 """
 
 import sys
 
-import sleeper
-from team_values import NUM_QBS, get_players_with_roles
+from sources import sleeper
+from .team_values import NUM_QBS, get_players_with_roles
 
 POSITIONS = ["QB", "RB", "WR", "TE"]
 

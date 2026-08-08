@@ -4,13 +4,13 @@ don't define a team's direction the way starters do. Thresholds are organic brea
 found by inspecting a real league's asc%-dec% distribution, not a forced even split -
 see the CLAUDE.md discussion this came from for the reasoning.
 
-Smoke test: python team_state.py <league_id>
+Smoke test: python -m analysis.team_state <league_id>
 """
 
 import sys
 
-import sleeper
-from team_values import NUM_QBS, age_bucket, get_players_with_roles, split_starters_bench
+from sources import sleeper
+from .team_values import NUM_QBS, age_bucket, get_players_with_roles, split_starters_bench
 
 CORNERSTONE_PERCENTILE = 0.10  # top 10% of the format's value pool
 

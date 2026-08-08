@@ -5,15 +5,14 @@ but it matters a lot more once Twitter/sportsbook signals can flag a name before
 dynasty value catches up - this establishes the "what's actually out there" baseline
 that a future breakout-detection feature would compare against.
 
-Smoke test: python waiver_wire.py <league_id> [owner_name]
+Smoke test: python -m analysis.waiver_wire <league_id> [owner_name]
 """
 
 import sys
 
-import sleeper
-import team_state
-import roster_needs
-from team_values import NUM_QBS, age_bucket, get_players_with_roles
+from sources import sleeper
+from . import team_state, roster_needs
+from .team_values import NUM_QBS, age_bucket, get_players_with_roles
 
 POSITIONS = ["QB", "RB", "WR", "TE"]
 

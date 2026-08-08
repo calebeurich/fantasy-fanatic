@@ -1,11 +1,8 @@
-"""Dynasty value + win-window breakdown per team. Usage: python team_values.py <league_id>"""
+"""Dynasty value + win-window breakdown per team. Usage: python -m analysis.team_values <league_id>"""
 
 import sys
 
-import sleeper
-import fantasycalc
-import contracts
-import player_roles
+from sources import sleeper, fantasycalc, contracts, player_roles
 
 NUM_QBS = {True: 2, False: 1}  # superflex counts as a 2nd "QB" slot for value purposes
 

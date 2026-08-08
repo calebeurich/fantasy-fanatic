@@ -3,13 +3,13 @@ history - a signal for who's likely to engage with a trade offer at all, separat
 whether the trade itself makes sense. Sleeper doesn't expose a "trade block" feature,
 so realized trade history is the best proxy available.
 
-Smoke test: python trade_activity.py <league_id>
+Smoke test: python -m analysis.trade_activity <league_id>
 """
 
 import sys
 from collections import Counter
 
-import sleeper
+from sources import sleeper
 
 MAX_WEEK = 18
 

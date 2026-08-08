@@ -1,4 +1,4 @@
-"""Minimal FantasyCalc API client. Smoke test: python fantasycalc.py"""
+"""Minimal FantasyCalc API client. Smoke test: python -m sources.fantasycalc"""
 
 import requests
 

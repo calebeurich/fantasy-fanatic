@@ -3,7 +3,7 @@ Python functions directly - confirms the MCP wrapping itself works correctly (sc
 argument passing, serialization), since the business logic underneath is already
 validated elsewhere in this project.
 
-Run: python test_mcp_server.py
+Run: python -m agent.test_mcp_server (from the repo root)
 """
 
 import asyncio
@@ -12,8 +12,7 @@ import json
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-import format_support
-import team_state
+from analysis import format_support, team_state
 
 DYNASTY_LEAGUE = "1315386978904084480"  # XFL 2
 REDRAFT_LEAGUE = "1323741311471194112"  # Tangy Football
@@ -24,7 +23,9 @@ def _content(result):
 
 
 async def main():
-    params = StdioServerParameters(command="python", args=["mcp_server.py"])
+    # Spawned the same way a real agent would launch it - as a module from the repo
+    # root, not a bare file path - so its own "from analysis import ..." imports resolve.
+    params = StdioServerParameters(command="python", args=["-m", "agent.mcp_server"])
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()

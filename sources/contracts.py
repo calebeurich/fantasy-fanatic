@@ -1,14 +1,14 @@
 """NFL contract data via nflverse (sourced from OverTheCap, redistributed under nflverse's
 open data project - not a direct scrape of overthecap.com, which forbids scraping in its ToS).
 
-Smoke test: python contracts.py
+Smoke test: python -m sources.contracts
 """
 
 from datetime import date
 
 import nflreadpy as nfl
 
-from nflverse_ids import gsis_to_sleeper
+from .nflverse_ids import gsis_to_sleeper
 
 
 def get_contracts() -> dict[str, dict]:

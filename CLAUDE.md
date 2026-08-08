@@ -57,20 +57,23 @@ entries "just in case."
 
 ## Project structure
 
-Flat by design, not by accident - every file is small and single-purpose (per the
-prime directive above), so a flat layout stays scannable without needing package
-subfolders, `__init__.py` files, or `-m` invocation. Grouped here by role only for
-navigation; nothing below reflects an actual directory:
+Three packages, split by role, each with an `__init__.py`:
 
-- **Data sources** (thin API/dataset clients, no analysis logic): `sleeper.py`,
+- **`sources/`** (thin API/dataset clients, no analysis logic): `sleeper.py`,
   `fantasycalc.py`, `contracts.py`, `nflverse_ids.py`, `player_roles.py`
-- **Analysis** (built on top of the data sources): `team_values.py`,
+- **`analysis/`** (built on top of the data sources): `team_values.py`,
   `team_state.py`, `roster_needs.py`, `roster_detail.py`, `trade_activity.py`,
   `trade_targets.py`, `waiver_wire.py`, `format_support.py`
-- **Agent layer** (Phase 1+ of the agent build-out plan): `mcp_server.py`,
+- **`agent/`** (Phase 1+ of the agent build-out plan): `mcp_server.py`,
   `test_mcp_server.py`, `agent.py` (Phase 2+)
-- **Docs**: `CLAUDE.md` (this file - how the project is built), `LOGIC.md` (why
-  every heuristic works the way it does)
+- **Docs, at the repo root**: `CLAUDE.md` (this file - how the project is built),
+  `LOGIC.md` (why every heuristic works the way it does)
 
-If this list grows past what fits in one glance, that's the signal to revisit real
-subfolders - not before.
+**Run everything as a module from the repo root**, never as a bare file path -
+`python -m analysis.team_state <league_id>`, not `python analysis/team_state.py
+<league_id>`. The bare-path form breaks: Python only adds the *script's own*
+directory to `sys.path`, not the repo root, so a module doing `from sources import
+sleeper` would fail to find it. `-m` from the root adds the root itself, which is
+what every cross-package import here depends on. Within a package, siblings import
+each other with a relative import (`from .team_values import ...`); across
+packages, it's an explicit absolute import (`from sources import sleeper`).

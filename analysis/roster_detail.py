@@ -1,12 +1,11 @@
 """Full player-by-player breakdown for one team. The league view shows the aggregate;
-this is what actually makes up that aggregate. Usage: python roster_detail.py <league_id> <owner_name>
+this is what actually makes up that aggregate. Usage: python -m analysis.roster_detail <league_id> <owner_name>
 """
 
 import sys
 
-import sleeper
-import contracts
-from team_values import NUM_QBS, age_bucket, get_players_with_roles
+from sources import sleeper, contracts
+from .team_values import NUM_QBS, age_bucket, get_players_with_roles
 
 
 def find_roster(owner_name: str, rosters: list[dict], owner_names: dict[str, str]) -> dict:

@@ -5,19 +5,14 @@ logic lives here. See LOGIC.md for the reasoning behind what each one computes.
 Local stdio transport only - single user, no network exposure. See LOGIC.md's "MCP"
 section for why that keeps this phase pure plumbing with no new risk surface.
 
-Run: python mcp_server.py
+Run: python -m agent.mcp_server
 """
 
-from mcp.server import MCPServer
+from mcp.server.fastmcp import FastMCP
 
-import format_support
-import team_state
-import roster_needs
-import trade_targets
-import waiver_wire
-import roster_detail
+from analysis import format_support, team_state, roster_needs, trade_targets, waiver_wire, roster_detail
 
-mcp = MCPServer("fantasy-fanatic")
+mcp = FastMCP("fantasy-fanatic")
 
 
 @mcp.tool()
