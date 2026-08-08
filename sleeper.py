@@ -47,6 +47,22 @@ def get_traded_picks(league_id: str) -> list[dict]:
     return resp.json()
 
 
+def get_transactions(league_id: str, week: int) -> list[dict]:
+    resp = requests.get(f"{BASE}/league/{league_id}/transactions/{week}")
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_season_chain(league_id: str) -> list[str]:
+    """This league's own league_id plus every prior season's, oldest dynasty history
+    included, most recent first."""
+    chain = []
+    while league_id:
+        chain.append(league_id)
+        league_id = get_league(league_id).get("previous_league_id")
+    return chain
+
+
 def describe_format(league: dict) -> dict:
     """Pull out the format details that drive dynasty value lookups."""
     positions = league["roster_positions"]
