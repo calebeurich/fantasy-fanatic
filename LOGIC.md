@@ -205,6 +205,26 @@ have yet) - deferred rather than faked.
   trade chip (pure roster-construction surplus, independent of age) that an age-bucket-
   only view couldn't see, while the fix had to avoid pulling in that same team's actual
   starting QB2 just because he sat below the cornerstone threshold too.
+- Results are always sorted with trade activity first, value second - a bigger name from
+  an owner who never trades is a worse real-world target than a smaller one from an
+  active trader.
+
+## Validated foundations
+
+Things checked directly against real data rather than assumed, since the value of the
+heuristics above depends on the plumbing underneath being correct:
+
+- **Multi-hop traded picks resolve correctly.** A real pick in this league's history
+  changed hands twice (original owner -> team A -> team B). Sleeper's `traded_picks`
+  endpoint is a denormalized "who owns this right now" view, not a raw event log - it
+  correctly showed the final owner, confirmed by cross-referencing the actual
+  chronological trade transactions. `pick_capital()`'s ownership resolution depends on
+  this being true.
+- **Usage-role tagging is clean on real rostered players.** All 18 rushing_qb/
+  pass_catching_rb-tagged players actually rostered in the league match real-world
+  knowledge with no anomalies (Lamar Jackson, Josh Allen, Jalen Hurts, Jaxson Dart as
+  rushing QBs; Bijan Robinson, Jahmyr Gibbs, Christian McCaffrey, De'Von Achane as
+  pass-catching backs).
 
 ## Known limitations / future work
 
@@ -227,6 +247,18 @@ have yet) - deferred rather than faked.
   us free, legitimate adjacent options worth exploring instead: `load_pfr_advstats`
   (Pro Football Reference advanced stats), `load_nextgen_stats` (the NFL's own tracking
   data), `load_ftn_charting` (FTN Fantasy's charting data).
+- **A small slice of rostered players have no FantasyCalc value at all** (15/342 = 4.4%
+  in a real check), silently treated as worth 0. Mostly free agents with no current NFL
+  team (`team=None` in Sleeper's data) - reasonable to treat as ~0 value - but a few
+  (e.g. Tyler Conklin, active on an NFL roster) are a genuine small coverage gap in
+  FantasyCalc's dataset, not something on our end to fix. Low impact given the size, not
+  corrected.
+- **~29% of active skill-position (QB/RB/WR/TE) contracts don't join to a Sleeper ID**,
+  concentrated almost entirely in the most recent rookie class (checked directly - every
+  high-value miss was a 2025/2026 rookie). The nflverse ID crosswalk lags behind the
+  newest draft class. Low impact for the features that exist today (contract-outlier
+  detection only cares about *declining* players, and rookies are never declining), but
+  would matter if a future feature needed rookie contract/team-control data.
 - Results are always sorted with trade activity first, value second - a bigger name from
   an owner who never trades is a worse real-world target than a smaller one from an
   active trader.
