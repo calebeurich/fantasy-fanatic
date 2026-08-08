@@ -33,13 +33,18 @@ def _with_trade_note(entry: dict, other: dict, trade_counts: dict[str, int]) -> 
     return {**entry, "from_owner": other["owner"], "from_owner_trades": trade_counts.get(other["owner_id"], 0)}
 
 
-def _my_offer_pool(me: dict, thresholds: dict[str, float]) -> list[dict]:
+def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, str]) -> list[dict]:
     """What you could realistically offer: bench value that isn't elite enough to be a
     cornerstone but also isn't part of your actual lineup (e.g. a 3rd QB in a 2-QB-max
     format), plus young surplus - never a valuable *starter*, even a non-cornerstone
-    one, since that's not surplus, that's your team. Cheapest give-up cost first."""
-    bench_sellable = [e for e in me["sellable"] if not e["is_starter"] and team_state.clears_relevance_floor(e, thresholds)]
-    surplus = [e for e in me["tradeable_surplus"] if team_state.clears_relevance_floor(e, thresholds)]
+    one, since that's not surplus, that's your team. Also never a position you
+    yourself have a need at - trading away a WR while WR is your own critical need
+    just moves the shortage, it doesn't fix anything. Cheapest give-up cost first."""
+    bench_sellable = [e for e in me["sellable"]
+                       if not e["is_starter"] and e["position"] not in needs
+                       and team_state.clears_relevance_floor(e, thresholds)]
+    surplus = [e for e in me["tradeable_surplus"]
+               if e["position"] not in needs and team_state.clears_relevance_floor(e, thresholds)]
     return bench_sellable + surplus
 
 
@@ -94,7 +99,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         targets += pos_targets[:max_per_position]
 
     return {"me": me, "mode": "buy", "needs": my_needs, "targets": targets,
-            "my_offers": _my_offer_pool(me, thresholds)}
+            "my_offers": _my_offer_pool(me, thresholds, my_needs)}
 
 
 def _print_report(result: dict) -> None:
