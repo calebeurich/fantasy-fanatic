@@ -1,0 +1,5 @@
+requests
+nflreadpy
+# fixes an SSL error on Windows machines running Norton (it does TLS inspection with
+# a root cert that only the OS trust store knows about, not Python's bundled certifi)
+pip-system-certs
