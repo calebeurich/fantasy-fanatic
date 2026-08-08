@@ -326,6 +326,24 @@ actually trades it - still useful context for whether a team could act on a clai
   newest draft class. Low impact for the features that exist today (contract-outlier
   detection only cares about *declining* players, and rookies are never declining), but
   would matter if a future feature needed rookie contract/team-control data.
-- Results are always sorted with trade activity first, value second - a bigger name from
-  an owner who never trades is a worse real-world target than a smaller one from an
-  active trader.
+- **No manager skill / luck analytics** - from the original project brief ("manager
+  score stuff"), not built yet. This is actually several distinct, harder problems
+  bundled under one label, each needing different data we don't have:
+  - **Lineup efficiency** ("optimal lineup %" - did they start their actual best
+    scoring options each week, or leave points on the bench). Buildable in-season from
+    Sleeper's own weekly matchup data (`/league/{id}/matchups/{week}`, already know the
+    shape from `transactions`) - no new data source needed, just needs games played.
+  - **Schedule luck** (wins vs. what their points-for would earn against an average
+    schedule) - same data source, same in-season-only constraint.
+  - **Trade/waiver grading** (did their moves net positive value) - the hard one. Needs
+    dynasty *value at the time of the transaction*, not current value, since value
+    drifts. We only ever query FantasyCalc's current snapshot - there's no historical
+    value store, so grading a trade from three months ago accurately isn't possible
+    without starting to snapshot values now for future retroactive grading.
+  - **Draft grading** (did they beat ADP) - ties to the original brief's separate ADP
+    idea (comparing Sleeper ADP against actual outcome/production). Needs ADP data not
+    yet pulled, plus the same "value over time" problem as trade grading.
+  All of it is meaningless in the current offseason data regardless (no games played,
+  nothing to grade) - revisit once the season starts, and start snapshotting values
+  now if trade/waiver grading is wanted later, since that one can't be reconstructed
+  retroactively.
