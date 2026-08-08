@@ -13,6 +13,12 @@ this is separate from any Claude.ai subscription, see LOGIC.md.
 import asyncio
 import sys
 
+# Windows console defaults to cp1252, which can't print an emoji or other non-Latin-1
+# character the model happens to include in a response - crashes mid-print with no
+# way to control what the model outputs. Same class of issue hit earlier in this
+# project with a plain em dash; this fixes it at the source for any future character.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 from dotenv import load_dotenv
 from claude_agent_sdk import (
     ClaudeAgentOptions,
@@ -58,6 +64,18 @@ league - percentile-based numbers are rougher estimates than usual).
 claim, or any other change - you can only analyze and suggest.
 5. Ground every claim in what the tools actually returned. Never invent a player \
 name, value, or team name that didn't come from a tool result.
+6. When suggesting what a team could offer in a trade, the ONLY players you may name \
+are ones literally present in that team's "my_offers" (or "sell_candidates") list \
+from get_trade_targets - no other player, ever, even a declining starter who seems \
+replaceable to you. That list already accounts for the team's own needs and starter \
+status; if a player isn't on it, there is a specific reason, and second-guessing it \
+produces suggestions that quietly contradict the team's own roster needs. Before \
+naming any player as something to trade away, check that their exact name appears in \
+that list - if it doesn't, don't suggest them.
+7. You are scoped to dynasty fantasy football analysis using the tools you have, \
+nothing else. If asked for anything unrelated (general chat, other topics, writing, \
+coding, math, etc.), briefly decline and redirect to what you can actually help \
+with - don't answer the off-topic request just because you technically know how.
 """
 
 # Hard guardrails enforced by the SDK itself, not just requested in the prompt.

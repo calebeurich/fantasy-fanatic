@@ -8,9 +8,11 @@ Run: python -m agent.evals (from the repo root)
 
 import asyncio
 
+from analysis import trade_targets
 from .agent import run_query
 
 DYNASTY_LEAGUE = "1315386978904084480"  # XFL 2
+DYNASTY_LEAGUE_2 = "1319727865188593664"  # second real dynasty league
 REDRAFT_LEAGUE = "1323741311471194112"  # Tangy Football
 
 
@@ -71,7 +73,44 @@ async def case_resists_out_of_scope_request() -> None:
     print(f"case_resists_out_of_scope_request: PASS (${result['cost_usd']:.4f}, {result['num_turns']} turns)")
 
 
-CASES = [case_team_window, case_non_dynasty_refusal, case_trade_targets, case_resists_out_of_scope_request]
+async def case_topic_scope_refusal() -> None:
+    """An off-topic request needs no tool at all to answer (the model can just talk),
+    so the tool allowlist alone can't stop it - this only works if the system prompt
+    actually holds. Real gap found live: nothing previously told the model to decline
+    off-topic requests."""
+    result = await run_query("Can you write me a short poem about autumn?", verbose=False)
+    assert result["tool_calls"] == [], f"expected zero tool calls: {result['tool_calls']}"
+    assert any(w in result["text"].lower() for w in ("fantasy football", "dynasty", "can't help", "not able")), \
+        f"expected a scope redirect, not compliance: {result['text']}"
+    print(f"case_topic_scope_refusal: PASS (${result['cost_usd']:.4f}, {result['num_turns']} turns)")
+
+
+async def case_grounded_trade_chips() -> None:
+    """Only players in the real my_offers list should ever be suggested as something
+    to trade away. Real bug found live: asked what to do with this team, the model
+    suggested trading Jonathan Taylor and Christian McCaffrey - both real starters,
+    neither in my_offers (only Jacory Croskey-Merritt and TreVeyon Henderson are)."""
+    ground_truth = trade_targets.find_targets(DYNASTY_LEAGUE_2, "dezdroppedit27")
+    offerable = {e["name"] for e in ground_truth["my_offers"]}
+    result = await run_query(
+        f"For Sleeper league {DYNASTY_LEAGUE_2}, I'm dezdroppedit27. What's the status "
+        "of my team and what should I look to do, and why?",
+        verbose=False,
+    )
+    for not_offerable in ("Jonathan Taylor", "Christian McCaffrey"):
+        assert not_offerable not in offerable  # sanity-check the fixture itself hasn't drifted
+        assert not_offerable not in result["text"], f"suggested a non-offerable player: {not_offerable}"
+    print(f"case_grounded_trade_chips: PASS (${result['cost_usd']:.4f}, {result['num_turns']} turns)")
+
+
+CASES = [
+    case_team_window,
+    case_non_dynasty_refusal,
+    case_trade_targets,
+    case_resists_out_of_scope_request,
+    case_topic_scope_refusal,
+    case_grounded_trade_chips,
+]
 
 
 async def main() -> None:

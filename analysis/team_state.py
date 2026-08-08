@@ -141,14 +141,25 @@ def classify_league(league_id: str) -> list[dict]:
     rows.sort(key=lambda r: r["starter_value"], reverse=True)
     num_teams = len(rows)
     bottom_third_rank = num_teams - num_teams // 3  # rank strictly greater than this = bottom third
+    top_third_rank = num_teams // 3  # rank at or below this = top third
 
     for rank, row in enumerate(rows, start=1):
         row["starter_value_rank"] = rank
         row["is_thin"] = rank > bottom_third_rank and len(row["cornerstones"]) <= THIN_ROSTER_MAX_CORNERSTONES
-        # A thin roster can't realistically compete regardless of its age split, so
-        # treat it as a rebuild for any downstream strategy decision - the raw "state"
-        # is kept separate so the reasoning (why) stays visible.
-        row["effective_strategy"] = "Rebuilding" if row["is_thin"] else row["state"]
+        # The mirror case of thin: a team can be the best roster in the league by
+        # starter value and still trip the age-composition "Rebuilding" read purely
+        # because it also happens to have a lot of great young talent mixed in - that's
+        # not a fire-sale seller, it's a loaded team. Validated on a real case: the
+        # #1 starter-value team in a real league read "Rebuilding" and its actually-
+        # good WR got suggested as an easy buy-low to a Win-Now team, which no real
+        # #1 team would actually just give away.
+        row["is_loaded"] = rank <= top_third_rank and row["state"] == "Rebuilding"
+        if row["is_thin"]:
+            row["effective_strategy"] = "Rebuilding"
+        elif row["is_loaded"]:
+            row["effective_strategy"] = "Middling"
+        else:
+            row["effective_strategy"] = row["state"]
 
     return rows
 
@@ -164,7 +175,11 @@ def main(league_id: str) -> None:
         # itself, since on a thin roster it can read backwards (e.g. "Win-Now" from
         # having almost no ascending value to offset a little declining value, not
         # from an actual aging contender core).
-        context = f"raw age-mix reads {row['state']}" + (", but too thin to act on it" if row["is_thin"] else "")
+        context = f"raw age-mix reads {row['state']}"
+        if row["is_thin"]:
+            context += ", but too thin to act on it"
+        elif row["is_loaded"]:
+            context += ", but too loaded to treat as a real seller"
         tank_note = ""
         if row["effective_strategy"] == "Rebuilding" and not row["owns_next_first"]:
             tank_note = " [doesn't own next 1st - tanking wouldn't even help them]"

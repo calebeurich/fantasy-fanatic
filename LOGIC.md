@@ -171,6 +171,23 @@ its *own* next-season 1st-round pick - if that pick's already been traded away, 
 for a worse record just hands the upside to whoever holds it. Checked directly against
 `traded_picks` rather than assumed.
 
+**"Loaded" flag - the mirror case of thin**: a team can be the #1 roster in the league
+by starter value and still trip the age-composition "Rebuilding" read purely because it
+also has a lot of great young talent mixed in - that's not a fire-sale seller, it's a
+loaded team, and treating it as an easy Rebuilding-team source for buy targets produces
+bad recommendations. Top-third starter value rank *and* a raw "Rebuilding" label gets
+`effective_strategy` overridden to "Middling" (mirroring thin's override to
+"Rebuilding"). Validated on a real, live case, not hypothetical: asked the agent what a
+Win-Now team should do in a real league, and it recommended trading for a specific WR
+because the team holding him read "Rebuilding" - except that team had `starter_value_
+rank: 1` (the single best roster in the entire league), so a real trade offer like that
+would almost certainly be refused, since no #1 team is actually giving away a good piece
+for a discount. Re-running the exact same live question after the fix, that team no
+longer showed up in the buy-target search at all - the fix propagated through
+`trade_targets.py` to the agent automatically, with zero prompt or agent-code changes,
+because it was fixed in the shared, deterministic classification logic every other
+feature already depends on.
+
 ## Positional needs (`roster_needs.py`)
 
 "Usable" is relative to the league's own format, not a hardcoded value cutoff:
@@ -410,18 +427,41 @@ across repeated identical calls seconds apart. Two real, verified causes, not gu
 
 ## Eval harness (`evals.py`)
 
-Deliberately 4 cases, not the 10-20 the original plan called for - each real case is a
-real paid API call against a small starting budget, and these 4 cover the distinct
+Deliberately 6 cases, not the 10-20 the original plan called for - each real case is a
+real paid API call against a small starting budget, and these cover the distinct
 failure modes actually found or worth guarding against so far: correct tool selection
-for a team-window question (the bug above), the non-dynasty refusal (zero analysis
-tool calls after `check_league_format` returns `unsupported`), a trade-target question
-using the real tool instead of improvising, and resistance to an explicit
-instruction-override/tool-boundary-probing attempt. Expand this set as new scenarios
-get validated live, the same way every other module in this project grew - not by
-front-loading hypothetical cases now.
+for a team-window question, the non-dynasty refusal, a trade-target question using the
+real tool instead of improvising, resistance to an explicit instruction-override/
+tool-boundary-probing attempt, refusing an off-topic request that needs no tool at all
+to answer, and only naming players actually present in a team's real offer list.
+Expand this set as new scenarios get validated live, the same way every other module
+in this project grew - not by front-loading hypothetical cases now.
+
+**Two of these needed a real fix, and they reveal an important asymmetry**:
+- `case_team_window`'s underlying bug (`get_team_state` needing an `owner_name`
+  filter) and the "loaded team" bug (`team_state.py`'s `is_loaded` flag) were both
+  **data/logic gaps** - fixed once in Python, propagated everywhere instantly and
+  reliably, verified with a plain regression re-run.
+- `case_grounded_trade_chips` is different: the underlying data was already correct
+  (the real offer list never included the players in question), so the bug was purely
+  "does the model follow an instruction to only use that list." Strengthening the
+  system prompt rule fixed the off-topic-scope case cleanly on the first try, but
+  **failed to fully fix the trade-chip grounding case even on a second, more explicit
+  attempt** - the model suggested the same ungrounded player again. This is logged
+  honestly as an open, unresolved reliability gap rather than claimed as fixed:
+  prompt-level constraints are probabilistic, not guaranteed, in a way a Python fix to
+  a real data gap simply isn't. Chasing a third, even-more-forceful prompt wasn't
+  pursued further given the diminishing returns and real cost per attempt - a more
+  robust fix (post-hoc validation of named players against the real tool data, or a
+  stronger model for this specific step) is future work, not solved today.
 
 ## Known limitations / future work
 
+- **The agent can still name an ungrounded player as a trade-away suggestion** (see
+  "Eval harness" above for the full case) - a prompt rule reduces this but doesn't
+  reliably prevent it, unlike the Python-layer fixes elsewhere in this project. Needs
+  either post-hoc validation of named players against real tool output, or a stronger
+  model for this step, to actually close - not solved yet.
 - **Team window classification ignores actual win/loss record entirely.** A team
   that's mathematically out of playoff contention can't really be "Win-Now" for the
   current season no matter how its age composition reads - record should gate the
