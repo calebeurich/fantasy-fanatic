@@ -254,6 +254,16 @@ actually trades it - still useful context for whether a team could act on a clai
 
 ## Known limitations / future work
 
+- **Team window classification ignores actual win/loss record entirely.** A team
+  that's mathematically out of playoff contention can't really be "Win-Now" for the
+  current season no matter how its age composition reads - record should gate the
+  classification, especially as the season progresses (early-season record is small-
+  sample noise, late-season record is close to decisive). Matters most for Middling
+  teams, which are exactly the ones sitting on the fence between "push" and "sell."
+  The data already exists - `roster["settings"]` has `wins`/`losses`/`ties`/`fpts`,
+  already being pulled, just not used for this - but the logic can't be meaningfully
+  built or validated until games are actually being played (every team is 0-0 in the
+  current offseason data). Revisit once the season starts.
 - **"Starter" is a live snapshot, not a true intended lineup.** Sleeper's `starters`
   field reflects whatever the current week's lineup happens to be, which is especially
   unreliable in the preseason before Week 1 lineups are set, and doesn't account for
