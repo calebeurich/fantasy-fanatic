@@ -54,6 +54,22 @@ threshold are **not yet validated against a real shallow league** - none of the 
 checked in this project are that small. Revisit the exact cutoff once one is available
 rather than trusting it blindly.
 
+**A deeper, structural limitation, not just a missing tier**: `assess_format` can only
+see what Sleeper's API exposes as structured settings. Real leagues carry rules that
+live nowhere in the API - constitutions, pinned Discord messages, commissioner house
+rules - and those can invalidate assumptions baked elsewhere in this codebase, not just
+in format detection. Concrete, confirmed example: the user's own XFL 2 league determines
+next draft's 1st overall pick by **lowest full-season best-ball score**, not standings.
+`team_state.py`'s "doesn't own next 1st, tanking wouldn't help" logic implicitly assumes
+a standard reverse-standings draft order - under this league's actual rule, deliberately
+starting a bad lineup wouldn't even work as a tank strategy, since best-ball scoring is
+calculated from the best *possible* lineup regardless of what was actually started. This
+isn't fixable by adding another `assess_format` tier - it needs a way to capture
+freeform, per-league house rules that no API will ever expose, and a mechanism for those
+rules to actually override or caveat the relevant downstream logic (the tanking note
+specifically, likely others not yet identified). Not designed yet - flagged as a real,
+recurring category of gap to expect more of as this tool sees other real leagues.
+
 ## Age curve (`team_values.AGE_CURVE`, `age_bucket`)
 
 Per-position aging breakpoints (ascending / prime / declining), because a flat
