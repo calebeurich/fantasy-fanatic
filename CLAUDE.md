@@ -36,6 +36,10 @@ the whole thing in their head." That beats clever, beats fast, beats complete.
   the author's own public Sleeper data. Anything that costs money to call (LLM
   APIs, paid odds feeds) needs a rate limit / budget cap before it's wired to
   anything automated.
+- Every heuristic, threshold, or "why behind a recommendation" goes in LOGIC.md in
+  the same change that introduces it - not as a follow-up. The end goal is a chatbot
+  that explains its recommendations, so the reasoning has to exist in writing
+  somewhere other than this conversation and this code.
 
 ## Stack (as introduced, not upfront)
 
