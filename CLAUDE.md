@@ -40,6 +40,15 @@ the whole thing in their head." That beats clever, beats fast, beats complete.
   the same change that introduces it - not as a follow-up. The end goal is a chatbot
   that explains its recommendations, so the reasoning has to exist in writing
   somewhere other than this conversation and this code.
+- Avoid bloat LIKE THE PLAGUE. Validation and bug fixes tend to arrive as a series of
+  edge cases, and the instinct to patch each one where it's found produces the exact
+  mess we're trying to avoid - the same concept (e.g. "how much of a player's value is
+  future upside vs. current production") re-expressed slightly differently in three
+  different files. Before writing a fix, check whether an existing fix already covers
+  the same underlying concept and just needs to be reused or generalized instead of
+  duplicated. After a run of related patches, stop and ask whether they're all really
+  the same rule wearing different clothes - if so, refactor to one shared, named
+  concept before adding the next one, testing behavior is unchanged as you go.
 
 ## Stack (as introduced, not upfront)
 

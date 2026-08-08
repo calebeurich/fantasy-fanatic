@@ -15,32 +15,32 @@ import team_state
 import roster_needs
 import trade_activity
 
-# Neither side of a suggested trade should be roster filler indistinguishable from the
-# waiver wire. Declining/prime "sellable" value needs to clear more of replacement
-# level (it's being offered as real current production) than ascending "surplus" value
-# does (its appeal is future upside, which is legitimately priced lower right now) -
-# both floors were calibrated against real examples of value too low to be worth listing.
-MIN_SELLABLE_RELEVANCE_FRACTION = 0.5
-MIN_SURPLUS_RELEVANCE_FRACTION = 0.25
+# Same VALUE_BASIS classification (team_state.py) drives both sides of a trade, just
+# phrased for who's on which side of it.
+BUY_PRICE_NOTE = {
+    "production": "production-priced",
+    "mixed": "upside-priced, may cost more than the fit justifies",
+    "upside": "mostly future value - likely a real overpay for current-year fit",
+}
+OFFER_GIVE_UP_COST = {
+    "production": "low - value is mostly already-realized production",
+    "mixed": "moderate - some future value baked in too",
+    "upside": "high - real future value you won't get back",
+}
 
 
 def _with_trade_note(entry: dict, other: dict, trade_counts: dict[str, int]) -> dict:
     return {**entry, "from_owner": other["owner"], "from_owner_trades": trade_counts.get(other["owner_id"], 0)}
 
 
-def _clears_floor(entry: dict, thresholds: dict[str, float], fraction: float) -> bool:
-    return entry["value"] >= thresholds[entry["position"]] * fraction
-
-
 def _my_offer_pool(me: dict, thresholds: dict[str, float]) -> list[dict]:
-    """What you could realistically offer: young surplus, plus bench value that isn't
-    elite enough to be a cornerstone but also isn't part of your actual lineup (e.g. a
-    3rd QB in a 2-QB-max format) - never a valuable *starter*, even a non-cornerstone
-    one, since that's not surplus, that's your team."""
-    surplus = [e for e in me["tradeable_surplus"] if _clears_floor(e, thresholds, MIN_SURPLUS_RELEVANCE_FRACTION)]
-    bench_sellable = [e for e in me["sellable"]
-                       if not e["is_starter"] and _clears_floor(e, thresholds, MIN_SELLABLE_RELEVANCE_FRACTION)]
-    return surplus + bench_sellable
+    """What you could realistically offer: bench value that isn't elite enough to be a
+    cornerstone but also isn't part of your actual lineup (e.g. a 3rd QB in a 2-QB-max
+    format), plus young surplus - never a valuable *starter*, even a non-cornerstone
+    one, since that's not surplus, that's your team. Cheapest give-up cost first."""
+    bench_sellable = [e for e in me["sellable"] if not e["is_starter"] and team_state.clears_relevance_floor(e, thresholds)]
+    surplus = [e for e in me["tradeable_surplus"] if team_state.clears_relevance_floor(e, thresholds)]
+    return bench_sellable + surplus
 
 
 def find_targets(league_id: str, owner_query: str) -> dict:
@@ -58,13 +58,13 @@ def find_targets(league_id: str, owner_query: str) -> dict:
     # left and stockpile youth/picks instead. Buy-target-by-need only makes sense for
     # a team actually trying to win now.
     if me["effective_strategy"] == "Rebuilding":
-        sell_candidates = [e for e in me["sellable"] if _clears_floor(e, thresholds, MIN_SELLABLE_RELEVANCE_FRACTION)]
+        sell_candidates = [e for e in me["sellable"] if team_state.clears_relevance_floor(e, thresholds)]
         acquire_targets = []
         for other in states:
             if other["owner_id"] == me["owner_id"] or other["effective_strategy"] not in ("Win-Now", "Middling"):
                 continue
             for player in other["tradeable_surplus"]:
-                if not _clears_floor(player, thresholds, MIN_SURPLUS_RELEVANCE_FRACTION):
+                if not team_state.clears_relevance_floor(player, thresholds):
                     continue
                 acquire_targets.append(_with_trade_note(player, other, trade_counts))
         acquire_targets.sort(key=lambda t: (-t["from_owner_trades"], -t["value"]))
@@ -77,7 +77,7 @@ def find_targets(league_id: str, owner_query: str) -> dict:
             if other["owner_id"] == me["owner_id"] or other["effective_strategy"] != "Rebuilding":
                 continue
             for player in other["sellable"]:
-                if player["position"] != pos or not _clears_floor(player, thresholds, MIN_SELLABLE_RELEVANCE_FRACTION):
+                if player["position"] != pos or not team_state.clears_relevance_floor(player, thresholds):
                     continue
                 targets.append({"position": pos, "need_level": my_needs[pos],
                                  **_with_trade_note(player, other, trade_counts)})
@@ -107,8 +107,13 @@ def main(league_id: str, owner_query: str) -> None:
         return
 
     print(f"{me['owner']}: {me['effective_strategy']}, needs: {result['needs'] or 'none'}")
-    offers = ", ".join(e["name"] for e in result["my_offers"]) or "no obvious surplus"
-    print(f"you could offer: {offers}")
+    if result["my_offers"]:
+        print("you could offer (cheapest give-up cost first):")
+        for e in result["my_offers"]:
+            cost = OFFER_GIVE_UP_COST[team_state.VALUE_BASIS[e["bucket"]]]
+            print(f"  {e['name']} ({e['position']}, value={e['value']}) - give-up cost: {cost}")
+    else:
+        print("you could offer: no obvious surplus")
     print()
 
     if not result["targets"]:
@@ -118,16 +123,7 @@ def main(league_id: str, owner_query: str) -> None:
     print("buy targets (from Rebuilding teams, at a position you need):")
     for t in result["targets"]:
         trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "NEVER TRADES - unlikely"
-        # Declining = you're paying mostly for this year's production. Prime and
-        # (more so) ascending bake in future growth a win-now buyer doesn't need, so
-        # they cost more per unit of current-year fit than the raw value suggests -
-        # the earlier in the age curve, the larger that gap gets.
-        if t["bucket"] == "declining":
-            price_note = "production-priced"
-        elif t["bucket"] == "prime":
-            price_note = "upside-priced, may cost more than the fit justifies"
-        else:
-            price_note = "mostly future value - likely a real overpay for current-year fit"
+        price_note = BUY_PRICE_NOTE[team_state.VALUE_BASIS[t["bucket"]]]
         print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}) from {t['from_owner']} "
               f"- need: {t['need_level']} - {trade_note}")
 

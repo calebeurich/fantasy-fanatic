@@ -23,10 +23,23 @@ REBUILD_MIN_DIFF = 30
 # with barely any real difference-makers isn't "Middling with options," it's thin.
 THIN_ROSTER_MAX_CORNERSTONES = 1
 
+# What a bucket's dynasty value is actually made of, and how much of positional
+# replacement level a player needs to clear to be a real trade chip rather than
+# waiver-wire filler. One shared source of truth for anything that needs to explain or
+# filter trade value by age - buy-side pricing, sell-side give-up cost, and the
+# minimum-relevance floor all derive from this instead of each keeping its own rule.
+VALUE_BASIS = {"declining": "production", "prime": "mixed", "ascending": "upside", "unknown": "mixed"}
+MIN_RELEVANCE_FRACTION = {"production": 0.5, "mixed": 0.5, "upside": 0.25}
+
 
 def cornerstone_threshold(players: dict[str, dict]) -> float:
     values = sorted((info["value"] for info in players.values()), reverse=True)
     return values[int(len(values) * CORNERSTONE_PERCENTILE)]
+
+
+def clears_relevance_floor(entry: dict, thresholds: dict[str, float]) -> bool:
+    fraction = MIN_RELEVANCE_FRACTION[VALUE_BASIS[entry["bucket"]]]
+    return entry["value"] >= thresholds[entry["position"]] * fraction
 
 
 def classify(roster: dict, players: dict[str, dict], threshold: float) -> dict:

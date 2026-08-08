@@ -166,37 +166,67 @@ have yet) - deferred rather than faked.
   and stockpile youth. Acquire targets = *tradeable surplus* (young, ascending, non-
   cornerstone) sitting on Win-Now/Middling rosters - those teams don't care about it,
   which is exactly what makes it gettable.
-- **Minimum trade relevance, two different floors**: neither side of a suggested trade
-  should be roster filler indistinguishable from the waiver wire, but declining/prime
-  "sellable" value and ascending "surplus" value need different bars. Sellable value is
-  being offered as real current production, so it needs to clear *half* of
-  `roster_needs`' replacement-level threshold (full replacement level = "startable
-  quality," the bar for whether a team *has* a need - a target doesn't need to be
-  startable to be worth a conversation, just not worthless). Surplus value's appeal is
-  future upside, which the dynasty market legitimately prices lower right now, so it
-  only needs a *quarter* of replacement level - a higher bar would have excluded real,
-  validated trade chips. Both fractions were calibrated against real named examples
-  (a near-zero washed-up veteran that needed excluding; a legitimate but modest young
-  trade chip that needed including) rather than picked arbitrarily.
-- **What you could offer** pulls from two pools, not one: your own `tradeable_surplus`
-  (young depth, filtered by the surplus floor) plus your own bench-only `sellable`
-  players (filtered by the sellable floor). Starters are excluded from the second pool
-  even when they clear the value bar - a valuable-but-non-cornerstone *starter* isn't
-  surplus, it's your team. This was a validated real bug: a real team's 3rd QB in a
-  2-QB-max format was a genuine trade chip (pure roster-construction surplus,
-  independent of age) that the age-bucket-only view couldn't see, while the fix had to
-  avoid pulling in that same team's actual starting QB2 just because he sat below the
-  cornerstone threshold too.
-- **Production-priced vs. upside-priced labeling**: a buy target's raw dynasty value
-  doesn't say *why* it's valuable. A declining player's value is almost entirely current
-  production (the market has already priced out its future), so it's labeled
-  "production-priced." A prime player's value partly reflects future growth a win-now
-  buyer doesn't need, and an ascending player's value reflects that *even more* - so
-  a win-now buyer pays a real premium for upside they won't use. This doesn't filter
-  anything out; it surfaces the trade-off so a human (or the eventual agent) can judge
-  whether a specific overpay is worth it, rather than presenting a "safe" production
-  buy and a "expensive-in-disguise" upside buy as equivalent options in the same
-  ranked list.
+- **`VALUE_BASIS` (`team_state.py`)**: one shared classification - `declining` ->
+  "production" (value is almost entirely already-realized output, the market has priced
+  out its future), `prime` -> "mixed" (some current production, some future growth
+  priced in), `ascending`/`unknown` -> "upside" (mostly speculative future growth). This
+  single mapping is the source of truth for every place that needs to reason about *why*
+  a player's value is what it is - it replaced two independently-written, near-identical
+  labeling schemes (a buy-side "price note" and a sell-side "give-up cost") that were
+  caught and consolidated in the same session they were written, per the standing rule
+  in CLAUDE.md against letting the same concept re-diverge across files.
+  - **Minimum relevance floor** (`clears_relevance_floor`): neither side of a trade
+    should be roster filler indistinguishable from the waiver wire, but "production"/
+    "mixed" value needs to clear *half* of `roster_needs`' replacement-level threshold
+    (full replacement level = "startable quality," the bar for whether a team *has* a
+    need - a target doesn't need to be startable to be worth a conversation, just not
+    worthless), while "upside" value only needs a *quarter* (its appeal is future growth
+    the market already prices lower, so a higher bar would exclude real, validated trade
+    chips). Both fractions were calibrated against real named examples, not picked
+    arbitrarily.
+  - **Buy-side labeling**: "production-priced" (declining) vs. "upside-priced, may cost
+    more than the fit justifies" (prime) vs. "mostly future value - likely a real
+    overpay for current-year fit" (ascending). Doesn't filter anything - surfaces the
+    trade-off so a human (or the eventual agent) can judge whether a specific overpay is
+    worth it, instead of presenting a safe buy and a disguised-expensive one as
+    equivalent in the same ranked list.
+  - **Sell-side "give-up cost"**: the same classification, read from the other
+    direction - "low" (declining: you're not sacrificing future value you'd have gotten
+    anyway), "moderate" (prime), "high" (ascending: this is real future value you won't
+    get back). Getting this right required distinguishing prime from declining within
+    the sellable pool, which the unification surfaced as a real accuracy improvement,
+    not just a size reduction - a validated real case had a prime bench piece wrongly
+    grouped with pure decliners as equally "safe" to trade away before the fix.
+- **What you could offer** pulls from two pools: your own `tradeable_surplus` (young
+  depth) plus your own bench-only `sellable` players, both filtered by the relevance
+  floor above. Starters are excluded from the sellable side even when they clear the
+  value bar - a valuable-but-non-cornerstone *starter* isn't surplus, it's your team.
+  This was a validated real bug: a real team's 3rd QB in a 2-QB-max format was a genuine
+  trade chip (pure roster-construction surplus, independent of age) that an age-bucket-
+  only view couldn't see, while the fix had to avoid pulling in that same team's actual
+  starting QB2 just because he sat below the cornerstone threshold too.
+
+## Known limitations / future work
+
+- **"Starter" is a live snapshot, not a true intended lineup.** Sleeper's `starters`
+  field reflects whatever the current week's lineup happens to be, which is especially
+  unreliable in the preseason before Week 1 lineups are set, and doesn't account for
+  injury. A real fix needs injury/health data to define "starter" as "most current
+  production, healthy" rather than whatever Sleeper's snapshot says - not built yet.
+- **Future draft picks are valued as a flat round average, not by the owning team's
+  likely draft slot.** FantasyCalc prices the *upcoming* draft class at exact slots
+  (e.g. "2026 Pick 1.01" is worth roughly 3x "2026 Pick 1.12"), but picks further out
+  are valued as one flat number per round because the slot isn't determined yet. That
+  flat number is a real distortion: a bad team's own future 1st is worth more than a
+  good team's, because a worse record means an earlier, more valuable slot. Not
+  corrected yet - would need each team's current-season production trajectory as an
+  input to estimate where their pick is likely to land.
+- **No offensive-line-quality signal.** PFF has no consumer API (enterprise/B2B only)
+  and its ToS restricts subscription data to personal, non-commercial use - reproducing
+  it here would be the same problem as KeepTradeCut/OverTheCap. nflverse already gives
+  us free, legitimate adjacent options worth exploring instead: `load_pfr_advstats`
+  (Pro Football Reference advanced stats), `load_nextgen_stats` (the NFL's own tracking
+  data), `load_ftn_charting` (FTN Fantasy's charting data).
 - Results are always sorted with trade activity first, value second - a bigger name from
   an owner who never trades is a worse real-world target than a smaller one from an
   active trader.
