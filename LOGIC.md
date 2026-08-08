@@ -447,21 +447,47 @@ in this project grew - not by front-loading hypothetical cases now.
   "does the model follow an instruction to only use that list." Strengthening the
   system prompt rule fixed the off-topic-scope case cleanly on the first try, but
   **failed to fully fix the trade-chip grounding case even on a second, more explicit
-  attempt** - the model suggested the same ungrounded player again. This is logged
-  honestly as an open, unresolved reliability gap rather than claimed as fixed:
-  prompt-level constraints are probabilistic, not guaranteed, in a way a Python fix to
-  a real data gap simply isn't. Chasing a third, even-more-forceful prompt wasn't
-  pursued further given the diminishing returns and real cost per attempt - a more
-  robust fix (post-hoc validation of named players against the real tool data, or a
-  stronger model for this specific step) is future work, not solved today.
+  attempt** - the model suggested the same ungrounded player again. Prompt-level
+  constraints are probabilistic, not guaranteed, in a way a Python fix to a real data
+  gap simply isn't - chasing a third, even-more-forceful prompt wasn't pursued given
+  the diminishing returns and real cost per attempt.
+
+**Closed with a post-hoc grounding check instead of a better prompt** (`agent.py`):
+after each answer, `_banned_trade_names` recomputes the real offerable set straight
+from `trade_targets.find_targets` + `roster_detail.get_roster_rows` for the same
+league/owner the model already queried (free, deterministic, no LLM involved), and
+checks whether any name in the response text falls outside it. On a violation, one
+corrective follow-up is sent on the same session ("you named X, who isn't offerable -
+redo it using only the real list") before the answer is returned. This is the
+generate-then-verify pattern: generation stays probabilistic, but verification is a
+plain set-membership check, so the *system's* reliability no longer depends on the
+model getting the instruction right on the first try. Validated live on the exact
+case that kept failing: first pass named Christian McCaffrey, the check caught it,
+the retry corrected to only TreVeyon Henderson and Jacory Croskey-Merritt (the real
+`my_offers` list) - `case_grounded_trade_chips` now passes.
+`trade_targets.offerable_names()` was added as the one shared definition of "real
+offerable set" across all three `find_targets` modes (buy/rebuild/middling), so the
+check doesn't duplicate that mode-branching logic itself.
+
+A residual, accepted gap: the check is a substring match on player names, so a name
+mentioned *without* being recommended as a give-up (e.g. "unlike some teams, you
+don't have a Jonathan Taylor to dangle") would still trigger a retry. A false-positive
+retry costs a small extra call; it doesn't let a real violation through, which is the
+failure mode that actually mattered here.
+
+**The eval harness immediately caught a real bug in this fix, not just in the
+original prompt.** First implementation picked a single violating name with
+`next()` and only told the model about that one in the correction message. The real
+failing answer had named *two* non-offerable players at once (Jonathan Taylor and
+Christian McCaffrey) - the one allowed retry fixed whichever name got mentioned and
+left the other, so `case_grounded_trade_chips` failed again on the next eval run even
+though a manual live test right before it had looked clean (that manual run happened
+to only have one violation to fix). Fixed by collecting every violation found and
+listing all of them in the correction message, then confirmed clean across two
+separate full eval runs (not just one) before trusting it - a single pass proves
+nothing when the fix itself is a probabilistic retry.
 
 ## Known limitations / future work
-
-- **The agent can still name an ungrounded player as a trade-away suggestion** (see
-  "Eval harness" above for the full case) - a prompt rule reduces this but doesn't
-  reliably prevent it, unlike the Python-layer fixes elsewhere in this project. Needs
-  either post-hoc validation of named players against real tool output, or a stronger
-  model for this step, to actually close - not solved yet.
 - **Team window classification ignores actual win/loss record entirely.** A team
   that's mathematically out of playoff contention can't really be "Win-Now" for the
   current season no matter how its age composition reads - record should gate the

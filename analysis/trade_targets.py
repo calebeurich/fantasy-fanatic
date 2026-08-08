@@ -129,6 +129,19 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
             **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts, max_per_position)}
 
 
+def offerable_names(result: dict) -> set[str]:
+    """Every player name this team could reasonably be told to trade away, across
+    whichever path(s) find_targets returned for its mode. Single source of truth for
+    "is this a real give-up piece" - used by agent.py's post-hoc grounding check so
+    that check never has to re-derive the mode-specific logic above itself."""
+    if result["mode"] == "rebuild":
+        return {e["name"] for e in result["sell_candidates"] + result["situational"]}
+    if result["mode"] == "middling":
+        return ({e["name"] for e in result["push"]["my_offers"]}
+                | {e["name"] for e in result["pivot"]["sell_candidates"] + result["pivot"]["situational"]})
+    return {e["name"] for e in result["my_offers"]}
+
+
 def _print_pivot(me: dict, pivot: dict) -> None:
     sell = ", ".join(e["name"] for e in pivot["sell_candidates"]) or "none"
     print(f"sell candidates (declining - value only goes down from here, real urgency to move it): {sell}")

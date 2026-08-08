@@ -29,6 +29,8 @@ from claude_agent_sdk import (
     ResultMessage,
 )
 
+from analysis import trade_targets, roster_detail
+
 load_dotenv()
 
 MODEL = "claude-haiku-4-5-20251001"  # cheapest capable model - see LOGIC.md's cost notes
@@ -82,6 +84,15 @@ with - don't answer the off-topic request just because you technically know how.
 MAX_TURNS = 8
 MAX_BUDGET_USD = 0.50  # per question - a single answer should never cost more than this
 
+# Rule 6 (trade-chip grounding) is a prompt instruction, and prompt instructions are
+# probabilistic - eval testing found the model still names a non-offerable player
+# occasionally even with the rule spelled out. Fixed the same way every other bug in
+# this project got fixed: push the reliability into a deterministic Python check
+# instead of trusting the model to follow the rule. One retry, not a loop - if the
+# model still gets it wrong after being told exactly what it did wrong, further
+# retries are unlikely to help and just burn budget.
+MAX_GROUNDING_RETRIES = 1
+
 
 def _options() -> ClaudeAgentOptions:
     return ClaudeAgentOptions(
@@ -104,35 +115,104 @@ def _options() -> ClaudeAgentOptions:
     )
 
 
-async def run_query(question: str, verbose: bool = True) -> dict:
-    """Runs one question through the agent. Prints live (for interactive CLI use)
-    and always returns the collected text/tool-calls/cost so the eval harness can
-    assert on a real run instead of duplicating this query logic."""
+async def _run_turn(client: ClaudeSDKClient, message: str, verbose: bool) -> dict:
+    """Sends one message on an already-open client session and collects the reply.
+    Split out from run_query so the grounding-retry loop below can send a second
+    message on the same session without repeating this collection logic."""
     text_parts, tool_calls, result = [], [], None
-    async with ClaudeSDKClient(options=_options()) as client:
-        await client.query(question)
-        async for message in client.receive_response():
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        text_parts.append(block.text)
-                        if verbose:
-                            print(block.text)
-                    elif isinstance(block, ToolUseBlock):
-                        tool_calls.append({"name": block.name, "input": block.input})
-                        if verbose:
-                            print(f"[tool call: {block.name}({block.input})]")
-            elif isinstance(message, ResultMessage):
-                result = message
-                if verbose:
-                    print(f"\n[{result.num_turns} turn(s), ${result.total_cost_usd:.4f}, "
-                          f"stop_reason={result.stop_reason}]")
+    await client.query(message)
+    async for msg in client.receive_response():
+        if isinstance(msg, AssistantMessage):
+            for block in msg.content:
+                if isinstance(block, TextBlock):
+                    text_parts.append(block.text)
+                    if verbose:
+                        print(block.text)
+                elif isinstance(block, ToolUseBlock):
+                    tool_calls.append({"name": block.name, "input": block.input})
+                    if verbose:
+                        print(f"[tool call: {block.name}({block.input})]")
+        elif isinstance(msg, ResultMessage):
+            result = msg
+            if verbose:
+                print(f"\n[{result.num_turns} turn(s), ${result.total_cost_usd:.4f}, "
+                      f"stop_reason={result.stop_reason}]")
+    return {"text": "\n".join(text_parts), "tool_calls": tool_calls, "result": result}
 
+
+def _banned_trade_names(tool_calls: list[dict]) -> set[str]:
+    """Ground truth for rule 6: for every get_trade_targets call this turn made,
+    every name on that team's roster that ISN'T in the real offerable list. Computed
+    straight from the same Python the tool itself calls - free, deterministic, and
+    can't be talked out of being right the way the model's own rule-following can."""
+    banned = set()
+    for call in tool_calls:
+        if call["name"] != f"mcp__{SERVER_KEY}__get_trade_targets":
+            continue
+        league_id, owner_name = call["input"].get("league_id"), call["input"].get("owner_name")
+        if not league_id or not owner_name:
+            continue
+        try:
+            result = trade_targets.find_targets(league_id, owner_name)
+            roster = roster_detail.get_roster_rows(league_id, owner_name)
+        except Exception:
+            continue  # can't validate what we can't recompute - don't block on it
+        banned |= {row["name"] for row in roster["rows"]} - trade_targets.offerable_names(result)
+    return banned
+
+
+async def run_query(question: str, verbose: bool = True) -> dict:
+    """Runs one question through the agent, then deterministically checks the answer
+    against ground truth before returning it: if it named a player its own
+    get_trade_targets call says isn't offerable, send one corrective follow-up on the
+    same session rather than trusting the prompt rule to have been followed. Prints
+    live (for interactive CLI use) and always returns the collected text/tool-calls/
+    cost so the eval harness can assert on a real run instead of duplicating this
+    query logic."""
+    async with ClaudeSDKClient(options=_options()) as client:
+        turn = await _run_turn(client, question, verbose)
+        all_tool_calls = list(turn["tool_calls"])
+        # num_turns resets per client.query() call (verified live: 4, then 1 on a
+        # retry) but total_cost_usd is a running session total (verified live: kept
+        # climbing across the retry) - the two fields don't share the same semantics,
+        # so num_turns needs manual summing and cost_usd doesn't.
+        total_turns = turn["result"].num_turns if turn["result"] else 0
+        # Accumulated across turns, not recomputed per-turn: a retry turn typically
+        # doesn't re-call get_trade_targets (the model already has the result in
+        # context), so a fresh per-turn computation would go empty and silently miss
+        # the same violation repeating in the corrected answer.
+        banned = _banned_trade_names(turn["tool_calls"])
+        retries = 0
+        violations = [n for n in banned if n in turn["text"]]
+        while violations and retries < MAX_GROUNDING_RETRIES:
+            if verbose:
+                print(f"[grounding check failed: {violations} aren't offerable - retrying]")
+            # List every violation found, not just one - an earlier version only
+            # named a single offender (via next() on a set), so when an answer named
+            # two non-offerable players at once, the one retry fixed one and left the
+            # other. Found live via the eval harness re-failing after the fix looked
+            # solved manually.
+            names = ", ".join(f'"{n}"' for n in violations)
+            correction = (
+                f"You named {names} as trade-away candidates, but none of them are in this "
+                "team's real offer list from get_trade_targets. Redo your answer using only "
+                "players that actually appear in that tool's offer/sell-candidate lists - "
+                "check every name you're about to write against that list first."
+            )
+            turn = await _run_turn(client, correction, verbose)
+            all_tool_calls += turn["tool_calls"]
+            total_turns += turn["result"].num_turns if turn["result"] else 0
+            banned |= _banned_trade_names(turn["tool_calls"])
+            retries += 1
+            violations = [n for n in banned if n in turn["text"]]
+
+    result = turn["result"]
     return {
-        "text": "\n".join(text_parts),
-        "tool_calls": tool_calls,
-        "num_turns": result.num_turns if result else None,
+        "text": turn["text"],
+        "tool_calls": all_tool_calls,
+        "num_turns": total_turns,
         "cost_usd": result.total_cost_usd if result else None,
+        "grounding_retries": retries,
     }
 
 
