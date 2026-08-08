@@ -226,6 +226,32 @@ heuristics above depends on the plumbing underneath being correct:
   rushing QBs; Bijan Robinson, Jahmyr Gibbs, Christian McCaffrey, De'Von Achane as
   pass-catching backs).
 
+## Waiver wire (`waiver_wire.py`)
+
+Reuses the same relevance floor from `team_state.py` (a candidate's bucket is computed
+on the fly since the base player dict doesn't carry it) rather than inventing a separate
+threshold - the question "is this player worth anything" should have one answer across
+the whole codebase, not a waiver-specific variant.
+
+**Upgrade logic**: an available player is worth surfacing if either (a) its value beats
+this team's *worst* rostered player at the position (a literal drop-add), or (b) the
+position is a real need (`roster_needs`) even if it isn't better than the worst - a
+team with zero usable players at a position should hear about a decent option even if
+it doesn't outvalue a bench scrub they were never going to start anyway.
+
+**Why this matters more later than now**: validated against the real league - zero
+upgrades found for any of the 12 teams, top available player worth only 492. Expected
+and correctly reflects a deep 12-team dynasty league with little left on waivers. The
+real payoff comes once a news/sentiment or sportsbook-line signal exists: it could flag
+a currently-unrostered player *before* his dynasty value catches up (the original
+"Greg Dulcich hype" idea from the start of this project), and this module is what that
+signal would need to check against - "is this player actually available, and does
+anyone need him."
+
+**FAAB budget**: tracked per team (`waiver_budget_used` from Sleeper, subtracted from
+the league's total budget) even though it's tradeable in this league and nobody ever
+actually trades it - still useful context for whether a team could act on a claim.
+
 ## Known limitations / future work
 
 - **"Starter" is a live snapshot, not a true intended lineup.** Sleeper's `starters`
@@ -233,6 +259,15 @@ heuristics above depends on the plumbing underneath being correct:
   unreliable in the preseason before Week 1 lineups are set, and doesn't account for
   injury. A real fix needs injury/health data to define "starter" as "most current
   production, healthy" rather than whatever Sleeper's snapshot says - not built yet.
+- **No injury-timeline awareness for trade strategy**, a distinct idea from the point
+  above: injury duration should flip trade direction depending on team state. A player
+  out for the season is a buy-low for a Rebuilding team (this year's absence doesn't
+  matter to them, dynasty value recovers) and a sell for a Win-Now team (dead weight
+  for the year they're actually trying to win, regardless of long-term value). A
+  short-term injury is different again - it's a depth-need signal for a Win-Now team
+  (cover the gap at that position while they're out) rather than a buy/sell trigger.
+  `nflreadpy.load_injuries()` is already in the same nflverse toolchain we use for
+  contracts/usage stats, so the data source exists - not built yet.
 - **Future draft picks are valued as a flat round average, not by the owning team's
   likely draft slot.** FantasyCalc prices the *upcoming* draft class at exact slots
   (e.g. "2026 Pick 1.01" is worth roughly 3x "2026 Pick 1.12"), but picks further out
