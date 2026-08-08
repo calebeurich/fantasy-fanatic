@@ -48,6 +48,19 @@ def find_needs(roster: dict, players: dict[str, dict], slots: dict[str, int], th
     return needs
 
 
+def league_thresholds(league_id: str) -> dict[str, float]:
+    """Replacement-level value per position for this league's format - the bar a player
+    needs to clear to plausibly fill a need there, reused by trade_targets.py so it
+    doesn't suggest a near-zero-value player as the fix for a real roster hole."""
+    league = sleeper.get_league(league_id)
+    fmt = sleeper.describe_format(league)
+    num_qbs = NUM_QBS[fmt["is_superflex"]]
+
+    players = get_players_with_roles(num_qbs, fmt["num_teams"], fmt["ppr"], fmt["is_dynasty"])
+    slots = dedicated_slots(league["roster_positions"], fmt["is_superflex"])
+    return replacement_thresholds(players, slots, fmt["num_teams"])
+
+
 def league_needs(league_id: str) -> dict[str, dict]:
     """Positional needs for every roster, keyed by owner_id."""
     league = sleeper.get_league(league_id)

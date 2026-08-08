@@ -50,33 +50,33 @@ def classify(roster: dict, players: dict[str, dict], threshold: float) -> dict:
     else:
         state = "Middling"
 
-    cornerstones, win_now_core, tradeable_surplus, all_declining = [], [], [], []
+    cornerstones, win_now_core, tradeable_surplus, sellable = [], [], [], []
     for pid in all_ids:
         info = players.get(pid)
         if info is None:
             continue
         entry = {"name": info["name"], "position": info["position"], "value": info["value"]}
         bucket = age_bucket(info["position"], info["age"], info.get("usage_role"))
-        if bucket == "declining":
-            # Unthresholded - a rebuilding team's cheap veteran depth (a committee
-            # back, a backup) is still a real, findable trade target, not just its
-            # blockbuster sell candidates.
-            all_declining.append(entry)
         if info["value"] < threshold:
-            # Ascending but not valuable enough to be a real building block - a depth
-            # piece or lottery ticket, exactly what gets thrown into trades as filler.
+            # Not a foundational piece either way, but the two cases mean different
+            # things: ascending-but-small is a lottery ticket you'd offer as filler;
+            # prime/declining-but-small is a real (if modest) win-now contributor that
+            # just isn't this team's identity - still a findable trade target.
             if bucket == "ascending":
                 tradeable_surplus.append(entry)
+            elif bucket in ("prime", "declining"):
+                sellable.append(entry)
             continue
         if bucket == "declining":
             win_now_core.append(entry)
+            sellable.append(entry)  # valuable and declining - still sellable, just pricier
         else:
             cornerstones.append(entry)
     tradeable_surplus.sort(key=lambda e: -e["value"])
-    all_declining.sort(key=lambda e: -e["value"])
+    sellable.sort(key=lambda e: -e["value"])
 
     return {"state": state, "diff": round(diff), "cornerstones": cornerstones, "win_now_core": win_now_core,
-            "tradeable_surplus": tradeable_surplus[:5], "all_declining": all_declining}
+            "tradeable_surplus": tradeable_surplus[:5], "sellable": sellable}
 
 
 def classify_league(league_id: str) -> list[dict]:
@@ -137,13 +137,17 @@ def main(league_id: str) -> None:
 
     print(f"{league_name} - team windows:")
     for row in rows:
-        label = row["state"] + (" (thin roster)" if row["is_thin"] else "")
+        # Headline is always effective_strategy - that's what every downstream decision
+        # actually uses. The raw age-mix state is shown as context, not the label
+        # itself, since on a thin roster it can read backwards (e.g. "Win-Now" from
+        # having almost no ascending value to offset a little declining value, not
+        # from an actual aging contender core).
+        context = f"raw age-mix reads {row['state']}" + (", but too thin to act on it" if row["is_thin"] else "")
         tank_note = ""
         if row["effective_strategy"] == "Rebuilding" and not row["owns_next_first"]:
             tank_note = " [doesn't own next 1st - tanking wouldn't even help them]"
-        print(f"  {row['starter_value_rank']}. {row['owner']}: {label}{tank_note}  "
-              f"[effective: {row['effective_strategy']}, starter value rank {row['starter_value_rank']}/{len(rows)}, "
-              f"asc-dec diff={row['diff']}]")
+        print(f"  {row['starter_value_rank']}. {row['owner']}: {row['effective_strategy']}{tank_note}  "
+              f"[{context}, starter value rank {row['starter_value_rank']}/{len(rows)}, asc-dec diff={row['diff']}]")
         names = lambda entries: ", ".join(e["name"] for e in entries)
         print(f"       cornerstones: {names(row['cornerstones']) if row['cornerstones'] else 'none'}")
         if row["win_now_core"]:

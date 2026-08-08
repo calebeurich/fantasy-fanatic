@@ -101,6 +101,14 @@ offer in a trade" list (young depth, lottery tickets) - explicitly validated aga
 real case where a user-named trade-away piece (a starting TE, still ascending but not a
 cornerstone) showed up here correctly.
 
+**Sellable**: prime or declining players below the cornerstone threshold, plus any
+declining player regardless of value (mirrors win-now-core, just unthresholded on that
+side). This is deliberately broader than "declining only" - a rebuilding team's decent
+prime-bucket players who aren't its long-term core (e.g. a good-but-not-elite TE that's
+25 years old) are just as realistically sellable as its aging vets. Missing this
+initially caused a validated real bug: a real league member's rebuilding team had two
+legitimate prime-bucket trade chips that a declining-only search couldn't see at all.
+
 **"Thin roster" flag**: a team can just be bad regardless of its age split. Bottom-third
 starter value *and* at most 1 cornerstone gets flagged "(thin roster)" - validated
 against a real league member's own team that the raw age-composition score alone
@@ -109,8 +117,13 @@ mislabeled as ordinary "Middling."
 **Effective strategy**: thin rosters get `effective_strategy = "Rebuilding"` regardless
 of their raw age-composition label, because a team that's weak *and* directionless
 can't realistically compete this year either way. The raw `state` is kept separate so
-the "why" stays visible (label says "Middling (thin roster)", but downstream logic
-treats it as a rebuild).
+the "why" stays visible - but the *headline* label printed is always
+`effective_strategy`, never the raw `state`, with the raw signal shown as context
+instead. This mattered in practice: on a genuinely weak roster, the raw diff can read
+"Win-Now" purely from having almost no ascending value to offset a little declining
+value (not from an actual aging contender core), which produced a real, confusing
+"Win-Now (thin roster)" label on a second league before the display was fixed to lead
+with the effective strategy.
 
 **Owns next 1st**: tanking for a better draft slot only helps a team if it still owns
 its *own* next-season 1st-round pick - if that pick's already been traded away, playing
@@ -145,14 +158,21 @@ is wrong because roster construction caps how much bench depth is actually usabl
 honest fix needs full replacement-level/VORP modeling (weekly production data we don't
 have yet) - deferred rather than faked.
 
-- **Win-Now / Middling requester**: buy targets = declining-bucket players (any value,
-  not just cornerstone-tier - a cheap veteran committee back is still a real, findable
-  target) at a position of need, from Rebuilding teams, sorted by (trade activity, value).
+- **Win-Now / Middling requester**: buy targets = `sellable` players (prime or
+  declining, any value - not just cornerstone-tier) at a position of need, from
+  Rebuilding teams, sorted by (trade activity, value).
 - **Rebuilding requester**: the opposite question. It shouldn't be filling starting-
   lineup needs with proven vets - it wants to sell whatever declining value it has left
   and stockpile youth. Acquire targets = *tradeable surplus* (young, ascending, non-
   cornerstone) sitting on Win-Now/Middling rosters - those teams don't care about it,
   which is exactly what makes it gettable.
+- **Minimum trade relevance**: a target still has to clear *half* of `roster_needs`'
+  replacement-level threshold for its position - full replacement level means "startable
+  quality" (the bar for whether a team *has* a need), but a target doesn't need to be
+  startable to be worth a real trade conversation, just not worthless. Without this
+  floor at all, a near-zero-value washed-up veteran showed up as a "critical need" buy
+  target in testing (technically declining-bucket, but useless to anyone) - the fix
+  needed a real floor, just a much lower one than full replacement level.
 - Results are always sorted with trade activity first, value second - a bigger name from
   an owner who never trades is a worse real-world target than a smaller one from an
   active trader.

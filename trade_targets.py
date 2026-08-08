@@ -15,6 +15,12 @@ import team_state
 import roster_needs
 import trade_activity
 
+# A target doesn't need to be startable quality to be worth a look (that's what
+# roster_needs' full replacement level means) - it just needs to not be a throwaway
+# name like a washed-up veteran at near-zero value. Half of replacement level is the
+# "still real" floor.
+MIN_TRADE_RELEVANCE_FRACTION = 0.5
+
 
 def _with_trade_note(entry: dict, other: dict, trade_counts: dict[str, int]) -> dict:
     return {**entry, "from_owner": other["owner"], "from_owner_trades": trade_counts.get(other["owner_id"], 0)}
@@ -23,6 +29,7 @@ def _with_trade_note(entry: dict, other: dict, trade_counts: dict[str, int]) -> 
 def find_targets(league_id: str, owner_query: str) -> dict:
     states = team_state.classify_league(league_id)
     needs_by_owner_id = roster_needs.league_needs(league_id)
+    thresholds = roster_needs.league_thresholds(league_id)
     trade_counts = trade_activity.get_trade_counts(league_id)
 
     me = next((r for r in states if owner_query.lower() in r["owner"].lower()), None)
@@ -41,7 +48,7 @@ def find_targets(league_id: str, owner_query: str) -> dict:
             for player in other["tradeable_surplus"]:
                 acquire_targets.append(_with_trade_note(player, other, trade_counts))
         acquire_targets.sort(key=lambda t: (-t["from_owner_trades"], -t["value"]))
-        return {"me": me, "mode": "rebuild", "sell_candidates": me["all_declining"], "acquire_targets": acquire_targets}
+        return {"me": me, "mode": "rebuild", "sell_candidates": me["sellable"], "acquire_targets": acquire_targets}
 
     my_needs = needs_by_owner_id.get(me["owner_id"], {})
     targets = []
@@ -49,8 +56,8 @@ def find_targets(league_id: str, owner_query: str) -> dict:
         for other in states:
             if other["owner_id"] == me["owner_id"] or other["effective_strategy"] != "Rebuilding":
                 continue
-            for player in other["all_declining"]:
-                if player["position"] != pos:
+            for player in other["sellable"]:
+                if player["position"] != pos or player["value"] < thresholds[pos] * MIN_TRADE_RELEVANCE_FRACTION:
                     continue
                 targets.append({"position": pos, "need_level": my_needs[pos],
                                  **_with_trade_note(player, other, trade_counts)})
@@ -66,8 +73,8 @@ def main(league_id: str, owner_query: str) -> None:
     if result["mode"] == "rebuild":
         tank_note = "" if me["owns_next_first"] else " (doesn't own next 1st, so tanking for a pick wouldn't help)"
         print(f"{me['owner']}: Rebuilding{tank_note} - playing for future value, not starting-lineup needs")
-        sell = ", ".join(e["name"] for e in result["sell_candidates"]) or "none - nothing declining left to sell"
-        print(f"sell candidates (declining value still on your roster): {sell}")
+        sell = ", ".join(e["name"] for e in result["sell_candidates"]) or "none - nothing worth selling left"
+        print(f"sell candidates (prime/declining value that isn't your long-term core): {sell}")
         print()
         if not result["acquire_targets"]:
             print("no obvious acquire targets found")
@@ -86,7 +93,7 @@ def main(league_id: str, owner_query: str) -> None:
         print("no obvious targets found (no needs, or no Rebuilding team has a sell candidate there)")
         return
 
-    print("buy targets (declining-but-valuable players from Rebuilding teams, at a position you need):")
+    print("buy targets (prime/declining players from Rebuilding teams, at a position you need):")
     for t in result["targets"]:
         trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "NEVER TRADES - unlikely"
         print(f"  {t['name']} ({t['position']}, value={t['value']}) from {t['from_owner']} "
