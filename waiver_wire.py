@@ -70,7 +70,10 @@ def find_upgrades(roster: dict, players: dict[str, dict], available: dict[str, d
     return upgrades
 
 
-def main(league_id: str, owner_query: str = None) -> None:
+def league_upgrades(league_id: str, owner_query: str = None) -> dict:
+    """Available-player count plus per-owner waiver upgrades and FAAB budget. Reused
+    by both the CLI smoke test and the MCP tool wrapper - one source of truth for the
+    orchestration, not duplicated in each caller."""
     league = sleeper.get_league(league_id)
     fmt = sleeper.describe_format(league)
     num_qbs = NUM_QBS[fmt["is_superflex"]]
@@ -84,17 +87,26 @@ def main(league_id: str, owner_query: str = None) -> None:
     rosters = sleeper.get_rosters(league_id)
     owner_names = {u["user_id"]: u["display_name"] for u in sleeper.get_users(league_id)}
 
-    print(f"{len(available)} unrostered players with a real dynasty value")
+    teams = []
     for roster in rosters:
         owner = owner_names.get(roster["owner_id"], "Unknown")
         if owner_query and owner_query.lower() not in owner.lower():
             continue
         needs = needs_by_owner_id.get(roster["owner_id"], {})
         upgrades = find_upgrades(roster, players, available, needs, thresholds)
-        print(f"\n{owner} (FAAB remaining: {budgets.get(owner, '?')}):")
-        if not upgrades:
+        teams.append({"owner": owner, "faab_remaining": budgets.get(owner), "upgrades": upgrades})
+
+    return {"available_count": len(available), "teams": teams}
+
+
+def main(league_id: str, owner_query: str = None) -> None:
+    result = league_upgrades(league_id, owner_query)
+    print(f"{result['available_count']} unrostered players with a real dynasty value")
+    for team in result["teams"]:
+        print(f"\n{team['owner']} (FAAB remaining: {team['faab_remaining']}):")
+        if not team["upgrades"]:
             print("  no obvious waiver upgrades")
-        for u in upgrades:
+        for u in team["upgrades"]:
             print(f"  {u['name']} ({u['position']}, value={u['value']}) - {u['reason']}")
 
 

@@ -314,6 +314,34 @@ anyone need him."
 the league's total budget) even though it's tradeable in this league and nobody ever
 actually trades it - still useful context for whether a team could act on a claim.
 
+## MCP server (`mcp_server.py`)
+
+Phase 1 of the agent build-out plan. Every tool is a thin wrapper over an
+already-validated module - no new business logic here, only plumbing. Two modules
+(`roster_detail.py`, `waiver_wire.py`) only had print-only `main()` functions before
+this, so each got the same small extraction already used elsewhere in this codebase
+(`get_roster_rows`, `league_upgrades`) - a reusable function the CLI and the MCP tool
+both call, not two copies of the same orchestration.
+
+**A real, non-obvious finding from validating this, not just assumed to work**: the
+installed MCP SDK (`mcp` 2.0.0) serializes a tool's return value differently depending
+on its top-level type. A dict becomes one JSON content block; a bare top-level `list`
+gets split into *one content block per list item* instead of a single JSON array. This
+isn't a bug in the underlying analysis (`team_state.classify_league` is correct and
+already validated) - it's a serialization quirk in how this tool-calling layer handles
+list-typed returns, and it's exactly the kind of thing that would silently confuse an
+agent later (or look like each team is a separate response) if it went unnoticed. Fixed
+by having `get_team_state` wrap its list in `{"teams": [...]}` - every tool in this
+server now returns a dict at the top level, so this can't recur. Confirmed via a real
+MCP client test (`test_mcp_server.py`, spawns the server over stdio like a real agent
+would, calls every tool, and asserts the result matches calling the underlying Python
+function directly) rather than trusting the code compiled.
+
+**Also note**: this is why Phase 1's plan explicitly calls for validating through an
+actual MCP client, not just confirming the server starts - a server that starts fine
+can still silently misshape its output in a way that only shows up when something
+actually calls it end-to-end.
+
 ## Known limitations / future work
 
 - **Team window classification ignores actual win/loss record entirely.** A team

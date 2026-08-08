@@ -43,7 +43,9 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
     return rows
 
 
-def main(league_id: str, owner_name: str) -> None:
+def get_roster_rows(league_id: str, owner_name: str) -> dict:
+    """One team's full player-by-player breakdown. Reused by both the CLI smoke test
+    and the MCP tool wrapper."""
     league = sleeper.get_league(league_id)
     fmt = sleeper.describe_format(league)
     num_qbs = NUM_QBS[fmt["is_superflex"]]
@@ -58,9 +60,13 @@ def main(league_id: str, owner_name: str) -> None:
     roster = find_roster(owner_name, rosters, owner_names)
     owner = owner_names[roster["owner_id"]]
     rows = build_rows(roster, players, contract_data)
+    return {"owner": owner, "league_name": league["name"], "rows": rows}
 
-    print(f"{owner}'s roster in {league['name']}:")
-    for row in rows:
+
+def main(league_id: str, owner_name: str) -> None:
+    result = get_roster_rows(league_id, owner_name)
+    print(f"{result['owner']}'s roster in {result['league_name']}:")
+    for row in result["rows"]:
         age = f"{row['age']:.1f}" if row["age"] is not None else "?"
         bucket = row["bucket"] + (f" ({row['usage_role']})" if row["usage_role"] else "")
         line = f"  [{row['lineup_role']:<7}] {row['name']:<22} {row['position']:<3} value={row['value']:<6} age={age:<5} {bucket}"
