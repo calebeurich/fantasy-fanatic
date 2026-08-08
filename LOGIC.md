@@ -29,6 +29,31 @@ those explanations in. Update it in the same change that adds or adjusts a heuri
 - These feed FantasyCalc's `numQbs`/`numTeams`/`ppr` params so values match the league's
   actual format instead of a generic default.
 
+## Format support gate (`format_support.py`)
+
+Built before any agent exists, specifically so format-safety is a deterministic code
+fact the agent inherits later rather than something it has to reason its own way into
+respecting. `assess_format(league_id)` returns one of three tiers:
+
+- **`unsupported`**: `is_dynasty == False`. This isn't a "slightly less accurate"
+  situation - dynasty trade value, the age-curve win-window classification, cornerstone
+  thresholds, and pick capital are all dynasty-specific concepts. Running them on a
+  redraft/keeper league doesn't degrade gracefully, it produces a confidently-wrong
+  answer, because the underlying values mean something different there. The agent
+  should refuse and explain, not attempt analysis.
+- **`degraded`**: fewer than `MIN_TEAMS_FOR_FULL_SUPPORT` (8) teams. The percentile-based
+  math elsewhere (`team_state.cornerstone_threshold` at the 90th percentile,
+  `roster_needs.replacement_thresholds` at the Nth-best-player-leaguewide) gets noisy in
+  a shallow pool - a 4-team league's "90th percentile" is one player. Numbers still
+  compute, but should carry a visible caveat.
+- **`full`**: standard dynasty league, no caveats needed.
+
+Validated against three real leagues: two real dynasty leagues (both correctly `full`)
+and a real redraft league (correctly `unsupported`). The `degraded` tier and its
+threshold are **not yet validated against a real shallow league** - none of the leagues
+checked in this project are that small. Revisit the exact cutoff once one is available
+rather than trusting it blindly.
+
 ## Age curve (`team_values.AGE_CURVE`, `age_bucket`)
 
 Per-position aging breakpoints (ascending / prime / declining), because a flat
