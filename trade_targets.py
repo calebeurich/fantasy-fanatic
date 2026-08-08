@@ -43,7 +43,10 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float]) -> list[dict]:
     return bench_sellable + surplus
 
 
-def find_targets(league_id: str, owner_query: str) -> dict:
+DEFAULT_MAX_PER_POSITION = 3  # a parameter, not a hard limit - "give me more" means call again with a higher number
+
+
+def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAULT_MAX_PER_POSITION) -> dict:
     states = team_state.classify_league(league_id)
     needs_by_owner_id = roster_needs.league_needs(league_id)
     thresholds = roster_needs.league_thresholds(league_id)
@@ -71,24 +74,30 @@ def find_targets(league_id: str, owner_query: str) -> dict:
         return {"me": me, "mode": "rebuild", "sell_candidates": sell_candidates, "acquire_targets": acquire_targets}
 
     my_needs = needs_by_owner_id.get(me["owner_id"], {})
+    # Critical needs (can't fill the position at all) get searched before thin ones
+    # (fine, just no depth cushion) - a real recommendation should exhaust the urgent
+    # gap before suggesting extra names for a position that isn't actually a problem.
+    ordered_positions = sorted(my_needs, key=lambda p: 0 if my_needs[p] == "critical" else 1)
+
     targets = []
-    for pos in my_needs:
+    for pos in ordered_positions:
+        pos_targets = []
         for other in states:
             if other["owner_id"] == me["owner_id"] or other["effective_strategy"] != "Rebuilding":
                 continue
             for player in other["sellable"]:
                 if player["position"] != pos or not team_state.clears_relevance_floor(player, thresholds):
                     continue
-                targets.append({"position": pos, "need_level": my_needs[pos],
-                                 **_with_trade_note(player, other, trade_counts)})
-    targets.sort(key=lambda t: (-t["from_owner_trades"], -t["value"]))
+                pos_targets.append({"position": pos, "need_level": my_needs[pos],
+                                     **_with_trade_note(player, other, trade_counts)})
+        pos_targets.sort(key=lambda t: (-t["from_owner_trades"], -t["value"]))
+        targets += pos_targets[:max_per_position]
 
     return {"me": me, "mode": "buy", "needs": my_needs, "targets": targets,
             "my_offers": _my_offer_pool(me, thresholds)}
 
 
-def main(league_id: str, owner_query: str) -> None:
-    result = find_targets(league_id, owner_query)
+def _print_report(result: dict) -> None:
     me = result["me"]
 
     if result["mode"] == "rebuild":
@@ -128,5 +137,21 @@ def main(league_id: str, owner_query: str) -> None:
               f"- need: {t['need_level']} - {trade_note}")
 
 
+def main(league_id: str, owner_query: str = None, max_per_position: int = DEFAULT_MAX_PER_POSITION) -> None:
+    if owner_query:
+        _print_report(find_targets(league_id, owner_query, max_per_position))
+        return
+
+    # No owner given - run the whole league in one pass so it's easy to eyeball every
+    # team's recommendations together instead of spot-checking one at a time.
+    owners = [row["owner"] for row in team_state.classify_league(league_id)]
+    for i, owner in enumerate(owners):
+        if i > 0:
+            print("\n" + "=" * 60 + "\n")
+        _print_report(find_targets(league_id, owner, max_per_position))
+
+
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    owner_arg = sys.argv[2] if len(sys.argv) > 2 else None
+    limit_arg = int(sys.argv[3]) if len(sys.argv) > 3 else DEFAULT_MAX_PER_POSITION
+    main(sys.argv[1], owner_arg, limit_arg)
