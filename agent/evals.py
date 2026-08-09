@@ -9,7 +9,7 @@ Run: python -m agent.evals (from the repo root)
 import asyncio
 
 from analysis import trade_targets
-from .agent import run_query
+from .agent import run_query, _trade_violations
 
 DYNASTY_LEAGUE = "1315386978904084480"  # XFL 2
 DYNASTY_LEAGUE_2 = "1319727865188593664"  # second real dynasty league
@@ -86,21 +86,47 @@ async def case_topic_scope_refusal() -> None:
 
 
 async def case_grounded_trade_chips() -> None:
-    """Only players in the real my_offers list should ever be suggested as something
-    to trade away. Real bug found live: asked what to do with this team, the model
-    suggested trading Jonathan Taylor and Christian McCaffrey - both real starters,
-    neither in my_offers (only Jacory Croskey-Merritt and TreVeyon Henderson are)."""
+    """No banned player should ever be RECOMMENDED as a trade-away - checked the same
+    way agent.py's own runtime grounding check does (_trade_violations: a banned name
+    on a line with trade-action language), not a blunt "name never appears anywhere in
+    the text" check. That blunter check used to be here and started failing on a
+    legitimate case: the model correctly explaining *why* a player isn't tradeable
+    ("the system isn't flagging Jonathan Taylor as tradeable...") mentions the banned
+    name without recommending trading him - not a real violation, just a mention the
+    old assertion couldn't tell apart from one. Real original bug this case guards
+    against, still real: asked what to do with this team, the model suggested trading
+    Jonathan Taylor and Christian McCaffrey - both real starters, neither in my_offers
+    (only Jacory Croskey-Merritt and TreVeyon Henderson are)."""
     ground_truth = trade_targets.find_targets(DYNASTY_LEAGUE_2, "dezdroppedit27")
     offerable = {e["name"] for e in ground_truth["my_offers"]}
+    banned = {"Jonathan Taylor", "Christian McCaffrey"}
+    assert not banned & offerable  # sanity-check the fixture itself hasn't drifted
     result = await run_query(
         f"For Sleeper league {DYNASTY_LEAGUE_2}, I'm dezdroppedit27. What's the status "
         "of my team and what should I look to do, and why?",
         verbose=False,
     )
-    for not_offerable in ("Jonathan Taylor", "Christian McCaffrey"):
-        assert not_offerable not in offerable  # sanity-check the fixture itself hasn't drifted
-        assert not_offerable not in result["text"], f"suggested a non-offerable player: {not_offerable}"
+    violations = _trade_violations(result["text"], banned)
+    assert not violations, f"recommended trading a non-offerable player: {violations}"
     print(f"case_grounded_trade_chips: PASS (${result['cost_usd']:.4f}, {result['num_turns']} turns)")
+
+
+async def case_malformed_league_graceful() -> None:
+    """A nonexistent league_id must fail gracefully, not crash or hallucinate a
+    roster. Real behavior confirmed live: Sleeper 404s, FastMCP surfaces that as a
+    tool-level error (not a Python exception reaching run_query), and a real gap
+    was found and fixed this way - the model initially called a second tool anyway
+    against the same broken league_id (wasted call) before rule 10 was added to
+    stop after any tool error, not just an "unsupported" tier."""
+    result = await run_query(
+        "For Sleeper league 0000000000000000000, what is the team status for the first owner?",
+        verbose=False,
+    )
+    names = _tool_names(result)
+    assert names == ["mcp__fantasy_fanatic__check_league_format"], f"unexpected tool calls: {names}"
+    assert any(w in result["text"].lower() for w in ("doesn't exist", "not found", "invalid", "double-check")), \
+        f"expected a graceful not-found explanation: {result['text']}"
+    print(f"case_malformed_league_graceful: PASS (${result['cost_usd']:.4f}, {result['num_turns']} turns)")
 
 
 CASES = [
@@ -110,6 +136,7 @@ CASES = [
     case_resists_out_of_scope_request,
     case_topic_scope_refusal,
     case_grounded_trade_chips,
+    case_malformed_league_graceful,
 ]
 
 

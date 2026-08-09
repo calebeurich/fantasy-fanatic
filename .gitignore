@@ -147,6 +147,9 @@ activemq-data/
 # SageMath parsed files
 *.sage.py
 
+# Local observability log (agent/observability.py) - real usage data, not code
+/logs/
+
 # Environments
 .env
 .envrc

@@ -516,15 +516,62 @@ across repeated identical calls seconds apart. Two real, verified causes, not gu
   paid for, on every single call regardless. Verified the fix didn't change tool-call
   correctness (re-ran the eval suite, still 4/4) before trusting it.
 
+## Observability (`agent/observability.py`, `agent/log_summary.py`)
+
+Phase 3. Every `run_query` call previously printed to the console and then vanished -
+no durable record of what got asked, what it cost, which tools fired, or whether
+anything errored once the process exited. `log_run` appends one JSON line per call to
+a local, gitignored `logs/agent_runs.jsonl`: timestamp, the question (truncated to 300
+chars), outcome (`ok`/`error`), latency, `num_turns`, `cost_usd`, `grounding_retries`,
+which league_id(s) got touched, what format tier `check_league_format` found (if
+called), and any tool-level errors.
+
+**Plain JSONL over SQLite, deliberately** - no schema, no migrations, and still
+trivially summarizable (`log_summary.py`, a ~30-line script reading the same
+`read_runs()` helper) at the scale this project actually runs at. Converts to SQLite
+in one `sqlite3` import later if real query power is ever needed - not a dead end,
+just not built before there's a reason to.
+
+**Logging lives in a single `try/finally` around all of `run_query`, not scattered
+print-style calls** - it fires exactly once per call whether the call succeeds,
+partially succeeds (a tool errored but the model recovered gracefully), or an
+exception reaches all the way out, since all three are real outcomes worth a record.
+Variables the `finally` block reads (`total_turns`, `retries`, `result`,
+`all_tool_calls`, `all_tool_results`) are all initialized before the `try`, not just
+inside it - otherwise an exception on the very first `_run_turn` call would hit an
+`UnboundLocalError` in the logging code itself, on top of whatever the original
+exception was.
+
+**Format tier and tool errors both required capturing the SDK's tool-*result*
+messages, not just tool *calls*** (`ToolResultBlock` inside `UserMessage`, matched
+back to a tool name via the `ToolUseBlock.id` recorded when the call was made) - the
+existing code only ever looked at what the model *asked for*, never what a tool
+actually *returned*. This is also what makes the malformed-league_id eval case
+possible: `ToolResultBlock.is_error` is the real, structured signal for "this call
+failed," confirmed against a real 404 (see "Format support gate" for the live-tested
+shape: FastMCP turns a raw `HTTPError` into `isError=True` on the client side, not a
+crash).
+
+**A real, live-found gap while testing this**: with a nonexistent league_id, the
+model called `check_league_format` (which errored), and then called `get_team_state`
+anyway against the same broken league_id (which also errored) before finally
+explaining the league didn't exist - a real if minor wasted call, since rules 1-3 only
+ever covered the *tier-based* branches ("unsupported"/"degraded"), never a hard tool
+*error*. Fixed with rule 10 ("if check_league_format itself errors, stop for that
+league_id - don't retry with a different tool"), confirmed live: identical question
+afterward made exactly one tool call. Like rule 2, this isn't perfectly reliable
+either - see "Eval harness" below.
+
 ## Eval harness (`evals.py`)
 
-Deliberately 6 cases, not the 10-20 the original plan called for - each real case is a
+Deliberately 7 cases, not the 10-20 the original plan called for - each real case is a
 real paid API call against a small starting budget, and these cover the distinct
 failure modes actually found or worth guarding against so far: correct tool selection
 for a team-window question, the non-dynasty refusal, a trade-target question using the
 real tool instead of improvising, resistance to an explicit instruction-override/
 tool-boundary-probing attempt, refusing an off-topic request that needs no tool at all
-to answer, and only naming players actually present in a team's real offer list.
+to answer, only naming players actually present in a team's real offer list, and a
+nonexistent league_id failing gracefully instead of crashing or wasting extra calls.
 Expand this set as new scenarios get validated live, the same way every other module
 in this project grew - not by front-loading hypothetical cases now.
 
@@ -595,6 +642,35 @@ to only have one violation to fix). Fixed by collecting every violation found an
 listing all of them in the correction message, then confirmed clean across two
 separate full eval runs (not just one) before trusting it - a single pass proves
 nothing when the fix itself is a probabilistic retry.
+
+**The eval's own assertion went stale the moment the narrower `_trade_violations`
+check shipped, and this needed the exact same discipline to catch as a real agent
+bug would.** After narrowing rule 6's trigger (above), `case_grounded_trade_chips`
+started failing again - but investigating the actual failing text (not just trusting
+the FAIL line) showed the model saying *"the system isn't flagging Jonathan Taylor as
+tradeable"* - correctly explaining why he ISN'T a real option, not recommending
+trading him. The eval's original assertion (`name not in result["text"]`, a blunt
+whole-text check) was written under the old zero-tolerance philosophy and never
+updated when that philosophy deliberately changed to "only a trade-context mention
+counts." Fixed by rewriting the assertion to call the exact same `_trade_violations`
+function production uses, so the eval checks the real invariant ("never recommended")
+instead of a stricter proxy ("never mentioned") that the intentional design change
+had already made obsolete. The lesson: a failing eval isn't automatically evidence of
+an agent regression - reading the actual failing output before concluding either way
+is what told these two apart.
+
+**Malformed league_id case, added alongside the observability work above**: the
+first live run of `case_malformed_league_graceful` surfaced the redundant-tool-call
+gap that became rule 10 (see "Observability"), and after that fix the eval passed
+immediately. It then failed once on a later full-suite run with the exact same
+pre-rule-10 symptom (an extra `get_team_state` call) - re-running the isolated case
+3x immediately after came back clean 3/3, the same low-frequency-noise signature
+already seen with rule 2. Logged as another data point that even a rule with a real,
+confirmed fix isn't pushed to 0% failure by a prompt change alone - only the
+generate-then-verify pattern used for rule 6 gets an invariant genuinely close to
+guaranteed, and building that same machinery for every rule regardless of how rarely
+it actually fails would be its own form of the scope creep this project keeps
+deliberately avoiding.
 
 ## Known limitations / future work
 - **Team window classification ignores actual win/loss record entirely.** A team

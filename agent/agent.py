@@ -11,7 +11,9 @@ this is separate from any Claude.ai subscription, see LOGIC.md.
 """
 
 import asyncio
+import json
 import sys
+import time
 
 # Windows console defaults to cp1252, which can't print an emoji or other non-Latin-1
 # character the model happens to include in a response - crashes mid-print with no
@@ -26,10 +28,13 @@ from claude_agent_sdk import (
     AssistantMessage,
     TextBlock,
     ToolUseBlock,
+    ToolResultBlock,
+    UserMessage,
     ResultMessage,
 )
 
 from analysis import trade_targets, roster_detail
+from . import observability
 
 load_dotenv()
 
@@ -89,6 +94,9 @@ up a core piece, not as a replacement for get_trade_targets.
 hasn't had any trades yet, so the Win-Now/Middling/Rebuilding labels are less \
 reliable this early - that kind of team identity normally comes from trade activity, \
 which hasn't happened here yet.
+10. If check_league_format itself errors (not "unsupported" - an actual tool error, \
+e.g. league not found), stop for that league_id entirely and tell the user the \
+league_id looks wrong - don't retry with a different tool for the same broken ID.
 """
 
 # Hard guardrails enforced by the SDK itself, not just requested in the prompt.
@@ -127,10 +135,14 @@ def _options() -> ClaudeAgentOptions:
 
 
 async def _run_turn(client: ClaudeSDKClient, message: str, verbose: bool) -> dict:
-    """Sends one message on an already-open client session and collects the reply.
-    Split out from run_query so the grounding-retry loop below can send a second
-    message on the same session without repeating this collection logic."""
-    text_parts, tool_calls, result = [], [], None
+    """Sends one message on an already-open client session and collects the reply,
+    including tool *results* (not just calls) - needed to know whether a tool
+    errored (e.g. a nonexistent league_id) and what check_league_format actually
+    returned, for the observability log below. Split out from run_query so the
+    grounding-retry loop can send a second message on the same session without
+    repeating this collection logic."""
+    text_parts, tool_calls, tool_results, result = [], [], [], None
+    tool_name_by_id = {}
     await client.query(message)
     async for msg in client.receive_response():
         if isinstance(msg, AssistantMessage):
@@ -141,14 +153,26 @@ async def _run_turn(client: ClaudeSDKClient, message: str, verbose: bool) -> dic
                         print(block.text)
                 elif isinstance(block, ToolUseBlock):
                     tool_calls.append({"name": block.name, "input": block.input})
+                    tool_name_by_id[block.id] = block.name
                     if verbose:
                         print(f"[tool call: {block.name}({block.input})]")
+        elif isinstance(msg, UserMessage):
+            content = msg.content if isinstance(msg.content, list) else []
+            for block in content:
+                if isinstance(block, ToolResultBlock):
+                    tool_results.append({
+                        "name": tool_name_by_id.get(block.tool_use_id),
+                        "is_error": bool(block.is_error),
+                        "content": block.content,
+                    })
+                    if verbose and block.is_error:
+                        print(f"[tool error: {tool_name_by_id.get(block.tool_use_id)} -> {block.content}]")
         elif isinstance(msg, ResultMessage):
             result = msg
             if verbose:
                 print(f"\n[{result.num_turns} turn(s), ${result.total_cost_usd:.4f}, "
                       f"stop_reason={result.stop_reason}]")
-    return {"text": "\n".join(text_parts), "tool_calls": tool_calls, "result": result}
+    return {"text": "\n".join(text_parts), "tool_calls": tool_calls, "tool_results": tool_results, "result": result}
 
 
 def _offerable_from_call(call: dict) -> set[str] | None:
@@ -218,6 +242,41 @@ def _trade_violations(text: str, banned: set[str]) -> list[str]:
     return sorted(violations)
 
 
+def _content_text(content) -> str:
+    """Tool result content comes back as a plain string, a list of {"type",
+    "text", ...} blocks, or None depending on the tool/transport - normalize to
+    plain text for logging and tier-parsing rather than handling each shape
+    separately at every call site."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(block.get("text", "") for block in content if isinstance(block, dict))
+    return ""
+
+
+def _observability_fields(tool_calls: list[dict], tool_results: list[dict]) -> dict:
+    """The handful of things worth logging out of a run's tool activity: which
+    league(s) got touched, what format tier check_league_format found (the
+    original Phase 3 plan explicitly wanted this, not just raw tool names), and
+    whether any tool call errored - e.g. a nonexistent league_id, which errors at
+    the Sleeper API level (confirmed live) rather than failing gracefully in our
+    own code, so this is the only way to see it happened after the fact."""
+    league_ids = sorted({
+        call["input"]["league_id"] for call in tool_calls if call["input"].get("league_id")
+    })
+    format_tier = None
+    for r in tool_results:
+        if r["name"] == f"mcp__{SERVER_KEY}__check_league_format" and not r["is_error"]:
+            try:
+                format_tier = json.loads(_content_text(r["content"])).get("tier")
+            except json.JSONDecodeError:
+                pass
+            if format_tier:
+                break
+    tool_errors = [{"tool": r["name"], "message": _content_text(r["content"])} for r in tool_results if r["is_error"]]
+    return {"league_ids": league_ids, "format_tier": format_tier, "tool_errors": tool_errors}
+
+
 async def run_query(question: str, verbose: bool = True) -> dict:
     """Runs one question through the agent, then deterministically checks the answer
     against ground truth before returning it: if it named a player its own trade-tool
@@ -225,52 +284,77 @@ async def run_query(question: str, verbose: bool = True) -> dict:
     rather than trusting the prompt rule to have been followed. Prints
     live (for interactive CLI use) and always returns the collected text/tool-calls/
     cost so the eval harness can assert on a real run instead of duplicating this
-    query logic."""
-    async with ClaudeSDKClient(options=_options()) as client:
-        turn = await _run_turn(client, question, verbose)
-        all_tool_calls = list(turn["tool_calls"])
-        # num_turns resets per client.query() call (verified live: 4, then 1 on a
-        # retry) but total_cost_usd is a running session total (verified live: kept
-        # climbing across the retry) - the two fields don't share the same semantics,
-        # so num_turns needs manual summing and cost_usd doesn't.
-        total_turns = turn["result"].num_turns if turn["result"] else 0
-        # Accumulated across turns, not recomputed per-turn: a retry turn typically
-        # doesn't re-call get_trade_targets (the model already has the result in
-        # context), so a fresh per-turn computation would go empty and silently miss
-        # the same violation repeating in the corrected answer.
-        banned = _banned_trade_names(turn["tool_calls"])
-        retries = 0
-        violations = _trade_violations(turn["text"], banned)
-        while violations and retries < MAX_GROUNDING_RETRIES:
-            if verbose:
-                print(f"[grounding check failed: {violations} aren't offerable - retrying]")
-            # List every violation found, not just one - an earlier version only
-            # named a single offender (via next() on a set), so when an answer named
-            # two non-offerable players at once, the one retry fixed one and left the
-            # other. Found live via the eval harness re-failing after the fix looked
-            # solved manually.
-            names = ", ".join(f'"{n}"' for n in violations)
-            correction = (
-                f"You named {names} as trade-away candidates, but none of them are in this "
-                "team's real offer list from get_trade_targets or get_mutual_swaps. Redo your "
-                "answer using only players that actually appear in one of those tools' offer/"
-                "sell-candidate/you_send lists - check every name against that list first."
-            )
-            turn = await _run_turn(client, correction, verbose)
-            all_tool_calls += turn["tool_calls"]
-            total_turns += turn["result"].num_turns if turn["result"] else 0
-            banned |= _banned_trade_names(turn["tool_calls"])
-            retries += 1
+    query logic. Also logs a structured observability record for every call - success
+    or failure - to agent/observability.py, since a console print vanishes the moment
+    the process exits and there was previously no durable record of what got asked,
+    what it cost, or whether anything errored."""
+    start = time.monotonic()
+    all_tool_calls: list[dict] = []
+    all_tool_results: list[dict] = []
+    total_turns, retries, result = 0, 0, None
+    outcome, error_message = "ok", None
+    try:
+        async with ClaudeSDKClient(options=_options()) as client:
+            turn = await _run_turn(client, question, verbose)
+            all_tool_calls = list(turn["tool_calls"])
+            all_tool_results = list(turn["tool_results"])
+            # num_turns resets per client.query() call (verified live: 4, then 1 on
+            # a retry) but total_cost_usd is a running session total (verified live:
+            # kept climbing across the retry) - the two fields don't share the same
+            # semantics, so num_turns needs manual summing and cost_usd doesn't.
+            total_turns = turn["result"].num_turns if turn["result"] else 0
+            result = turn["result"]
+            # Accumulated across turns, not recomputed per-turn: a retry turn
+            # typically doesn't re-call get_trade_targets (the model already has the
+            # result in context), so a fresh per-turn computation would go empty and
+            # silently miss the same violation repeating in the corrected answer.
+            banned = _banned_trade_names(turn["tool_calls"])
             violations = _trade_violations(turn["text"], banned)
+            while violations and retries < MAX_GROUNDING_RETRIES:
+                if verbose:
+                    print(f"[grounding check failed: {violations} aren't offerable - retrying]")
+                # List every violation found, not just one - an earlier version only
+                # named a single offender (via next() on a set), so when an answer
+                # named two non-offerable players at once, the one retry fixed one
+                # and left the other. Found live via the eval harness re-failing
+                # after the fix looked solved manually.
+                names = ", ".join(f'"{n}"' for n in violations)
+                correction = (
+                    f"You named {names} as trade-away candidates, but none of them are in this "
+                    "team's real offer list from get_trade_targets or get_mutual_swaps. Redo your "
+                    "answer using only players that actually appear in one of those tools' offer/"
+                    "sell-candidate/you_send lists - check every name against that list first."
+                )
+                turn = await _run_turn(client, correction, verbose)
+                all_tool_calls += turn["tool_calls"]
+                all_tool_results += turn["tool_results"]
+                total_turns += turn["result"].num_turns if turn["result"] else 0
+                result = turn["result"]
+                banned |= _banned_trade_names(turn["tool_calls"])
+                retries += 1
+                violations = _trade_violations(turn["text"], banned)
 
-    result = turn["result"]
-    return {
-        "text": turn["text"],
-        "tool_calls": all_tool_calls,
-        "num_turns": total_turns,
-        "cost_usd": result.total_cost_usd if result else None,
-        "grounding_retries": retries,
-    }
+        return {
+            "text": turn["text"],
+            "tool_calls": all_tool_calls,
+            "num_turns": total_turns,
+            "cost_usd": result.total_cost_usd if result else None,
+            "grounding_retries": retries,
+        }
+    except Exception as e:
+        outcome, error_message = "error", str(e)
+        raise
+    finally:
+        observability.log_run({
+            "question": question[:300],
+            "outcome": outcome,
+            "error": error_message,
+            "latency_seconds": round(time.monotonic() - start, 2),
+            "num_turns": total_turns,
+            "cost_usd": result.total_cost_usd if result else None,
+            "grounding_retries": retries,
+            **_observability_fields(all_tool_calls, all_tool_results),
+        })
 
 
 if __name__ == "__main__":
