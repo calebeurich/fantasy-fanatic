@@ -554,6 +554,24 @@ don't have a Jonathan Taylor to dangle") would still trigger a retry. A false-po
 retry costs a small extra call; it doesn't let a real violation through, which is the
 failure mode that actually mattered here.
 
+**That false-positive turned out to be common, not rare, in practice - it fired on
+nearly every real "what should I do" question**, because answering that question
+naturally involves describing the team's *current* roster (cornerstones, starting RB
+room, etc.), which necessarily mentions plenty of non-offerable players. `_trade_
+violations` narrows the check to only fire when a banned name appears on the same
+*line* as trade-action language (send/offer/trade/sell/give up/package/dangle/swap),
+not anywhere in the whole response - live-tested on the exact question that had been
+tripping it: flagged names dropped from 5 to 1 on an identical re-run, and the eval
+suite still passed with the real-violation case still triggering a genuine retry (not
+silently defeated by the narrower trigger). The remaining miss on that live test
+("...without giving up Lamar Jackson") is a **negation** case a keyword-proximity
+check structurally can't catch - the line explicitly says the player *isn't* being
+given up, and telling that apart from a real "give up X" recommendation needs actual
+phrase-level parsing, not just a better keyword list. Deliberately not chased further:
+a much bigger jump in complexity for an already-narrow, further-shrinking edge case,
+and a false-positive retry still never lets a real violation through - it just costs
+one extra small call.
+
 **The eval harness immediately caught a real bug in this fix, not just in the
 original prompt.** First implementation picked a single violating name with
 `next()` and only told the model about that one in the correction message. The real

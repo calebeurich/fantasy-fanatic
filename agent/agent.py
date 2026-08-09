@@ -195,6 +195,29 @@ def _banned_trade_names(tool_calls: list[dict]) -> set[str]:
     return banned
 
 
+# A banned name only counts as a real violation if the line naming it also reads
+# like a trade suggestion, not just team-status description. Found live: the
+# original whole-text substring check flagged normal roster-summary lines ("Your
+# cornerstones: Lamar Jackson...") on almost every real question, since describing
+# a team's current roster necessarily mentions plenty of non-offerable players -
+# costing a retry call nearly every time without ever catching a real violation
+# there. Real violations, observed live, always co-occur with one of these words on
+# the same line ("you can offer...", "send X for Y", "sell candidates: X").
+TRADE_ACTION_WORDS = ("send", "offer", "trade", "sell", "give up", "package", "dangle", "swap")
+
+
+def _trade_violations(text: str, banned: set[str]) -> list[str]:
+    """Every banned name mentioned on a line that also contains trade-action
+    language - the deliberately narrower check rule 6's retry actually fires on,
+    instead of any mention anywhere in the response."""
+    violations = set()
+    for line in text.splitlines():
+        lower = line.lower()
+        if any(word in lower for word in TRADE_ACTION_WORDS):
+            violations.update(n for n in banned if n in line)
+    return sorted(violations)
+
+
 async def run_query(question: str, verbose: bool = True) -> dict:
     """Runs one question through the agent, then deterministically checks the answer
     against ground truth before returning it: if it named a player its own trade-tool
@@ -217,7 +240,7 @@ async def run_query(question: str, verbose: bool = True) -> dict:
         # the same violation repeating in the corrected answer.
         banned = _banned_trade_names(turn["tool_calls"])
         retries = 0
-        violations = [n for n in banned if n in turn["text"]]
+        violations = _trade_violations(turn["text"], banned)
         while violations and retries < MAX_GROUNDING_RETRIES:
             if verbose:
                 print(f"[grounding check failed: {violations} aren't offerable - retrying]")
@@ -238,7 +261,7 @@ async def run_query(question: str, verbose: bool = True) -> dict:
             total_turns += turn["result"].num_turns if turn["result"] else 0
             banned |= _banned_trade_names(turn["tool_calls"])
             retries += 1
-            violations = [n for n in banned if n in turn["text"]]
+            violations = _trade_violations(turn["text"], banned)
 
     result = turn["result"]
     return {
