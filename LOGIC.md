@@ -572,12 +572,47 @@ sent a real question via `curl`, got a real grounded answer back, and confirmed
 `observability.py` logged the run identically to a CLI-triggered one with zero extra
 wiring - the logging lives inside `run_query` itself, so it doesn't care who called it.
 
-**Deliberately not built yet**: the persistent daily-budget request counter from the
-original Phase 5 plan (checked before every Claude call, short-circuits to a free
-static response once a ceiling is hit). That needs real persistent storage
-(DynamoDB/Firestore/etc.), which depends on the still-pending platform choice above -
-not worth guessing at prematurely. `agent.py`'s existing per-call `MAX_BUDGET_USD` is
-the only cap active in `api.py` today.
+**Daily budget ceiling (`agent/budget.py`)** - the thing that actually makes a public
+endpoint safe to expose, and a sequencing error caught only on a deliberate re-review
+of the plan: `agent.py`'s `MAX_BUDGET_USD` caps a *single call*, which is the wrong
+unit for a public URL. At ~$0.015-0.05 a call, roughly 40 uncapped requests would
+drain the entire project API budget, and a bot scanning for open endpoints does that
+in under a minute. The plan had "create the GCP account and connect a public
+endpoint" scheduled *before* this existed - exactly backwards.
+
+**In-process counter, no database - a real simplification over the original plan.**
+That plan called for DynamoDB/Firestore to hold the counter, but persistent storage is
+only necessary when several instances each hold a partial count. Pinning Cloud Run to
+`max-instances=1` makes a plain in-process counter exactly accurate with zero extra
+infrastructure - and this service wants that anyway, since every request spawns both a
+`claude` CLI process and an MCP server subprocess, making it memory-heavy rather than a
+horizontal-scaling workload. `concurrency=1` alongside it removes any check-then-record
+race, so the ceiling can't be overshot by parallel requests. Giving up horizontal
+scaling is a real tradeoff, and the right one for a demo.
+
+Two ceilings, because one isn't enough: a dollar ceiling (the thing actually being
+protected) plus a request-count backstop, since a failed call can report `cost_usd:
+None` and would otherwise never move the dollar counter at all. Failed calls still
+count against the day rather than being free to retry in a loop. Bounded, accepted
+imprecision: a call's real cost isn't known until after Claude has been called, so the
+check is "has the ceiling already been passed?" - it can be exceeded by at most one
+call's worth ($0.50 worst case) before the next request is refused. Pre-estimating
+token cost to close that gap would be a guess, so it isn't done.
+
+Verified end-to-end rather than assumed, and cheaply: both ceilings were tripped in a
+free unit-style check first (no API calls), then the real integration was tested with a
+deliberately tiny `DAILY_BUDGET_USD` so one real call exhausted it - the first request
+went through and recorded $0.015, and the next was refused **in 41ms with no API call
+at all**, returning a static message. A `/budget` route exposes the counter so the cap
+is externally verifiable rather than something to trust is working.
+
+**Still open, and gating public exposure**: the cap above is only sound while
+`max-instances=1` actually holds - it's an assumption enforced by Cloud Run service
+config, not by the code, so that setting has to be verified at deploy time rather than
+assumed. Deploy sequence is therefore: deploy with **authentication required** first
+(private, zero abuse surface) to prove the container builds and the Node/CLI/MCP
+subprocess stack works at all, confirm `/budget` behaves against the real service, and
+only then make it public.
 
 ## Container image (`Dockerfile`)
 
@@ -626,6 +661,18 @@ trivially summarizable (`log_summary.py`, a ~30-line script reading the same
 `read_runs()` helper) at the scale this project actually runs at. Converts to SQLite
 in one `sqlite3` import later if real query power is ever needed - not a dead end,
 just not built before there's a reason to.
+
+**The file-only version was silently broken for the hosted case** - found by
+re-reviewing the deployment plan rather than by anything failing locally. Cloud Run's
+container filesystem is in-memory tmpfs: appending to `logs/agent_runs.jsonl` there
+would quietly consume the memory limit and then lose the entire file when the instance
+scales to zero. Correct locally, useless hosted. Now every record goes to **stdout**
+always (Cloud Run pipes stdout straight into Cloud Logging - durable and queryable for
+free, no client library or extra service), with the local file written only when not on
+Cloud Run. The environment identifies itself via `K_SERVICE`, which Cloud Run always
+sets, so there's no deploy-time config to remember to flip. A file-write failure logs
+to stderr instead of taking the whole record down with it - stdout has already
+succeeded by that point.
 
 **Logging lives in a single `try/finally` around all of `run_query`, not scattered
 print-style calls** - it fires exactly once per call whether the call succeeds,
