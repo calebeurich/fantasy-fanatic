@@ -516,6 +516,62 @@ across repeated identical calls seconds apart. Two real, verified causes, not gu
   paid for, on every single call regardless. Verified the fix didn't change tool-call
   correctness (re-ran the eval suite, still 4/4) before trusting it.
 
+## Hosting platform evaluation (Phase 5, decision pending)
+
+The original plan defaulted to AWS Lambda behind API Gateway without seriously
+comparing alternatives. Revisited properly rather than treated as already decided,
+and one real problem turned up: **Lambda itself has a genuine permanent free tier
+(1M requests + 400K GB-seconds/month), but API Gateway does not** - new accounts get
+a 6-month credit, then it's real per-request billing on top of CloudWatch Logs
+ingestion charges. "Lambda + API Gateway" quietly becomes a 2-3-service bill, not the
+free/near-free setup the plan assumed.
+
+Compared four real options against what this agent actually needs (a Python process
+that spawns a child process over stdio for MCP - needs a real container/OS
+environment, not a constrained edge function):
+
+- **AWS Lambda + Function URL** (a built-in HTTPS endpoint on the function itself,
+  skipping API Gateway entirely) - closes the gap above while staying 100% AWS.
+  Genuine permanent free tier. More moving parts than the alternatives below (IAM,
+  container-image packaging, Secrets Manager, DynamoDB for a request counter).
+- **Google Cloud Run** - best technical fit: it's a real container, so nothing about
+  this codebase needs to change to run there, one HTTPS endpoint is built into the
+  service (no separate gateway piece), and its always-free tier is larger (2M
+  requests + 360K GB-seconds + 180K vCPU-seconds/month, permanent).
+- **Firebase** - its Python compute (2nd-gen Cloud Functions) *is* Cloud Run under
+  the hood, wrapped in a friendlier single CLI (`firebase deploy`). Same technical
+  outcome as Cloud Run, easier on-ramp, weaker "AWS" keyword match for a resume.
+- **Render** - simplest possible deploy (connect a GitHub repo, no cloud console),
+  real free tier, but free services sleep after 15 minutes idle and cold-start
+  ~1 minute on the next request - a real risk for a portfolio link someone clicks
+  cold. Weakest cloud-provider resume signal of the four.
+
+**Not decided yet** - genuinely depends on whether target job postings specifically
+name AWS or just want general cloud/serverless experience, which wasn't known at
+decision time. Revisit once that's checked rather than guess.
+
+## HTTP API wrapper (`agent/api.py`)
+
+Built ahead of the platform decision above, deliberately - it's the one piece every
+option on that list needs regardless of which wins (none of them can invoke a
+one-shot CLI directly), so building it first makes real progress without committing
+to a provider. Plain FastAPI, no provider-specific code: two routes, `/health` and
+`POST /ask` (question in, `{text, cost_usd, num_turns, grounding_retries}` out),
+calling `agent.run_query` directly - the exact same function the CLI and the eval
+harness already use, so there's no second code path to keep in sync.
+
+Validated locally end-to-end before trusting it: started the server with `uvicorn`,
+sent a real question via `curl`, got a real grounded answer back, and confirmed
+`observability.py` logged the run identically to a CLI-triggered one with zero extra
+wiring - the logging lives inside `run_query` itself, so it doesn't care who called it.
+
+**Deliberately not built yet**: the persistent daily-budget request counter from the
+original Phase 5 plan (checked before every Claude call, short-circuits to a free
+static response once a ceiling is hit). That needs real persistent storage
+(DynamoDB/Firestore/etc.), which depends on the still-pending platform choice above -
+not worth guessing at prematurely. `agent.py`'s existing per-call `MAX_BUDGET_USD` is
+the only cap active in `api.py` today.
+
 ## Observability (`agent/observability.py`, `agent/log_summary.py`)
 
 Phase 3. Every `run_query` call previously printed to the console and then vanished -
