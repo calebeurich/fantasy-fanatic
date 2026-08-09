@@ -579,6 +579,38 @@ static response once a ceiling is hit). That needs real persistent storage
 not worth guessing at prematurely. `agent.py`'s existing per-call `MAX_BUDGET_USD` is
 the only cap active in `api.py` today.
 
+## Container image (`Dockerfile`)
+
+**Local machine doesn't need to run any of this** - a real, worth-stating-explicitly
+point that almost got lost in planning: Cloud Run builds and runs the container in
+Google's cloud, not locally. The `Dockerfile` only needs to exist as a text file in
+the repo; Google Cloud Build can build it directly from the GitHub repo through the
+browser console, with no Docker install, no `gcloud` CLI, and no local build step
+required at all for the core path. Local Docker only becomes useful later as a faster
+local-iteration/debugging loop, not a requirement.
+
+**Genuinely untested as of writing** - neither this environment nor the local
+Windows machine has Docker installed, so this Dockerfile hasn't been build-verified
+the way everything else in this project has been before being trusted. Documented
+honestly rather than claimed working: the real validation happens via Cloud Build's
+remote build log the first time it's actually deployed, and this file should be
+revised based on whatever that surfaces, not assumed correct in advance.
+
+**One dependency that had to be gotten right without being able to test it**: the
+Claude Agent SDK shells out to the `claude` CLI as its transport (`agent/agent.py`),
+which needs Node.js - not just Python. Checked the actual current requirement rather
+than guessing: `@anthropic-ai/claude-code` needs **Node 22+** as of mid-2026, so the
+image installs Node via NodeSource on top of a `python:3.12-slim` base rather than
+assuming whatever Debian's default `apt` Node package version happens to be (often
+older than what's actually required).
+
+`ANTHROPIC_API_KEY` is never baked into the image - `.env` is gitignored, so it isn't
+even present in what Cloud Build pulls from GitHub. It has to be set as a real Cloud
+Run environment variable (bound to a Secret Manager secret) when the service is
+configured - `load_dotenv()` in `agent.py` already no-ops harmlessly if no `.env`
+file exists and reads straight from the real environment either way, so no code
+changes needed for this to work once that binding exists.
+
 ## Observability (`agent/observability.py`, `agent/log_summary.py`)
 
 Phase 3. Every `run_query` call previously printed to the console and then vanished -
