@@ -516,7 +516,7 @@ across repeated identical calls seconds apart. Two real, verified causes, not gu
   paid for, on every single call regardless. Verified the fix didn't change tool-call
   correctness (re-ran the eval suite, still 4/4) before trusting it.
 
-## Hosting platform evaluation (Phase 5, decision pending)
+## Hosting platform evaluation (Phase 5) - decided: Google Cloud Run
 
 The original plan defaulted to AWS Lambda behind API Gateway without seriously
 comparing alternatives. Revisited properly rather than treated as already decided,
@@ -546,9 +546,16 @@ environment, not a constrained edge function):
   ~1 minute on the next request - a real risk for a portfolio link someone clicks
   cold. Weakest cloud-provider resume signal of the four.
 
-**Not decided yet** - genuinely depends on whether target job postings specifically
-name AWS or just want general cloud/serverless experience, which wasn't known at
-decision time. Revisit once that's checked rather than guess.
+**Decided: Cloud Run.** Checked real postings and hiring-trend data across several
+top companies before deciding rather than guessing: AWS is the single most-named
+individual cloud platform in data science/AI engineering postings, but it's almost
+always listed as "AWS, Azure, or GCP" - interchangeable cloud familiarity, not an
+AWS-exclusive requirement, except at companies whose own product is that cloud
+(Amazon's own postings skew AWS, Google's skew GCP). Amazon itself isn't a specific
+target employer here, so there's no reason to eat the extra complexity and the
+API-Gateway cost gap above just for a marginal keyword match. Cloud Run wins cleanly
+on its own merits: best technical fit (real container, nothing to restructure),
+larger genuine free tier, and one fewer service to reason about.
 
 ## HTTP API wrapper (`agent/api.py`)
 
@@ -842,3 +849,24 @@ deliberately avoiding.
   (`trade_targets.find_mutual_swaps`, `get_mutual_swaps` tool).
 - ~~**Fresh/undifferentiated leagues read as noisy Win-Now/Rebuilding labels.**~~
   Resolved - see the "No trade history" flag under "Team window classification" above.
+- **Future analyst agent: real statistical projections, social sentiment, and
+  sportsbook data.** Not scoped or started - a bigger idea than a single heuristic,
+  bundling several distinct new capabilities, each with its own data-source question
+  not yet checked:
+  - **Statistical projections** - actual weekly/season point forecasting, not just
+    dynasty trade value. `nflreadpy` (already in the stack for contracts/usage roles)
+    also exposes play-by-play and weekly stats, so the raw data likely doesn't need a
+    new source - the modeling approach does.
+  - **Social sentiment (e.g. Twitter/X)** - beat-reporter injury news, snap-count
+    hints, hype/sentiment as a leading signal ahead of official stats. Real, unchecked
+    constraint: X's API has gotten materially more restrictive and expensive since the
+    ownership change - free-tier read access is small-volume - so this needs a real
+    pricing/access check before assuming it's buildable at all, not just a "figure it
+    out later."
+  - **Sportsbook data** - Vegas win totals, player props, over/unders as a signal for
+    team strength or usage projections. Likely more viable than X: several odds APIs
+    (e.g. The Odds API) have a usable free tier, but not yet verified against this
+    project's actual needs (coverage, rate limits, real cost past free tier).
+  Same discipline as everywhere else in this project applies before building any of
+  these: check what the data source actually costs and covers first, don't assume,
+  and don't guess at a modeling approach without real data to validate it against.
