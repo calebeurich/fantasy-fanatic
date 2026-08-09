@@ -1,9 +1,9 @@
 """Local CLI agent for dynasty fantasy football analysis - Phase 2 of the agent
 build-out plan. Wraps the Phase 1 MCP server (agent/mcp_server.py) with the Claude
 Agent SDK, defaulting to Haiku (cheapest capable model, given a small starting API
-budget) with a tightly scoped, read-only tool surface: nothing beyond the 6
-fantasy-fanatic MCP tools is ever exposed, so there's no path to a file/shell/network
-action outside this project's own already-validated analysis code.
+budget) with a tightly scoped, read-only tool surface: nothing beyond the
+fantasy-fanatic MCP tools (see TOOL_NAMES) is ever exposed, so there's no path to a
+file/shell/network action outside this project's own already-validated analysis code.
 
 Run: python -m agent.agent "<question>"   (from the repo root)
 Needs ANTHROPIC_API_KEY in a .env file at the repo root (loaded automatically below) -
@@ -41,6 +41,7 @@ TOOL_NAMES = [
     "get_team_state",
     "get_roster_needs",
     "get_trade_targets",
+    "get_mutual_swaps",
     "get_waiver_upgrades",
     "get_roster_detail",
 ]
@@ -67,17 +68,27 @@ claim, or any other change - you can only analyze and suggest.
 5. Ground every claim in what the tools actually returned. Never invent a player \
 name, value, or team name that didn't come from a tool result.
 6. When suggesting what a team could offer in a trade, the ONLY players you may name \
-are ones literally present in that team's "my_offers" (or "sell_candidates") list \
-from get_trade_targets - no other player, ever, even a declining starter who seems \
-replaceable to you. That list already accounts for the team's own needs and starter \
-status; if a player isn't on it, there is a specific reason, and second-guessing it \
-produces suggestions that quietly contradict the team's own roster needs. Before \
-naming any player as something to trade away, check that their exact name appears in \
-that list - if it doesn't, don't suggest them.
+are ones literally present in that team's "my_offers"/"sell_candidates"/"situational" \
+list from get_trade_targets, or "you_send" from get_mutual_swaps - no other player, \
+ever, even a declining starter who seems replaceable to you. Those lists already \
+account for the team's own needs and starter status; if a player isn't on one of \
+them, there is a specific reason, and second-guessing it produces suggestions that \
+quietly contradict the team's own roster needs. Before naming any player as \
+something to trade away, check that their exact name appears in the relevant list - \
+if it doesn't, don't suggest them.
 7. You are scoped to dynasty fantasy football analysis using the tools you have, \
 nothing else. If asked for anything unrelated (general chat, other topics, writing, \
 coding, math, etc.), briefly decline and redirect to what you can actually help \
 with - don't answer the off-topic request just because you technically know how.
+8. get_trade_targets finds one-way fits against Rebuilding teams' sell candidates. \
+get_mutual_swaps finds two-way trades between this team and one other Win-Now/ \
+Middling team where each side's positional surplus is the other's need - use it when \
+asked about trading with a specific other team, or how to fix a need without giving \
+up a core piece, not as a replacement for get_trade_targets.
+9. If a team's data includes "no_trade_history": true, mention that this league \
+hasn't had any trades yet, so the Win-Now/Middling/Rebuilding labels are less \
+reliable this early - that kind of team identity normally comes from trade activity, \
+which hasn't happened here yet.
 """
 
 # Hard guardrails enforced by the SDK itself, not just requested in the prompt.
@@ -140,32 +151,55 @@ async def _run_turn(client: ClaudeSDKClient, message: str, verbose: bool) -> dic
     return {"text": "\n".join(text_parts), "tool_calls": tool_calls, "result": result}
 
 
+def _offerable_from_call(call: dict) -> set[str] | None:
+    """The real offerable set for one grounding-relevant tool call, or None if this
+    call isn't one of the trade tools rule 6 governs."""
+    league_id, owner_name = call["input"].get("league_id"), call["input"].get("owner_name")
+    if not league_id or not owner_name:
+        return None
+    if call["name"] == f"mcp__{SERVER_KEY}__get_trade_targets":
+        return trade_targets.offerable_names(trade_targets.find_targets(league_id, owner_name))
+    if call["name"] == f"mcp__{SERVER_KEY}__get_mutual_swaps":
+        swaps = trade_targets.find_mutual_swaps(league_id, owner_name)["swaps"]
+        return {e["name"] for swap in swaps for e in swap["you_send"]}
+    return None
+
+
 def _banned_trade_names(tool_calls: list[dict]) -> set[str]:
-    """Ground truth for rule 6: for every get_trade_targets call this turn made,
-    every name on that team's roster that ISN'T in the real offerable list. Computed
-    straight from the same Python the tool itself calls - free, deterministic, and
-    can't be talked out of being right the way the model's own rule-following can."""
-    banned = set()
+    """Ground truth for rule 6: for every roster a trade tool was called on this
+    turn, every name on that roster that ISN'T offerable by ANY of the trade tools
+    called for it. Computed straight from the same Python those tools call - free,
+    deterministic, and can't be talked out of being right the way the model's own
+    rule-following can. Offerable sets from multiple tool calls for the same
+    league/owner are unioned BEFORE subtracting from the roster - unioning two
+    already-subtracted "banned" sets instead would wrongly flag a player offerable
+    via one tool but not the other."""
+    offerable_by_roster: dict[tuple[str, str], set[str]] = {}
     for call in tool_calls:
-        if call["name"] != f"mcp__{SERVER_KEY}__get_trade_targets":
-            continue
-        league_id, owner_name = call["input"].get("league_id"), call["input"].get("owner_name")
-        if not league_id or not owner_name:
-            continue
         try:
-            result = trade_targets.find_targets(league_id, owner_name)
-            roster = roster_detail.get_roster_rows(league_id, owner_name)
+            offerable = _offerable_from_call(call)
         except Exception:
             continue  # can't validate what we can't recompute - don't block on it
-        banned |= {row["name"] for row in roster["rows"]} - trade_targets.offerable_names(result)
+        if offerable is None:
+            continue
+        league_id, owner_name = call["input"]["league_id"], call["input"]["owner_name"]
+        offerable_by_roster.setdefault((league_id, owner_name), set()).update(offerable)
+
+    banned = set()
+    for (league_id, owner_name), offerable in offerable_by_roster.items():
+        try:
+            roster = roster_detail.get_roster_rows(league_id, owner_name)
+        except Exception:
+            continue
+        banned |= {row["name"] for row in roster["rows"]} - offerable
     return banned
 
 
 async def run_query(question: str, verbose: bool = True) -> dict:
     """Runs one question through the agent, then deterministically checks the answer
-    against ground truth before returning it: if it named a player its own
-    get_trade_targets call says isn't offerable, send one corrective follow-up on the
-    same session rather than trusting the prompt rule to have been followed. Prints
+    against ground truth before returning it: if it named a player its own trade-tool
+    calls say isn't offerable, send one corrective follow-up on the same session
+    rather than trusting the prompt rule to have been followed. Prints
     live (for interactive CLI use) and always returns the collected text/tool-calls/
     cost so the eval harness can assert on a real run instead of duplicating this
     query logic."""
@@ -195,9 +229,9 @@ async def run_query(question: str, verbose: bool = True) -> dict:
             names = ", ".join(f'"{n}"' for n in violations)
             correction = (
                 f"You named {names} as trade-away candidates, but none of them are in this "
-                "team's real offer list from get_trade_targets. Redo your answer using only "
-                "players that actually appear in that tool's offer/sell-candidate lists - "
-                "check every name you're about to write against that list first."
+                "team's real offer list from get_trade_targets or get_mutual_swaps. Redo your "
+                "answer using only players that actually appear in one of those tools' offer/"
+                "sell-candidate/you_send lists - check every name against that list first."
             )
             turn = await _run_turn(client, correction, verbose)
             all_tool_calls += turn["tool_calls"]

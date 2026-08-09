@@ -188,6 +188,22 @@ longer showed up in the buy-target search at all - the fix propagated through
 because it was fixed in the shared, deterministic classification logic every other
 feature already depends on.
 
+**"No trade history" flag**: Win-Now/Middling/Rebuilding reads a team's *current* age
+composition, but real dynasty identity is actually built through trades over time - a
+fresh league (or one that just hasn't traded yet) hasn't had the chance to
+differentiate, so the labels mean the least right when a league is newest. Rather than
+trying to detect "hasn't separated yet" statistically from the age-diff numbers
+themselves (no real fresh-league data on hand to calibrate a threshold against, and
+guessing one would violate this project's own "thresholds come from real data" rule),
+`no_trade_history` uses a directly-knowable proxy instead: zero trades in the league's
+entire history (`trade_activity.get_trade_counts`, already built for trade-partner
+scoring). When true, every row carries the flag and the agent is told (system prompt
+rule 9) to caveat the labels rather than presenting them as settled. Acknowledged as a
+proxy, not a perfect measure - a league could theoretically differentiate through
+startup-draft strategy alone with zero trades, or stay untraded for reasons unrelated to
+freshness - but it's simple, honest about what it actually checks, and directly
+testable, unlike an arbitrary numeric cutoff on `diff` spread would be.
+
 ## Positional needs (`roster_needs.py`)
 
 "Usable" is relative to the league's own format, not a hardcoded value cutoff:
@@ -197,6 +213,26 @@ replacement level at a position = the value of the Nth-best player at that posit
 fewer usable players than its own starting requirement at a position is `critical`;
 exactly enough with no depth cushion is `thin`. Flex slots aren't attributed to any
 specific position (approximation, disclosed rather than hidden).
+
+**Surplus - the mirror of need** (`find_surplus`/`league_surplus`): a position where a
+team has *more* usable players than its starting slots require, and specifically which
+players are the spare ones (everyone beyond the top `slots[pos]`, by value). Added
+alongside `find_needs` as a shared refactor (`_usable_by_position` now does the one
+"which players clear replacement level here" walk both functions read from, and
+`_league_setup` collapses what had been three separate copies of the same league/
+format/threshold fetch across `league_thresholds`/`league_needs` into one) - a second
+copy of that setup was about to be added for `league_surplus` anyway, and CLAUDE.md's
+rule against letting a concept re-diverge across a file applies just as much to
+boilerplate as it does to business logic.
+
+This uses the same replacement-level threshold as `find_needs` - a **stricter**, single
+uniform bar than `team_state.clears_relevance_floor`'s age-bucket-adjusted floor used
+everywhere else in `trade_targets.py`. That's intentional, not an inconsistency: a
+mutual swap (see below) is supposed to trade genuinely startable-quality depth for
+genuinely startable-quality depth on both sides, not just "anything with some sellable
+value" - the looser floor is right for a one-way sale to a team that just needs *some*
+reinforcement, but too permissive for what should be a real, comparable two-way
+upgrade.
 
 ## Trade activity (`trade_activity.py`)
 
@@ -287,6 +323,49 @@ have yet) - deferred rather than faked.
 - Results are always sorted with trade activity first, value second - a bigger name from
   an owner who never trades is a worse real-world target than a smaller one from an
   active trader.
+
+## Mutual win-now swaps (`trade_targets.find_mutual_swaps`)
+
+Everything above only ever matches a Win-Now/Middling team against a *Rebuilding*
+team's sell candidates - a one-directional "buy from a seller" model. That misses a
+common, realistic shape: two teams that are both still trying to win, with different
+positional needs, trading current-value pieces so both improve at once (I need RB and
+have spare WR depth, you need WR and have spare RB depth). A pure rebuild-vs-contend
+model structurally can't produce this, since it never considers two non-Rebuilding
+teams as trade partners for each other at all.
+
+`find_mutual_swaps(league_id, owner_query)` matches this team's needs
+(`roster_needs.league_needs`) against every other Win-Now/Middling team's surplus
+(`roster_needs.league_surplus`), and vice versa, restricted to `SWAP_ELIGIBLE_
+STRATEGIES = ("Win-Now", "Middling")` on both sides - a Rebuilding team isn't trying to
+fix a starting lineup right now (that's the pivot path, a different question). A
+Rebuilding requester gets `{"swaps": []}` rather than an error, since "no eligible
+swaps because you're rebuilding" is a real, expected answer, not a failure. Every
+match is an independent `(need_pos, their_need_pos)` pairing, not a single best-fit
+recommendation - if a team has multiple needs matchable against another's multiple
+surplus positions, all valid pairings are returned and left for the model/user to
+combine sensibly, rather than the code guessing which one pairing is "the" trade.
+
+Validated against real data before any agent wiring (free, since it's pure Python):
+spot-checked `league_surplus` output against a real league (e.g. a known "loaded"
+Rebuilding-by-label team correctly showed real RB surplus - Breece Hall, Travis
+Etienne - matching what `is_loaded` had already flagged as not-really-sellable value),
+then confirmed `find_mutual_swaps` produced sensible two-way fits (a team with a
+critical WR need and spare RB depth matched against teams with the opposite profile).
+Also verified via the real MCP protocol test (`test_mcp_server.py`) that the wrapped
+tool's output matches the direct Python call exactly - not just "does it start."
+
+**Grounding check extended, not duplicated.** Rule 6 (only name real offerable
+players) now covers `get_mutual_swaps`' `you_send` list too, not just
+`get_trade_targets`' offer lists. This required care in `agent.py`'s
+`_banned_trade_names`: when both tools get called for the same owner in the same
+turn, their offerable sets must be **unioned before** subtracting from the roster, not
+subtracted separately and then unioned - the latter would wrongly flag a player as
+banned just because one of the two tools' output didn't happen to include them, even
+though the other did. Live-tested: asked about a swap, the model correctly used real
+`you_send`/`you_receive` names from the tool result, and the one grounding retry that
+did fire was a known false positive (see "Eval harness" below), not a real violation
+slipping through.
 
 ## Validated foundations
 
@@ -580,3 +659,18 @@ nothing when the fix itself is a probabilistic retry.
   (same nflverse toolchain already used for contracts/usage stats) has `team` +
   `pos_rank` per player - joinable via the same `gsis_id` crosswalk already built in
   `nflverse_ids.py`. Not built yet.
+- **Rule 2 (call check_league_format, then stop on "unsupported") isn't perfectly
+  reliable either - a full eval run caught it calling get_team_state anyway on a
+  redraft league, something that had passed every prior run.** Re-ran the same case 3x
+  immediately after and it passed all 3, so this reads as low-frequency model noise, not
+  a regression from the mutual-swaps/no-trade-history changes made alongside it -
+  confirmed by isolating and re-running just that one case rather than assuming either
+  way. Not fixed with a Python-layer check the way rule 6 was, deliberately: rule 6 was
+  failing close to consistently before its fix, this failed once in several runs, and
+  building another generate-then-verify guardrail for every prompt rule regardless of
+  its actual failure rate is exactly the kind of scope creep to avoid. Worth revisiting
+  if it starts failing more often, not before.
+- ~~**Mutual win-now-to-win-now swaps.**~~ Resolved - see "Mutual win-now swaps" above
+  (`trade_targets.find_mutual_swaps`, `get_mutual_swaps` tool).
+- ~~**Fresh/undifferentiated leagues read as noisy Win-Now/Rebuilding labels.**~~
+  Resolved - see the "No trade history" flag under "Team window classification" above.

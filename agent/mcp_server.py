@@ -58,6 +58,17 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
 
 
 @mcp.tool()
+def get_mutual_swaps(league_id: str, owner_name: str) -> dict:
+    """Two-way trade fits between this team and another Win-Now/Middling team, where
+    each side has a positional surplus (real spare starting-caliber depth) that's the
+    other's need - both teams improve, neither gives up a core piece. Different from
+    get_trade_targets, which only matches this team against Rebuilding teams' sell
+    candidates in one direction. Use this when the question is about trading with
+    another specific contender, or "how do I improve without giving up my best guys."""
+    return trade_targets.find_mutual_swaps(league_id, owner_name)
+
+
+@mcp.tool()
 def get_waiver_upgrades(league_id: str, owner_name: str = None) -> dict:
     """Unrostered players with real dynasty value that would upgrade a team, plus FAAB
     budget remaining per team. Pass owner_name to filter to one team; omit for the

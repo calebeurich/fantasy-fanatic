@@ -10,6 +10,7 @@ Smoke test: python -m analysis.team_state <league_id>
 import sys
 
 from sources import sleeper
+from . import trade_activity
 from .team_values import NUM_QBS, age_bucket, get_players_with_roles, split_starters_bench
 
 CORNERSTONE_PERCENTILE = 0.10  # top 10% of the format's value pool
@@ -115,6 +116,16 @@ def classify_league(league_id: str) -> list[dict]:
     rosters = sleeper.get_rosters(league_id)
     owner_names = {user["user_id"]: user["display_name"] for user in sleeper.get_users(league_id)}
 
+    # Win-Now/Middling/Rebuilding reads a team's *current* age composition, but real
+    # dynasty identity is built through trades over time - a fresh league (or one that
+    # just hasn't traded yet) hasn't had the chance to actually differentiate, so the
+    # labels are at their least meaningful right when a league is newest. Zero trades
+    # in the league's whole history is a clean, directly-knowable proxy for "hasn't
+    # differentiated yet" - simpler and more honest than trying to detect "low
+    # separation" from the age-diff numbers themselves without real fresh-league data
+    # on hand to calibrate a threshold against.
+    no_trade_history = sum(trade_activity.get_trade_counts(league_id).values()) == 0
+
     # Tanking for a better pick only helps a team if it still owns its own next 1st -
     # if that pick's already been traded away, playing for a worse record just hands
     # the upside to whoever holds it.
@@ -135,6 +146,7 @@ def classify_league(league_id: str) -> list[dict]:
             "roster_id": roster["roster_id"],
             "starter_value": starter_value,
             "owns_next_first": roster["roster_id"] not in lost_own_first,
+            "no_trade_history": no_trade_history,
             **result,
         })
 
@@ -169,6 +181,8 @@ def main(league_id: str) -> None:
     rows = classify_league(league_id)
 
     print(f"{league_name} - team windows:")
+    if rows and rows[0]["no_trade_history"]:
+        print("  (no trades in this league's history yet - labels below are less reliable this early)")
     for row in rows:
         # Headline is always effective_strategy - that's what every downstream decision
         # actually uses. The raw age-mix state is shown as context, not the label

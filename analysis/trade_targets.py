@@ -129,6 +129,54 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
             **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts, max_per_position)}
 
 
+SWAP_ELIGIBLE_STRATEGIES = ("Win-Now", "Middling")
+
+
+def find_mutual_swaps(league_id: str, owner_query: str) -> dict:
+    """Two-way trades between teams both still trying to win: each side has a
+    positional surplus (real spare depth, from roster_needs.league_surplus) that
+    happens to be the other side's need, so both teams fix a hole without touching
+    their own starters or their long-term core. The buy/pivot paths above only ever
+    match a Win-Now/Middling team against a Rebuilding team's sell candidates - they
+    never consider two competing teams trading with each other, which misses a common
+    and realistic trade shape a pure rebuild-vs-contend model can't produce."""
+    states = team_state.classify_league(league_id)
+    needs_by_owner = roster_needs.league_needs(league_id)
+    surplus_by_owner = roster_needs.league_surplus(league_id)
+
+    me = next((r for r in states if owner_query.lower() in r["owner"].lower()), None)
+    if me is None:
+        raise ValueError(f"no owner matching '{owner_query}' - options: {[r['owner'] for r in states]}")
+
+    if me["effective_strategy"] not in SWAP_ELIGIBLE_STRATEGIES:
+        # A Rebuilding team isn't trying to fix a starting lineup right now - it's
+        # selling current value for youth, which is the pivot path above, not this.
+        return {"me": me, "swaps": []}
+
+    my_needs = needs_by_owner.get(me["owner_id"], {})
+    my_surplus = surplus_by_owner.get(me["owner_id"], {})
+
+    swaps = []
+    for other in states:
+        if other["owner_id"] == me["owner_id"] or other["effective_strategy"] not in SWAP_ELIGIBLE_STRATEGIES:
+            continue
+        other_needs = needs_by_owner.get(other["owner_id"], {})
+        other_surplus = surplus_by_owner.get(other["owner_id"], {})
+        for need_pos, other_surplus_entries in other_surplus.items():
+            if need_pos not in my_needs:
+                continue
+            for their_need_pos, my_surplus_entries in my_surplus.items():
+                if their_need_pos in other_needs:
+                    swaps.append({
+                        "with_owner": other["owner"],
+                        "fills_your_need_at": need_pos,
+                        "you_receive": other_surplus_entries,
+                        "fills_their_need_at": their_need_pos,
+                        "you_send": my_surplus_entries,
+                    })
+    return {"me": me, "swaps": swaps}
+
+
 def offerable_names(result: dict) -> set[str]:
     """Every player name this team could reasonably be told to trade away, across
     whichever path(s) find_targets returned for its mode. Single source of truth for
@@ -197,9 +245,25 @@ def _print_report(result: dict) -> None:
     _print_push(result)
 
 
+def _print_swaps(swaps: list[dict]) -> None:
+    if not swaps:
+        print("no mutual swap fits found")
+        return
+    print("mutual swaps (both sides fix a different need, no core piece touched):")
+    for s in swaps:
+        receive = ", ".join(e["name"] for e in s["you_receive"])
+        send = ", ".join(e["name"] for e in s["you_send"])
+        print(f"  with {s['with_owner']}: you get {receive} ({s['fills_your_need_at']} need) "
+              f"for {send} ({s['fills_their_need_at']} need for them)")
+
+
 def main(league_id: str, owner_query: str = None, max_per_position: int = DEFAULT_MAX_PER_POSITION) -> None:
     if owner_query:
-        _print_report(find_targets(league_id, owner_query, max_per_position))
+        result = find_targets(league_id, owner_query, max_per_position)
+        _print_report(result)
+        if result["mode"] in ("buy", "middling"):
+            print()
+            _print_swaps(find_mutual_swaps(league_id, owner_query)["swaps"])
         return
 
     # No owner given - run the whole league in one pass so it's easy to eyeball every
