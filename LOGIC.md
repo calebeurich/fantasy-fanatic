@@ -26,8 +26,20 @@ those explanations in. Update it in the same change that adds or adjusts a heuri
 - Dynasty vs redraft/keeper comes from Sleeper's own `settings.type` flag (2 = dynasty).
 - Superflex = `SUPER_FLEX` present in `roster_positions`.
 - TE premium = `scoring_settings.bonus_rec_te > 0`.
-- These feed FantasyCalc's `numQbs`/`numTeams`/`ppr` params so values match the league's
-  actual format instead of a generic default.
+- `is_dynasty`/`is_superflex` (-> `numQbs`)/`num_teams`/`ppr` feed FantasyCalc's own
+  `values/current` API params directly, so QB inflation in superflex, PPR-vs-standard
+  scoring, and dynasty-vs-redraft pricing all come from FantasyCalc's own value model
+  recalculating at the source - not something this project approximates itself.
+- **`is_te_premium` is computed here but never used downstream - confirmed via a full
+  grep, not an oversight to fix.** FantasyCalc's `values/current` endpoint has no
+  TE-premium parameter at all (checked their documented param list: `ppr`, `num_qbs`,
+  `num_teams`, `is_dynasty` only) - there's nothing to feed it into. In a TE-premium
+  league, every TE value pulled here is priced as standard scoring, so TEs are likely
+  undervalued relative to what they're actually worth in that league. No clean fix:
+  inventing a manual TE multiplier with no real data to calibrate it against would be
+  exactly the kind of guessed heuristic this project avoids everywhere else (same
+  reasoning as the punted offensive-line-quality gap below). Logged as a real,
+  source-level limitation, not a bug in this codebase.
 
 ## Format support gate (`format_support.py`)
 
@@ -618,6 +630,12 @@ nothing when the fix itself is a probabilistic retry.
   good team's, because a worse record means an earlier, more valuable slot. Not
   corrected yet - would need each team's current-season production trajectory as an
   input to estimate where their pick is likely to land.
+- **TE-premium leagues get standard-scoring TE values, undervaluing TEs relative to
+  their actual worth there.** See "Format detection" above - FantasyCalc's API has no
+  TE-premium parameter to feed at all, and a manually-guessed correction multiplier
+  isn't a real fix without data to calibrate it against. No path forward until
+  FantasyCalc adds format support, or a different value source is found for this
+  specific case.
 - **No offensive-line-quality signal.** PFF has no consumer API (enterprise/B2B only)
   and its ToS restricts subscription data to personal, non-commercial use - reproducing
   it here would be the same problem as KeepTradeCut/OverTheCap. nflverse already gives
