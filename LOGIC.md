@@ -279,6 +279,39 @@ so they propagate everywhere rather than needing a prompt rule):
   production-priced first; Rebuilding and Middling buyers keep the old ordering, having
   no reason to prefer aging players.
 
+**Dynasty value vs. current production** (`redraft_value`, `future_premium`,
+`find_efficiency_swaps`): FantasyCalc's API takes an `isDynasty` flag, and this project
+had only ever asked for `true`. Flipping it returns redraft values - the same market
+pricing *this season's production alone*. Free, already available, previously unused.
+
+The gap between the two prices is what a win-now team is overpaying for. Real case:
+a superflex roster's QB2 (C.J. Stroud, 3,288 dynasty / 2,744 redraft) and QB3 (Sam
+Darnold, 2,735 / 2,704) produce within **1.5%** of each other this season, yet Stroud
+costs **553 more** in trade value. Ranking by dynasty value alone cannot see that;
+selling Stroud and starting Darnold converts future premium into trade capital at
+almost no cost to the current lineup.
+
+**The first implementation of this was wrong and is worth recording.** It flagged any
+player whose dynasty/redraft ratio exceeded an absolute threshold. But the two scales
+aren't normalized to each other - McCaffrey is 4,345 dynasty against 6,505 redraft,
+while mid-tier players run 2x the other way - so the ratio was measuring a scale
+artifact, and the check confidently labelled 26-year-old veterans "100% future
+potential". `find_efficiency_swaps` compares players **pairwise within a position**
+instead, where both values come from the same two scales and the distortion cancels.
+Thresholds are deliberately strict (≥90% of current production retained, ≥300 dynasty
+value freed) because this trades real production for trade capital and shouldn't be
+suggested on noise.
+
+Coverage is partial by nature: redraft carries ~200 players against dynasty's ~400,
+since deep dynasty-only assets have no redraft market. Those get `redraft_value: None`
+and are skipped rather than treated as zero production.
+
+*Known follow-on, surfaced by this and not yet fixed*: `projected_starters` ranks by
+dynasty value even for Win-Now teams, so it can put the wrong player in the lineup - the
+real league showed a TE swap retaining **102%** of production, meaning the bench player
+was simply better this season. For a win-now roster the projected lineup should rank by
+redraft value.
+
 ## Positional needs (`roster_needs.py`)
 
 "Usable" is relative to the league's own format, not a hardcoded value cutoff:

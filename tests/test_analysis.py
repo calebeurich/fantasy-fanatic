@@ -228,6 +228,43 @@ def test_win_now_buyer_sees_production_priced_targets_first():
         "declining (production-priced) should outrank higher-value prime for a Win-Now buyer"
 
 
+def test_efficiency_swap_finds_cheaper_equivalent_production():
+    """Win-now arbitrage: a bench player producing nearly as much *this season* for
+    meaningfully less dynasty value. Modelled on the real case - a superflex QB2
+    (3,288 dynasty / 2,744 redraft) against QB3 (2,735 / 2,704): 99% of the production
+    for 553 less in trade value."""
+    entries = [
+        {"name": "QB2", "position": "QB", "value": 3288, "redraft_value": 2744},
+        {"name": "QB3", "position": "QB", "value": 2735, "redraft_value": 2704},
+    ]
+    swaps = trade_targets.find_efficiency_swaps(entries, projected={"QB2"})
+    assert len(swaps) == 1
+    assert swaps[0]["sell"] == "QB2" and swaps[0]["start_instead"] == "QB3"
+    assert swaps[0]["production_retained_pct"] == 99
+    assert swaps[0]["dynasty_value_freed"] == 553
+
+
+def test_efficiency_swap_ignores_a_real_production_downgrade():
+    """The point is arbitrage, not selling the team. A replacement that loses real
+    current production shouldn't be suggested however much value it frees."""
+    entries = [
+        {"name": "Stud", "position": "RB", "value": 5000, "redraft_value": 5000},
+        {"name": "Scrub", "position": "RB", "value": 800, "redraft_value": 1500},  # 30% of production
+    ]
+    assert trade_targets.find_efficiency_swaps(entries, projected={"Stud"}) == []
+
+
+def test_efficiency_swap_skips_players_with_no_redraft_price():
+    """Deep dynasty-only assets (rookies, prospects) have no redraft market - FantasyCalc
+    carries ~200 redraft players against ~400 dynasty. Missing must mean skipped, not
+    treated as zero production."""
+    entries = [
+        {"name": "Starter", "position": "WR", "value": 4000, "redraft_value": 3000},
+        {"name": "Prospect", "position": "WR", "value": 900, "redraft_value": None},
+    ]
+    assert trade_targets.find_efficiency_swaps(entries, projected={"Starter"}) == []
+
+
 def test_offer_pool_never_includes_a_position_the_team_needs():
     """Trading a WR while WR is your own need just moves the shortage. Real bug this
     guards: a Win-Now team with a critical WR need was told to offer its WRs."""

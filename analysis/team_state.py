@@ -76,7 +76,14 @@ def classify(roster: dict, players: dict[str, dict], threshold: float) -> dict:
         # is_starter: a valuable-but-non-cornerstone starter (e.g. your QB2) isn't
         # real surplus even though it clears the sellable bar - only bench value at
         # this tier is safely offerable without weakening your actual lineup.
+        # redraft_value / future_premium (see team_values.get_players_with_roles) let a
+        # win-now team see what it's actually paying for: two players can produce the
+        # same this season while one costs far more in dynasty value. Carried through so
+        # trade_targets and the agent can reason about that, instead of ranking by
+        # dynasty value alone and never noticing.
         entry = {"name": info["name"], "position": info["position"], "value": info["value"],
+                 "redraft_value": info.get("redraft_value"),
+                 "future_premium": info.get("future_premium"),
                  "is_starter": pid in starter_ids}
         bucket = age_bucket(info["position"], info["age"], info.get("usage_role"))
         entry["bucket"] = bucket

@@ -89,6 +89,28 @@ def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty:
     for player_id, role in player_roles.get_roles().items():
         if player_id in players:
             players[player_id]["usage_role"] = role
+
+    # Redraft values from the same API with one flipped parameter - free, and previously
+    # unused. Dynasty value prices *current production plus future years*; redraft prices
+    # current production alone. The ratio between them is the share of a player's price
+    # that's future potential, which is exactly what a win-now team is overpaying for.
+    #
+    # Real case that motivated this: a superflex team's QB2 (C.J. Stroud, dynasty 3,288,
+    # redraft 2,744, premium 1.20) and QB3 (Sam Darnold, dynasty 2,735, redraft 2,704,
+    # premium 1.01) produce within 1.5% of each other *this season*, but Stroud costs 553
+    # more in trade value. For a win-now roster that's arbitrage - sell the premium, keep
+    # the production. Ranking by dynasty value alone can't see it.
+    #
+    # Coverage is partial on purpose-of-the-source: redraft carries ~200 players against
+    # dynasty's ~400, since deep dynasty-only assets (rookies, prospects) have no redraft
+    # market. Missing entries get redraft_value=None and future_premium=None rather than a
+    # fabricated number - callers must handle absence, not silently treat it as zero.
+    if is_dynasty:
+        redraft = fantasycalc.get_players(num_qbs, num_teams, ppr, is_dynasty=False)
+        for player_id, info in players.items():
+            r = redraft.get(player_id)
+            info["redraft_value"] = r["value"] if r else None
+            info["future_premium"] = round(info["value"] / r["value"], 2) if r and r["value"] else None
     return players
 
 

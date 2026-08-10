@@ -27,6 +27,15 @@ OFFER_GIVE_UP_COST = {
 
 DEFAULT_MAX_PER_POSITION = 3  # a parameter, not a hard limit - "give me more" means call again with a higher number
 
+# How much of a lineup player's *current* production a replacement must retain before
+# swapping them is worth considering. 90% is deliberately strict: this suggests giving up
+# real production for trade value, so the production loss has to be close to noise.
+MIN_PRODUCTION_RETAINED = 0.90
+
+# And how much dynasty value the swap has to free up to be worth mentioning at all -
+# below this it's churn, not arbitrage.
+MIN_VALUE_FREED = 300
+
 
 def _with_trade_note(entry: dict, other: dict, trade_counts: dict[str, int]) -> dict:
     return {**entry, "from_owner": other["owner"], "from_owner_trades": trade_counts.get(other["owner_id"], 0)}
@@ -54,6 +63,54 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, str]
                if not is_lineup(e) and e["position"] not in needs
                and team_state.clears_relevance_floor(e, thresholds)]
     return bench_sellable + surplus
+
+
+def find_efficiency_swaps(roster_entries: list[dict], projected: set[str]) -> list[dict]:
+    """Win-now arbitrage *within* a position: a lineup player whose bench alternative
+    produces nearly as much this season for meaningfully less dynasty value. Sell the
+    expensive one, start the cheap one, pocket the difference.
+
+    **Pairwise within a position on purpose.** The first attempt at this used an absolute
+    threshold on dynasty/redraft ratio and was wrong: the two value scales aren't
+    normalized to each other (a real example - McCaffrey is 4,345 dynasty against 6,505
+    redraft, while a mid-tier RB runs 2x the other way), so the raw ratio flagged
+    26-year-old veterans as "100% future potential". Comparing two players at the same
+    position, with values from the same two scales, cancels that distortion out.
+
+    Real case this exists for: a superflex roster's QB2 (C.J. Stroud, 3,288 dynasty /
+    2,744 redraft) and QB3 (Sam Darnold, 2,735 / 2,704) produce within 1.5% of each other
+    this season, but Stroud costs 553 more in trade value. Ranking by dynasty value alone
+    can never see that.
+    """
+    by_pos: dict[str, list[dict]] = {}
+    for e in roster_entries:
+        if e.get("redraft_value"):  # no redraft price = no current-production read
+            by_pos.setdefault(e["position"], []).append(e)
+
+    swaps = []
+    for pos, entries in by_pos.items():
+        lineup = [e for e in entries if e["name"] in projected]
+        bench = [e for e in entries if e["name"] not in projected]
+        for starter in lineup:
+            for alt in bench:
+                retained = alt["redraft_value"] / starter["redraft_value"]
+                freed = starter["value"] - alt["value"]
+                if retained >= MIN_PRODUCTION_RETAINED and freed >= MIN_VALUE_FREED:
+                    swaps.append({
+                        "position": pos,
+                        "sell": starter["name"],
+                        "start_instead": alt["name"],
+                        "production_retained_pct": round(retained * 100),
+                        "dynasty_value_freed": round(freed),
+                        "note": (
+                            f"{alt['name']} produces {round(retained * 100)}% of what "
+                            f"{starter['name']} does this season but costs {round(freed)} less "
+                            f"in dynasty value - selling {starter['name']} converts future "
+                            f"premium into trade capital without losing much now"
+                        ),
+                    })
+    swaps.sort(key=lambda s: -s["dynasty_value_freed"])
+    return swaps
 
 
 def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds: dict[str, float],
@@ -93,8 +150,15 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         ))
         targets += pos_targets[:max_per_position]
 
-    return {"needs": my_needs, "targets": targets,
-            "my_offers": _my_offer_pool(me, thresholds, my_needs, projected)}
+    result = {"needs": my_needs, "targets": targets,
+              "my_offers": _my_offer_pool(me, thresholds, my_needs, projected)}
+    # Only meaningful for a team actually trying to win now - a rebuilding team wants
+    # the future premium it would be selling.
+    if me["effective_strategy"] == "Win-Now" and projected:
+        swaps = find_efficiency_swaps(me["sellable"] + me["tradeable_surplus"], projected)
+        if swaps:
+            result["efficiency_swaps"] = swaps
+    return result
 
 
 def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trade_counts: dict[str, int]) -> dict:
