@@ -12,11 +12,14 @@ Two cost ceilings apply here, at different units:
   at all. It fails closed to a static message that costs nothing to serve.
 """
 
+import asyncio
+import sys
+
 from fastapi import FastAPI
 from pydantic import BaseModel
 
 from . import budget
-from .agent import run_query
+from .agent import run_query, MCP_SERVER_PATH
 
 app = FastAPI(title="fantasy-fanatic agent")
 
@@ -38,6 +41,59 @@ class AskResponse(BaseModel):
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/diagnostics")
+async def diagnostics() -> dict:
+    """Spawns the MCP server directly and reports what actually happens.
+
+    Exists because the real failure was invisible: when the MCP subprocess fails to
+    start, the SDK swallows it, the model is handed an empty toolset, and it then
+    *confabulates* - first claiming it had unrelated tools, later emitting
+    <function_calls> blocks as plain text and inventing a fabricated answer. The most
+    informative error in the system was being hidden behind a plausible-sounding
+    excuse, which made this debuggable only by inference. This endpoint replaces that
+    inference with a stack trace.
+
+    Reports environment facts too, since the container differs from local in exactly
+    the ways that matter here (interpreter path, working directory, uid). Never
+    returns the API key itself - only whether one is present.
+    """
+    import os
+    import traceback
+
+    info = {
+        "python_executable": sys.executable,
+        "mcp_server_path": str(MCP_SERVER_PATH),
+        "mcp_server_exists": MCP_SERVER_PATH.is_file(),
+        "cwd": os.getcwd(),
+        "uid": os.getuid() if hasattr(os, "getuid") else None,
+        "home": os.environ.get("HOME"),
+        "anthropic_key_present": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "path": os.environ.get("PATH"),
+    }
+
+    try:
+        from mcp import ClientSession, StdioServerParameters
+        from mcp.client.stdio import stdio_client
+
+        params = StdioServerParameters(command=sys.executable, args=[str(MCP_SERVER_PATH)])
+
+        async def _list_tools():
+            async with stdio_client(params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    return [t.name for t in (await session.list_tools()).tools]
+
+        # Bounded: a hung subprocess should report as a timeout, not hang the request.
+        info["mcp_tools"] = await asyncio.wait_for(_list_tools(), timeout=120)
+        info["mcp_ok"] = True
+    except Exception as e:
+        info["mcp_ok"] = False
+        info["mcp_error"] = f"{type(e).__name__}: {e}"
+        info["mcp_traceback"] = traceback.format_exc()[-3000:]
+
+    return info
 
 
 @app.get("/budget")
