@@ -58,7 +58,7 @@ jobs:
             --concurrency 1 \
             --max-instances 1 \
             --execution-environment gen2 \
-            --service-account "487070873858-compute@developer.gserviceaccount.com" \
+            --service-account "fantasy-fanatic-run@fantasy-fanatic.iam.gserviceaccount.com" \
             --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest"
 
       # The settings above are load-bearing and easy to lose in a console edit, so they
@@ -70,3 +70,10 @@ jobs:
       #                                 subprocess
       #   gen2                        - full Linux compatibility for subprocess spawning
       #   no-allow-unauthenticated    - stays private until deliberately made public
+      #   service-account             - a dedicated runtime identity holding exactly one
+      #                                 permission (read the anthropic-api-key secret),
+      #                                 not the default compute account, which carries
+      #                                 project Editor. A compromised deploy can still
+      #                                 reach that one secret - unavoidable when the code
+      #                                 needs it to run - but no longer inherits the
+      #                                 whole project along with it.

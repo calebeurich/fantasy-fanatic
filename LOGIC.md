@@ -792,12 +792,22 @@ token for a short-lived GCP one. The provider's `attribute-condition` pins that
 exchange to this repository; without it, *any* GitHub repo could impersonate the
 deployer service account.
 
-Honest note on the remaining risk: the deployer holds `run.admin` plus `serviceAccountUser`
-on the runtime service account, which together mean a compromised workflow run could
-deploy a revision that reads the Anthropic key out of Secret Manager. `storage.admin` is
-also broader than ideal (it's needed because `gcloud run deploy --source` stages to a
-bucket). The blast radius is bounded - a hobby project with a $5 spend cap and a small
-prepaid API balance - but it's a real chain, not a theoretical one.
+**Remaining risk, and what was done about it.** A pipeline that deploys arbitrary code,
+running code that needs a secret, can always be made to leak that secret - that part is
+inherent to CD and can't be engineered away. What *was* fixable: the service originally
+ran as the **default compute service account, which carries project Editor**, so a
+compromised deploy would have inherited control of the whole project rather than just
+the one secret. It now runs as a dedicated `fantasy-fanatic-run` identity holding
+exactly one permission - `secretmanager.secretAccessor` on `anthropic-api-key` - and no
+project-level roles at all.
+
+Still imperfect and worth naming: the deployer holds `storage.admin`, broader than ideal
+(needed because `gcloud run deploy --source` stages to a bucket), and could still deploy
+a revision that exfiltrates the API key. The blast radius is now "one prepaid API
+balance" rather than "the entire project," which is the meaningful difference. Writing
+this down rather than hiding it is deliberate: the workflow file is public anyway, so
+the permissions are inspectable regardless - obscurity would buy nothing, and an
+unexamined risk is worse than a documented one.
 
 **The Cloud Run settings live in the workflow, not only in console click-state.**
 `--concurrency 1` and `--max-instances 1` are load-bearing (`budget.py`'s daily cap is
