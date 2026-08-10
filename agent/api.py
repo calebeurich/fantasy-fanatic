@@ -13,9 +13,9 @@ Two cost ceilings apply here, at different units:
 """
 
 import asyncio
-import io
 import subprocess
 import sys
+import tempfile
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -99,28 +99,34 @@ async def diagnostics() -> dict:
     except Exception as e:
         info["import_check"] = {"spawn_error": f"{type(e).__name__}: {e}"}
 
-    errlog = io.StringIO()
-    try:
-        from mcp import ClientSession, StdioServerParameters
-        from mcp.client.stdio import stdio_client
+    # errlog must be a real file object, not io.StringIO - it's handed to the subprocess
+    # as a file descriptor, and StringIO has no fileno(), which failed with
+    # "UnsupportedOperation: fileno" on the first run of this endpoint.
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errlog:
+        try:
+            from mcp import ClientSession, StdioServerParameters
+            from mcp.client.stdio import stdio_client
 
-        params = StdioServerParameters(command=sys.executable, args=[str(MCP_SERVER_PATH)])
+            params = StdioServerParameters(command=sys.executable, args=[str(MCP_SERVER_PATH)])
 
-        async def _list_tools():
-            # errlog captures the subprocess's stderr, which otherwise disappears.
-            async with stdio_client(params, errlog=errlog) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    return [t.name for t in (await session.list_tools()).tools]
+            async def _list_tools():
+                async with stdio_client(params, errlog=errlog) as (read, write):
+                    async with ClientSession(read, write) as session:
+                        await session.initialize()
+                        return [t.name for t in (await session.list_tools()).tools]
 
-        # Bounded: a hung subprocess should report as a timeout, not hang the request.
-        info["mcp_tools"] = await asyncio.wait_for(_list_tools(), timeout=120)
-        info["mcp_ok"] = True
-    except Exception as e:
-        info["mcp_ok"] = False
-        info["mcp_error"] = f"{type(e).__name__}: {e}"
-        info["mcp_traceback"] = traceback.format_exc()[-2000:]
-    info["mcp_subprocess_stderr"] = errlog.getvalue()[-4000:]
+            # Bounded: a hung subprocess should report as a timeout, not hang the request.
+            info["mcp_tools"] = await asyncio.wait_for(_list_tools(), timeout=120)
+            info["mcp_ok"] = True
+        except Exception as e:
+            info["mcp_ok"] = False
+            info["mcp_error"] = f"{type(e).__name__}: {e}"
+            info["mcp_traceback"] = traceback.format_exc()[-2000:]
+        try:
+            errlog.seek(0)
+            info["mcp_subprocess_stderr"] = errlog.read()[-4000:]
+        except Exception:
+            info["mcp_subprocess_stderr"] = "(unavailable)"
 
     return info
 

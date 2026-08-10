@@ -1,10 +1,18 @@
-requests
-nflreadpy
-mcp[cli]
-claude-agent-sdk
-python-dotenv
-fastapi
-uvicorn
+# Pinned deliberately. Unpinned versions caused a real "works on my machine" failure:
+# locally `mcp` sits at 1.29.0 (which has mcp.server.fastmcp.FastMCP) only because
+# installing claude-agent-sdk downgraded it from 2.0.0 at some point. A clean install
+# in the Cloud Run container resolved to a newer mcp where FastMCP has moved, so
+# agent/mcp_server.py died at import with ModuleNotFoundError - which the SDK swallowed,
+# leaving the agent with no tools and the model confabulating answers instead of failing.
+# See LOGIC.md's "Container image" section for the full trail.
+requests==2.32.3
+nflreadpy==0.1.5
+mcp[cli]==1.29.0
+claude-agent-sdk==0.2.134
+python-dotenv==1.0.1
+fastapi==0.141.1
+uvicorn==0.52.1
+
 # Fixes an SSL error on Windows machines running Norton (it does TLS inspection with
 # a root cert that only the OS trust store knows about, not Python's bundled certifi).
 # Windows-only on purpose: it patches Python's SSL/cert handling to use the OS trust
