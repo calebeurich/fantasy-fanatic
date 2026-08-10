@@ -5,6 +5,10 @@ claude-agent-sdk
 python-dotenv
 fastapi
 uvicorn
-# fixes an SSL error on Windows machines running Norton (it does TLS inspection with
-# a root cert that only the OS trust store knows about, not Python's bundled certifi)
-pip-system-certs
+# Fixes an SSL error on Windows machines running Norton (it does TLS inspection with
+# a root cert that only the OS trust store knows about, not Python's bundled certifi).
+# Windows-only on purpose: it patches Python's SSL/cert handling to use the OS trust
+# store, which is meaningless in a Linux container (no Norton, no OS cert to find) and
+# actively risky there - it was installing in the Cloud Run build and is the prime
+# suspect for a truncated-download hash mismatch that broke `pip install` mid-build.
+pip-system-certs; sys_platform == "win32"

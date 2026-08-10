@@ -14,7 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl gnupg \
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# --retries/--timeout: the first Cloud Build attempt died on a corrupted wheel
+# download ("PACKAGES DO NOT MATCH THE HASHES", unknown package) part-way through
+# installing a fairly heavy dependency set. pip's defaults give up quickly on a
+# flaky transfer; this makes the build tolerate one rather than failing outright.
+RUN pip install --no-cache-dir --retries 5 --timeout 60 -r requirements.txt
 COPY . .
 
 # ANTHROPIC_API_KEY is never baked into the image - .env is gitignored so it isn't
