@@ -27,6 +27,18 @@ COPY . .
 # is configured in the console - agent.py's load_dotenv() no-ops harmlessly if no
 # .env file exists, and reads straight from the real environment either way.
 
+# Run as non-root. Not optional here: agent.py sets permission_mode="bypassPermissions",
+# which the SDK passes to the `claude` CLI as --dangerously-skip-permissions, and the
+# CLI hard-refuses that flag under root ("cannot be used with root/sudo privileges for
+# security reasons"). Cloud Run runs as root by default, so the first real deploy got
+# exactly that error - /health and /budget served fine, but every /ask failed. Also
+# just better container practice independent of the flag.
+# HOME must be a real writable directory: the claude CLI keeps config under it, and
+# Cloud Run's filesystem is in-memory tmpfs, so an unset/unwritable HOME fails oddly.
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+ENV HOME=/home/appuser
+
 # Cloud Run injects the actual port via $PORT at runtime - 8080 is just the default
 # a local `docker run` would use.
 ENV PORT=8080
