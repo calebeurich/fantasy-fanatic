@@ -16,6 +16,7 @@ import asyncio
 import subprocess
 import sys
 import tempfile
+import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -23,7 +24,18 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from . import budget
+# NOTE (Windows dev only): do not run this app under `uvicorn --reload`. Reload puts the
+# worker on asyncio's SelectorEventLoop, which cannot spawn subprocesses at all - it
+# raises a bare NotImplementedError from _make_subprocess_transport - and this agent
+# spawns two (the `claude` CLI and the MCP server). Every request then fails with an
+# opaque "Failed to start Claude Code". Plain `uvicorn` lands on the proactor loop and
+# works fine. Setting the event loop policy here does *not* help: uvicorn creates the
+# loop before importing this module, so the policy applies too late (tried it).
+# Unaffected on Linux, which is why the container never hit this.
+
+from analysis import format_support, roster_needs, team_state
+
+from . import budget, observability
 from .agent import run_query, MCP_SERVER_PATH, _options
 from .sessions import SessionManager
 
@@ -71,6 +83,52 @@ def index() -> str:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/api/league/{league_id}")
+def league_overview(league_id: str) -> dict:
+    """Deterministic league snapshot, rendered by the UI as a table rather than
+    described by the model.
+
+    This is the frontend expression of the project's core split: the analysis layer
+    already computes team windows, ranks, needs and cornerstones exactly, so paying
+    Claude tokens to *recite* them is both wasteful and the one place confabulation
+    can creep in (the model inventing a rank or a player). The agent is for reasoning
+    - "should I trade for him", "why is this team Win-Now" - not for reading a table
+    aloud.
+
+    Free and fast in practice: `sources/cache.py` means a second view of the same
+    league, or a question about it right after, reuses the same fetches.
+    """
+    tier = format_support.assess_format(league_id)
+    if tier["tier"] == "unsupported":
+        return {"league_id": league_id, "supported": False, "reason": tier["reason"]}
+
+    teams = team_state.classify_league(league_id)
+    needs = roster_needs.league_needs(league_id)
+
+    return {
+        "league_id": league_id,
+        "supported": True,
+        "tier": tier["tier"],
+        "reason": tier["reason"],
+        "no_trade_history": bool(teams and teams[0].get("no_trade_history")),
+        "teams": [
+            {
+                "owner": t["owner"],
+                "rank": t["starter_value_rank"],
+                "starter_value": t["starter_value"],
+                "strategy": t["effective_strategy"],
+                "raw_state": t["state"],
+                "is_thin": t["is_thin"],
+                "is_loaded": t["is_loaded"],
+                "owns_next_first": t["owns_next_first"],
+                "cornerstones": [e["name"] for e in t["cornerstones"]],
+                "needs": needs.get(t["owner_id"], {}),
+            }
+            for t in teams
+        ],
+    }
 
 
 @app.get("/sessions")
@@ -198,12 +256,22 @@ async def ask(request: AskRequest) -> AskResponse:
                 result["cost_usd"] = session.cost_delta(result["cost_usd"])
         else:
             result = await run_query(question, verbose=False)
-    except Exception:
-        # A failed call still consumed real capacity (it may have burned tokens
-        # before failing), so it counts against the day rather than being free to
-        # retry in a loop. The exception detail is deliberately not returned to the
-        # caller - it's already in the observability log via run_query's own
-        # try/finally, and internals shouldn't leak out of a public endpoint.
+    except Exception as e:
+        # Log before swallowing. The detail is still withheld from the caller (internals
+        # shouldn't leak from a public endpoint), but it must go *somewhere*: failures in
+        # sessions.acquire() happen outside run_query, so its try/finally never sees
+        # them, and this handler previously discarded the only copy. That produced
+        # exactly the debugging dead-end this project already hit once with the MCP
+        # subprocess - a generic message standing in for a specific, fixable error.
+        observability.log_run({
+            "question": question[:300],
+            "outcome": "error",
+            "error": f"{type(e).__name__}: {e}",
+            "traceback": traceback.format_exc()[-2000:],
+            "session_id": bool(request.session_id),
+        })
+        # A failed call still consumed real capacity (it may have burned tokens before
+        # failing), so it counts against the day rather than being free to retry in a loop.
         budget.record(None)
         return AskResponse(text="Something went wrong answering that. Try again, or try a different league.")
 

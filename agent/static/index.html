@@ -5,110 +5,211 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>fantasy-fanatic</title>
 <style>
-  :root { color-scheme: light dark; --bg:#0f1115; --panel:#171a21; --ink:#e6e8ee; --muted:#98a2b3; --accent:#4ade80; --line:#262b36; }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-  header { padding:14px 18px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
-  h1 { font-size:16px; margin:0; letter-spacing:.2px; }
-  .sub { color:var(--muted); font-size:13px; }
-  main { max-width:820px; margin:0 auto; padding:18px; }
-  #log { display:flex; flex-direction:column; gap:12px; margin-bottom:16px; }
-  .msg { padding:12px 14px; border-radius:10px; border:1px solid var(--line); background:var(--panel); white-space:pre-wrap; overflow-wrap:anywhere; }
-  .me { background:#1d2430; border-color:#2b3444; }
-  .meta { color:var(--muted); font-size:12px; margin-top:8px; border-top:1px solid var(--line); padding-top:6px; }
-  form { display:flex; gap:8px; }
-  input[type=text] { flex:1; padding:11px 13px; border-radius:9px; border:1px solid var(--line); background:var(--panel); color:var(--ink); font:inherit; }
-  button { padding:11px 16px; border-radius:9px; border:1px solid var(--line); background:var(--accent); color:#06240f; font:inherit; font-weight:600; cursor:pointer; }
-  button:disabled { opacity:.5; cursor:default; }
-  .examples { margin:10px 0 0; display:flex; gap:8px; flex-wrap:wrap; }
-  .examples button { background:transparent; color:var(--muted); font-weight:400; font-size:13px; padding:6px 10px; }
-  .warn { color:#fbbf24; }
+  :root{
+    --bg:#0d1017; --panel:#151922; --panel2:#1b2029; --line:#262d3a;
+    --ink:#e7eaf0; --muted:#93a0b4; --dim:#6b7789;
+    --win:#f59e0b; --mid:#60a5fa; --rebuild:#a78bfa;
+    --crit:#f87171; --thin:#fbbf24; --ok:#4ade80;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  header{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;
+         gap:10px;align-items:baseline;flex-wrap:wrap;background:var(--panel)}
+  h1{font-size:15px;margin:0;letter-spacing:.3px}
+  .sub{color:var(--dim);font-size:12.5px}
+  main{max-width:1080px;margin:0 auto;padding:18px;display:grid;gap:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);
+           margin:0;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--panel2)}
+  .pad{padding:14px}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  input[type=text]{flex:1;min-width:220px;padding:10px 12px;border-radius:9px;
+    border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit}
+  input::placeholder{color:var(--dim)}
+  button{padding:10px 14px;border-radius:9px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--ink);font:inherit;cursor:pointer}
+  button.primary{background:var(--ok);color:#06240f;font-weight:600;border-color:transparent}
+  button:disabled{opacity:.45;cursor:default}
+  button.ghost{background:transparent;color:var(--muted);font-size:13px;padding:6px 10px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{text-align:left;font-weight:500;color:var(--dim);font-size:11.5px;
+     text-transform:uppercase;letter-spacing:.6px;padding:8px 12px;border-bottom:1px solid var(--line)}
+  td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  tr.team{cursor:pointer}
+  tr.team:hover{background:var(--panel2)}
+  .rk{color:var(--dim);font-variant-numeric:tabular-nums;width:26px}
+  .who{font-weight:600}
+  .tag{display:inline-block;padding:1.5px 7px;border-radius:999px;font-size:11.5px;
+       font-weight:600;letter-spacing:.2px}
+  .Win-Now{background:rgba(245,158,11,.15);color:var(--win)}
+  .Middling{background:rgba(96,165,250,.15);color:var(--mid)}
+  .Rebuilding{background:rgba(167,139,250,.15);color:var(--rebuild)}
+  .need{display:inline-block;padding:1px 6px;border-radius:5px;font-size:11.5px;margin-right:4px}
+  .critical{background:rgba(248,113,113,.15);color:var(--crit)}
+  .thin{background:rgba(251,191,36,.13);color:var(--thin)}
+  .cs{color:var(--muted);font-size:12.5px}
+  .note{color:var(--dim);font-size:12.5px;padding:8px 14px;border-top:1px solid var(--line)}
+  .warn{color:var(--thin)}
+  #log{display:flex;flex-direction:column;gap:10px}
+  .msg{padding:11px 13px;border-radius:10px;border:1px solid var(--line);background:var(--panel2)}
+  .me{background:#20283a;border-color:#2e3950}
+  .msg h3{font-size:14px;margin:12px 0 6px}
+  .msg h3:first-child{margin-top:0}
+  .msg p{margin:6px 0}
+  .msg ul{margin:6px 0;padding-left:20px}
+  .msg strong{color:#fff}
+  .meta{color:var(--dim);font-size:11.5px;margin-top:9px;padding-top:7px;border-top:1px solid var(--line)}
+  .empty{color:var(--dim);padding:18px 14px;text-align:center;font-size:13.5px}
 </style>
 </head>
 <body>
 <header>
   <h1>fantasy-fanatic</h1>
-  <span class="sub">dynasty analysis · answers come from real Sleeper + FantasyCalc data</span>
+  <span class="sub">dynasty analysis · real Sleeper + FantasyCalc data</span>
 </header>
+
 <main>
-  <div id="log"></div>
-  <form id="f">
-    <input id="q" type="text" autocomplete="off" placeholder="e.g. For Sleeper league &lt;id&gt;, what should &lt;owner&gt; do?" required>
-    <button id="send" type="submit">Ask</button>
-  </form>
-  <div class="examples">
-    <button type="button" data-fill="For Sleeper league 1315386978904084480, what team window is dezdroppedit27 in and why?">example: team window</button>
-    <button type="button" data-fill="Who should rjl22 target in a trade?">example: follow-up (tests memory)</button>
-    <button type="button" id="reset">new conversation</button>
+  <div class="card">
+    <h2>League</h2>
+    <div class="pad">
+      <div class="row">
+        <input id="league" type="text" placeholder="Sleeper league ID"
+               value="1315386978904084480" autocomplete="off">
+        <button id="load" class="primary" type="button">Load</button>
+      </div>
+    </div>
+    <div id="overview"><div class="empty">Enter a league ID and hit Load.</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Ask</h2>
+    <div id="log" class="pad"><div class="empty" id="hint">
+      Load a league, then click any team to ask about them — or type a question.
+    </div></div>
+    <div class="pad" style="border-top:1px solid var(--line)">
+      <form id="f" class="row">
+        <input id="q" type="text" autocomplete="off" placeholder="e.g. who should rjl22 target in a trade?" required>
+        <button id="send" class="primary" type="submit">Ask</button>
+        <button type="button" class="ghost" id="reset">new conversation</button>
+      </form>
+    </div>
   </div>
 </main>
+
 <script>
-// Session id is generated client-side and kept in sessionStorage. The server never
-// issues one, so a lost/expired session simply starts a new conversation rather than
-// erroring - and one browser tab's conversation is never reachable from another.
-function newSession() { return crypto.randomUUID(); }
-let sessionId = sessionStorage.getItem("ff_session") || newSession();
+// Session id is client-generated: the server never issues one, so an expired session
+// starts a fresh conversation instead of erroring, and one tab can't reach another's.
+let sessionId = sessionStorage.getItem("ff_session") || crypto.randomUUID();
 sessionStorage.setItem("ff_session", sessionId);
 
-const log = document.getElementById("log");
-const form = document.getElementById("f");
-const input = document.getElementById("q");
-const send = document.getElementById("send");
+const $ = id => document.getElementById(id);
+let currentLeague = null;
 
-function add(text, cls) {
+// ---- league overview: rendered from deterministic data, never from the model ----
+$("load").onclick = async () => {
+  const id = $("league").value.trim();
+  if (!id) return;
+  $("overview").innerHTML = '<div class="empty">Loading… (first load ~7s, cached after)</div>';
+  try {
+    const res = await fetch(`/api/league/${encodeURIComponent(id)}`);
+    const d = await res.json();
+    if (!d.supported) {
+      $("overview").innerHTML = `<div class="empty warn">Not supported: ${d.reason}</div>`;
+      return;
+    }
+    currentLeague = id;
+    const rows = d.teams.map(t => {
+      const needs = Object.entries(t.needs)
+        .map(([pos, lvl]) => `<span class="need ${lvl}">${pos} ${lvl}</span>`).join("") || "—";
+      const flags = [t.is_loaded ? "loaded" : null, t.is_thin ? "thin" : null,
+                     !t.owns_next_first ? "no 1st" : null].filter(Boolean).join(" · ");
+      return `<tr class="team" data-owner="${t.owner}">
+        <td class="rk">${t.rank}</td>
+        <td class="who">${t.owner}${flags ? `<div class="cs">${flags}</div>` : ""}</td>
+        <td><span class="tag ${t.strategy}">${t.strategy}</span></td>
+        <td>${needs}</td>
+        <td class="cs">${t.cornerstones.slice(0, 4).join(", ") || "none"}</td>
+      </tr>`;
+    }).join("");
+    $("overview").innerHTML = `
+      <table><thead><tr><th></th><th>Owner</th><th>Window</th><th>Needs</th><th>Cornerstones</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      ${d.tier === "degraded" ? '<div class="note warn">Shallow league — percentile-based numbers are rougher than usual.</div>' : ""}
+      ${d.no_trade_history ? '<div class="note warn">No trades in this league yet — window labels are less reliable this early.</div>' : ""}
+      <div class="note">Ranked by starter value. Click a team to ask about them.</div>`;
+    document.querySelectorAll("tr.team").forEach(tr => {
+      tr.onclick = () => {
+        $("q").value = `For Sleeper league ${currentLeague}, what should ${tr.dataset.owner} do and why?`;
+        $("q").focus();
+      };
+    });
+  } catch (e) {
+    $("overview").innerHTML = `<div class="empty warn">Failed to load: ${e}</div>`;
+  }
+};
+
+// ---- minimal markdown: the model answers in markdown and raw ## / ** looked bad ----
+function md(t) {
+  const esc = s => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  return esc(t)
+    .replace(/^#{1,4}\s*(.+)$/gm, "<h3>$1</h3>")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/^\s*[-*]\s+(.+)$/gm, "<li>$1</li>")
+    .replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, "<ul>$1</ul>")
+    .split(/\n{2,}/).map(b => b.match(/^<(h3|ul)/) ? b : `<p>${b.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function add(html, cls) {
+  $("hint")?.remove();
   const el = document.createElement("div");
   el.className = "msg " + (cls || "");
-  el.textContent = text;
-  log.appendChild(el);
-  el.scrollIntoView({ behavior: "smooth", block: "end" });
+  el.innerHTML = html;
+  $("log").appendChild(el);
+  el.scrollIntoView({behavior: "smooth", block: "end"});
   return el;
 }
 
-document.querySelectorAll("[data-fill]").forEach(b =>
-  b.onclick = () => { input.value = b.dataset.fill; input.focus(); });
-
-document.getElementById("reset").onclick = () => {
-  sessionId = newSession();
+$("reset").onclick = () => {
+  sessionId = crypto.randomUUID();
   sessionStorage.setItem("ff_session", sessionId);
-  log.innerHTML = "";
-  add("Started a new conversation.", "");
+  $("log").innerHTML = "";
+  add("<p>Started a new conversation.</p>");
 };
 
-form.onsubmit = async (e) => {
+$("f").onsubmit = async e => {
   e.preventDefault();
-  const question = input.value.trim();
+  const question = $("q").value.trim();
   if (!question) return;
-  input.value = "";
-  add(question, "me");
-  // First request after idle can be slow: container cold start plus uncached
-  // FantasyCalc/nflverse pulls. Say so rather than looking hung.
-  const pending = add("thinking… (first question after a while can take ~30-60s)", "");
-  send.disabled = true;
-
+  $("q").value = "";
+  add(`<p>${question.replace(/</g, "&lt;")}</p>`, "me");
+  const pending = add("<p>thinking… (first question can take ~30-60s)</p>");
+  $("send").disabled = true;
   try {
     const res = await fetch("/ask", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, session_id: sessionId }),
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({question, session_id: sessionId}),
     });
-    const data = await res.json();
-    pending.textContent = data.text || "(no answer)";
+    const d = await res.json();
+    pending.innerHTML = md(d.text || "(no answer)");
     const bits = [];
-    if (data.cost_usd != null) bits.push("$" + data.cost_usd.toFixed(4));
-    if (data.num_turns != null) bits.push(data.num_turns + " turns");
-    if (data.grounding_retries) bits.push(data.grounding_retries + " grounding retry");
-    if (data.budget_exhausted) bits.push("daily budget reached");
+    if (d.cost_usd != null) bits.push("$" + d.cost_usd.toFixed(4));
+    if (d.num_turns != null) bits.push(d.num_turns + " turns");
+    if (d.grounding_retries) bits.push(d.grounding_retries + " grounding retry");
+    if (d.budget_exhausted) bits.push("daily budget reached");
     if (bits.length) {
-      const meta = document.createElement("div");
-      meta.className = "meta" + (data.budget_exhausted ? " warn" : "");
-      meta.textContent = bits.join(" · ");
-      pending.appendChild(meta);
+      const m = document.createElement("div");
+      m.className = "meta" + (d.budget_exhausted ? " warn" : "");
+      m.textContent = bits.join(" · ");
+      pending.appendChild(m);
     }
   } catch (err) {
-    pending.textContent = "Request failed: " + err;
+    pending.innerHTML = `<p>Request failed: ${err}</p>`;
   } finally {
-    send.disabled = false;
-    input.focus();
+    $("send").disabled = false;
+    $("q").focus();
   }
 };
 </script>

@@ -40,7 +40,14 @@ from claude_agent_sdk import (
 from analysis import trade_targets, roster_detail
 from . import observability
 
-load_dotenv()
+# Explicit path, not bare load_dotenv(): the default searches upward from the *working
+# directory*, so running the app from anywhere other than the repo root silently found
+# no .env and left ANTHROPIC_API_KEY unset. Found via the dev preview server, which
+# starts from a different cwd - every request failed with a generic error while
+# /diagnostics reported anthropic_key_present: False. Masked in the container, where
+# Cloud Run injects the key as a real env var and no .env exists at all (load_dotenv
+# no-ops harmlessly on a missing file).
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 MODEL = "claude-haiku-4-5-20251001"  # cheapest capable model - see LOGIC.md's cost notes
 

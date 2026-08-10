@@ -771,6 +771,40 @@ npm, ships in the same container. Session ids are generated client-side, so an e
 session starts a new conversation rather than erroring, and one browser tab's
 conversation is unreachable from another.
 
+**League data is rendered directly, not described by the model** (`GET
+/api/league/{id}`). This is the frontend expression of the project's core split: the
+analysis layer already computes team windows, ranks, needs and cornerstones exactly, so
+paying Claude tokens to *recite* them is both wasteful and the one place confabulation
+can creep in - the model inventing a rank or a player name. The agent is reserved for
+reasoning ("should I trade for him", "why is this team Win-Now"), not for reading a
+table aloud. It also makes every analysis flag visible that was previously buried in
+JSON: `is_loaded`, `is_thin` and `owns_next_first` now show as badges on the teams they
+apply to. Measured: 6.97s cold, **0.045s warm** off `sources/cache.py` - a 150x
+difference that makes browsing several teams feel instant.
+
+A small markdown renderer (~6 lines of regex, no library) handles the model's `##` and
+`**`, which previously rendered as literal characters.
+
+**Three real bugs surfaced within minutes of having a browser-driven dev loop**, none
+of which the container or the CLI had exposed:
+1. **`load_dotenv()` searched the working directory**, so running the app from anywhere
+   but the repo root silently left `ANTHROPIC_API_KEY` unset. Masked in production,
+   where Cloud Run injects the key as a real env var and no `.env` exists at all. Now
+   an explicit path relative to the module.
+2. **`api.py`'s `except Exception:` swallowed the error without logging it** - the same
+   debugging dead-end this project already hit with the MCP subprocess. Failures in
+   `sessions.acquire()` happen outside `run_query`, so its `try/finally` never saw them
+   and the only copy of the traceback was discarded. Now logged before being swallowed;
+   the caller still gets a generic message.
+3. **`uvicorn --reload` is unusable for this app on Windows.** Reload puts the worker on
+   asyncio's `SelectorEventLoop`, which cannot spawn subprocesses at all (bare
+   `NotImplementedError` from `_make_subprocess_transport`), and this agent spawns two.
+   Every request died with an opaque "Failed to start Claude Code". Setting the event
+   loop policy in the app module does *not* fix it - uvicorn creates the loop before
+   importing the module, so the policy applies too late; that was tried and removed
+   rather than left in as code that looks like a fix. Plain `uvicorn` works. Linux is
+   unaffected, which is why the container never hit it.
+
 ## Container image (`Dockerfile`)
 
 **Local machine doesn't need to run any of this** - a real, worth-stating-explicitly
