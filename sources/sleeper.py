@@ -3,42 +3,50 @@
 import sys
 import requests
 
+from .cache import ttl_cache, LIVE_TTL, LEAGUE_CONFIG_TTL
+
 BASE = "https://api.sleeper.app/v1"
 
 # Sleeper's own league type flag: 0 = redraft, 1 = keeper, 2 = dynasty
 DYNASTY_TYPE = 2
 
 
+@ttl_cache(LEAGUE_CONFIG_TTL)
 def get_user_id(username: str) -> str:
     resp = requests.get(f"{BASE}/user/{username}")
     resp.raise_for_status()
     return resp.json()["user_id"]
 
 
+@ttl_cache(LEAGUE_CONFIG_TTL)
 def get_leagues(user_id: str, year: str) -> list[dict]:
     resp = requests.get(f"{BASE}/user/{user_id}/leagues/nfl/{year}")
     resp.raise_for_status()
     return resp.json()
 
 
+@ttl_cache(LEAGUE_CONFIG_TTL)
 def get_league(league_id: str) -> dict:
     resp = requests.get(f"{BASE}/league/{league_id}")
     resp.raise_for_status()
     return resp.json()
 
 
+@ttl_cache(LIVE_TTL)
 def get_rosters(league_id: str) -> list[dict]:
     resp = requests.get(f"{BASE}/league/{league_id}/rosters")
     resp.raise_for_status()
     return resp.json()
 
 
+@ttl_cache(LEAGUE_CONFIG_TTL)
 def get_users(league_id: str) -> list[dict]:
     resp = requests.get(f"{BASE}/league/{league_id}/users")
     resp.raise_for_status()
     return resp.json()
 
 
+@ttl_cache(LIVE_TTL)
 def get_traded_picks(league_id: str) -> list[dict]:
     """Future picks that have changed hands at least once. A pick not listed here is
     still owned by the roster whose original pick it is."""
@@ -47,6 +55,7 @@ def get_traded_picks(league_id: str) -> list[dict]:
     return resp.json()
 
 
+@ttl_cache(LIVE_TTL)
 def get_transactions(league_id: str, week: int) -> list[dict]:
     resp = requests.get(f"{BASE}/league/{league_id}/transactions/{week}")
     resp.raise_for_status()

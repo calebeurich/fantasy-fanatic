@@ -2,9 +2,12 @@
 
 import requests
 
+from .cache import ttl_cache, MARKET_TTL
+
 BASE = "https://api.fantasycalc.com/values/current"
 
 
+@ttl_cache(MARKET_TTL)
 def get_players(num_qbs: int, num_teams: int, ppr: float, is_dynasty: bool = True) -> dict[str, dict]:
     """Dynasty value + age + position for this league's format, keyed by Sleeper player_id."""
     params = {
@@ -32,6 +35,7 @@ def get_players(num_qbs: int, num_teams: int, ppr: float, is_dynasty: bool = Tru
     return players
 
 
+@ttl_cache(MARKET_TTL)
 def get_pick_values(num_qbs: int, num_teams: int, ppr: float, is_dynasty: bool = True) -> dict[str, int]:
     """Rookie pick values keyed by name, e.g. '2027 1st'. Only the current draft class
     (this season, before it happens) gets an exact slot like '2026 Pick 1.01' - future

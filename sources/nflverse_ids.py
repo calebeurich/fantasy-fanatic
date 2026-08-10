@@ -5,7 +5,10 @@ Smoke test: python -m sources.nflverse_ids
 
 import nflreadpy as nfl
 
+from .cache import ttl_cache, REFERENCE_TTL
 
+
+@ttl_cache(REFERENCE_TTL)
 def gsis_to_sleeper() -> dict[str, str]:
     playerids = nfl.load_ff_playerids()
     return {

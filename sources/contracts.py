@@ -8,12 +8,17 @@ from datetime import date
 
 import nflreadpy as nfl
 
+from .cache import ttl_cache, REFERENCE_TTL
 from .nflverse_ids import gsis_to_sleeper
 
 
+@ttl_cache(REFERENCE_TTL)
 def get_contracts() -> dict[str, dict]:
     """Active NFL contracts keyed by Sleeper player_id."""
-    contracts = nfl.load_contracts().filter(nfl.load_contracts()["is_active"])
+    # Loaded once, not twice: this previously called load_contracts() on both
+    # sides of the filter, downloading the whole dataset a second time per call.
+    all_contracts = nfl.load_contracts()
+    contracts = all_contracts.filter(all_contracts["is_active"])
     id_map = gsis_to_sleeper()
 
     current_year = date.today().year

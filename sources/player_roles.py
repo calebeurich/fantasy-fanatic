@@ -14,6 +14,7 @@ from datetime import date
 import nflreadpy as nfl
 import polars as pl
 
+from .cache import ttl_cache, REFERENCE_TTL
 from .nflverse_ids import gsis_to_sleeper
 
 RUSHING_QB_CARRIES_PER_GAME = 5.0
@@ -28,6 +29,7 @@ def most_recent_season() -> int:
     return today.year - 1 if today.month >= 3 else today.year - 2
 
 
+@ttl_cache(REFERENCE_TTL)
 def get_roles() -> dict[str, str]:
     """Sleeper player_id -> 'rushing_qb' or 'pass_catching_rb'. Absent = no adjustment."""
     stats = nfl.load_player_stats(seasons=[most_recent_season()])
