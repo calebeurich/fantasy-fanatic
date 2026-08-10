@@ -1,0 +1,42 @@
+name: tests
+
+# Runs the offline unit suite on every push and PR. Deliberately does NOT run:
+#   - agent/evals.py           - real paid Anthropic API calls, needs a secret key
+#   - agent/test_mcp_server.py - hits live Sleeper/FantasyCalc/nflverse, so it's slow
+#                                and would fail on any third-party outage rather than
+#                                on anything wrong with this repo
+# Those stay manual. CI should fail because the code is broken, not because someone
+# else's API had a bad afternoon or because a run cost money.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # No ANTHROPIC_API_KEY is provided, on purpose: these tests are offline, and a
+      # run that silently started needing a key would be a regression worth catching.
+      - name: Run unit tests
+        run: python -m pytest tests/ -q
+
+      # Cheap guard against an import-time break that the unit tests might miss,
+      # since they don't import every module (notably the FastAPI app and MCP server).
+      - name: Check all modules import
+        run: |
+          python -c "import agent.api, agent.agent, agent.mcp_server, agent.sessions, agent.budget, agent.observability"
+          python -c "import analysis.team_state, analysis.trade_targets, analysis.waiver_wire, analysis.roster_detail"
+          python -c "import sources.sleeper, sources.fantasycalc, sources.contracts, sources.cache"

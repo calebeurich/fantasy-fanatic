@@ -8,7 +8,7 @@ a regression.
 Run: python -m pytest tests/ -q
 """
 
-import time
+
 
 from agent import budget
 from agent.agent import _trade_violations
@@ -42,18 +42,28 @@ def test_cache_keys_on_arguments():
     assert fetch("B") == "B"
 
 
-def test_cache_expires_after_its_ttl():
+def test_cache_expires_after_its_ttl(monkeypatch):
+    """Clock is controlled rather than slept through. The first version of this test
+    slept 0.06s against a 0.05s TTL - a 10ms margin that a loaded CI runner would miss
+    intermittently, and an intermittently-red suite is worse than no suite because it
+    teaches you to ignore failures."""
+    import sources.cache as cache_module
+
+    now = {"t": 1000.0}
+    monkeypatch.setattr(cache_module.time, "monotonic", lambda: now["t"])
+
     calls = []
 
-    @ttl_cache(0.05)
+    @ttl_cache(60)
     def fetch():
         calls.append(1)
         return len(calls)
 
     fetch()
     fetch()
-    assert len(calls) == 1
-    time.sleep(0.06)
+    assert len(calls) == 1, "within TTL, second call should be cached"
+
+    now["t"] += 61  # step past the TTL
     fetch()
     assert len(calls) == 2, "entry should have expired and refetched"
 
