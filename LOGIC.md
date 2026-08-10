@@ -957,6 +957,35 @@ deliberately avoiding.
   (`trade_targets.find_mutual_swaps`, `get_mutual_swaps` tool).
 - ~~**Fresh/undifferentiated leagues read as noisy Win-Now/Rebuilding labels.**~~
   Resolved - see the "No trade history" flag under "Team window classification" above.
+- **No conversation memory - the agent is single-turn, and it doesn't look it.**
+  `run_query` opens a fresh `ClaudeSDKClient` per call and closes it at the end, so
+  nothing carries between requests. Tested live: asked "hey can you help me with my
+  team" with no league info, and the model handled it *well* - asked for the league ID
+  and owner name, called no tools, cost $0.004. But the follow-up is where it breaks:
+  when the user answers, the model has no memory of having asked. A reply that
+  restates everything ("league 1315386978904084480, I'm dezdroppedit27") works by
+  accident because it stands alone; a natural reply ("sure, it's 1315386978904084480",
+  or just "dezdroppedit27") lands on a model with zero context. It *presents* as
+  conversational and cannot hold a conversation, which is the worst combination for a
+  demo visitor, who will treat it like a chatbot.
+
+  Two practical consequences beyond the UX: every clarification round-trip is a real
+  paid API call, and it counts against `budget.py`'s daily request ceiling - a user who
+  takes three messages to supply a league ID burns three of the 50.
+
+  **Not a quick fix, for a reason already documented above** (see the prompt-caching
+  correction): naively reusing one session across requests would recover cache and give
+  continuity, but on a public endpoint one user's conversation would leak into
+  another's. It needs a session identifier from the client plus per-session server-side
+  state - not a shared client. With `max-instances=1` an in-memory dict would actually
+  be correct, but it dies on instance recycle, and accumulated history grows the prefix
+  (and so the per-turn cost) with every exchange. This is the same "statefulness"
+  question the Phase 5 plan flagged as genuinely unresolved; this is the concrete
+  version of it.
+
+  **Sequencing decision: solve this after there's a UI**, not before. The right shape
+  of session handling depends on what the client actually is, and guessing at it now
+  risks building the wrong thing twice.
 - **Future analyst agent: real statistical projections, social sentiment, and
   sportsbook data.** Not scoped or started - a bigger idea than a single heuristic,
   bundling several distinct new capabilities, each with its own data-source question
