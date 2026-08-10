@@ -14,6 +14,9 @@ import asyncio
 import json
 import sys
 import time
+from pathlib import Path
+
+MCP_SERVER_PATH = Path(__file__).resolve().parent / "mcp_server.py"
 
 # Windows console defaults to cp1252, which can't print an emoji or other non-Latin-1
 # character the model happens to include in a response - crashes mid-print with no
@@ -118,7 +121,11 @@ def _options() -> ClaudeAgentOptions:
         model=MODEL,
         system_prompt=SYSTEM_PROMPT,
         mcp_servers={
-            SERVER_KEY: {"type": "stdio", "command": "python", "args": ["-m", "agent.mcp_server"]},
+            # sys.executable + an absolute script path, not "python -m agent.mcp_server":
+            # the subprocess would otherwise need `python` on PATH *and* the repo root as
+            # its working directory, neither of which is guaranteed (McpStdioServerConfig
+            # has no `cwd` option). Both assumptions held locally and broke on Cloud Run.
+            SERVER_KEY: {"type": "stdio", "command": sys.executable, "args": [str(MCP_SERVER_PATH)]},
         },
         tools=FULL_TOOL_NAMES,
         allowed_tools=FULL_TOOL_NAMES,

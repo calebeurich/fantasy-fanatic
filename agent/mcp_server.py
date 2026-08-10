@@ -8,6 +8,18 @@ section for why that keeps this phase pure plumbing with no new risk surface.
 Run: python -m agent.mcp_server
 """
 
+import sys
+from pathlib import Path
+
+# Make this file runnable by absolute path from any working directory. The agent
+# spawns it as a subprocess, and McpStdioServerConfig has no `cwd` option (checked
+# the SDK type: command/args/env only), so we can't guarantee what directory it
+# starts in. Without this, `from analysis import ...` below fails whenever the CWD
+# isn't the repo root - which is exactly what happened on the first Cloud Run deploy:
+# the server never registered, the agent was left with zero tools, and the model
+# confabulated an explanation for why it couldn't answer.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from mcp.server.fastmcp import FastMCP
 
 from analysis import format_support, team_state, roster_needs, trade_targets, waiver_wire, roster_detail
