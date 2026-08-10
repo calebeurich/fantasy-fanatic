@@ -329,11 +329,38 @@ Coverage is partial by nature: redraft carries ~200 players against dynasty's ~4
 since deep dynasty-only assets have no redraft market. Those get `redraft_value: None`
 and are skipped rather than treated as zero production.
 
-*Known follow-on, surfaced by this and not yet fixed*: `projected_starters` ranks by
-dynasty value even for Win-Now teams, so it can put the wrong player in the lineup - the
-real league showed a TE swap retaining **102%** of production, meaning the bench player
-was simply better this season. For a win-now roster the projected lineup should rank by
-redraft value.
+**Lineups are ranked by redraft value, for every window.** The follow-on above turned
+out to be simpler than "do this for Win-Now teams": a lineup is *who scores most this
+week*, which is exactly what redraft prices measure, while dynasty value governs who you
+keep or trade. A rebuilding team still starts its best scorers.
+
+The correction it produced is significant, not cosmetic. rjl22's backfield:
+
+| RB | dynasty | redraft |
+|---|---|---|
+| Bijan Robinson | 10,255 | 10,004 |
+| Ashton Jeanty (rookie) | 7,008 | 6,290 |
+| Christian McCaffrey | 4,367 | **6,518** |
+
+Ranked by dynasty value, McCaffrey is RB3 and was being offered away - by current
+production he's the second-best back on the roster, and the rookie is who sits. Telling
+a win-now team to trade its RB2 was a real, confident, wrong recommendation. The TE
+efficiency swap that had been reporting *102% of production retained* also disappeared,
+because the lineup now starts the better current player in the first place - fixed at
+the source rather than surfaced as a suggested swap.
+
+Missing redraft prices sort last, which is safe rather than lossy: across a real 12-team
+league the highest-dynasty rostered player without one was 1,350, far below every
+positional replacement level.
+
+**Pick equivalents** (`team_values.pick_equivalent`): FantasyCalc prices rookie picks on
+the same scale as players, and this project already fetched them for `pick_capital` -
+so translating a value into "about a 2028 3rd" is a lookup, not a model. Added because
+a raw number is hard to feel: told a bench piece is "worth 947", nobody knows whether
+that's an asset; told it's *about a 2028 3rd*, every dynasty manager immediately does.
+It also lands on the right intuition for depth - late-pick-shaped, real but not what a
+deal is built around. Approximate by nature, since future classes are priced as flat
+round averages.
 
 ## Positional needs (`roster_needs.py`)
 

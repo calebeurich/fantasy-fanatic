@@ -191,19 +191,49 @@ def test_age_mix_ships_with_an_explanation_not_a_bare_number():
     assert "says nothing about wins" in note, "the note must rule out the wrong reading"
 
 
-def test_projected_starters_uses_value_not_the_live_snapshot():
+def test_projected_starters_ignores_the_live_snapshot():
     """Sleeper's `starters` field is the current week's lineup, which is meaningless
     before Week 1. In a real superflex league (2 QB slots) it listed only one QB, so the
-    team's obvious QB2 was classed as bench and offered away as spare parts. Projected
-    starters are derived from value and the league's own slot counts instead."""
+    team's obvious QB2 was classed as bench and offered away as spare parts."""
     slots = {"QB": 2, "RB": 2, "WR": 3, "TE": 1}
     players = _players([("QB", 3528), ("QB", 3288), ("QB", 2735), ("QB", 1325)])
+    for i, redraft in enumerate([4722, 2744, 2704, 1299]):
+        players[str(i)]["redraft_value"] = redraft
     # Snapshot claims only the first QB starts - the exact preseason bug.
     roster = {"players": list(players), "starters": ["0"]}
 
     projected = roster_needs.projected_starters(roster, players, slots)
-    assert "P0" in projected and "P1" in projected, "top 2 QBs by value are the lineup"
+    assert "P0" in projected and "P1" in projected, "top 2 QBs are the lineup"
     assert "P2" not in projected and "P3" not in projected, "QB3/QB4 are genuinely spare"
+
+
+def test_projected_starters_rank_by_current_production_not_dynasty_value():
+    """A lineup is "who scores most this week", which is redraft value; dynasty value
+    governs who you keep, not who you start. Modelled on the real RB room that exposed
+    it - Bijan (10,255 dyn / 10,004 redraft), a rookie (7,008 / 6,290), and McCaffrey
+    (4,367 / 6,518). By dynasty McCaffrey is RB3 and was offered away; by current
+    production he is the second-best back on the roster and belongs in the lineup."""
+    slots = {"QB": 1, "RB": 2, "WR": 3, "TE": 1}
+    players = _players([("RB", 10255), ("RB", 7008), ("RB", 4367)])
+    for i, redraft in enumerate([10004, 6290, 6518]):
+        players[str(i)]["redraft_value"] = redraft
+    roster = {"players": list(players), "starters": []}
+
+    projected = roster_needs.projected_starters(roster, players, slots)
+    assert projected == {"P0", "P2"}, "redraft ranking starts McCaffrey over the rookie"
+
+
+def test_projected_starters_sorts_missing_redraft_prices_last():
+    """Redraft covers the top ~200 players, so deep dynasty-only assets have no price.
+    Safe to treat as non-starters: across a real 12-team league the highest-dynasty
+    rostered player missing one was 1,350, far below every replacement level."""
+    slots = {"QB": 1, "RB": 1, "WR": 1, "TE": 1}
+    players = _players([("WR", 1350), ("WR", 900)])
+    players["0"]["redraft_value"] = None   # dynasty-only prospect
+    players["1"]["redraft_value"] = 2500   # real current producer
+    roster = {"players": list(players), "starters": []}
+
+    assert roster_needs.projected_starters(roster, players, slots) == {"P1"}
 
 
 def test_win_now_buyer_sees_production_priced_targets_first():

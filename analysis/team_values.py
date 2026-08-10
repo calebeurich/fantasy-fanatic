@@ -122,6 +122,24 @@ def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty:
     return players
 
 
+def pick_equivalent(value: float, pick_values: dict[str, int]) -> str | None:
+    """The draft pick a player's value is closest to, e.g. "about a 2027 3rd (Late)".
+
+    Exists because a raw number is hard to feel. Told that a bench piece is "worth 947",
+    nobody knows whether that's a real asset; told it's "about a 2027 3rd", every dynasty
+    manager immediately does - and the honest read of a low-value depth player is closer
+    to a late pick than to a piece a trade is built around. FantasyCalc prices picks on
+    the same scale as players, so this is a lookup, not a model.
+
+    Future classes are priced as flat round averages (see get_pick_values), so the match
+    is approximate by nature - hence "about".
+    """
+    if not pick_values or value <= 0:
+        return None
+    name, _ = min(pick_values.items(), key=lambda kv: abs(kv[1] - value))
+    return name
+
+
 def split_starters_bench(roster: dict, players: dict[str, dict]) -> tuple[int, int]:
     starter_ids = {pid for pid in (roster["starters"] or []) if pid != "0"}
     all_ids = roster["players"] or []

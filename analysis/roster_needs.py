@@ -83,15 +83,27 @@ def projected_starters(roster: dict, players: dict[str, dict], slots: dict[str, 
     and offered up as spare parts. In superflex especially, a second QB is among the
     most valuable things on a roster, not dead weight.
 
-    Top `slots[pos]` by value at each position. Flex slots aren't modelled (same
-    approximation as `dedicated_slots`), so this is conservative: it can under-count
-    starters, never over-count them.
+    **Ranked by redraft value, not dynasty value.** A lineup is purely "who scores most
+    this week", which is what redraft prices measure; dynasty value governs who you keep
+    or trade, not who you start. Ranking by dynasty put the wrong player in the lineup -
+    a real league showed a TE whose bench alternative produced *102%* of his current
+    output, i.e. the better current player was sitting. This holds for every window, not
+    just Win-Now: a rebuilding team still starts its best scorers.
+
+    Players with no redraft price sort last. That's safe rather than lossy: redraft
+    covers the top ~200, and the highest-dynasty rostered player missing one across a
+    real 12-team league was 1,350 - far below every positional replacement level, so
+    nobody actually startable is affected.
+
+    Top `slots[pos]` at each position. Flex slots aren't modelled (same approximation as
+    `dedicated_slots`), so this is conservative: it can under-count starters, never
+    over-count them.
     """
     by_pos: dict[str, list[tuple[float, str]]] = {pos: [] for pos in POSITIONS}
     for pid in roster["players"] or []:
         info = players.get(pid)
         if info and info["position"] in by_pos:
-            by_pos[info["position"]].append((info["value"], info["name"]))
+            by_pos[info["position"]].append((info.get("redraft_value") or 0, info["name"]))
     starters = set()
     for pos, entries in by_pos.items():
         entries.sort(reverse=True)

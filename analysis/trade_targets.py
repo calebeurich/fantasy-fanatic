@@ -10,7 +10,10 @@ Smoke test: python -m analysis.trade_targets <league_id> <owner_name>
 
 import sys
 
+from sources import sleeper, fantasycalc
+
 from . import team_state, roster_needs, trade_activity
+from .team_values import NUM_QBS, pick_equivalent
 
 # Same VALUE_BASIS classification (team_state.py) drives both sides of a trade, just
 # phrased for who's on which side of it.
@@ -42,7 +45,8 @@ def _with_trade_note(entry: dict, other: dict, trade_counts: dict[str, int]) -> 
 
 
 def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, str],
-                   projected: set[str] | None = None) -> list[dict]:
+                   projected: set[str] | None = None,
+                   pick_values: dict[str, int] | None = None) -> list[dict]:
     """What you could realistically offer: bench value that isn't elite enough to be a
     cornerstone but also isn't part of your actual lineup (e.g. a 3rd QB in a 2-QB-max
     format), plus young surplus - never a valuable *starter*, even a non-cornerstone
@@ -79,6 +83,11 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, str]
         e["value_over_replacement"] = round(e["value"] - thresholds[e["position"]])
         e["tier"] = ("core piece - above replacement, scarce" if e["value_over_replacement"] > 0
                      else "depth - real but discounted, a sweetener not a centerpiece")
+        # A pick equivalent makes the tier concrete. "Worth 947" means nothing to a
+        # manager; "about a 2027 3rd (Late)" is immediately legible, and lands on the
+        # right intuition - a depth piece is a late-pick-shaped asset, not a centerpiece.
+        if pick_values:
+            e["pick_equivalent"] = pick_equivalent(e["value"], pick_values)
     offers.sort(key=lambda e: -e["value_over_replacement"])
     return offers
 
@@ -133,7 +142,8 @@ def find_efficiency_swaps(roster_entries: list[dict], projected: set[str]) -> li
 
 def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds: dict[str, float],
               trade_counts: dict[str, int], max_per_position: int,
-              projected: set[str] | None = None) -> dict:
+              projected: set[str] | None = None,
+              pick_values: dict[str, int] | None = None) -> dict:
     """The push case: fill needs with sellable value from Rebuilding teams."""
     my_needs = needs_by_owner_id.get(me["owner_id"], {})
     # Critical needs (can't fill the position at all) get searched before thin ones
@@ -169,7 +179,7 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         targets += pos_targets[:max_per_position]
 
     result = {"needs": my_needs, "targets": targets,
-              "my_offers": _my_offer_pool(me, thresholds, my_needs, projected)}
+              "my_offers": _my_offer_pool(me, thresholds, my_needs, projected, pick_values)}
     # Only meaningful for a team actually trying to win now - a rebuilding team wants
     # the future premium it would be selling.
     if me["effective_strategy"] == "Win-Now" and projected:
@@ -210,6 +220,9 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     thresholds = roster_needs.league_thresholds(league_id)
     trade_counts = trade_activity.get_trade_counts(league_id)
     projected_by_owner = roster_needs.league_projected_starters(league_id)
+    fmt = sleeper.describe_format(sleeper.get_league(league_id))
+    pick_values = fantasycalc.get_pick_values(NUM_QBS[fmt['is_superflex']], fmt['num_teams'],
+                                              fmt['ppr'], fmt['is_dynasty'])
 
     me = next((r for r in states if owner_query.lower() in r["owner"].lower()), None)
     if me is None:
@@ -232,12 +245,12 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         # one that's clearly out should pivot even mid-season) - logged in LOGIC.md.
         return {"me": me, "mode": "middling",
                 "push": _buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
-                                  max_per_position, projected),
+                                  max_per_position, projected, pick_values),
                 "pivot": _pivot_path(me, states, thresholds, trade_counts)}
 
     return {"me": me, "mode": "buy",
             **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
-                        max_per_position, projected)}
+                        max_per_position, projected, pick_values)}
 
 
 SWAP_ELIGIBLE_STRATEGIES = ("Win-Now", "Middling")
