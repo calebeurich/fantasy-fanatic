@@ -14,6 +14,7 @@ import asyncio
 import json
 import sys
 import time
+from contextlib import AsyncExitStack
 from pathlib import Path
 
 MCP_SERVER_PATH = Path(__file__).resolve().parent / "mcp_server.py"
@@ -299,7 +300,7 @@ def _observability_fields(tool_calls: list[dict], tool_results: list[dict]) -> d
     return {"league_ids": league_ids, "format_tier": format_tier, "tool_errors": tool_errors}
 
 
-async def run_query(question: str, verbose: bool = True) -> dict:
+async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient | None = None) -> dict:
     """Runs one question through the agent, then deterministically checks the answer
     against ground truth before returning it: if it named a player its own trade-tool
     calls say isn't offerable, send one corrective follow-up on the same session
@@ -316,7 +317,13 @@ async def run_query(question: str, verbose: bool = True) -> dict:
     total_turns, retries, result = 0, 0, None
     outcome, error_message = "ok", None
     try:
-        async with ClaudeSDKClient(options=_options()) as client:
+        # A caller may hand in a live client (agent/sessions.py does, to keep a
+        # conversation - and both the prompt cache and the MCP data cache - warm across
+        # turns). Only a client we created here gets closed here; a session's client
+        # outlives the request, so the exit stack must not tear it down.
+        async with AsyncExitStack() as stack:
+            if client is None:
+                client = await stack.enter_async_context(ClaudeSDKClient(options=_options()))
             turn = await _run_turn(client, question, verbose)
             all_tool_calls = list(turn["tool_calls"])
             all_tool_results = list(turn["tool_results"])

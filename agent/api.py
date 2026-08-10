@@ -16,20 +16,38 @@ import asyncio
 import subprocess
 import sys
 import tempfile
+from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from . import budget
-from .agent import run_query, MCP_SERVER_PATH
+from .agent import run_query, MCP_SERVER_PATH, _options
+from .sessions import SessionManager
 
-app = FastAPI(title="fantasy-fanatic agent")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    # Sessions hold live subprocesses; without this they'd be orphaned on shutdown.
+    await sessions.close_all()
+
+
+app = FastAPI(title="fantasy-fanatic agent", lifespan=lifespan)
+sessions = SessionManager(_options)
 
 MAX_QUESTION_CHARS = 1000  # a real question is far shorter; this just bounds abuse
 
 
 class AskRequest(BaseModel):
     question: str
+    # Optional: omit for a one-shot question, supply a stable id to continue a
+    # conversation. Generated client-side (see static/index.html) rather than issued
+    # by the server, which keeps this stateless to look at and means a lost session
+    # just starts a new one instead of erroring.
+    session_id: str | None = None
 
 
 class AskResponse(BaseModel):
@@ -40,9 +58,26 @@ class AskResponse(BaseModel):
     budget_exhausted: bool = False
 
 
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> str:
+    """Single static page, no build step and no npm - it ships inside the same
+    container as the API, so there's nothing separate to deploy or host."""
+    return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/sessions")
+def session_status() -> dict:
+    """Visible so session count/idle time can be checked against the memory ceiling
+    rather than guessed at - each live session holds two subprocesses."""
+    return sessions.status()
 
 
 @app.get("/diagnostics")
@@ -151,7 +186,14 @@ async def ask(request: AskRequest) -> AskResponse:
     question = question[:MAX_QUESTION_CHARS]
 
     try:
-        result = await run_query(question, verbose=False)
+        if request.session_id:
+            session = await sessions.acquire(request.session_id)
+            # Held for the whole turn: two concurrent requests on one session would
+            # interleave on the same client and corrupt the conversation.
+            async with session.lock:
+                result = await run_query(question, verbose=False, client=session.client)
+        else:
+            result = await run_query(question, verbose=False)
     except Exception:
         # A failed call still consumed real capacity (it may have burned tokens
         # before failing), so it counts against the day rather than being free to
