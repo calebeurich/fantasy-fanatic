@@ -192,6 +192,10 @@ async def ask(request: AskRequest) -> AskResponse:
             # interleave on the same client and corrupt the conversation.
             async with session.lock:
                 result = await run_query(question, verbose=False, client=session.client)
+                # Convert the client's cumulative total into this question's own cost -
+                # see Session.cost_delta for why the raw value would both over-report
+                # and over-charge the daily budget on a persistent session.
+                result["cost_usd"] = session.cost_delta(result["cost_usd"])
         else:
             result = await run_query(question, verbose=False)
     except Exception:

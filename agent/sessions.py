@@ -47,6 +47,22 @@ class Session:
         # Serializes turns within one session: two concurrent requests sharing a client
         # would interleave on the same conversation and corrupt it.
         self.lock = asyncio.Lock()
+        # ResultMessage.total_cost_usd is cumulative for the life of the client, not
+        # per-question (verified earlier: it kept climbing across a grounding retry).
+        # That was harmless when every question got a fresh client, but on a persistent
+        # session it keeps growing - so the raw value would over-report each question's
+        # cost and, worse, make budget.record() charge the running total again every
+        # turn, draining the daily ceiling several times faster than real spend.
+        # Tracking the baseline lets callers bill and display the delta.
+        self.cost_baseline = 0.0
+
+    def cost_delta(self, cumulative: float | None) -> float | None:
+        """This question's own cost, from the client's cumulative total."""
+        if cumulative is None:
+            return None
+        delta = max(cumulative - self.cost_baseline, 0.0)
+        self.cost_baseline = cumulative
+        return delta
 
 
 class SessionManager:
