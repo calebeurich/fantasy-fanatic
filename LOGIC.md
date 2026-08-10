@@ -801,13 +801,27 @@ the one secret. It now runs as a dedicated `fantasy-fanatic-run` identity holdin
 exactly one permission - `secretmanager.secretAccessor` on `anthropic-api-key` - and no
 project-level roles at all.
 
-Still imperfect and worth naming: the deployer holds `storage.admin`, broader than ideal
-(needed because `gcloud run deploy --source` stages to a bucket), and could still deploy
-a revision that exfiltrates the API key. The blast radius is now "one prepaid API
-balance" rather than "the entire project," which is the meaningful difference. Writing
-this down rather than hiding it is deliberate: the workflow file is public anyway, so
-the permissions are inspectable regardless - obscurity would buy nothing, and an
-unexamined risk is worse than a documented one.
+The deployer's permissions were narrowed the same way, in the safe order (add the
+tighter grant, verify, then remove the broad one, with the rollback command in hand
+since Actions is now the only deploy path). It ended up with exactly three project
+roles - `run.admin`, `artifactregistry.writer`, `cloudbuild.builds.editor` - plus
+`storage.admin` scoped to the single `run-sources-fantasy-fanatic-us-central1` staging
+bucket rather than project-wide. The WIF condition also pins to
+`refs/heads/main`, so a workflow on any other ref can't mint a token at all, and the
+old default compute account's leftover access to the secret was revoked once the
+dedicated runtime identity was proven working.
+
+Deliberately imprecise in one place: the bucket grant is `storage.admin` scoped to that
+bucket, not a more minimal `objectAdmin`. Finding the true minimum would take several
+break-and-fix deploy cycles, and the gap between "one bucket" and "one bucket, fewer
+verbs" is small next to the gap from "every bucket in the project."
+
+**What remains is inherent, not an oversight**: a pipeline that deploys arbitrary code,
+running code that needs a secret, can always be made to leak that secret. The blast
+radius is now one prepaid API balance rather than the whole project. Writing this down
+rather than hiding it is deliberate - the workflow file is public, so the permissions
+are inspectable regardless. Obscurity would buy nothing, and an unexamined risk is
+worse than a documented one.
 
 **The Cloud Run settings live in the workflow, not only in console click-state.**
 `--concurrency 1` and `--max-instances 1` are load-bearing (`budget.py`'s daily cap is
