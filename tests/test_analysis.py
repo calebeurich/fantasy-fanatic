@@ -74,8 +74,13 @@ def test_relevance_floor_is_exactly_at_the_fraction():
 # --------------------------------------------------------------- needs and surplus
 
 def _players(spec):
-    """spec: list of (position, value) -> the {player_id: info} shape sources produce."""
-    return {str(i): {"name": f"P{i}", "position": pos, "value": val, "age": 26}
+    """spec: list of (position, value) -> the {player_id: info} shape sources produce.
+
+    redraft_value defaults to the dynasty value so fixtures stay terse. Tests that care
+    about the distinction (lineup ranking, efficiency swaps) set it explicitly - needs
+    and surplus are measured on current production, so it has to be present."""
+    return {str(i): {"name": f"P{i}", "position": pos, "value": val,
+                     "redraft_value": val, "age": 26}
             for i, (pos, val) in enumerate(spec)}
 
 
@@ -108,6 +113,28 @@ def test_surplus_is_the_mirror_of_needs_and_excludes_the_starting_group():
     assert len(names) == 2, "4 usable WR with 2 slots should yield exactly 2 surplus"
     assert [e["value"] for e in surplus["WR"]] == [700, 600], "surplus is the lowest-valued, not the best"
     assert "QB" not in surplus, "a position with no usable players is a need, never a surplus"
+
+
+def test_needs_are_measured_on_current_production_not_dynasty_value():
+    """"Can I field a lineup" is a current-production question, so the bar is the Nth-best
+    *producer*, not the Nth-most-*valuable* player - a pool stuffed with young prospects
+    priced on upside. On a real league the dynasty-based bar was 2.5x too strict at WR
+    (2,126 vs 855) and 3.2x at TE (2,013 vs 630), marking a team with three startable WRs
+    and two startable TEs as critical at both."""
+    pool = {
+        "1": {"name": "Vet", "position": "WR", "value": 1200, "redraft_value": 2000},
+        "2": {"name": "Prospect", "position": "WR", "value": 3000, "redraft_value": 100},
+    }
+    slots = {"QB": 0, "RB": 0, "WR": 1, "TE": 0}
+    thresholds = roster_needs.replacement_thresholds(pool, slots, num_teams=1, metric="redraft_value")
+    roster = {"players": ["1"], "starters": []}
+
+    # The veteran produces now, so he fills the slot - "thin" (exactly enough), not
+    # "critical" (can't field one at all), despite the lower dynasty value.
+    assert roster_needs.find_needs(roster, pool, slots, thresholds)["WR"] == "thin"
+    # The prospect is the more valuable asset and still can't start.
+    prospect_only = {"players": ["2"], "starters": []}
+    assert roster_needs.find_needs(prospect_only, pool, slots, thresholds)["WR"] == "critical"
 
 
 def test_a_position_cannot_be_both_a_need_and_a_surplus():
@@ -171,6 +198,22 @@ def test_offerable_names_covers_every_find_targets_mode():
     assert trade_targets.offerable_names(buy) == {"A"}
     assert trade_targets.offerable_names(rebuild) == {"B", "C"}
     assert trade_targets.offerable_names(middling) == {"D", "E", "F"}
+
+
+def test_missing_next_first_reads_differently_by_window():
+    """A bare boolean got read as universally bad. A live run told a Win-Now team that not
+    owning its next 1st was "concerning for a contender" and to "reclaim a first-round
+    pick" - in the same answer that correctly told it to spend picks aggressively. Having
+    spent that pick is the window working as intended; it only hurts a rebuilder, who
+    loses the one payoff for a bad season."""
+    contender = team_state.next_first_note(False, "Win-Now")
+    rebuilder = team_state.next_first_note(False, "Rebuilding")
+
+    assert "not a concern" in contender.lower()
+    assert "not a reason to trade back" in contender.lower()
+    assert "a real problem" in rebuilder.lower()
+    assert contender != rebuilder, "the same fact must not read the same way in both windows"
+    assert "own" in team_state.next_first_note(True, "Rebuilding").lower()
 
 
 def test_age_mix_ships_with_an_explanation_not_a_bare_number():
@@ -332,6 +375,30 @@ def test_efficiency_swap_finds_cheaper_equivalent_production():
     assert swaps[0]["sell"] == "QB2" and swaps[0]["start_instead"] == "QB3"
     assert swaps[0]["production_retained_pct"] == 99
     assert swaps[0]["dynasty_value_freed"] == 553
+
+
+def test_efficiency_swap_target_reaches_the_offer_pool():
+    """These contradicted each other: the swap named a player to sell while the offer
+    list excluded him for being a starter, so the most efficient chip on the roster
+    never appeared among the things to offer. A swap target is offerable by definition -
+    that's the finding - so it must join the pool, carrying its reasoning."""
+    thresholds = {"QB": 2131}
+    me = {
+        "owner_id": "me", "effective_strategy": "Win-Now",
+        "sellable": [
+            {"name": "QB2", "position": "QB", "value": 2728, "redraft_value": 2744,
+             "bucket": "prime", "is_starter": True},
+            {"name": "QB3", "position": "QB", "value": 2189, "redraft_value": 2704,
+             "bucket": "prime", "is_starter": False},
+        ],
+        "tradeable_surplus": [],
+    }
+    out = trade_targets._buy_path(me, [], {"me": {}}, thresholds, trade_counts={},
+                                  max_per_position=3, projected={"QB2"})
+    names = [e["name"] for e in out["my_offers"]]
+    assert "QB2" in names, "the swap's sell target must be offerable"
+    entry = next(e for e in out["my_offers"] if e["name"] == "QB2")
+    assert entry.get("swap_note"), "and must carry why it's safe to move"
 
 
 def test_efficiency_swap_ignores_a_real_production_downgrade():

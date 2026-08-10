@@ -184,18 +184,41 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
     result = {"needs": my_needs, "targets": targets,
               "my_offers": _my_offer_pool(me, thresholds, my_needs, projected, pick_values)}
 
-    # A win-now team should be *spending* future picks, not hoarding them - the whole
-    # point of the window is converting future value into current production. Surfaced
-    # separately from player offers because they trade differently: a pick has no roster
-    # spot cost and no injury risk, so it's often the cleanest way to close a gap.
+    # Picks are *currency*, not production. A first doesn't help you win - it becomes a
+    # rookie at the next offseason's draft, and a rookie is another upside asset, which is
+    # the opposite of what a contender needs. The value to a win-now team is entirely in
+    # what a pick can be traded *for*: it's the cleanest thing to pay with, since it costs
+    # no roster spot and carries no injury risk, and it's worth more to the rebuilder
+    # receiving it than to the contender holding it. Framing this as "converting future
+    # into now" was wrong - the conversion only happens in a trade.
     if my_picks is not None:
-        result["picks_you_could_spend"] = my_picks
+        result["picks_to_trade_away"] = my_picks
     # Only meaningful for a team actually trying to win now - a rebuilding team wants
     # the future premium it would be selling.
     if me["effective_strategy"] == "Win-Now" and projected:
         swaps = find_efficiency_swaps(me["sellable"] + me["tradeable_surplus"], projected)
         if swaps:
             result["efficiency_swaps"] = swaps
+
+            # These contradicted each other before: the swap named a player to sell while
+            # the offer list excluded him for being a starter, so the single most
+            # efficient chip on the roster never appeared among the things to offer. A
+            # swap target *is* offerable by definition - that's the whole finding - so it
+            # joins the pool, flagged with what it costs and what replaces him.
+            offered = {e["name"] for e in result["my_offers"]}
+            by_name = {e["name"]: e for e in me["sellable"] + me["tradeable_surplus"]}
+            for swap in swaps:
+                entry = by_name.get(swap["sell"])
+                if entry is None or swap["sell"] in offered:
+                    continue
+                result["my_offers"].append({
+                    **entry,
+                    "value_over_replacement": round(entry["value"] - thresholds[entry["position"]]),
+                    "tier": "core piece - startable, but replaceable at little cost this season",
+                    "pick_equivalent": pick_equivalent(entry["value"], pick_values) if pick_values else None,
+                    "swap_note": swap["note"],
+                })
+            result["my_offers"].sort(key=lambda e: -e["value_over_replacement"])
     return result
 
 
@@ -382,9 +405,9 @@ def _print_push(push: dict) -> None:
             print(f"  {e['name']} ({e['position']}, value={e['value']}) - give-up cost: {cost}")
     else:
         print("you could offer: no obvious surplus")
-    if push.get("picks_you_could_spend"):
-        picks = ", ".join(f"{p['pick']} ({p['value']})" for p in push["picks_you_could_spend"][:4])
-        print(f"picks you could spend (win-now = convert future into now): {picks}")
+    if push.get("picks_to_trade_away"):
+        picks = ", ".join(f"{p['pick']} ({p['value']})" for p in push["picks_to_trade_away"][:4])
+        print(f"picks to pay with (currency for buying production, not production itself): {picks}")
     print()
     if not push["targets"]:
         print("no obvious targets found (no needs, or no Rebuilding team has a sell candidate there)")

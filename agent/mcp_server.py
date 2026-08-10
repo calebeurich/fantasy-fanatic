@@ -66,9 +66,10 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     targets if Rebuilding, or both paths (labeled push/pivot) if Middling.
 
     Also returns draft picks, in the direction that team should be moving them:
-    "picks_you_could_spend" for a Win-Now team (converting future value into current
-    production is the point of the window) and "picks_to_acquire" for a Rebuilding one,
-    listing picks held by contenders, to whom they are worth less. Player entries carry
+    "picks_to_trade_away" for a Win-Now team and "picks_to_acquire" for a Rebuilding one.
+    Picks are currency, not production - a first becomes a rookie at the next offseason's
+    draft, which is another upside asset and the opposite of what a contender needs, so
+    their value to a contender is only in what they can be traded FOR. Player entries carry
     "tier" (core piece vs depth) and "pick_equivalent" - depth is real but shouldn't
     anchor an offer. "efficiency_swaps", when present, are value decisions rather than
     lineup upgrades: the two players produce near-identically this season.

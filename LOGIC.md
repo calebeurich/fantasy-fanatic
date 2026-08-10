@@ -385,6 +385,24 @@ round averages.
 
 ## Positional needs (`roster_needs.py`)
 
+**Needs are measured on current production, trade relevance on dynasty value** - the same
+`replacement_thresholds` function, called with a different `metric`, because they answer
+different questions. "Can I field a lineup?" is about production now; "is this a real
+trade chip?" is about what it fetches.
+
+Using dynasty value for the first was badly wrong. It asks whether a player beats the
+36th-most-*valuable* WR - a pool full of young prospects priced on upside - rather than
+the 36th-best current *producer*. Measured on a real league the bar was **2.5x too strict
+at WR (2,126 vs 855) and 3.2x at TE (2,013 vs 630)**, so a team with three startable WRs
+and two startable TEs was reported as *critical at both*, and the buy path went shopping
+for positions it didn't need. After the fix that team shows a single "WR: thin" and
+nothing critical, which matches how its own manager reads the roster.
+
+This is the third instance of one root cause: dynasty value was being used for questions
+about the current season. The others were lineup ranking and the win-now efficiency
+comparison. Worth stating as a rule - **if the question is "this season", the metric is
+`redraft_value`; if it's "what is this worth", the metric is `value`.**
+
 "Usable" is relative to the league's own format, not a hardcoded value cutoff:
 replacement level at a position = the value of the Nth-best player at that position
 **leaguewide**, where N = how many dedicated starting slots the whole league has there

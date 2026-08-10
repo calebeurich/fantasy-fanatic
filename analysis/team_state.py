@@ -33,6 +33,24 @@ VALUE_BASIS = {"declining": "production", "prime": "mixed", "ascending": "upside
 MIN_RELEVANCE_FRACTION = {"production": 0.5, "mixed": 0.5, "upside": 0.25}
 
 
+def next_first_note(owns_next_first: bool, effective_strategy: str) -> str:
+    """What not owning your own next 1st actually means, which depends entirely on the
+    window - shipped as a bare boolean it got read as universally bad. A live run told a
+    Win-Now team it was "concerning for a contender" and to "reclaim a first-round pick",
+    in the same answer that correctly advised spending picks aggressively. Having spent
+    that pick is the window working as intended; it only hurts a rebuilding team, which
+    loses the single payoff for a bad season. Same fix as age_mix_note - ship the
+    interpretation with the value."""
+    if owns_next_first:
+        return "Owns its own next 1st."
+    if effective_strategy == "Rebuilding":
+        return ("Does NOT own its own next 1st - a real problem while rebuilding, since a "
+                "worse record now just hands a better pick to whoever holds it.")
+    return ("Does NOT own its own next 1st - expected and appropriate for a team competing "
+            "now, which is what spending future picks on current production looks like. "
+            "Not a concern to fix, and not a reason to trade back for one.")
+
+
 def cornerstone_threshold(players: dict[str, dict]) -> float:
     values = sorted((info["value"] for info in players.values()), reverse=True)
     return values[int(len(values) * CORNERSTONE_PERCENTILE)]
@@ -193,6 +211,8 @@ def classify_league(league_id: str) -> list[dict]:
             row["effective_strategy"] = "Middling"
         else:
             row["effective_strategy"] = row["state"]
+
+        row["next_first_note"] = next_first_note(row["owns_next_first"], row["effective_strategy"])
 
     return rows
 

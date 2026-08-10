@@ -60,6 +60,9 @@
   .msg p{margin:6px 0}
   .msg ul{margin:6px 0;padding-left:20px}
   .msg strong{color:#fff}
+  .msg table{margin:8px 0;font-size:13px;width:100%}
+  .msg th{font-size:11px;color:var(--dim);padding:5px 9px}
+  .msg td{padding:5px 9px;border-bottom:1px solid var(--line)}
   .meta{color:var(--dim);font-size:11.5px;margin-top:9px;padding-top:7px;border-top:1px solid var(--line)}
   .empty{color:var(--dim);padding:18px 14px;text-align:center;font-size:13.5px}
 </style>
@@ -151,15 +154,32 @@ $("load").onclick = async () => {
 };
 
 // ---- minimal markdown: the model answers in markdown and raw ## / ** looked bad ----
+// Tables are handled because the model reaches for them constantly on this data (offer
+// lists, buy targets) and a pipe-delimited table rendered as flat text is worse than no
+// table at all - it's the least readable thing on the page.
 function md(t) {
   const esc = s => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
-  return esc(t)
-    .replace(/^#{1,4}\s*(.+)$/gm, "<h3>$1</h3>")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/^\s*[-*]\s+(.+)$/gm, "<li>$1</li>")
-    .replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, "<ul>$1</ul>")
-    .split(/\n{2,}/).map(b => b.match(/^<(h3|ul)/) ? b : `<p>${b.replace(/\n/g, "<br>")}</p>`)
-    .join("");
+  const cells = row => row.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+  const isSep = row => /^\s*\|?[\s:-]*-[-\s|:]*\|?\s*$/.test(row) && row.includes("-");
+
+  const out = [];
+  for (const block of esc(t).split(/\n{2,}/)) {
+    const lines = block.split("\n");
+    if (lines.length >= 2 && lines[0].includes("|") && isSep(lines[1])) {
+      const head = cells(lines[0]).map(c => `<th>${c}</th>`).join("");
+      const body = lines.slice(2).filter(l => l.includes("|"))
+        .map(l => `<tr>${cells(l).map(c => `<td>${c}</td>`).join("")}</tr>`).join("");
+      out.push(`<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`);
+      continue;
+    }
+    const b = block
+      .replace(/^#{1,4}\s*(.+)$/gm, "<h3>$1</h3>")
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/^\s*[-*]\s+(.+)$/gm, "<li>$1</li>")
+      .replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, "<ul>$1</ul>");
+    out.push(b.match(/^<(h3|ul)/) ? b : `<p>${b.replace(/\n/g, "<br>")}</p>`);
+  }
+  return out.join("");
 }
 
 function add(html, cls) {

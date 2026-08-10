@@ -24,16 +24,33 @@ def dedicated_slots(roster_positions: list[str], is_superflex: bool) -> dict[str
     }
 
 
-def replacement_thresholds(players: dict[str, dict], slots: dict[str, int], num_teams: int) -> dict[str, float]:
+def replacement_thresholds(players: dict[str, dict], slots: dict[str, int], num_teams: int,
+                           metric: str = "value") -> dict[str, float]:
+    """Replacement level per position: the Nth-best player, N = every starting slot in
+    the league at that position.
+
+    **`metric` matters, because two different questions use this.** "Can I field a
+    lineup?" is about *current production* (`redraft_value`); "is this a real trade
+    chip?" is about *dynasty value*. Using dynasty value for the first was badly wrong:
+    it asks whether a player beats the 36th-most-*valuable* WR, a pool full of young
+    prospects priced on upside, rather than the 36th-best current producer. Measured on
+    a real league the gap is 2.5x at WR (2,126 vs 855) and 3.2x at TE (2,013 vs 630),
+    which marked a team with three startable WRs and two startable TEs as *critical* at
+    both."""
     thresholds = {}
     for pos, starters_needed in slots.items():
-        pos_values = sorted((info["value"] for info in players.values() if info["position"] == pos), reverse=True)
+        pos_values = sorted((info.get(metric) for info in players.values()
+                             if info["position"] == pos and info.get(metric)), reverse=True)
+        if not pos_values:
+            thresholds[pos] = 0
+            continue
         rank = min(num_teams * starters_needed, len(pos_values)) - 1
         thresholds[pos] = pos_values[max(rank, 0)]
     return thresholds
 
 
-def _usable_by_position(roster: dict, players: dict[str, dict], thresholds: dict[str, float]) -> dict[str, list[dict]]:
+def _usable_by_position(roster: dict, players: dict[str, dict], thresholds: dict[str, float],
+                        metric: str = "redraft_value") -> dict[str, list[dict]]:
     """Every rostered player at each position that clears this league's replacement
     level, best to worst. The one shared walk find_needs and find_surplus both read
     from, so "usable" means exactly the same thing in a need (too few of them) as it
@@ -41,7 +58,7 @@ def _usable_by_position(roster: dict, players: dict[str, dict], thresholds: dict
     by_pos = {pos: [] for pos in POSITIONS}
     for pid in roster["players"] or []:
         info = players.get(pid)
-        if info and info["position"] in by_pos and info["value"] >= thresholds[info["position"]]:
+        if info and info["position"] in by_pos and (info.get(metric) or 0) >= thresholds[info["position"]]:
             by_pos[info["position"]].append({"name": info["name"], "position": info["position"], "value": info["value"]})
     for entries in by_pos.values():
         entries.sort(key=lambda e: -e["value"])
@@ -165,7 +182,9 @@ def _league_setup(league_id: str) -> tuple[dict[str, dict], dict[str, int], dict
 
     players = get_players_with_roles(num_qbs, fmt["num_teams"], fmt["ppr"], fmt["is_dynasty"])
     slots = dedicated_slots(league["roster_positions"], fmt["is_superflex"])
-    thresholds = replacement_thresholds(players, slots, fmt["num_teams"])
+    # Startability uses current production; trade relevance uses dynasty value. Same
+    # function, different question - see replacement_thresholds.
+    thresholds = replacement_thresholds(players, slots, fmt["num_teams"], metric="redraft_value")
     return players, slots, thresholds
 
 
@@ -185,11 +204,13 @@ def league_projected_starters(league_id: str) -> dict[str, set[str]]:
 
 
 def league_thresholds(league_id: str) -> dict[str, float]:
-    """Replacement-level value per position for this league's format - the bar a player
-    needs to clear to plausibly fill a need there, reused by trade_targets.py so it
-    doesn't suggest a near-zero-value player as the fix for a real roster hole."""
-    _, _, thresholds = _league_setup(league_id)
-    return thresholds
+    """Dynasty-value replacement level - the bar for "is this a real trade chip", used by
+    trade_targets for the relevance floor and for value-over-replacement tiering. Kept
+    separate from the redraft-based startability bar used by find_needs."""
+    players, slots, _ = _league_setup(league_id)
+    league = sleeper.get_league(league_id)
+    fmt = sleeper.describe_format(league)
+    return replacement_thresholds(players, slots, fmt["num_teams"], metric="value")
 
 
 def league_needs(league_id: str) -> dict[str, dict]:
