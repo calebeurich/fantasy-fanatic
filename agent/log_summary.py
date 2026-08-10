@@ -35,6 +35,22 @@ def main() -> None:
     if tiers:
         print("format tiers seen:", dict(tiers))
 
+    # Token/cache breakdown - only present on runs logged after this was added, so
+    # it's reported over whatever subset actually has it rather than silently
+    # averaging missing fields as zero.
+    priced = [r for r in runs if r.get("input_tokens") is not None]
+    if priced:
+        created = sum(r.get("cache_creation_tokens") or 0 for r in priced)
+        read = sum(r.get("cache_read_tokens") or 0 for r in priced)
+        print(f"\ntoken data available for {len(priced)}/{len(runs)} run(s):")
+        print(f"  avg input tokens/run:  {sum(r['input_tokens'] for r in priced) / len(priced):,.0f}")
+        print(f"  avg output tokens/run: {sum(r.get('output_tokens') or 0 for r in priced) / len(priced):,.0f}")
+        print(f"  cache created (total): {created:,}  |  cache read (total): {read:,}")
+        if created:
+            # <100% means prefix is being re-cached more than it's reused - the
+            # signature of cache being thrown away between questions.
+            print(f"  cache reuse ratio: {read / created:.2f}x")
+
 
 if __name__ == "__main__":
     main()

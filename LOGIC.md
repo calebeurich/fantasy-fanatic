@@ -499,15 +499,44 @@ level.
 activity (`cache_creation_input_tokens` and `cache_read_input_tokens` both 0) even
 across repeated identical calls seconds apart. Two real, verified causes, not guesses:
 - **Claude Haiku 4.5 requires 4,096+ tokens in a cacheable block before caching
-  activates at all** - silently, no error. Our system prompt + 6 tool schemas don't
-  clear that bar, so caching structurally cannot help at this tool count. This means a
-  RAG/vector-retrieval layer to shrink the tool surface further would be exactly
-  backwards - it would push us further from the threshold, not closer - and padding
-  the prompt just to cross 4,096 tokens would be worse still. Switching to Sonnet
-  (1,024-token threshold) to get caching working was considered and rejected: Sonnet
-  costs more per token even with cache reads, and at this project's actual usage
-  pattern (occasional manual queries, not high-frequency repeated calls), the math
-  doesn't favor it. Caching just doesn't apply to an agent this size, and that's fine.
+  activates at all** - silently, no error. A trivial no-tools call doesn't clear that
+  bar, which is why the original measurement showed zero cache activity.
+
+  > **Correction (measured later, and the original conclusion here was wrong).** This
+  > section previously concluded "caching structurally cannot help at this tool count."
+  > That was an over-generalization from a *trivial* call to *all* calls, and the
+  > Anthropic console contradicted it - showing a real 26% cache hit rate. Measured
+  > directly on a real tool-using question: the cacheable prefix is **~4,714 tokens**,
+  > which *does* clear the 4,096 bar, and caching genuinely works. A controlled test
+  > made this unambiguous - turn 1 of a session: `cache_creation=4,714`,
+  > `cache_read=0`; turn 2 of the *same* session: `cache_read=9,766` (a large, real
+  > hit); a **brand-new session seconds later**: `cache_read=0` again.
+  >
+  > So the accurate picture is: **caching works within a question and is thrown away
+  > between questions.** Each `run_query` opens a fresh `ClaudeSDKClient`, and
+  > something session-unique in the CLI transport's prefix breaks the cache key, so
+  > every question re-pays ~4,700 tokens of cache *creation* - which bills at 1.25x,
+  > i.e. more than plain input. The agent still comes out ahead within a single
+  > question (3-5 turns, later turns reading the cache), which is exactly the ~26% hit
+  > rate the console reports. Only the 5-minute TTL is used; the 1-hour TTL shows
+  > `ephemeral_1h_input_tokens: 0` throughout.
+  >
+  > **Deliberately not "fixed" by reusing sessions across questions.** That would
+  > recover the ~4,700-token-per-question creation cost, but conversation history would
+  > accumulate into the prefix (growing cost per question until it exceeds the saving),
+  > and on a public endpoint one user's context would leak into another's session -
+  > a privacy problem, not just a cost one. The current per-question isolation is the
+  > right default; this is a documented cost, not an outstanding bug.
+  >
+  > The lesson worth keeping: the original claim was measured, but measured on the
+  > wrong thing, and then stated more broadly than the evidence supported. An external
+  > signal (the console dashboard) is what caught it.
+
+  A RAG/vector-retrieval layer to shrink the tool surface would still be backwards
+  here - it would push the prefix back *below* the caching threshold, not above it.
+  Switching to Sonnet (1,024-token threshold) was considered and rejected on cost:
+  Sonnet is more expensive per token even with cache reads, and this project's usage
+  pattern (occasional queries, not high-frequency repeated calls) doesn't favor it.
 - **The SDK auto-loads this repo's own `CLAUDE.md` as project memory by default**
   (`setting_sources` defaults to `None`, not an empty list) - a 38% input-token cut
   (3,332 -> 2,051 tokens, confirmed on an identical call) from setting

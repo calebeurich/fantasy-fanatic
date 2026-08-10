@@ -254,6 +254,21 @@ def _content_text(content) -> str:
     return ""
 
 
+def _token_fields(result) -> dict:
+    """Token and cache counts, not just the dollar total. Measured (see LOGIC.md's
+    prompt-caching section) that ~4.7k tokens of cacheable prefix get re-created on
+    every question because each run opens a fresh session - that's a real, recurring
+    cost that a cost_usd figure alone makes invisible. Logging the breakdown is what
+    makes a future cost regression (or improvement) actually detectable."""
+    usage = getattr(result, "usage", None) or {}
+    return {
+        "input_tokens": usage.get("input_tokens"),
+        "output_tokens": usage.get("output_tokens"),
+        "cache_creation_tokens": usage.get("cache_creation_input_tokens"),
+        "cache_read_tokens": usage.get("cache_read_input_tokens"),
+    }
+
+
 def _observability_fields(tool_calls: list[dict], tool_results: list[dict]) -> dict:
     """The handful of things worth logging out of a run's tool activity: which
     league(s) got touched, what format tier check_league_format found (the
@@ -353,6 +368,7 @@ async def run_query(question: str, verbose: bool = True) -> dict:
             "num_turns": total_turns,
             "cost_usd": result.total_cost_usd if result else None,
             "grounding_retries": retries,
+            **_token_fields(result),
             **_observability_fields(all_tool_calls, all_tool_results),
         })
 
