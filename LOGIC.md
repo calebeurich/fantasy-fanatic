@@ -532,8 +532,42 @@ across repeated identical calls seconds apart. Two real, verified causes, not gu
   > wrong thing, and then stated more broadly than the evidence supported. An external
   > signal (the console dashboard) is what caught it.
 
+  **Where the tokens actually go** (measured, after noticing ~1.4M tokens over ~45
+  questions looked far larger than the information those questions contain):
+
+  | Component | Tokens | Share |
+  |---|---|---|
+  | Our system prompt (10 rules) | 726 | 15% |
+  | Our 7 tool schemas (names + docstrings + signatures) | 586 | 12% |
+  | **`claude` CLI / SDK injected context** | **~3,402** | **72%** |
+  | Total per-question prefix | 4,714 | |
+
+  Tool *results* were the intuitive suspect and turned out not to be the problem -
+  measured on a real league, the owner-filtered `get_team_state` is ~742 tokens,
+  `get_trade_targets` ~1,074, `get_roster_needs` ~201, `check_league_format` ~16. Only
+  unfiltered `get_team_state` is large (~7,846), which is why the `owner_name` filter
+  added earlier matters more than it first appeared.
+
+  **The dominant cost is the Agent SDK's own transport overhead, which this project
+  cannot trim.** The SDK shells out to the `claude` CLI, and that CLI injects a
+  substantial fixed system context of its own. Deleting our entire system prompt and
+  every tool description would cut 28% of the prefix at most. This is a real,
+  quantified architectural trade: the Agent SDK + MCP design costs ~3,400 tokens per
+  question versus calling the Anthropic API directly with inline tool definitions. At
+  this project's volume that's a few tenths of a cent per question and clearly worth
+  the architecture; for a high-volume product it would be worth reconsidering, and
+  knowing the number is what makes that a decision rather than a guess.
+
+  **Per-session clients (`agent/sessions.py`) are the available mitigation**, and this
+  is the strongest argument for that work: a fresh client per question re-*creates* the
+  4,714-token prefix at 1.25x cache-creation pricing, while a persistent session
+  re-*reads* it at 0.1x. That turns roughly 5,900 token-equivalents per follow-up
+  question into roughly 470 - about a 92% reduction on the prefix for every question
+  after the first in a conversation.
+
   A RAG/vector-retrieval layer to shrink the tool surface would still be backwards
-  here - it would push the prefix back *below* the caching threshold, not above it.
+  here - it would push the prefix back *below* the caching threshold, not above it,
+  and our tool schemas are only 586 tokens anyway, so there is nearly nothing to win.
   Switching to Sonnet (1,024-token threshold) was considered and rejected on cost:
   Sonnet is more expensive per token even with cache reads, and this project's usage
   pattern (occasional queries, not high-frequency repeated calls) doesn't favor it.
