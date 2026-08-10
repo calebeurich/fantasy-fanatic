@@ -535,12 +535,25 @@ across repeated identical calls seconds apart. Two real, verified causes, not gu
   **Where the tokens actually go** (measured, after noticing ~1.4M tokens over ~45
   questions looked far larger than the information those questions contain):
 
-  | Component | Tokens | Share |
+  > **First attempt at this breakdown was wrong, and the correction matters.** It
+  > estimated our tool cost from docstring length (586 tokens) and attributed the
+  > remaining ~3,400 to "`claude` CLI overhead we don't control - 72%". Both parts were
+  > wrong. Tool definitions are sent as full JSON Schema, not docstrings, so the real
+  > figure is 1,044. And the CLI floor was never measured, just inferred by subtraction.
+  > Measuring it directly (bare options: one-line system prompt, no tools, no MCP
+  > server) came back at **136 tokens** - essentially nothing.
+
+  Measured by adding one layer at a time, each a real API call:
+
+  | Configuration | Total tokens | Added by that layer |
   |---|---|---|
-  | Our system prompt (10 rules) | 726 | 15% |
-  | Our 7 tool schemas (names + docstrings + signatures) | 586 | 12% |
-  | **`claude` CLI / SDK injected context** | **~3,402** | **72%** |
-  | Total per-question prefix | 4,714 | |
+  | Bare CLI (1-line prompt, no tools) | 136 | — (the actual SDK floor) |
+  | + our real system prompt | 819 | **+683** (ours) |
+  | + MCP server and 7 tools | 2,695 | **+1,876** (1,044 tool schemas + ~830 MCP framing) |
+
+  So roughly **65% of the baseline is our own content** - the system prompt and the
+  tool descriptions - not framework overhead. The SDK is close to free; we are the
+  expensive part.
 
   Tool *results* were the intuitive suspect and turned out not to be the problem -
   measured on a real league, the owner-filtered `get_team_state` is ~742 tokens,
@@ -548,15 +561,23 @@ across repeated identical calls seconds apart. Two real, verified causes, not gu
   unfiltered `get_team_state` is large (~7,846), which is why the `owner_name` filter
   added earlier matters more than it first appeared.
 
-  **The dominant cost is the Agent SDK's own transport overhead, which this project
-  cannot trim.** The SDK shells out to the `claude` CLI, and that CLI injects a
-  substantial fixed system context of its own. Deleting our entire system prompt and
-  every tool description would cut 28% of the prefix at most. This is a real,
-  quantified architectural trade: the Agent SDK + MCP design costs ~3,400 tokens per
-  question versus calling the Anthropic API directly with inline tool definitions. At
-  this project's volume that's a few tenths of a cent per question and clearly worth
-  the architecture; for a high-volume product it would be worth reconsidering, and
-  knowing the number is what makes that a decision rather than a guess.
+  **This kills the cost argument for dropping the Agent SDK.** The earlier (wrong)
+  version of this section suggested calling the Anthropic API directly to escape ~3,400
+  tokens of framework overhead. That overhead does not exist - switching to the raw API
+  would carry the same system prompt and the same tool schemas and save on the order of
+  a hundred tokens. If the SDK is ever replaced it should be for a different reason
+  (control, dependencies, portability), not this one.
+
+  **What is actually trimmable, and the reason not to rush it:** the system prompt is 10
+  rules and the tool descriptions are deliberately wordy - and nearly every bit of that
+  verbosity was added to fix a real observed failure (rule 6's grounding constraint,
+  rule 8's tool-choice guidance, rule 10's stop-on-error, `get_team_state`'s "this IS
+  the authoritative classification, don't re-derive it from roster_detail"). Cutting
+  them would save maybe 500-800 tokens per question and risk regressing bugs that took
+  real debugging to find. With per-session prompt caching now in place, that prefix is
+  re-read at 0.1x rather than re-created anyway, so the remaining upside is small.
+  Trimming is a real option, but it should be driven by the eval suite, not by
+  eyeballing which sentences look long.
 
   **Per-session clients (`agent/sessions.py`) are the available mitigation**, and this
   is the strongest argument for that work: a fresh client per question re-*creates* the
