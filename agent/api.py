@@ -13,6 +13,8 @@ Two cost ceilings apply here, at different units:
 """
 
 import asyncio
+import io
+import subprocess
 import sys
 
 from fastapi import FastAPI
@@ -73,6 +75,31 @@ async def diagnostics() -> dict:
         "path": os.environ.get("PATH"),
     }
 
+    # Run the server directly with captured output. The MCP handshake failing with
+    # "Connection closed" means the subprocess died before it could respond, and its
+    # stderr went nowhere - so an import-time crash is invisible through the MCP client
+    # alone. Spawning it plainly is the only way to actually read the traceback.
+    # Note: *timing out here is the healthy result* - it means the server started and
+    # is waiting on stdin rather than crashing.
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(MCP_SERVER_PATH)],
+            capture_output=True, text=True, timeout=90, input="",
+        )
+        info["import_check"] = {
+            "returncode": proc.returncode,
+            "stdout": proc.stdout[-1500:],
+            "stderr": proc.stderr[-4000:],
+        }
+    except subprocess.TimeoutExpired as e:
+        info["import_check"] = {
+            "timed_out_which_means_it_started_ok": True,
+            "stderr": (e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr or ""))[-4000:],
+        }
+    except Exception as e:
+        info["import_check"] = {"spawn_error": f"{type(e).__name__}: {e}"}
+
+    errlog = io.StringIO()
     try:
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client
@@ -80,7 +107,8 @@ async def diagnostics() -> dict:
         params = StdioServerParameters(command=sys.executable, args=[str(MCP_SERVER_PATH)])
 
         async def _list_tools():
-            async with stdio_client(params) as (read, write):
+            # errlog captures the subprocess's stderr, which otherwise disappears.
+            async with stdio_client(params, errlog=errlog) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     return [t.name for t in (await session.list_tools()).tools]
@@ -91,7 +119,8 @@ async def diagnostics() -> dict:
     except Exception as e:
         info["mcp_ok"] = False
         info["mcp_error"] = f"{type(e).__name__}: {e}"
-        info["mcp_traceback"] = traceback.format_exc()[-3000:]
+        info["mcp_traceback"] = traceback.format_exc()[-2000:]
+    info["mcp_subprocess_stderr"] = errlog.getvalue()[-4000:]
 
     return info
 
