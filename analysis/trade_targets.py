@@ -133,7 +133,9 @@ def find_efficiency_swaps(roster_entries: list[dict], projected: set[str]) -> li
                             f"{alt['name']} produces {round(retained * 100)}% of what "
                             f"{starter['name']} does this season but costs {round(freed)} less "
                             f"in dynasty value - selling {starter['name']} converts future "
-                            f"premium into trade capital without losing much now"
+                            f"premium into trade capital without losing much now. At this "
+                            f"margin neither is clearly the better start week to week, so "
+                            f"this is a value decision, not a lineup upgrade"
                         ),
                     })
     swaps.sort(key=lambda s: -s["dynasty_value_freed"])

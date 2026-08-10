@@ -353,6 +353,27 @@ Missing redraft prices sort last, which is safe rather than lossy: across a real
 league the highest-dynasty rostered player without one was 1,350, far below every
 positional replacement level.
 
+**Flex slots are now modelled** (`lineup_slots`, and the flex-filling half of
+`projected_starters`). `dedicated_slots` ignores flex - a disclosed approximation that's
+fine for "how many of this position must I have", and wrong for building a lineup. The
+real league shape is QB 1 / RB 2 / WR 3 / TE 1 / **FLEX 2 / SUPER_FLEX 1**: ten starters,
+three of them flexible. Modelling only dedicated slots claimed *eight*, and separately
+folded SUPER_FLEX into a second dedicated QB - asserting a QB must fill a slot any
+position can.
+
+The consequence was concrete: a team with three excellent backs starts all three (two at
+RB, one at FLEX), but the model saw the third as spare parts and offered him. rjl22's
+projected lineup now comes out as all of Bijan / McCaffrey / Jeanty, with the superflex
+QB2 in SUPER_FLEX - ten players, matching the league's ten slots. Dedicated slots fill
+first, then flex most-restrictive-first, so a SUPER_FLEX doesn't take a player only a
+narrower FLEX could have used.
+
+*Framing note on near-equal swaps*: when `find_efficiency_swaps` reports 99-102%
+production retained, that is explicitly **not** "start A, bench B". Two players that
+close trade places week to week on matchups, and keeping both is legitimate depth rather
+than redundancy. The note says so - it's a value decision about which one to sell, not a
+lineup upgrade.
+
 **Pick equivalents** (`team_values.pick_equivalent`): FantasyCalc prices rookie picks on
 the same scale as players, and this project already fetched them for `pick_capital` -
 so translating a value into "about a 2028 3rd" is a lookup, not a model. Added because

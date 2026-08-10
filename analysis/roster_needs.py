@@ -72,7 +72,33 @@ def find_surplus(roster: dict, players: dict[str, dict], slots: dict[str, int], 
     return {pos: usable[pos][slots[pos]:] for pos in POSITIONS if len(usable[pos]) > slots[pos]}
 
 
-def projected_starters(roster: dict, players: dict[str, dict], slots: dict[str, int]) -> set[str]:
+# Which positions each flex-type slot can be filled with. Sleeper names these in
+# `roster_positions` alongside the dedicated ones.
+FLEX_ELIGIBILITY = {
+    "FLEX": ("RB", "WR", "TE"),
+    "WRRB_FLEX": ("RB", "WR"),
+    "REC_FLEX": ("WR", "TE"),
+    "SUPER_FLEX": ("QB", "RB", "WR", "TE"),
+}
+
+
+def lineup_slots(roster_positions: list[str]) -> tuple[dict[str, int], list[tuple[str, ...]]]:
+    """Split a league's roster_positions into dedicated slots and flex slots.
+
+    `dedicated_slots` deliberately ignores flex (a disclosed approximation), which is
+    fine for "how many of this position must I have" but wrong for building a lineup.
+    A real league here runs QB 1 / RB 2 / WR 3 / TE 1 / FLEX 2 / SUPER_FLEX 1 - ten
+    starters, of which three are flexible. Ignoring those three both under-counts the
+    lineup and, by folding SUPER_FLEX into a second dedicated QB, asserts a QB must fill
+    it when any position can.
+    """
+    dedicated = {pos: roster_positions.count(pos) for pos in POSITIONS}
+    flex = [FLEX_ELIGIBILITY[p] for p in roster_positions if p in FLEX_ELIGIBILITY]
+    return dedicated, flex
+
+
+def projected_starters(roster: dict, players: dict[str, dict], slots: dict[str, int],
+                       flex: list[tuple[str, ...]] | None = None) -> set[str]:
     """Names of the players a team would actually start, derived from value and the
     league's own slot counts.
 
@@ -95,19 +121,37 @@ def projected_starters(roster: dict, players: dict[str, dict], slots: dict[str, 
     real 12-team league was 1,350 - far below every positional replacement level, so
     nobody actually startable is affected.
 
-    Top `slots[pos]` at each position. Flex slots aren't modelled (same approximation as
-    `dedicated_slots`), so this is conservative: it can under-count starters, never
-    over-count them.
+    **Flex slots are filled properly**, which matters more than it sounds. A real league
+    runs QB 1 / RB 2 / WR 3 / TE 1 / FLEX 2 / SUPER_FLEX 1 - so a team with three
+    excellent RBs starts all three (two at RB, one at FLEX), and a superflex QB2 occupies
+    the SUPER_FLEX. Modelling only dedicated slots claimed 8 starters where there are 10
+    and treated the third RB as spare parts. Dedicated slots fill first, then flex, most
+    restrictive first so a SUPER_FLEX doesn't take a player only a narrower FLEX could use.
     """
     by_pos: dict[str, list[tuple[float, str]]] = {pos: [] for pos in POSITIONS}
     for pid in roster["players"] or []:
         info = players.get(pid)
         if info and info["position"] in by_pos:
             by_pos[info["position"]].append((info.get("redraft_value") or 0, info["name"]))
-    starters = set()
+
+    starters: set[str] = set()
+    remaining: dict[str, list[tuple[float, str]]] = {}
     for pos, entries in by_pos.items():
         entries.sort(reverse=True)
-        starters.update(name for _, name in entries[:slots[pos]])
+        take = slots.get(pos, 0)
+        starters.update(name for _, name in entries[:take])
+        remaining[pos] = entries[take:]
+
+    # Then flex, most restrictive slot first - otherwise a SUPER_FLEX (any position)
+    # can take a player that a narrower FLEX (RB/WR/TE only) was the sole home for.
+    for eligible in sorted(flex or [], key=len):
+        pool = [(v, n) for pos in eligible for v, n in remaining.get(pos, [])]
+        if not pool:
+            continue
+        value, name = max(pool)
+        starters.add(name)
+        for pos in eligible:
+            remaining[pos] = [(v, n) for v, n in remaining.get(pos, []) if n != name]
     return starters
 
 
@@ -129,9 +173,13 @@ def league_projected_starters(league_id: str) -> dict[str, set[str]]:
     """Projected starting lineup per roster, keyed by owner_id - the value-derived
     version of "who's actually in the lineup", used by trade_targets so it never
     offers away a real starter on the strength of a stale preseason snapshot."""
-    players, slots, _ = _league_setup(league_id)
+    players, _, _ = _league_setup(league_id)
+    league = sleeper.get_league(league_id)
+    # Dedicated + flex parsed straight from roster_positions, rather than the
+    # needs-oriented dedicated_slots (which folds SUPER_FLEX into a second QB).
+    dedicated, flex = lineup_slots(league["roster_positions"])
     return {
-        roster["owner_id"]: projected_starters(roster, players, slots)
+        roster["owner_id"]: projected_starters(roster, players, dedicated, flex)
         for roster in sleeper.get_rosters(league_id)
     }
 

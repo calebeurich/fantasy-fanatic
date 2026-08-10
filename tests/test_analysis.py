@@ -223,6 +223,41 @@ def test_projected_starters_rank_by_current_production_not_dynasty_value():
     assert projected == {"P0", "P2"}, "redraft ranking starts McCaffrey over the rookie"
 
 
+def test_flex_slots_let_three_good_backs_all_start():
+    """Real league shape: QB 1 / RB 2 / WR 3 / TE 1 / FLEX 2 / SUPER_FLEX 1. A team with
+    three excellent RBs starts all three - two at RB, one at FLEX - and modelling only
+    dedicated slots claimed 8 starters where there are 10, treating the third back as
+    spare parts. It also folded SUPER_FLEX into a second dedicated QB, asserting a QB
+    must fill a slot any position can."""
+    positions = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "FLEX", "SUPER_FLEX"] + ["BN"] * 14
+    dedicated, flex = roster_needs.lineup_slots(positions)
+    assert dedicated == {"QB": 1, "RB": 2, "WR": 3, "TE": 1}
+    assert len(flex) == 3, "two FLEX plus one SUPER_FLEX"
+
+    players = _players([("RB", 10255), ("RB", 7008), ("RB", 4367), ("QB", 3528), ("QB", 3288)])
+    for i, redraft in enumerate([10004, 6290, 6518, 4707, 2683]):
+        players[str(i)]["redraft_value"] = redraft
+    roster = {"players": list(players), "starters": []}
+
+    starters = roster_needs.projected_starters(roster, players, dedicated, flex)
+    assert {"P0", "P1", "P2"} <= starters, "all three backs start - two at RB, one at FLEX"
+    assert "P4" in starters, "the second QB fills SUPER_FLEX"
+
+
+def test_flex_fills_most_restrictive_slot_first():
+    """A SUPER_FLEX takes any position, so filling it before a narrower FLEX can strand
+    the narrower slot. Here the only RB/WR/TE-eligible player must go to FLEX, leaving
+    the QB for SUPER_FLEX - filling greedily in the other order would waste both."""
+    dedicated = {"QB": 0, "RB": 0, "WR": 0, "TE": 0}
+    flex = [("QB", "RB", "WR", "TE"), ("RB", "WR", "TE")]
+    players = _players([("QB", 9000), ("WR", 100)])
+    players["0"]["redraft_value"] = 9000
+    players["1"]["redraft_value"] = 100
+    roster = {"players": list(players), "starters": []}
+
+    assert roster_needs.projected_starters(roster, players, dedicated, flex) == {"P0", "P1"}
+
+
 def test_projected_starters_sorts_missing_redraft_prices_last():
     """Redraft covers the top ~200 players, so deep dynasty-only assets have no price.
     Safe to treat as non-starters: across a real 12-team league the highest-dynasty
