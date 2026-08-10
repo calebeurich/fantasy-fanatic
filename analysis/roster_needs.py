@@ -72,6 +72,33 @@ def find_surplus(roster: dict, players: dict[str, dict], slots: dict[str, int], 
     return {pos: usable[pos][slots[pos]:] for pos in POSITIONS if len(usable[pos]) > slots[pos]}
 
 
+def projected_starters(roster: dict, players: dict[str, dict], slots: dict[str, int]) -> set[str]:
+    """Names of the players a team would actually start, derived from value and the
+    league's own slot counts.
+
+    Deliberately *not* Sleeper's `starters` field. That reflects whatever the current
+    week's lineup happens to be, which is meaningless before Week 1 - in a real
+    superflex league (2 QB slots) the snapshot listed exactly one QB as a starter, so
+    the team's obvious QB2 (C.J. Stroud, ascending, 3,288 value) was classed as bench
+    and offered up as spare parts. In superflex especially, a second QB is among the
+    most valuable things on a roster, not dead weight.
+
+    Top `slots[pos]` by value at each position. Flex slots aren't modelled (same
+    approximation as `dedicated_slots`), so this is conservative: it can under-count
+    starters, never over-count them.
+    """
+    by_pos: dict[str, list[tuple[float, str]]] = {pos: [] for pos in POSITIONS}
+    for pid in roster["players"] or []:
+        info = players.get(pid)
+        if info and info["position"] in by_pos:
+            by_pos[info["position"]].append((info["value"], info["name"]))
+    starters = set()
+    for pos, entries in by_pos.items():
+        entries.sort(reverse=True)
+        starters.update(name for _, name in entries[:slots[pos]])
+    return starters
+
+
 def _league_setup(league_id: str) -> tuple[dict[str, dict], dict[str, int], dict[str, float]]:
     """Shared setup every per-team function below needs: the player value pool,
     starter slot counts, and replacement-level thresholds for this league's format -
@@ -84,6 +111,17 @@ def _league_setup(league_id: str) -> tuple[dict[str, dict], dict[str, int], dict
     slots = dedicated_slots(league["roster_positions"], fmt["is_superflex"])
     thresholds = replacement_thresholds(players, slots, fmt["num_teams"])
     return players, slots, thresholds
+
+
+def league_projected_starters(league_id: str) -> dict[str, set[str]]:
+    """Projected starting lineup per roster, keyed by owner_id - the value-derived
+    version of "who's actually in the lineup", used by trade_targets so it never
+    offers away a real starter on the strength of a stale preseason snapshot."""
+    players, slots, _ = _league_setup(league_id)
+    return {
+        roster["owner_id"]: projected_starters(roster, players, slots)
+        for roster in sleeper.get_rosters(league_id)
+    }
 
 
 def league_thresholds(league_id: str) -> dict[str, float]:

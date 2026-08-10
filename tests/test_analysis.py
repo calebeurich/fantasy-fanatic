@@ -173,6 +173,61 @@ def test_offerable_names_covers_every_find_targets_mode():
     assert trade_targets.offerable_names(middling) == {"D", "E", "F"}
 
 
+def test_age_mix_ships_with_an_explanation_not_a_bare_number():
+    """Regression guard for a real confabulation: the field was once emitted as a bare
+    {"diff": -11}, and the model reliably invented meanings for it - "below their
+    expected win total", "underperforming by 25 points" - none of which exist, least of
+    all in a preseason with no games played. An unlabeled number in a tool result is an
+    invitation to make one up, so the label must ship with the value."""
+    roster, players = _roster([("RB", 1000), ("RB", 1000)])
+    for info in players.values():
+        info["age"] = 30
+    result = team_state.classify(roster, players, threshold=10_000)
+
+    assert "diff" not in result, "bare unlabelled 'diff' must not come back"
+    assert result["age_mix_score"] < 0
+    note = result["age_mix_note"].lower()
+    assert "age-composition" in note
+    assert "says nothing about wins" in note, "the note must rule out the wrong reading"
+
+
+def test_projected_starters_uses_value_not_the_live_snapshot():
+    """Sleeper's `starters` field is the current week's lineup, which is meaningless
+    before Week 1. In a real superflex league (2 QB slots) it listed only one QB, so the
+    team's obvious QB2 was classed as bench and offered away as spare parts. Projected
+    starters are derived from value and the league's own slot counts instead."""
+    slots = {"QB": 2, "RB": 2, "WR": 3, "TE": 1}
+    players = _players([("QB", 3528), ("QB", 3288), ("QB", 2735), ("QB", 1325)])
+    # Snapshot claims only the first QB starts - the exact preseason bug.
+    roster = {"players": list(players), "starters": ["0"]}
+
+    projected = roster_needs.projected_starters(roster, players, slots)
+    assert "P0" in projected and "P1" in projected, "top 2 QBs by value are the lineup"
+    assert "P2" not in projected and "P3" not in projected, "QB3/QB4 are genuinely spare"
+
+
+def test_win_now_buyer_sees_production_priced_targets_first():
+    """A Win-Now team buys current production. This project's own pricing model calls
+    declining players 'production-priced' and prime ones 'upside-priced, may cost more
+    than the fit justifies' - so ordering purely by (trade activity, value) contradicted
+    it. A real Win-Now team was handed six buy targets, every one prime."""
+    # _buy_path also builds the offer pool, so `me` needs those lists even though this
+    # test only asserts on target ordering.
+    me = {"owner_id": "me", "effective_strategy": "Win-Now", "sellable": [], "tradeable_surplus": []}
+    thresholds = {"WR": 100}
+    seller = {
+        "owner_id": "them", "owner": "them", "effective_strategy": "Rebuilding",
+        "sellable": [
+            {"name": "PrimeGuy", "position": "WR", "value": 4000, "bucket": "prime", "is_starter": False},
+            {"name": "AgingGuy", "position": "WR", "value": 2000, "bucket": "declining", "is_starter": False},
+        ],
+    }
+    out = trade_targets._buy_path(me, [seller], {"me": {"WR": "critical"}}, thresholds,
+                                  trade_counts={}, max_per_position=5, projected=set())
+    assert [t["name"] for t in out["targets"]][0] == "AgingGuy", \
+        "declining (production-priced) should outrank higher-value prime for a Win-Now buyer"
+
+
 def test_offer_pool_never_includes_a_position_the_team_needs():
     """Trading a WR while WR is your own need just moves the shortage. Real bug this
     guards: a Win-Now team with a critical WR need was told to offer its WRs."""

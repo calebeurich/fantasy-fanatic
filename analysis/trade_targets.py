@@ -32,23 +32,33 @@ def _with_trade_note(entry: dict, other: dict, trade_counts: dict[str, int]) -> 
     return {**entry, "from_owner": other["owner"], "from_owner_trades": trade_counts.get(other["owner_id"], 0)}
 
 
-def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, str]) -> list[dict]:
+def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, str],
+                   projected: set[str] | None = None) -> list[dict]:
     """What you could realistically offer: bench value that isn't elite enough to be a
     cornerstone but also isn't part of your actual lineup (e.g. a 3rd QB in a 2-QB-max
     format), plus young surplus - never a valuable *starter*, even a non-cornerstone
     one, since that's not surplus, that's your team. Also never a position you
     yourself have a need at - trading away a WR while WR is your own critical need
     just moves the shortage, it doesn't fix anything. Cheapest give-up cost first."""
+    # `projected` (value-derived, from roster_needs.projected_starters) is preferred over
+    # each entry's `is_starter`, which comes from Sleeper's current-week snapshot and is
+    # meaningless before Week 1. With the snapshot alone, a superflex team's QB2 was
+    # being offered away as surplus because the preseason lineup listed only one QB.
+    def is_lineup(entry: dict) -> bool:
+        return entry["name"] in projected if projected is not None else entry["is_starter"]
+
     bench_sellable = [e for e in me["sellable"]
-                       if not e["is_starter"] and e["position"] not in needs
+                       if not is_lineup(e) and e["position"] not in needs
                        and team_state.clears_relevance_floor(e, thresholds)]
     surplus = [e for e in me["tradeable_surplus"]
-               if e["position"] not in needs and team_state.clears_relevance_floor(e, thresholds)]
+               if not is_lineup(e) and e["position"] not in needs
+               and team_state.clears_relevance_floor(e, thresholds)]
     return bench_sellable + surplus
 
 
 def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds: dict[str, float],
-              trade_counts: dict[str, int], max_per_position: int) -> dict:
+              trade_counts: dict[str, int], max_per_position: int,
+              projected: set[str] | None = None) -> dict:
     """The push case: fill needs with sellable value from Rebuilding teams."""
     my_needs = needs_by_owner_id.get(me["owner_id"], {})
     # Critical needs (can't fill the position at all) get searched before thin ones
@@ -67,10 +77,24 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
                     continue
                 pos_targets.append({"position": pos, "need_level": my_needs[pos],
                                      **_with_trade_note(player, other, trade_counts)})
-        pos_targets.sort(key=lambda t: (-t["from_owner_trades"], -t["value"]))
+        # Window fit before raw value. A Win-Now buyer wants *current production*, and
+        # this project's own pricing model says declining players are "production-priced"
+        # while prime ones are "upside-priced, may cost more than the fit justifies" -
+        # their value bakes in future growth a win-now team isn't buying. Sorting only by
+        # (trade activity, value) contradicted that: a real Win-Now team was handed six
+        # buy targets, every one of them prime, and none of the cheaper production it
+        # actually needed. Rebuilding/Middling buyers keep the old ordering, since they
+        # have no reason to prefer aging players.
+        prefer_production = me["effective_strategy"] == "Win-Now"
+        pos_targets.sort(key=lambda t: (
+            0 if (prefer_production and t["bucket"] == "declining") else 1,
+            -t["from_owner_trades"],
+            -t["value"],
+        ))
         targets += pos_targets[:max_per_position]
 
-    return {"needs": my_needs, "targets": targets, "my_offers": _my_offer_pool(me, thresholds, my_needs)}
+    return {"needs": my_needs, "targets": targets,
+            "my_offers": _my_offer_pool(me, thresholds, my_needs, projected)}
 
 
 def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trade_counts: dict[str, int]) -> dict:
@@ -103,6 +127,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     needs_by_owner_id = roster_needs.league_needs(league_id)
     thresholds = roster_needs.league_thresholds(league_id)
     trade_counts = trade_activity.get_trade_counts(league_id)
+    projected_by_owner = roster_needs.league_projected_starters(league_id)
 
     me = next((r for r in states if owner_query.lower() in r["owner"].lower()), None)
     if me is None:
@@ -112,6 +137,8 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     # starting-lineup needs with proven vets - it wants to sell what age value it has
     # left and stockpile youth/picks instead. Buy-target-by-need only makes sense for
     # a team actually trying to win now.
+    projected = projected_by_owner.get(me["owner_id"], set())
+
     if me["effective_strategy"] == "Rebuilding":
         return {"me": me, "mode": "rebuild", **_pivot_path(me, states, thresholds, trade_counts)}
 
@@ -122,11 +149,13 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         # season record - a Middling team two games out of a playoff spot should push,
         # one that's clearly out should pivot even mid-season) - logged in LOGIC.md.
         return {"me": me, "mode": "middling",
-                "push": _buy_path(me, states, needs_by_owner_id, thresholds, trade_counts, max_per_position),
+                "push": _buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
+                                  max_per_position, projected),
                 "pivot": _pivot_path(me, states, thresholds, trade_counts)}
 
     return {"me": me, "mode": "buy",
-            **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts, max_per_position)}
+            **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
+                        max_per_position, projected)}
 
 
 SWAP_ELIGIBLE_STRATEGIES = ("Win-Now", "Middling")

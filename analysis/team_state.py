@@ -98,7 +98,22 @@ def classify(roster: dict, players: dict[str, dict], threshold: float) -> dict:
     tradeable_surplus.sort(key=lambda e: -e["value"])
     sellable.sort(key=lambda e: -e["value"])
 
-    return {"state": state, "diff": round(diff), "cornerstones": cornerstones, "win_now_core": win_now_core,
+    # Named and explained rather than emitted as a bare `diff`. When this was just
+    # {"diff": -11}, the model reliably invented a meaning for it - describing teams as
+    # "below their expected win total", "underperforming by 25 points", "13 points below
+    # median". None of that exists: it's an age-composition percentage, and there are no
+    # wins to be below in the preseason. An unlabeled number in a tool result is an
+    # invitation to confabulate, so the label ships with the value.
+    lean = ("more declining than ascending" if diff < 0 else
+            "more ascending than declining" if diff > 0 else "evenly split")
+    age_mix_note = (
+        f"Starter value is {abs(round(diff))}% {lean} (ascending {round(asc_pct)}%, "
+        f"declining {round(dec_pct)}%). This is a roster age-composition measure only - "
+        f"it says nothing about wins, points scored, or performance."
+    )
+    return {"state": state, "age_mix_score": round(diff), "age_mix_note": age_mix_note,
+            "ascending_pct": round(asc_pct), "declining_pct": round(dec_pct),
+            "cornerstones": cornerstones, "win_now_core": win_now_core,
             "tradeable_surplus": tradeable_surplus[:5], "sellable": sellable}
 
 
@@ -198,7 +213,8 @@ def main(league_id: str) -> None:
         if row["effective_strategy"] == "Rebuilding" and not row["owns_next_first"]:
             tank_note = " [doesn't own next 1st - tanking wouldn't even help them]"
         print(f"  {row['starter_value_rank']}. {row['owner']}: {row['effective_strategy']}{tank_note}  "
-              f"[{context}, starter value rank {row['starter_value_rank']}/{len(rows)}, asc-dec diff={row['diff']}]")
+              f"[{context}, starter value rank {row['starter_value_rank']}/{len(rows)}, "
+              f"age-mix {row['age_mix_score']:+d}]")
         names = lambda entries: ", ".join(e["name"] for e in entries)
         print(f"       cornerstones: {names(row['cornerstones']) if row['cornerstones'] else 'none'}")
         if row["win_now_core"]:

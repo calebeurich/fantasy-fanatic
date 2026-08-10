@@ -247,6 +247,38 @@ startup-draft strategy alone with zero trades, or stay untraded for reasons unre
 freshness - but it's simple, honest about what it actually checks, and directly
 testable, unlike an arbitrary numeric cutoff on `diff` spread would be.
 
+**Three analysis bugs found by reading a real answer critically** (all fixed in Python,
+so they propagate everywhere rather than needing a prompt rule):
+
+- **A bare `diff` field was an invitation to confabulate.** The tool returned
+  `{"diff": -11}` with no units or meaning, and the model reliably invented one -
+  describing teams as "below their expected win total", "underperforming by 25 points",
+  "13 points below median". None of that exists; it's `ascending% - declining%` of
+  starter value, and in the preseason there are no wins to be below. Replaced with
+  `age_mix_score`, `ascending_pct`, `declining_pct` and an `age_mix_note` that states
+  outright: *"This is a roster age-composition measure only - it says nothing about
+  wins, points scored, or performance."* The general lesson: an unlabelled number in a
+  tool result will get a meaning attached to it, so the label has to ship with the value.
+
+- **`is_starter` came from Sleeper's live snapshot, which is meaningless in the
+  preseason.** In a real superflex league (2 QB slots) the current-week lineup listed
+  exactly one QB, so the team's obvious QB2 - C.J. Stroud, ascending, 3,288 value - was
+  classed as bench and offered away as spare parts. In superflex a second QB is among
+  the most valuable things on a roster, not dead weight.
+  `roster_needs.projected_starters` derives the lineup from value and the league's own
+  slot counts instead, and `trade_targets` uses that. Precise rather than blunt after
+  the fix: Stroud disappears from the offer pool while Sam Darnold, genuinely QB3 in a
+  2-QB league, correctly remains.
+
+- **Buy targets ignored window fit.** Targets were sorted by `(trade activity, value)`
+  only, which contradicted this project's own pricing model - `BUY_PRICE_NOTE` calls
+  declining players "production-priced" and prime ones "upside-priced, may cost more
+  than the fit justifies", because prime value bakes in future growth a win-now team
+  isn't buying. A real Win-Now team was handed six buy targets, every one of them prime,
+  and none of the cheaper production it actually needed. Win-Now buyers now sort
+  production-priced first; Rebuilding and Middling buyers keep the old ordering, having
+  no reason to prefer aging players.
+
 ## Positional needs (`roster_needs.py`)
 
 "Usable" is relative to the league's own format, not a hardcoded value cutoff:
