@@ -81,14 +81,37 @@ leagues are a documented, unfixable-at-source gap: FantasyCalc's API has no para
 for it, and inventing a correction multiplier without data to calibrate against would be
 a guess dressed as a feature.
 
-## Evals
+## Tests and evals
 
-7 cases, run against **live league data** with ground truth recomputed at eval time from
-the same Python the tools call — so cases can't go stale as real rosters change.
+Two layers, deliberately, because they catch opposite failures.
+
+**Unit tests — free, offline, instant.** 26 tests over the analysis heuristics and the
+agent infrastructure. Almost every rule in `analysis/` is a pure function taking plain
+data, so these need no fixtures and no network. They assert the *boundaries* the
+heuristics turn on — exact age cutoffs, the 50%/25% relevance fractions, need-vs-surplus
+symmetry, and regression guards for real bugs (never offer a starter, never offer a
+position you need).
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/ -q
+```
+
+Verified to actually bite: deliberately changing the RB decline age from 27 to 99 fails
+2 tests rather than passing quietly.
+
+**Evals — 7 cases, real API calls (~$0.11/run).** These test *agent behavior*: correct
+tool selection, non-dynasty refusal, resistance to instruction-override attempts,
+off-topic scope refusal, trade-suggestion grounding, and graceful handling of a
+nonexistent league ID. Ground truth is recomputed at eval time from the same Python the
+tools call, so cases can't go stale as real rosters change.
 
 ```bash
 python -m agent.evals
 ```
+
+The split matters: the evals would happily pass while a threshold was silently wrong,
+and the unit tests would happily pass while the agent ignored its instructions.
 
 Covers: correct tool selection, non-dynasty league refusal, trade-target grounding,
 resistance to instruction-override attempts, off-topic scope refusal, and graceful

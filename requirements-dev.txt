@@ -1,0 +1,5 @@
+# Development-only. Deliberately separate from requirements.txt so pytest doesn't
+# get installed into the Cloud Run image - the container has no reason to carry a
+# test runner, and image size is billed (Artifact Registry's free tier is 0.5 GB).
+-r requirements.txt
+pytest==9.1.1
