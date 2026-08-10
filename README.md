@@ -113,6 +113,16 @@ python -m agent.evals
 The split matters: the evals would happily pass while a threshold was silently wrong,
 and the unit tests would happily pass while the agent ignored its instructions.
 
+**CI/CD.** The unit suite runs on every push and PR via GitHub Actions, and deployment
+to Cloud Run is gated on it passing — `deploy` triggers on `workflow_run` and checks
+`conclusion == 'success'`, since that event fires on failure too. Auth is Workload
+Identity Federation rather than a stored service account key: each run exchanges
+GitHub's OIDC token for a short-lived GCP token, so no long-lived credential lives in
+GitHub secrets, and the identity pool is pinned to this repository. The Cloud Run
+settings that matter (`--concurrency 1`, `--max-instances 1`, `2Gi`, gen2) are declared
+in the workflow rather than existing only as console configuration — the budget ceiling
+depends on the single-instance constraint, so it shouldn't be undoable by a stray click.
+
 Covers: correct tool selection, non-dynasty league refusal, trade-target grounding,
 resistance to instruction-override attempts, off-topic scope refusal, and graceful
 handling of a nonexistent league ID.

@@ -771,6 +771,46 @@ configured - `load_dotenv()` in `agent.py` already no-ops harmlessly if no `.env
 file exists and reads straight from the real environment either way, so no code
 changes needed for this to work once that binding exists.
 
+## CI/CD (`.github/workflows/`)
+
+Deployment originally ran through a Cloud Build trigger created by the Cloud Run
+console, which built and deployed on every push to `main`. When unit tests were added,
+CI and CD ended up running **independently** - GitHub Actions ran the tests while Cloud
+Build deployed regardless of the result, so a push that broke tests still shipped.
+
+`deploy.yml` closes that: it triggers on `workflow_run` after `tests` completes and
+explicitly checks `conclusion == 'success'`, because `workflow_run` fires on failure
+too. It checks out `workflow_run.head_sha` rather than current `main`, since those can
+differ if something lands while a test run is in flight.
+
+**Authentication is Workload Identity Federation, not a service account key.** The
+common approach is a service account JSON key stored in GitHub secrets, which works and
+is still widespread - but it's a long-lived credential sitting on someone else's
+server, and every third-party action in a workflow runs arbitrary code with access to
+`secrets.*`. WIF instead has GCP trust GitHub's OIDC issuer and exchange a per-run
+token for a short-lived GCP one. The provider's `attribute-condition` pins that
+exchange to this repository; without it, *any* GitHub repo could impersonate the
+deployer service account.
+
+Honest note on the remaining risk: the deployer holds `run.admin` plus `serviceAccountUser`
+on the runtime service account, which together mean a compromised workflow run could
+deploy a revision that reads the Anthropic key out of Secret Manager. `storage.admin` is
+also broader than ideal (it's needed because `gcloud run deploy --source` stages to a
+bucket). The blast radius is bounded - a hobby project with a $5 spend cap and a small
+prepaid API balance - but it's a real chain, not a theoretical one.
+
+**The Cloud Run settings live in the workflow, not only in console click-state.**
+`--concurrency 1` and `--max-instances 1` are load-bearing (`budget.py`'s daily cap is
+only exactly accurate with a single instance, and each request spawns two subprocesses),
+`--memory 2Gi` covers polars/pandas in both the parent and the MCP subprocess, and
+`gen2` is needed for subprocess spawning. Those were previously invisible configuration
+that a stray console edit could silently undo.
+
+CI deliberately excludes `agent/evals.py` (real paid API calls) and
+`agent/test_mcp_server.py` (hits live third-party APIs, so it would go red on someone
+else's outage rather than on a real regression). No `ANTHROPIC_API_KEY` is provided to
+the workflow, so a test that silently started needing one would fail loudly.
+
 ## Observability (`agent/observability.py`, `agent/log_summary.py`)
 
 Phase 3. Every `run_query` call previously printed to the console and then vanished -
