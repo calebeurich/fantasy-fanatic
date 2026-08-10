@@ -127,11 +127,26 @@ python -m uvicorn agent.api:app
 
 ## Status
 
-The analysis layer, MCP server, agent, guardrails, evals, and observability logging are
-built and validated against real leagues. Deployment to Cloud Run is in progress —
-platform chosen after an actual cost/fit comparison documented in `LOGIC.md`, including
-a finding that the originally-planned AWS setup carried a non-obvious recurring cost.
+Deployed and working on Google Cloud Run — the full chain (FastAPI → Agent SDK →
+`claude` CLI → MCP subprocess → analysis modules → live league data) runs in a
+container, answering real questions with real data. Currently authenticated-only rather
+than public; the daily budget ceiling is in place and verified, but a public URL is a
+separate decision from a working deploy.
 
-Known limitations and planned work are tracked at the end of `LOGIC.md`, including
-several analytics ideas (lineup efficiency, schedule luck, trade grading) that are
-genuinely blocked on in-season data rather than on effort.
+Cloud Run was chosen after an actual cost/fit comparison (documented in `LOGIC.md`),
+including a finding that the originally-planned AWS Lambda + API Gateway setup carried a
+non-obvious recurring cost, since API Gateway has no permanent free tier.
+
+Getting there took five real failures, none reproducible locally — a corrupted wheel
+from a Windows-only dependency, an IAM role that looks sufficient but isn't, a CLI that
+refuses to run as root, one fix that turned out to be solving a non-problem, and finally
+an unpinned dependency resolving differently in a clean environment. The write-up in
+`LOGIC.md` includes the wrong turn, because the interesting part is *why* it was hard to
+see: the underlying error was a `ModuleNotFoundError` that reached the user as a
+confident, entirely fabricated answer. That trail is the most instructive thing in this
+repo.
+
+Known limitations and planned work are tracked at the end of `LOGIC.md` — including no
+caching on the data sources (every tool call refetches), no conversation memory (the
+agent is single-turn and doesn't look it), and several analytics ideas that are blocked
+on in-season data rather than on effort.

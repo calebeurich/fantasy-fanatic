@@ -653,12 +653,53 @@ browser console, with no Docker install, no `gcloud` CLI, and no local build ste
 required at all for the core path. Local Docker only becomes useful later as a faster
 local-iteration/debugging loop, not a requirement.
 
-**Genuinely untested as of writing** - neither this environment nor the local
-Windows machine has Docker installed, so this Dockerfile hasn't been build-verified
-the way everything else in this project has been before being trusted. Documented
-honestly rather than claimed working: the real validation happens via Cloud Build's
-remote build log the first time it's actually deployed, and this file should be
-revised based on whatever that surfaces, not assumed correct in advance.
+**It took five real failures to get this working**, none of which could be caught
+locally (no Docker here or on the dev machine). The sequence is worth keeping,
+because four of the five were invisible in exactly the same way:
+
+1. **`pip install` died on a corrupted wheel** ("PACKAGES DO NOT MATCH THE HASHES").
+   `pip-system-certs` was installing unconditionally - it exists only to work around
+   Norton's TLS inspection on the Windows dev machine, and it patches Python's SSL
+   handling, which is meaningless in a Linux container and a plausible cause of a
+   truncated download. Gated behind `sys_platform == "win32"`.
+2. **Secret Manager permission denied.** The compute service account had project
+   **Editor**, which looks sufficient but deliberately excludes secret *payload*
+   access - `roles/secretmanager.secretAccessor` has to be granted explicitly.
+3. **`--dangerously-skip-permissions cannot be used with root/sudo privileges`.**
+   `permission_mode="bypassPermissions"` becomes that CLI flag, and the CLI refuses it
+   as root. Cloud Run runs as root by default - fixed with a non-root `appuser`, which
+   is better container practice anyway.
+4. **A wrong fix, honestly recorded**: the MCP subprocess was spawned as
+   `python -m agent.mcp_server`, which assumes `python` on PATH *and* the repo root as
+   CWD. Both were changed to be assumption-free (absolute `sys.executable` + absolute
+   script path + `sys.path` bootstrap). This was a **guess, and it was wrong** - the
+   later diagnostics showed `cwd` was `/app` and the interpreter path was fine all
+   along. The change is still an improvement, but it fixed nothing that was broken.
+5. **The actual cause: an unpinned dependency.** `requirements.txt` had no version
+   pins. Locally `mcp` sits at 1.29.0 (which has `mcp.server.fastmcp.FastMCP`) only
+   because installing `claude-agent-sdk` downgraded it from 2.0.0 earlier in the
+   project's history. A clean container install resolved to a newer `mcp` where
+   `FastMCP` moved, so `mcp_server.py` died on its import line. Everything is now
+   pinned to versions verified working locally.
+
+**The failure mode is the real lesson, not the version bug.** A `ModuleNotFoundError` -
+about as diagnosable an error as exists - reached the user as an agent confidently
+asserting *"dezdroppedit27 is in a Win-Now window. They likely have a strong current
+roster"*, with no data behind it. Three layers each did something locally defensible:
+the subprocess crashed and wrote to a stderr nobody read; the SDK swallowed the failure
+and handed the model an empty toolset; the model, told by its system prompt that it was
+a fantasy football assistant, produced a plausible answer rather than admitting it had
+nothing. Earlier it had claimed to have "tools for design systems and background
+monitoring," and later it emitted `<function_calls>` blocks as literal text - all
+symptoms of the same silent void.
+
+**A system that confabulates instead of crashing is worse than one that crashes**, and
+this one did it while every individual component behaved "correctly." Two guessed fixes
+went out before `/diagnostics` (`agent/api.py`) was built to spawn the MCP server
+directly and report the captured subprocess stderr - after which the diagnosis took
+seconds. The lesson recorded here for next time: when a failure is invisible, stop
+guessing and spend the effort on visibility first. That endpoint is kept, not deleted,
+for exactly that reason.
 
 **One dependency that had to be gotten right without being able to test it**: the
 Claude Agent SDK shells out to the `claude` CLI as its transport (`agent/agent.py`),
