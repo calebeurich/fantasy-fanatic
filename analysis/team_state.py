@@ -83,7 +83,6 @@ def classify(roster: dict, players: dict[str, dict], threshold: float) -> dict:
         # dynasty value alone and never noticing.
         entry = {"name": info["name"], "position": info["position"], "value": info["value"],
                  "redraft_value": info.get("redraft_value"),
-                 "future_premium": info.get("future_premium"),
                  "is_starter": pid in starter_ids}
         bucket = age_bucket(info["position"], info["age"], info.get("usage_role"))
         entry["bucket"] = bucket

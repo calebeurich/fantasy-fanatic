@@ -101,7 +101,16 @@ def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty:
     # more in trade value. For a win-now roster that's arbitrage - sell the premium, keep
     # the production. Ranking by dynasty value alone can't see it.
     #
-    # Coverage is partial on purpose-of-the-source: redraft carries ~200 players against
+    # Deliberately NOT exposing a dynasty/redraft *ratio*. A first version did, and it
+    # was the `diff` mistake again: 1.0 reads as neutral, but the measured median ratio
+    # across the 200 players in both pools is 2.22 (p10 0.93, p90 18.1). So a 2.01 looked
+    # like "100% future premium" while actually sitting *below* typical - it flagged
+    # production-oriented veterans as speculative assets. Raw redraft_value is
+    # unambiguous (a price on a known scale, both pools topping out near 10,400);
+    # comparisons are made pairwise within a position by find_efficiency_swaps, where the
+    # skew cancels.
+    #
+    # Coverage is partial by nature of the source: redraft carries ~200 players against
     # dynasty's ~400, since deep dynasty-only assets (rookies, prospects) have no redraft
     # market. Missing entries get redraft_value=None and future_premium=None rather than a
     # fabricated number - callers must handle absence, not silently treat it as zero.
@@ -110,7 +119,6 @@ def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty:
         for player_id, info in players.items():
             r = redraft.get(player_id)
             info["redraft_value"] = r["value"] if r else None
-            info["future_premium"] = round(info["value"] / r["value"], 2) if r and r["value"] else None
     return players
 
 

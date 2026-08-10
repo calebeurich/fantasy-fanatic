@@ -291,13 +291,36 @@ costs **553 more** in trade value. Ranking by dynasty value alone cannot see tha
 selling Stroud and starting Darnold converts future premium into trade capital at
 almost no cost to the current lineup.
 
-**The first implementation of this was wrong and is worth recording.** It flagged any
-player whose dynasty/redraft ratio exceeded an absolute threshold. But the two scales
-aren't normalized to each other - McCaffrey is 4,345 dynasty against 6,505 redraft,
-while mid-tier players run 2x the other way - so the ratio was measuring a scale
-artifact, and the check confidently labelled 26-year-old veterans "100% future
-potential". `find_efficiency_swaps` compares players **pairwise within a position**
-instead, where both values come from the same two scales and the distortion cancels.
+**The first implementation of this was wrong and the numbers say exactly how.** It
+exposed a `future_premium` = dynasty/redraft ratio and flagged anything above an
+absolute threshold. Measured across the 200 players present in both pools: **median
+ratio 2.22, p10 0.93, p90 18.1**. The two pools *are* anchored to the same top of scale
+(dynasty max 10,380, redraft max 10,452 - so the intuition that both run "out of 10,000"
+is right), but dynasty spreads its total across ~400 players against redraft's ~200, and
+the ratio's distribution is heavily right-skewed by young players with no current role.
+
+So 1.0 is not neutral - typical is 2.22. A player at 2.01 was being labelled "100%
+future potential" while actually sitting *below* median, and the flag fired on
+production-oriented veterans like Chuba Hubbard, who is early-prime and should be
+roughly production-priced. That is the `diff` mistake repeated: an unlabelled ratio
+invites a wrong reading. `future_premium` was removed entirely rather than relabelled;
+`redraft_value` stays because a price on a known scale is unambiguous.
+`find_efficiency_swaps` compares players **pairwise within a position** instead, where
+both values come from the same two scales and the skew cancels.
+
+**Trade value is not linear in raw value** (`value_over_replacement`, `tier`). A real
+offer list led with Christian McCaffrey (+1,783 over positional replacement) and then
+listed Ollie Gordon (947 raw, but **1,637 below** replacement) as though they were
+comparable pieces, which is the kind of suggestion that makes a tool look naive - real
+managers discount a below-replacement name heavily, because anyone can get that guy off
+waivers, while value above replacement is scarce and hard to ascend to. Offers now carry
+their surplus over positional replacement (already computed by `roster_needs`, just
+never used here) and sort by it.
+
+The labels deliberately avoid overcorrecting: below-replacement depth is *"real but
+discounted, a sweetener not a centerpiece"*, not "worthless". Injuries and byes are real,
+and a cheap backup RB can spike overnight (see the handcuff item under "Known
+limitations") - the raw number overstates what it fetches in a trade, but it isn't zero.
 Thresholds are deliberately strict (≥90% of current production retained, ≥300 dynasty
 value freed) because this trades real production for trade capital and shouldn't be
 suggested on noise.

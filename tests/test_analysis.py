@@ -228,6 +228,31 @@ def test_win_now_buyer_sees_production_priced_targets_first():
         "declining (production-priced) should outrank higher-value prime for a Win-Now buyer"
 
 
+def test_offers_are_tiered_by_value_over_replacement_not_raw_value():
+    """Trade value isn't linear in raw value. Value above replacement is scarce; value
+    below it is replaceable off waivers, so the raw number overstates what it fetches.
+    Depth is real (injuries, byes, handcuffs) but discounted - the tier labels say
+    exactly that rather than calling it worthless. Real case: Ollie Gordon, 947 raw but
+    1,637 *below* replacement, listed alongside McCaffrey as if comparable."""
+    # Mirrors how the real pair actually reaches the pool: McCaffrey is a declining
+    # sellable, while Ollie Gordon only clears the relevance floor at all because he's
+    # ascending (25% of replacement, vs 50% for production/mixed) and so arrives via
+    # tradeable_surplus. A declining player at 947 would be filtered out entirely.
+    thresholds = {"RB": 2584}
+    me = {"sellable": [
+              {"name": "Real", "position": "RB", "value": 4367, "bucket": "declining", "is_starter": False},
+          ],
+          "tradeable_surplus": [
+              {"name": "Filler", "position": "RB", "value": 947, "bucket": "ascending", "is_starter": False},
+          ]}
+    offers = trade_targets._my_offer_pool(me, thresholds, needs={}, projected=set())
+    by_name = {e["name"]: e for e in offers}
+    assert by_name["Real"]["tier"].startswith("core piece")
+    assert by_name["Filler"]["tier"].startswith("depth")
+    assert by_name["Real"]["value_over_replacement"] > 0 > by_name["Filler"]["value_over_replacement"]
+    assert offers[0]["name"] == "Real", "core pieces must lead the list"
+
+
 def test_efficiency_swap_finds_cheaper_equivalent_production():
     """Win-now arbitrage: a bench player producing nearly as much *this season* for
     meaningfully less dynasty value. Modelled on the real case - a superflex QB2

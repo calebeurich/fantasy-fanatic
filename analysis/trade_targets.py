@@ -62,7 +62,25 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, str]
     surplus = [e for e in me["tradeable_surplus"]
                if not is_lineup(e) and e["position"] not in needs
                and team_state.clears_relevance_floor(e, thresholds)]
-    return bench_sellable + surplus
+    offers = bench_sellable + surplus
+
+    # Trade value is not linear in raw value, and presenting it as if it were produced a
+    # bad recommendation: a real offer list led with Christian McCaffrey (+1,783 over
+    # replacement) and then listed Ollie Gordon (947 raw, but *1,637 below* replacement)
+    # as though both were comparable pieces. Value above replacement is scarce and hard
+    # to acquire; value below it is replaceable off waivers, so the raw number badly
+    # overstates what it fetches in a trade.
+    #
+    # Depth is *not* worthless, though, and the label says so deliberately: injuries and
+    # byes are real, and a cheap backup can spike in value overnight (see the handcuff
+    # note under "Known limitations"). It's discounted, not zero - a sweetener that
+    # shouldn't anchor an offer, rather than a name to be embarrassed about including.
+    for e in offers:
+        e["value_over_replacement"] = round(e["value"] - thresholds[e["position"]])
+        e["tier"] = ("core piece - above replacement, scarce" if e["value_over_replacement"] > 0
+                     else "depth - real but discounted, a sweetener not a centerpiece")
+    offers.sort(key=lambda e: -e["value_over_replacement"])
+    return offers
 
 
 def find_efficiency_swaps(roster_entries: list[dict], projected: set[str]) -> list[dict]:
