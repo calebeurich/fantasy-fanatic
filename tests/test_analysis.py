@@ -355,6 +355,48 @@ def test_efficiency_swap_skips_players_with_no_redraft_price():
     assert trade_targets.find_efficiency_swaps(entries, projected={"Starter"}) == []
 
 
+def test_pick_slot_follows_the_original_team_not_the_holder(monkeypatch):
+    """A "2027 1st" isn't one thing - a rebuilder's is early, a contender's is late, and
+    the market prices that at nearly 2x (Early 4,487 / Mid 2,955 / Late 2,263). What
+    decides the slot is how good the team the pick *originally* belongs to turns out to
+    be, so a contender holding a rebuilder's first has an early pick. Real case this
+    mirrors: a Middling team held a 2027 3rd originating from a Win-Now team, and it
+    correctly priced as (Late) rather than the holder's own (Mid)."""
+    from analysis import team_values
+    monkeypatch.setattr(team_values.sleeper, "get_traded_picks",
+                        lambda _lid: [{"season": "2027", "round": 1, "roster_id": 2, "owner_id": 1}])
+
+    pick_values = {"2027 1st": 2853, "2027 1st (Early)": 4487,
+                   "2027 1st (Mid)": 2955, "2027 1st (Late)": 2263}
+    owned = team_values.owned_picks(
+        "L", season=2026, draft_rounds=1, roster_ids=[1, 2], pick_values=pick_values,
+        strategy_by_roster={1: "Win-Now", 2: "Rebuilding"},
+    )
+    # Roster 1 (a contender) acquired roster 2's (a rebuilder's) first.
+    acquired = next(p for p in owned[1] if p["originally"] == 2)
+    assert acquired["value"] == 4487, "priced early - it's the rebuilder's pick"
+    assert "Early" in acquired["pick"]
+
+    own_pick = next(p for p in owned[1] if p["originally"] == 1)
+    assert own_pick["value"] == 2263, "the contender's own first is a late pick"
+
+
+def test_pick_falls_back_to_flat_value_when_no_tier_is_published(monkeypatch):
+    """Only the next class has Early/Mid/Late prices - the honest limit, since a window
+    predicts next season's finish poorly two years out. Later picks must keep the flat
+    round value and say so, not silently inherit a tier."""
+    from analysis import team_values
+    monkeypatch.setattr(team_values.sleeper, "get_traded_picks", lambda _lid: [])
+    owned = team_values.owned_picks(
+        "L", season=2026, draft_rounds=1, roster_ids=[1],
+        pick_values={"2028 1st": 2028},  # no tiered variants published
+        strategy_by_roster={1: "Rebuilding"},
+    )
+    pick = next(p for p in owned[1] if p["season"] == 2028)
+    assert pick["value"] == 2028
+    assert "unknowable" in pick["slot_basis"]
+
+
 def test_rebuilder_is_pointed_at_picks_held_by_contenders():
     """Direction matters: a future pick is worth more to a rebuilder than to the
     contender holding it, so those are the ones to ask about. A pick held by another

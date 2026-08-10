@@ -521,6 +521,34 @@ have yet) - deferred rather than faked.
   are too speculative to price and rarely trade. Validated against a real consistency
   check: rjl22 shows a 2028 1st but no 2027 1st, matching the `owns_next_first: False`
   that `team_state` derives independently from the same traded-pick data.
+- **Pick slots are estimated from the *originating* team's window.** A "2027 1st" isn't
+  one thing - a rebuilding team's is an early pick, a contender's is a late one, and the
+  market prices that gap at nearly **2x**: Early 4,487 / Mid 2,955 / Late 2,263, against
+  a flat 2,853. Treating them as equal understates a rebuilder's first by ~57% and
+  overstates a contender's by ~26%.
+
+  No new data was needed. FantasyCalc already publishes Early/Mid/Late prices for the
+  next class - the market has priced this distinction all along - and `owned_picks`
+  already tracked `originally`, since a pick's slot is decided by *whose pick it is*, not
+  who currently holds it. `STRATEGY_TO_PICK_TIER` maps Rebuilding/Middling/Win-Now onto
+  Early/Mid/Late, keyed on `effective_strategy` so a "Rebuilding" team that's actually
+  loaded doesn't get its pick priced as an early one.
+
+  Demonstrated on real data: a Middling team held a 2027 3rd originating from a Win-Now
+  team, and it correctly priced as **(Late) 956** rather than the holder's own (Mid)
+  1,051.
+
+  **Only the next class gets tiered**, which is the honest limit rather than a gap - a
+  team's current window is a fair guide to where it finishes next season and a poor one
+  two years out. Later picks keep the flat round value, and every pick carries a
+  `slot_basis` string saying which it is, so the distinction is visible rather than
+  implied.
+
+  *Not modelled, and league-specific*: the actual draft order. Real leagues use their own
+  tiebreakers - one here orders by best-ball scoring and then playoff finish - and those
+  rules live in league documents, not the Sleeper API. Late in a season, or in the
+  offseason before the rookie draft, the real slot is often knowable exactly, which would
+  beat any window-based estimate.
 
 ## Mutual win-now swaps (`trade_targets.find_mutual_swaps`)
 

@@ -256,8 +256,13 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     pick_values = fantasycalc.get_pick_values(NUM_QBS[fmt['is_superflex']], fmt['num_teams'],
                                               fmt['ppr'], fmt['is_dynasty'])
     league = sleeper.get_league(league_id)
+    # Keyed on effective_strategy (the corrected label - see team_state's thin/loaded
+    # overrides), so a "Rebuilding" team that's actually loaded doesn't get its pick
+    # priced as an early one.
+    strategy_by_roster = {r["roster_id"]: r["effective_strategy"] for r in states}
     picks_by_owner = owned_picks(league_id, int(league["season"]), league["settings"]["draft_rounds"],
-                                 [r["roster_id"] for r in sleeper.get_rosters(league_id)], pick_values)
+                                 [r["roster_id"] for r in sleeper.get_rosters(league_id)], pick_values,
+                                 strategy_by_roster)
 
     me = next((r for r in states if owner_query.lower() in r["owner"].lower()), None)
     if me is None:

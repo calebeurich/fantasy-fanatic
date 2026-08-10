@@ -122,8 +122,15 @@ def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty:
     return players
 
 
+# A pick's slot depends on how good the team it *originally* belongs to turns out to be,
+# so a window maps to a rough draft position. FantasyCalc publishes Early/Mid/Late prices
+# for the next class, which is exactly this distinction already priced by the market.
+STRATEGY_TO_PICK_TIER = {"Rebuilding": "Early", "Middling": "Mid", "Win-Now": "Late"}
+
+
 def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list[int],
-                pick_values: dict[str, int]) -> dict[int, list[dict]]:
+                pick_values: dict[str, int],
+                strategy_by_roster: dict[int, str] | None = None) -> dict[int, list[dict]]:
     """The individual future picks each roster currently owns, not just a total.
 
     `pick_capital` already resolves ownership through trades but sums it into one number,
@@ -131,6 +138,19 @@ def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list
     change hands". Trade suggestions need the picks themselves: a rebuilding team wants
     to *acquire* them, a win-now team should be willing to *spend* them, and neither
     conversation can happen against a single aggregate.
+
+    **Priced by the original owner's window where possible.** A "2028 1st" is not one
+    thing: a rebuilding team's first is an early pick, a contender's is a late one, and
+    the market prices that difference at nearly 2x (2027 1st: Early 4,487 / Mid 2,955 /
+    Late 2,263, against a flat 2,853). What decides it is how good the team the pick
+    *originally* belongs to turns out to be - not who currently holds it - so a contender
+    who acquired a rebuilder's first is holding an early pick and should be valued as
+    such. `strategy_by_roster` supplies each roster's effective_strategy for that lookup.
+
+    Only the *next* class has Early/Mid/Late prices published, which is the honest limit:
+    a team's window is a reasonable guide to where it finishes next season, and a poor
+    one two years out. Later picks keep the flat round value, and every pick records
+    `slot_basis` so the distinction is visible rather than implied.
 
     Same two-year horizon as `pick_capital` (FUTURE_DRAFT_YEARS) - beyond that, picks are
     too speculative to price and dynasty managers rarely deal that far out.
@@ -143,17 +163,25 @@ def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list
         pick_season = season + year_offset
         for round_num in range(1, draft_rounds + 1):
             name = f"{pick_season} {ordinal(round_num)}"
-            value = pick_values.get(name, 0)
-            if not value:
+            flat_value = pick_values.get(name, 0)
+            if not flat_value:
                 continue
             for rid in roster_ids:
                 current_owner = traded_map.get((pick_season, round_num, rid), rid)
+
+                # Tier by the ORIGINAL owner's window, not the holder's.
+                tier = STRATEGY_TO_PICK_TIER.get((strategy_by_roster or {}).get(rid))
+                tiered_value = pick_values.get(f"{name} ({tier})") if tier else None
+
                 owned.setdefault(current_owner, []).append({
-                    "pick": name,
-                    "value": value,
+                    "pick": name if not tiered_value else f"{name} ({tier})",
+                    "value": tiered_value or flat_value,
                     "round": round_num,
                     "season": pick_season,
                     "originally": rid,  # whose pick it was, so "their own 1st" is visible
+                    "slot_basis": (f"expected {tier.lower()} - originating team is "
+                                   f"{(strategy_by_roster or {}).get(rid)}")
+                                  if tiered_value else "flat round average (slot unknowable this far out)",
                 })
     for picks in owned.values():
         picks.sort(key=lambda p: -p["value"])
