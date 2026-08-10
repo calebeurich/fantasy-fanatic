@@ -4,8 +4,8 @@ this is what actually makes up that aggregate. Usage: python -m analysis.roster_
 
 import sys
 
-from sources import sleeper, contracts
-from .team_values import NUM_QBS, age_bucket, get_players_with_roles
+from sources import contracts
+from .team_values import age_bucket
 
 
 def find_roster(owner_name: str, rosters: list[dict], owner_names: dict[str, str]) -> dict:
@@ -45,16 +45,11 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
 def get_roster_rows(league_id: str, owner_name: str) -> dict:
     """One team's full player-by-player breakdown. Reused by both the CLI smoke test
     and the MCP tool wrapper."""
-    league = sleeper.get_league(league_id)
-    fmt = sleeper.describe_format(league)
-    num_qbs = NUM_QBS[fmt["is_superflex"]]
-
-    players = get_players_with_roles(num_qbs, fmt["num_teams"], fmt["ppr"], fmt["is_dynasty"])
+    from .league import context
+    ctx = context(league_id)
+    league, players = ctx.league, ctx.players
     contract_data = contracts.get_contracts()
-
-    rosters = sleeper.get_rosters(league_id)
-    users = sleeper.get_users(league_id)
-    owner_names = {user["user_id"]: user["display_name"] for user in users}
+    rosters, owner_names = ctx.rosters, ctx.owner_names
 
     roster = find_roster(owner_name, rosters, owner_names)
     owner = owner_names[roster["owner_id"]]

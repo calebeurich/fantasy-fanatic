@@ -21,6 +21,37 @@ those explanations in. Update it in the same change that adds or adjusts a heuri
   NFL's own ID), not Sleeper's `player_id`. `gsis_to_sleeper()` bridges the two so
   contracts and usage stats can join onto a Sleeper roster.
 
+## Shared league context (`analysis/league.py`)
+
+A consolidation pass after a long run of individually-small fixes, which is exactly the
+situation CLAUDE.md's anti-bloat rule describes: when patches for related issues start
+duplicating the same concept, stop and unify before continuing.
+
+What had accumulated: the same four-line setup - fetch league, describe format, derive
+`num_qbs`, load the player pool - copy-pasted in **five** modules (`roster_detail`,
+`roster_needs`, `team_state`, `team_values`, `waiver_wire`), plus an eight-line preamble
+in `find_targets` that fetched the league twice. `roster_needs._league_setup` already was
+this function; being private, everyone else re-derived it. That had already cost real
+effort - adding `redraft_value` to the player pool meant hunting down every copy.
+
+`context(league_id)` returns one `LeagueContext` carrying all of it, TTL-cached like
+everything else. This is a **maintainability** fix, not a performance one: `sources/cache.py`
+had already made the repetition nearly free. The win is that there's now one place to add
+a field, and one place that names which of several similar-looking concepts is which:
+
+- `needs_slots` folds SUPER_FLEX into an extra QB - right for "how many of this position
+  must I own", which is what replacement level and needs ask.
+- `lineup_dedicated` + `lineup_flex` model the real lineup, where SUPER_FLEX takes any
+  position - right for "who actually starts".
+- `start_thresholds` (redraft) answers "can this player start"; `trade_thresholds`
+  (dynasty) answers "is this a real trade chip". Conflating those two made a team with
+  three startable WRs read as critically short.
+
+Those pairs existed before and were distinguishable only by reading the call site
+carefully - which is how the wrong one kept getting used. The refactor removed
+`_league_setup` and four now-dead imports; all 44 tests, every module smoke test, and the
+MCP protocol test pass unchanged.
+
 ## Source caching (`sources/cache.py`)
 
 Every data-source call originally did a fresh HTTP request or nflverse download, and a

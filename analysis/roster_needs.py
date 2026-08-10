@@ -10,7 +10,6 @@ Smoke test: python -m analysis.roster_needs <league_id>
 import sys
 
 from sources import sleeper
-from .team_values import NUM_QBS, get_players_with_roles
 
 POSITIONS = ["QB", "RB", "WR", "TE"]
 
@@ -172,53 +171,37 @@ def projected_starters(roster: dict, players: dict[str, dict], slots: dict[str, 
     return starters
 
 
-def _league_setup(league_id: str) -> tuple[dict[str, dict], dict[str, int], dict[str, float]]:
-    """Shared setup every per-team function below needs: the player value pool,
-    starter slot counts, and replacement-level thresholds for this league's format -
-    computed once instead of re-fetched by every league_* function."""
-    league = sleeper.get_league(league_id)
-    fmt = sleeper.describe_format(league)
-    num_qbs = NUM_QBS[fmt["is_superflex"]]
-
-    players = get_players_with_roles(num_qbs, fmt["num_teams"], fmt["ppr"], fmt["is_dynasty"])
-    slots = dedicated_slots(league["roster_positions"], fmt["is_superflex"])
-    # Startability uses current production; trade relevance uses dynasty value. Same
-    # function, different question - see replacement_thresholds.
-    thresholds = replacement_thresholds(players, slots, fmt["num_teams"], metric="redraft_value")
-    return players, slots, thresholds
 
 
 def league_projected_starters(league_id: str) -> dict[str, set[str]]:
     """Projected starting lineup per roster, keyed by owner_id - the value-derived
     version of "who's actually in the lineup", used by trade_targets so it never
     offers away a real starter on the strength of a stale preseason snapshot."""
-    players, _, _ = _league_setup(league_id)
-    league = sleeper.get_league(league_id)
-    # Dedicated + flex parsed straight from roster_positions, rather than the
-    # needs-oriented dedicated_slots (which folds SUPER_FLEX into a second QB).
-    dedicated, flex = lineup_slots(league["roster_positions"])
+    from .league import context
+    ctx = context(league_id)
+    # lineup_* rather than needs_slots: the real lineup has FLEX slots and a SUPER_FLEX
+    # that takes any position, where needs_slots folds SUPER_FLEX into a second QB.
     return {
-        roster["owner_id"]: projected_starters(roster, players, dedicated, flex)
-        for roster in sleeper.get_rosters(league_id)
+        r["owner_id"]: projected_starters(r, ctx.players, ctx.lineup_dedicated, ctx.lineup_flex)
+        for r in ctx.rosters
     }
 
 
 def league_thresholds(league_id: str) -> dict[str, float]:
     """Dynasty-value replacement level - the bar for "is this a real trade chip", used by
-    trade_targets for the relevance floor and for value-over-replacement tiering. Kept
+    trade_targets for the relevance floor and value-over-replacement tiering. Kept
     separate from the redraft-based startability bar used by find_needs."""
-    players, slots, _ = _league_setup(league_id)
-    league = sleeper.get_league(league_id)
-    fmt = sleeper.describe_format(league)
-    return replacement_thresholds(players, slots, fmt["num_teams"], metric="value")
+    from .league import context
+    return context(league_id).trade_thresholds
 
 
 def league_needs(league_id: str) -> dict[str, dict]:
     """Positional needs for every roster, keyed by owner_id."""
-    players, slots, thresholds = _league_setup(league_id)
+    from .league import context
+    ctx = context(league_id)
     return {
-        roster["owner_id"]: find_needs(roster, players, slots, thresholds)
-        for roster in sleeper.get_rosters(league_id)
+        r["owner_id"]: find_needs(r, ctx.players, ctx.needs_slots, ctx.start_thresholds)
+        for r in ctx.rosters
     }
 
 
@@ -226,10 +209,11 @@ def league_surplus(league_id: str) -> dict[str, dict]:
     """Positional surplus for every roster, keyed by owner_id - the mirror of
     league_needs, reused by trade_targets.find_mutual_swaps to match one team's
     spare depth against another's need."""
-    players, slots, thresholds = _league_setup(league_id)
+    from .league import context
+    ctx = context(league_id)
     return {
-        roster["owner_id"]: find_surplus(roster, players, slots, thresholds)
-        for roster in sleeper.get_rosters(league_id)
+        r["owner_id"]: find_surplus(r, ctx.players, ctx.needs_slots, ctx.start_thresholds)
+        for r in ctx.rosters
     }
 
 

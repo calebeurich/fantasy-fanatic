@@ -11,7 +11,7 @@ import sys
 
 from sources import sleeper
 from . import trade_activity
-from .team_values import NUM_QBS, age_bucket, get_players_with_roles, split_starters_bench
+from .team_values import age_bucket, get_players_with_roles, split_starters_bench
 
 CORNERSTONE_PERCENTILE = 0.10  # top 10% of the format's value pool
 
@@ -145,15 +145,11 @@ def classify_league(league_id: str) -> list[dict]:
     """Full team-window report for every roster in the league, ranked by starter value.
     Reused by anything downstream that needs to know each team's strategic posture
     (e.g. matching trade targets across win-now/rebuild teams)."""
-    league = sleeper.get_league(league_id)
-    fmt = sleeper.describe_format(league)
-    num_qbs = NUM_QBS[fmt["is_superflex"]]
-
-    players = get_players_with_roles(num_qbs, fmt["num_teams"], fmt["ppr"], fmt["is_dynasty"])
+    from .league import context
+    ctx = context(league_id)
+    league, players = ctx.league, ctx.players
     threshold = cornerstone_threshold(players)
-
-    rosters = sleeper.get_rosters(league_id)
-    owner_names = {user["user_id"]: user["display_name"] for user in sleeper.get_users(league_id)}
+    rosters, owner_names = ctx.rosters, ctx.owner_names
 
     # Win-Now/Middling/Rebuilding reads a team's *current* age composition, but real
     # dynasty identity is built through trades over time - a fresh league (or one that

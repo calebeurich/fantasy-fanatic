@@ -10,9 +10,10 @@ Smoke test: python -m analysis.trade_targets <league_id> <owner_name>
 
 import sys
 
-from sources import sleeper, fantasycalc
+from sources import fantasycalc
 
 from . import team_state, roster_needs, trade_activity
+from .league import context
 from .team_values import NUM_QBS, owned_picks, pick_equivalent
 
 # Same VALUE_BASIS classification (team_state.py) drives both sides of a trade, just
@@ -272,19 +273,19 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
 def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAULT_MAX_PER_POSITION) -> dict:
     states = team_state.classify_league(league_id)
     needs_by_owner_id = roster_needs.league_needs(league_id)
-    thresholds = roster_needs.league_thresholds(league_id)
+    ctx = context(league_id)
+    thresholds = ctx.trade_thresholds
     trade_counts = trade_activity.get_trade_counts(league_id)
     projected_by_owner = roster_needs.league_projected_starters(league_id)
-    fmt = sleeper.describe_format(sleeper.get_league(league_id))
-    pick_values = fantasycalc.get_pick_values(NUM_QBS[fmt['is_superflex']], fmt['num_teams'],
-                                              fmt['ppr'], fmt['is_dynasty'])
-    league = sleeper.get_league(league_id)
+    pick_values = fantasycalc.get_pick_values(NUM_QBS[ctx.fmt["is_superflex"]], ctx.num_teams,
+                                              ctx.fmt["ppr"], ctx.fmt["is_dynasty"])
     # Keyed on effective_strategy (the corrected label - see team_state's thin/loaded
     # overrides), so a "Rebuilding" team that's actually loaded doesn't get its pick
     # priced as an early one.
     strategy_by_roster = {r["roster_id"]: r["effective_strategy"] for r in states}
-    picks_by_owner = owned_picks(league_id, int(league["season"]), league["settings"]["draft_rounds"],
-                                 [r["roster_id"] for r in sleeper.get_rosters(league_id)], pick_values,
+    picks_by_owner = owned_picks(league_id, int(ctx.league["season"]),
+                                 ctx.league["settings"]["draft_rounds"],
+                                 [r["roster_id"] for r in ctx.rosters], pick_values,
                                  strategy_by_roster)
 
     me = next((r for r in states if owner_query.lower() in r["owner"].lower()), None)

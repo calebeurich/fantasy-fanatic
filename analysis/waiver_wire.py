@@ -73,11 +73,9 @@ def league_upgrades(league_id: str, owner_query: str = None) -> dict:
     """Available-player count plus per-owner waiver upgrades and FAAB budget. Reused
     by both the CLI smoke test and the MCP tool wrapper - one source of truth for the
     orchestration, not duplicated in each caller."""
-    league = sleeper.get_league(league_id)
-    fmt = sleeper.describe_format(league)
-    num_qbs = NUM_QBS[fmt["is_superflex"]]
-
-    players = get_players_with_roles(num_qbs, fmt["num_teams"], fmt["ppr"], fmt["is_dynasty"])
+    from .league import context
+    ctx = context(league_id)
+    league, fmt, players = ctx.league, ctx.fmt, ctx.players
     available = get_available_players(league_id, players)
     thresholds = roster_needs.league_thresholds(league_id)
     needs_by_owner_id = roster_needs.league_needs(league_id)
