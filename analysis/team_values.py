@@ -122,6 +122,44 @@ def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty:
     return players
 
 
+def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list[int],
+                pick_values: dict[str, int]) -> dict[int, list[dict]]:
+    """The individual future picks each roster currently owns, not just a total.
+
+    `pick_capital` already resolves ownership through trades but sums it into one number,
+    which is enough for "who has draft capital" and useless for "what could actually
+    change hands". Trade suggestions need the picks themselves: a rebuilding team wants
+    to *acquire* them, a win-now team should be willing to *spend* them, and neither
+    conversation can happen against a single aggregate.
+
+    Same two-year horizon as `pick_capital` (FUTURE_DRAFT_YEARS) - beyond that, picks are
+    too speculative to price and dynasty managers rarely deal that far out.
+    """
+    traded = sleeper.get_traded_picks(league_id)
+    traded_map = {(int(t["season"]), t["round"], t["roster_id"]): t["owner_id"] for t in traded}
+
+    owned: dict[int, list[dict]] = {rid: [] for rid in roster_ids}
+    for year_offset in range(1, FUTURE_DRAFT_YEARS + 1):
+        pick_season = season + year_offset
+        for round_num in range(1, draft_rounds + 1):
+            name = f"{pick_season} {ordinal(round_num)}"
+            value = pick_values.get(name, 0)
+            if not value:
+                continue
+            for rid in roster_ids:
+                current_owner = traded_map.get((pick_season, round_num, rid), rid)
+                owned.setdefault(current_owner, []).append({
+                    "pick": name,
+                    "value": value,
+                    "round": round_num,
+                    "season": pick_season,
+                    "originally": rid,  # whose pick it was, so "their own 1st" is visible
+                })
+    for picks in owned.values():
+        picks.sort(key=lambda p: -p["value"])
+    return owned
+
+
 def pick_equivalent(value: float, pick_values: dict[str, int]) -> str | None:
     """The draft pick a player's value is closest to, e.g. "about a 2027 3rd (Late)".
 

@@ -13,7 +13,7 @@ import sys
 from sources import sleeper, fantasycalc
 
 from . import team_state, roster_needs, trade_activity
-from .team_values import NUM_QBS, pick_equivalent
+from .team_values import NUM_QBS, owned_picks, pick_equivalent
 
 # Same VALUE_BASIS classification (team_state.py) drives both sides of a trade, just
 # phrased for who's on which side of it.
@@ -145,7 +145,8 @@ def find_efficiency_swaps(roster_entries: list[dict], projected: set[str]) -> li
 def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds: dict[str, float],
               trade_counts: dict[str, int], max_per_position: int,
               projected: set[str] | None = None,
-              pick_values: dict[str, int] | None = None) -> dict:
+              pick_values: dict[str, int] | None = None,
+              my_picks: list[dict] | None = None) -> dict:
     """The push case: fill needs with sellable value from Rebuilding teams."""
     my_needs = needs_by_owner_id.get(me["owner_id"], {})
     # Critical needs (can't fill the position at all) get searched before thin ones
@@ -182,6 +183,13 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
 
     result = {"needs": my_needs, "targets": targets,
               "my_offers": _my_offer_pool(me, thresholds, my_needs, projected, pick_values)}
+
+    # A win-now team should be *spending* future picks, not hoarding them - the whole
+    # point of the window is converting future value into current production. Surfaced
+    # separately from player offers because they trade differently: a pick has no roster
+    # spot cost and no injury risk, so it's often the cleanest way to close a gap.
+    if my_picks is not None:
+        result["picks_you_could_spend"] = my_picks
     # Only meaningful for a team actually trying to win now - a rebuilding team wants
     # the future premium it would be selling.
     if me["effective_strategy"] == "Win-Now" and projected:
@@ -191,7 +199,8 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
     return result
 
 
-def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trade_counts: dict[str, int]) -> dict:
+def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trade_counts: dict[str, int],
+                picks_by_owner: dict[int, list[dict]] | None = None) -> dict:
     """The sell case: cash in declining/non-core value for youth from teams that
     don't need it, same logic a Rebuilding team uses.
 
@@ -213,7 +222,28 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
                 continue
             acquire_targets.append(_with_trade_note(player, other, trade_counts))
     acquire_targets.sort(key=lambda t: (-t["from_owner_trades"], -t["value"]))
-    return {"sell_candidates": sell_candidates, "situational": situational, "acquire_targets": acquire_targets}
+    result = {"sell_candidates": sell_candidates, "situational": situational,
+              "acquire_targets": acquire_targets}
+
+    # The mirror: a rebuilding team wants picks, and the teams holding them that
+    # *shouldn't* want them are the contenders - a Win-Now team's future 1st is worth
+    # more to a rebuilder than to its owner. Listed with who holds it and how often that
+    # owner actually trades, same as player targets.
+    if picks_by_owner:
+        pick_targets = []
+        for other in states:
+            if other["owner_id"] == me["owner_id"] or other["effective_strategy"] not in ("Win-Now", "Middling"):
+                continue
+            for pick in picks_by_owner.get(other["roster_id"], []):
+                pick_targets.append({
+                    **pick, "from_owner": other["owner"],
+                    "from_owner_trades": trade_counts.get(other["owner_id"], 0),
+                    "note": f"{other['owner']} is {other['effective_strategy']} - future picks are worth less to them than to you",
+                })
+        pick_targets.sort(key=lambda t: (-t["from_owner_trades"], -t["value"]))
+        if pick_targets:
+            result["picks_to_acquire"] = pick_targets[:8]
+    return result
 
 
 def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAULT_MAX_PER_POSITION) -> dict:
@@ -225,6 +255,9 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     fmt = sleeper.describe_format(sleeper.get_league(league_id))
     pick_values = fantasycalc.get_pick_values(NUM_QBS[fmt['is_superflex']], fmt['num_teams'],
                                               fmt['ppr'], fmt['is_dynasty'])
+    league = sleeper.get_league(league_id)
+    picks_by_owner = owned_picks(league_id, int(league["season"]), league["settings"]["draft_rounds"],
+                                 [r["roster_id"] for r in sleeper.get_rosters(league_id)], pick_values)
 
     me = next((r for r in states if owner_query.lower() in r["owner"].lower()), None)
     if me is None:
@@ -235,9 +268,10 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     # left and stockpile youth/picks instead. Buy-target-by-need only makes sense for
     # a team actually trying to win now.
     projected = projected_by_owner.get(me["owner_id"], set())
+    my_picks = picks_by_owner.get(me["roster_id"], [])
 
     if me["effective_strategy"] == "Rebuilding":
-        return {"me": me, "mode": "rebuild", **_pivot_path(me, states, thresholds, trade_counts)}
+        return {"me": me, "mode": "rebuild", **_pivot_path(me, states, thresholds, trade_counts, picks_by_owner)}
 
     if me["effective_strategy"] == "Middling":
         # Hasn't committed to a direction - show what pushing looks like AND what
@@ -247,12 +281,12 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         # one that's clearly out should pivot even mid-season) - logged in LOGIC.md.
         return {"me": me, "mode": "middling",
                 "push": _buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
-                                  max_per_position, projected, pick_values),
-                "pivot": _pivot_path(me, states, thresholds, trade_counts)}
+                                  max_per_position, projected, pick_values, my_picks),
+                "pivot": _pivot_path(me, states, thresholds, trade_counts, picks_by_owner)}
 
     return {"me": me, "mode": "buy",
             **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
-                        max_per_position, projected, pick_values)}
+                        max_per_position, projected, pick_values, my_picks)}
 
 
 SWAP_ELIGIBLE_STRATEGIES = ("Win-Now", "Middling")
@@ -324,6 +358,11 @@ def _print_pivot(me: dict, pivot: dict) -> None:
     if not pivot["acquire_targets"]:
         print("no obvious acquire targets found")
         return
+    if pivot.get("picks_to_acquire"):
+        print("picks to ask about (worth less to a contender than to you):")
+        for t in pivot["picks_to_acquire"][:5]:
+            trade_note = f"{t['from_owner_trades']} trade(s)" if t["from_owner_trades"] else "NEVER TRADES"
+            print(f"  {t['pick']} (value={t['value']}) from {t['from_owner']} - {trade_note}")
     print("acquire targets (young ascending surplus sitting on Win-Now/Middling rosters):")
     for t in pivot["acquire_targets"]:
         trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "NEVER TRADES - unlikely"
@@ -338,6 +377,9 @@ def _print_push(push: dict) -> None:
             print(f"  {e['name']} ({e['position']}, value={e['value']}) - give-up cost: {cost}")
     else:
         print("you could offer: no obvious surplus")
+    if push.get("picks_you_could_spend"):
+        picks = ", ".join(f"{p['pick']} ({p['value']})" for p in push["picks_you_could_spend"][:4])
+        print(f"picks you could spend (win-now = convert future into now): {picks}")
     print()
     if not push["targets"]:
         print("no obvious targets found (no needs, or no Rebuilding team has a sell candidate there)")

@@ -502,6 +502,25 @@ have yet) - deferred rather than faked.
 - Results are always sorted with trade activity first, value second - a bigger name from
   an owner who never trades is a worse real-world target than a smaller one from an
   active trader.
+- **Draft picks move in the direction the window implies** (`team_values.owned_picks`).
+  Picks were previously used only as an aggregate - `pick_capital` for "who has draft
+  capital" and `owns_next_first` for whether tanking is even coherent - which is enough
+  to describe a team and useless for suggesting a trade. `owned_picks` resolves ownership
+  through trades and returns the individual picks, so both sides of the conversation
+  become possible:
+  - **Win-Now** gets `picks_you_could_spend`. Converting future value into current
+    production *is* the window; a contender hoarding its own 2028 1st is holding an asset
+    it's less positioned to use than almost anyone else in the league.
+  - **Rebuilding** gets `picks_to_acquire`, restricted to picks held by Win-Now and
+    Middling teams. A pick is worth more to a rebuilder than to the contender holding it,
+    which is exactly what makes the ask realistic - another rebuilder's pick isn't going
+    anywhere. Sorted by trade activity first, same as player targets.
+  - **Middling** sees both, consistent with getting both the push and pivot paths.
+
+  Same two-year horizon as `pick_capital` (`FUTURE_DRAFT_YEARS`), since further-out picks
+  are too speculative to price and rarely trade. Validated against a real consistency
+  check: rjl22 shows a 2028 1st but no 2027 1st, matching the `owns_next_first: False`
+  that `team_state` derives independently from the same traded-pick data.
 
 ## Mutual win-now swaps (`trade_targets.find_mutual_swaps`)
 
@@ -1397,6 +1416,22 @@ deliberately avoiding.
   design (client-generated session ids, so an expired session degrades to a new
   conversation instead of an error) is a direct consequence of knowing the client was a
   browser tab.
+- **Window *length* isn't modelled - only window direction.** A team that's comfortably
+  the best roster in its league can afford players who won't fall off immediately,
+  stretching contention across several seasons rather than maximising one. A team that's
+  barely contending can't - it has to buy the cheapest current production it can find and
+  accept the cliff afterwards. Both currently read as "Win-Now" and get identical advice.
+  This is a real distinction and a luxury most teams don't have, which is exactly why the
+  tool shouldn't hand it out uniformly.
+
+  Hard for a specific reason: it needs a measure of *how far ahead* a team is, not just
+  which direction it leans. Starter-value rank is a weak proxy (rank 1 of 12 could be a
+  runaway or a coin flip), and the honest version probably needs the season record plus
+  some notion of the gap to the next-best roster - the same in-season data the
+  record-based limitations above are waiting on. Deliberately not half-built: a
+  confident-sounding "you can afford to stay good for three years" derived from a
+  starter-value rank would be exactly the kind of unfounded claim this project keeps
+  finding and removing.
 - **Future analyst agent: real statistical projections, social sentiment, and
   sportsbook data.** Not scoped or started - a bigger idea than a single heuristic,
   bundling several distinct new capabilities, each with its own data-source question

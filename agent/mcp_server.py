@@ -64,6 +64,15 @@ def get_roster_needs(league_id: str) -> dict:
 def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3) -> dict:
     """Trade recommendations for one team: buy targets if Win-Now, sell/acquire
     targets if Rebuilding, or both paths (labeled push/pivot) if Middling.
+
+    Also returns draft picks, in the direction that team should be moving them:
+    "picks_you_could_spend" for a Win-Now team (converting future value into current
+    production is the point of the window) and "picks_to_acquire" for a Rebuilding one,
+    listing picks held by contenders, to whom they are worth less. Player entries carry
+    "tier" (core piece vs depth) and "pick_equivalent" - depth is real but shouldn't
+    anchor an offer. "efficiency_swaps", when present, are value decisions rather than
+    lineup upgrades: the two players produce near-identically this season.
+
     max_per_position caps results per position - call again with a higher number if
     asked for more, rather than assuming this is the full list."""
     return trade_targets.find_targets(league_id, owner_name, max_per_position)

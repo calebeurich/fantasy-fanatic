@@ -355,6 +355,37 @@ def test_efficiency_swap_skips_players_with_no_redraft_price():
     assert trade_targets.find_efficiency_swaps(entries, projected={"Starter"}) == []
 
 
+def test_rebuilder_is_pointed_at_picks_held_by_contenders():
+    """Direction matters: a future pick is worth more to a rebuilder than to the
+    contender holding it, so those are the ones to ask about. A pick held by another
+    rebuilding team isn't going anywhere and shouldn't be suggested."""
+    me = {"owner_id": "me", "roster_id": 1, "sellable": [], "tradeable_surplus": []}
+    states = [
+        me | {"owner": "me", "effective_strategy": "Rebuilding"},
+        {"owner_id": "win", "roster_id": 2, "owner": "Contender",
+         "effective_strategy": "Win-Now", "tradeable_surplus": []},
+        {"owner_id": "reb", "roster_id": 3, "owner": "OtherRebuild",
+         "effective_strategy": "Rebuilding", "tradeable_surplus": []},
+    ]
+    picks = {
+        2: [{"pick": "2027 1st", "value": 2853, "round": 1, "season": 2027, "originally": 2}],
+        3: [{"pick": "2027 1st", "value": 2853, "round": 1, "season": 2027, "originally": 3}],
+    }
+    out = trade_targets._pivot_path(states[0], states, thresholds={}, trade_counts={"win": 5},
+                                    picks_by_owner=picks)
+    owners = [p["from_owner"] for p in out["picks_to_acquire"]]
+    assert owners == ["Contender"], "only contenders' picks are realistic targets"
+
+
+def test_rebuilder_pick_targets_are_empty_without_pick_data():
+    """No pick data must mean no suggestions, not an empty-looking key that reads as
+    'this team has no picks available'."""
+    me = {"owner_id": "me", "roster_id": 1, "owner": "me",
+          "effective_strategy": "Rebuilding", "sellable": [], "tradeable_surplus": []}
+    out = trade_targets._pivot_path(me, [me], thresholds={}, trade_counts={}, picks_by_owner=None)
+    assert "picks_to_acquire" not in out
+
+
 def test_offer_pool_never_includes_a_position_the_team_needs():
     """Trading a WR while WR is your own need just moves the shortage. Real bug this
     guards: a Win-Now team with a critical WR need was told to offer its WRs."""
