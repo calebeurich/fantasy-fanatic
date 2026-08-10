@@ -1,6 +1,8 @@
 name: tests
 
-# Runs the offline unit suite on every push and PR. Deliberately does NOT run:
+# CI, and the gate for CD (see deploy.yml, which waits on this workflow).
+#
+# Deliberately does NOT run:
 #   - agent/evals.py           - real paid Anthropic API calls, needs a secret key
 #   - agent/test_mcp_server.py - hits live Sleeper/FantasyCalc/nflverse, so it's slow
 #                                and would fail on any third-party outage rather than
