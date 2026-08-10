@@ -21,6 +21,37 @@ those explanations in. Update it in the same change that adds or adjusts a heuri
   NFL's own ID), not Sleeper's `player_id`. `gsis_to_sleeper()` bridges the two so
   contracts and usage stats can join onto a Sleeper roster.
 
+## Source caching (`sources/cache.py`)
+
+Every data-source call originally did a fresh HTTP request or nflverse download, and a
+single agent question makes 2-4 tool calls that each re-derive the same league state -
+so the same FantasyCalc values and nflverse datasets were pulled several times to answer
+one question. Measured on a real league: `classify_league` took 6.85s cold and 0.00s
+warm, with identical results, and a `find_targets` call immediately after went from ~7s
+to instant.
+
+~20 lines rather than a caching library: this needs a TTL and nothing else.
+
+**The TTL split is a correctness decision, not just performance.** Roster data changes
+the moment someone trades or claims a player, and serving a stale roster means giving
+confidently wrong advice - strictly worse than being slow. So:
+
+| Data | TTL | Why |
+|---|---|---|
+| Rosters, transactions, traded picks | 60s | Long enough to collapse one question's tool calls into a single fetch, short enough that a stale roster can't outlive the question |
+| League config (settings, users) | 10m | Can change mid-season; effectively never does |
+| FantasyCalc values | 1h | Recomputed periodically, not continuously |
+| nflverse reference data (contracts, id crosswalk, usage roles) | 6h | Updates weekly at most, and is the slowest pull here |
+
+Fixed a real bug found while adding this: `contracts.py` called `nfl.load_contracts()`
+twice in one expression, downloading the entire contracts dataset a second time on
+every call.
+
+**Scope limit worth knowing:** the cache lives in the MCP server subprocess. Before
+per-session clients existed, that subprocess was spawned fresh per question, so the
+benefit was confined to *within* a question. Persistent sessions (below) keep it warm
+across questions too.
+
 ## Format detection (`sleeper.describe_format`)
 
 - Dynasty vs redraft/keeper comes from Sleeper's own `settings.type` flag (2 = dynasty).
@@ -698,6 +729,48 @@ assumed. Deploy sequence is therefore: deploy with **authentication required** f
 subprocess stack works at all, confirm `/budget` behaves against the real service, and
 only then make it public.
 
+## Conversation sessions and UI (`agent/sessions.py`, `agent/static/index.html`)
+
+The agent presented as conversational but was strictly single-turn: every question
+opened a fresh `ClaudeSDKClient`, so after asking "what's your league ID?" it had no
+memory of asking. Verified live before and after - turn 1 "hey can you help me with my
+team" produces the clarifying question, and turn 2 "league <id>, I'm <owner>", with no
+restatement, now continues correctly instead of landing on a model with zero context.
+*Looking* conversational while being unable to hold a conversation is the worst
+combination for a demo visitor, who will treat it like a chatbot.
+
+`SessionManager` keeps a live client per client-supplied session id, with an idle TTL,
+an LRU cap, and a per-session `asyncio.Lock` so two concurrent requests on one session
+can't interleave on the same client and corrupt the conversation. **Sessions are never
+shared between callers** - that was the context-leak trap identified during the caching
+investigation, where naively reusing one client would have leaked one user's
+conversation into another's.
+
+**The extra complexity earns its place by fixing two measured inefficiencies as a side
+effect**: both the Anthropic prompt cache and the MCP data cache live inside the
+per-session client, so a fresh client per question meant re-paying ~4,700 tokens of
+cache *creation* (billed at 1.25x) and re-downloading FantasyCalc and nflverse data
+every single time. A persistent session re-*reads* that prefix at 0.1x instead - roughly
+a 92% reduction on the prefix for every question after the first.
+
+`MAX_SESSIONS` defaults to **2** deliberately: each live session holds two subprocesses
+(the Node CLI and the Python MCP server with polars/pandas loaded) on top of the uvicorn
+parent, against a 2 GiB container. Raise only alongside the memory limit.
+
+**A bug this introduced, caught by asking what the UI would display**:
+`ResultMessage.total_cost_usd` is cumulative for the client's lifetime, not per-question
+- harmless when every question got a fresh client, but on a persistent session it keeps
+growing. The UI would have shown each question costing progressively more, and worse,
+`budget.record()` would have charged the running total every turn - three questions
+costing $0.015/$0.016/$0.013 billed as $0.090 against real spend of $0.044, draining the
+daily ceiling roughly twice as fast as actual usage. `Session.cost_delta()` tracks the
+baseline and returns the difference.
+
+The UI is one static HTML page with vanilla JS served by FastAPI - no build step, no
+npm, ships in the same container. Session ids are generated client-side, so an expired
+session starts a new conversation rather than erroring, and one browser tab's
+conversation is unreachable from another.
+
 ## Container image (`Dockerfile`)
 
 **Local machine doesn't need to run any of this** - a real, worth-stating-explicitly
@@ -892,6 +965,35 @@ ever covered the *tier-based* branches ("unsupported"/"degraded"), never a hard 
 league_id - don't retry with a different tool"), confirmed live: identical question
 afterward made exactly one tool call. Like rule 2, this isn't perfectly reliable
 either - see "Eval harness" below.
+
+## Unit tests (`tests/`)
+
+Added late, and the gap they closed is worth recording: the project had an eval harness
+and **no unit tests at all** - pytest wasn't even installed. That left the most
+carefully-reasoned part of the codebase with the least protection. Age curves,
+team-window thresholds, relevance floors, and need/surplus logic had been validated by
+eyeballing real league output once, and were asserted nowhere.
+
+The concrete trigger: the caching change touched every data source and the eval suite
+passed 7/7 - but those evals only detect *agent misbehavior*. They would have passed
+just as happily if a TTL had served stale rosters or a threshold had been mistyped.
+
+26 tests, **free and offline**, because almost every rule in `analysis/` is already a
+pure function taking plain data - no fixtures, no network, no API spend, ~1.5s. They
+assert the *boundaries* the heuristics turn on (exact age cutoffs per position, the
+usage-role overrides, the 50%/25% relevance split, need-vs-surplus symmetry) plus
+regression guards for real bugs found during development: never offer a starter, never
+offer a position you need, report every grounding violation rather than the first, and
+bill the per-question cost delta rather than the cumulative session total.
+
+**Verified the tests actually bite** rather than assuming: deliberately changing the RB
+decline age from 27 to 99 fails 2 tests instead of passing quietly. Also caught one test
+of my own that passed vacuously - an `all()` over an empty list - and rewrote it to
+compare two otherwise-identical players differing only in starter status, so it can't
+succeed by accident.
+
+`pytest` lives in a separate `requirements-dev.txt` so it doesn't ship in the Cloud Run
+image, where Artifact Registry storage is billed past 0.5 GB.
 
 ## Eval harness (`evals.py`)
 
@@ -1117,35 +1219,14 @@ deliberately avoiding.
   (`trade_targets.find_mutual_swaps`, `get_mutual_swaps` tool).
 - ~~**Fresh/undifferentiated leagues read as noisy Win-Now/Rebuilding labels.**~~
   Resolved - see the "No trade history" flag under "Team window classification" above.
-- **No conversation memory - the agent is single-turn, and it doesn't look it.**
-  `run_query` opens a fresh `ClaudeSDKClient` per call and closes it at the end, so
-  nothing carries between requests. Tested live: asked "hey can you help me with my
-  team" with no league info, and the model handled it *well* - asked for the league ID
-  and owner name, called no tools, cost $0.004. But the follow-up is where it breaks:
-  when the user answers, the model has no memory of having asked. A reply that
-  restates everything ("league 1315386978904084480, I'm dezdroppedit27") works by
-  accident because it stands alone; a natural reply ("sure, it's 1315386978904084480",
-  or just "dezdroppedit27") lands on a model with zero context. It *presents* as
-  conversational and cannot hold a conversation, which is the worst combination for a
-  demo visitor, who will treat it like a chatbot.
-
-  Two practical consequences beyond the UX: every clarification round-trip is a real
-  paid API call, and it counts against `budget.py`'s daily request ceiling - a user who
-  takes three messages to supply a league ID burns three of the 50.
-
-  **Not a quick fix, for a reason already documented above** (see the prompt-caching
-  correction): naively reusing one session across requests would recover cache and give
-  continuity, but on a public endpoint one user's conversation would leak into
-  another's. It needs a session identifier from the client plus per-session server-side
-  state - not a shared client. With `max-instances=1` an in-memory dict would actually
-  be correct, but it dies on instance recycle, and accumulated history grows the prefix
-  (and so the per-turn cost) with every exchange. This is the same "statefulness"
-  question the Phase 5 plan flagged as genuinely unresolved; this is the concrete
-  version of it.
-
-  **Sequencing decision: solve this after there's a UI**, not before. The right shape
-  of session handling depends on what the client actually is, and guessing at it now
-  risks building the wrong thing twice.
+- ~~**No conversation memory - the agent is single-turn.**~~ Resolved - see
+  "Conversation sessions and UI" above (`agent/sessions.py`). Kept as a pointer rather
+  than deleted because the *sequencing* call is the interesting part: this was
+  deliberately deferred until a UI existed, on the grounds that the right shape of
+  session handling depends on what the client turns out to be. That held up - the final
+  design (client-generated session ids, so an expired session degrades to a new
+  conversation instead of an error) is a direct consequence of knowing the client was a
+  browser tab.
 - **Future analyst agent: real statistical projections, social sentiment, and
   sportsbook data.** Not scoped or started - a bigger idea than a single heuristic,
   bundling several distinct new capabilities, each with its own data-source question

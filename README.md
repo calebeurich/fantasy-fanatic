@@ -179,7 +179,13 @@ see: the underlying error was a `ModuleNotFoundError` that reached the user as a
 confident, entirely fabricated answer. That trail is the most instructive thing in this
 repo.
 
-Known limitations and planned work are tracked at the end of `LOGIC.md` — including no
-caching on the data sources (every tool call refetches), no conversation memory (the
-agent is single-turn and doesn't look it), and several analytics ideas that are blocked
-on in-season data rather than on effort.
+Since that write-up: the data sources gained TTL caching (6.85s → instant on a repeat
+league classification, with roster data deliberately kept on a short TTL so stale
+rosters can't outlive a question), the agent gained real conversation memory via
+per-session clients, and a minimal web UI ships in the same container.
+
+Known limitations and planned work are tracked at the end of `LOGIC.md` — including a
+grounding check that can still fire a false positive on negated phrasing, TE-premium
+leagues getting standard-scoring values because FantasyCalc's API has no parameter for
+them, and several analytics ideas (lineup efficiency, schedule luck, trade grading)
+that are blocked on in-season data rather than on effort.
