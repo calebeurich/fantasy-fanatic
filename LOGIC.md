@@ -2141,7 +2141,7 @@ archetype:
 | Joe Burrow | 4.51 | 4.68 | 2.5 |
 | Patrick Mahomes | 4.30 | 2.40 | 4.6 |
 | *Jalen Hurts* | 2.99 | 5.30 | **8.5** |
-| *Justin Herbert* | **1.66** | 0.41 | 4.5 |
+| *Justin Herbert* | **1.66** | 0.41 | 4.5 (5.47 in one season) |
 
 **EPA rather than CPOE, despite CPOE being the better-isolated statistic.** Completion
 percentage over expected penalises aggressive downfield throwing, and Stafford posts −0.47
@@ -2149,9 +2149,19 @@ CPOE against 5.33 EPA per game - requiring positive CPOE would drop one of the c
 examples of the archetype the tag exists to capture. Top *third* rather than a fixed EPA
 number, so it recalibrates with the league's passing environment.
 
-Quality is measured over three seasons where usage stays on one, deliberately: "is he a good
-passer" is a durable trait, "does he run" is a fact about his current role that flips with a
-coordinator change. `rushing_qb` and `pocket_passer` are mutually exclusive and rushing wins -
+**One window for every tag, and a long one.** These tags feed an *age curve* - a claim about
+how a player holds up over years - so the question is always what kind of player he is, never
+what he did last autumn. Splitting quality over three seasons and usage over one seemed
+defensible and immediately cost something real: a quarterback ran 5.47 times a game in a
+single season against 4.46 across three, which flipped him across the rushing bar and onto a
+curve declining three years earlier. His own manager called it wrong on sight. He is untagged
+now - the honest answer, since the evidence points nowhere in particular.
+
+That is the general principle: **tags are hard to earn and most players get none.** A wrong
+tag costs far more than a missing one, because it substitutes a confident claim for a neutral
+default. It is also where this project stops - projecting an individual's decline is sports
+modelling, done properly by people who do it for a living, and these tags exist only to keep
+the age curve from being obviously wrong about broad archetypes. `rushing_qb` and `pocket_passer` are mutually exclusive and rushing wins -
 a QB who runs enough to clear that bar carries the rushing risk whatever his arm does. That
 is the conservative reading and a real judgement call, since it puts the league's best
 run-and-throw QBs on a curve that may be too pessimistic for them.

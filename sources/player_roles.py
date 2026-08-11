@@ -1,10 +1,25 @@
-"""Rushing-QB / pass-catching-RB tags from real season usage, used to adjust the dynasty
-age curve: mobile QBs tend to decline earlier (their ceiling depends on athleticism, not
-just arm talent), receiving-down RBs tend to decline later (pass-catching survives longer
-than between-the-tackles work). Thresholds picked by inspecting the 2025 season's actual
-carries/game and targets/game distributions - they land on the natural gap in each, e.g.
-Lamar Jackson/Josh Allen/Jalen Hurts clear 5 carries/game while pure pocket passers don't
-crack 3.
+"""Role tags from real usage and production, used to adjust the dynasty age curve: mobile
+QBs decline earlier (their ceiling depends on athleticism, not just arm talent), *good*
+pocket passers decline much later (arm talent and processing outlast legs), and
+receiving-down RBs decline later than early-down backs (pass-catching survives longer than
+between-the-tackles work). Thresholds sit on the natural gap in each real distribution.
+
+**These tags are deliberately hard to earn, and most players get none.** Each one moves a
+player onto a different age curve - a claim about how he will hold up over *years* - so the
+cost of a wrong tag is much higher than the cost of no tag. An untagged player falls back to
+his position's default, which is the honest middle rather than a failure to classify.
+
+That principle was learned from a live miss. A quarterback whose owner rated him a pocket
+passer got tagged `rushing_qb` off 5.47 carries a game in one season, against 4.46 across
+three, and was moved onto a curve declining three years earlier on the strength of one noisy
+autumn. Every tag now shares one long window (`ROLE_SEASONS`) and one games floor. He is
+untagged today, which is the right answer: the tool has no strong evidence either way and
+should not manufacture some.
+
+This is also where the project stops. Anything finer - projecting an individual's decline,
+weighting archetypes by expected value - is sports modelling, and there are people who do
+that properly. These tags exist to stop the age curve being obviously wrong about broad
+archetypes, not to out-predict them.
 
 Smoke test: python -m sources.player_roles
 """
@@ -19,7 +34,17 @@ from .nflverse_ids import gsis_to_sleeper
 
 RUSHING_QB_CARRIES_PER_GAME = 5.0
 PASS_CATCHING_RB_TARGETS_PER_GAME = 4.0
-MIN_GAMES = 5  # below this, per-game rates are too noisy to classify on
+# Every role tag is measured over the same window, and it is a long one. These tags feed an
+# **age curve** - a claim about how a player will hold up over years - so the question is
+# always what kind of player he is, never what he did last autumn.
+#
+# One season was demonstrably too thin. A quarterback ran 5.47 times a game in a single
+# season and 4.46 across three, which flipped him across the rushing bar and onto a curve
+# that declines three years earlier - a strong claim about a player's future built on one
+# noisy year. His own manager called it wrong on sight. Widening the window fixed it and
+# removed a second window at the same time.
+ROLE_SEASONS = 3
+MIN_GAMES = 20  # ~1.2 seasons of starts; below this a per-game rate is noise, not a trait
 
 # A **good** pocket passer ages differently from an ordinary one, which is the missing tier
 # in the QB curve. The argument, from a sports-modelling data scientist reviewing this tool:
@@ -42,11 +67,13 @@ MIN_GAMES = 5  # below this, per-game rates are too noisy to classify on
 # environment moves - the same reasoning behind every other percentile in this project.
 ELITE_PASSER_PERCENTILE = 0.67
 
-# Quality is measured over more seasons than usage, deliberately. "Is he a good passer" is a
-# durable trait and wants a long window; "does he run" is a fact about his current role and
-# can flip with one coordinator change, so it stays on the most recent season.
-QUALITY_SEASONS = 3
-MIN_QUALITY_GAMES = 20
+
+
+
+def _seasons() -> list[int]:
+    """The shared measurement window for every role tag - see ROLE_SEASONS."""
+    latest = most_recent_season()
+    return list(range(latest - ROLE_SEASONS + 1, latest + 1))
 
 
 def most_recent_season() -> int:
@@ -66,7 +93,7 @@ def get_roles() -> dict[str, str]:
     decline risk whatever his arm does, so an elite dual-threat stays on the earlier curve.
     That is the conservative reading and it is a real judgement call - it puts the league's
     best passers-who-also-run on a curve that may be too pessimistic for them."""
-    stats = nfl.load_player_stats(seasons=[most_recent_season()])
+    stats = nfl.load_player_stats(seasons=_seasons())
     id_map = gsis_to_sleeper()
     roles = {}
 
@@ -82,14 +109,11 @@ def get_roles() -> dict[str, str]:
         if sleeper_id and row["rate"] >= RUSHING_QB_CARRIES_PER_GAME:
             roles[sleeper_id] = "rushing_qb"
 
-    # The quality half, on its own longer window - see QUALITY_SEASONS.
-    quality = nfl.load_player_stats(seasons=list(range(most_recent_season() - QUALITY_SEASONS + 1,
-                                                      most_recent_season() + 1)))
     passers = (
-        quality.filter((pl.col("position") == "QB") & (pl.col("attempts") >= 10))
+        stats.filter((pl.col("position") == "QB") & (pl.col("attempts") >= 10))
         .group_by("player_id")
         .agg(pl.col("passing_epa").sum().alias("epa"), pl.len().alias("games"))
-        .filter(pl.col("games") >= MIN_QUALITY_GAMES)
+        .filter(pl.col("games") >= MIN_GAMES)
         .with_columns((pl.col("epa") / pl.col("games")).alias("epa_per_game"))
     )
     rates = sorted(r["epa_per_game"] for r in passers.iter_rows(named=True)
