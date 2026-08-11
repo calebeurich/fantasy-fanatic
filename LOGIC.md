@@ -1678,6 +1678,57 @@ it actually fails would be its own form of the scope creep this project keeps
 deliberately avoiding.
 
 ## Known limitations / future work
+## Injury exposure (`roster_needs._injury_drop`)
+
+Replacement level **cannot express depth at all**, which is not a gap so much as a
+definition problem. `start_thresholds` is the Nth-best player leaguewide where N is every
+starting slot in the league, so by construction only about enough players clear it to fill
+everyone's lineups. Measured on two real leagues, **10 of 12 teams had zero startable
+bench** - an artifact of the bar, not a fact about their rosters. A manager who is
+genuinely one injury from disaster could not be told so.
+
+Drop-off sidesteps the bar by asking about magnitude instead of counting bodies:
+`drop_if_injured` is the production lost when the *last* starter at a position goes down,
+ranked into league tertiles like everything else. The marginal spot is the right one to
+price - if a team starts four RBs and its RB1 is hurt, everyone shuffles up and what
+actually enters the lineup is the best bench RB, so the loss is (worst starter - best
+bench). On a real roster that is 1,043, not the 4,298 a best-starter reading would give.
+
+**Deliberately not a need.** Depth and lineup quality are separate questions with opposite
+fixes, and folding exposure into `needs` would tell a perfectly healthy team it has four
+problems. A real case: a team with **no positional needs at all** ranks 2nd, 3rd and 4th
+worst in the league for QB, WR and RB exposure - the lineup is fine, and one injury ends
+that. Absent rather than zero when no lineup is supplied, since 0 would read as "perfectly
+deep".
+
+The finding that motivated it is worth keeping: that team's worst exposure by far is
+**QB (6,030 lost, 2nd worst of 12)** in a superflex league, not the WR depth its manager
+was thinking about adding. One QB injury costs more than its WR3 and TE1 combined.
+
+## Efficiency swaps: which windows, and what they are blind to
+
+Extended from Push-only to **Push and Contend**, since the mechanic means different things
+depending on whether there is a clock (`SWAP_FRAMING`): a closing window converts future
+premium into capital, while a healthy contender is taking profit with no urgency. Ascend
+and Rebuild still want the premium this converts away.
+
+Also corrected: swaps were suppressed at *any* need position. That is right for
+count-shaped needs (critical/top-heavy), where promoting the backup fills the empty slot
+but spends the last body you had - and wrong for `weak`, which has its slots covered and
+wants a better starter, exactly what the freed value buys at flat production. The blanket
+rule silenced the only two swaps in the league: a Contend team weak at QB and TE could
+free 564 and 380 while its lineup barely moved.
+
+**What this cannot see, and why it wasn't stretched to fit.** The mechanic requires a
+replacement already on the roster producing >=90%, so it finds "sell the premium, promote
+the backup" and is blind to "sell an aging starter you have no replacement for". The
+clearest sell-high case in the league is invisible to it: a Contend team starting a
+33-year-old RB1 (4,597) and a 37-year-old TE (1,504) with Pacheco at 146 and Juwan Johnson
+at 318 behind them, while its entire WR room is 24. Selling both at peak is obviously
+right and the production genuinely leaves - it has to be replaced externally, which is a
+different trade. **Next up:** an age-cliff sell-high path keyed on age rather than the
+redraft/dynasty ratio, for contenders whose young core carries them.
+
 ## Persuasion targets (`trade_targets._persuasion_targets`, `analysis/prior_season.py`)
 
 `_buy_path` only searches `Rebuild` teams, so the best available production at a need

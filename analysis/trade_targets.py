@@ -44,6 +44,18 @@ ASCEND_TIMING_NOTE = (
     "points every week and no amount of patience fills it."
 )
 
+# The same mechanic means different things depending on whether there's a clock.
+SWAP_FRAMING = {
+    "Push": ("Your window is closing, so converting future premium into trade capital is "
+             "the point: the seasons you'd be selling are further out than the ones you're "
+             "playing for. Spend what this frees on production now."),
+    "Contend": ("You're good and not declining, so there's no clock forcing this - it's "
+                "profit-taking rather than a conversion. The lineup is unchanged either "
+                "way, so the only question is whether the freed value is worth more to you "
+                "than holding the pricier player. No urgency; take a good offer, don't "
+                "chase one."),
+}
+
 PERSUASION_NOTE = (
     "These are held by teams that are NOT currently sellers, so none of them is available "
     "the way a rebuilding team's pieces are. Each carries why that owner might listen and "
@@ -331,19 +343,36 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         result["picks_to_trade_away"] = my_picks
     # Only meaningful for a team actually trying to win now - a rebuilding team wants
     # the future premium it would be selling.
-    # Converting future premium into trade capital is a Push move: it only makes sense
-    # when the future you're selling is further away than your window.
-    if me["window"] == "Push":
+    # Push and Contend both, for different reasons - see SWAP_FRAMING. Not Ascend or
+    # Rebuild: those want the future premium this converts away.
+    #
+    # Worth knowing what this does NOT catch. It requires a replacement already on the
+    # roster producing >=90%, so it finds "sell the premium, promote the backup" and is
+    # blind to "sell an aging starter you have no replacement for". A real Contend team
+    # starts a 33-year-old RB1 and a 37-year-old TE with nothing behind either; both are
+    # obvious sell-high candidates and neither can surface here. Logged in LOGIC.md as a
+    # separate age-cliff path rather than stretched to fit.
+    if me["window"] in ("Push", "Contend"):
         swaps = find_efficiency_swaps(me["sellable"] + me["tradeable_surplus"])
-        # Never at a position you're already short at. The swap frees dynasty value by
-        # selling a starter and promoting his backup - fine where you have spare bodies,
-        # circular where you don't, since the capital it raises is capital you'd have to
-        # spend back on the same position. This also kept the offer list honest: the swap
-        # injection below adds the sold player to `my_offers`, which would otherwise
-        # re-introduce the very position `_my_offer_pool` excludes for being a need.
-        swaps = [s for s in swaps if s["position"] not in my_needs]
+        # Suppressed only at *count-shaped* needs (critical / top-heavy), where there's an
+        # empty starting slot: promoting the backup fills it but spends the last body you
+        # had, so you end up no deeper and one asset lighter.
+        #
+        # Allowed at a `weak` need, which an earlier blanket rule got wrong. A weak
+        # position has its slots covered and wants a better starter - and that is exactly
+        # what this raises capital for, at flat production, since the swap retains >=90% by
+        # construction. Suppressing it there silenced the only two swaps in a real league:
+        # a Contend team weak at QB and TE could free 564 and 380 while its lineup barely
+        # moved, which is capital pointed straight at the upgrade it needs.
+        #
+        # The offer pool excludes need positions as a blanket rule, so a swap target at a
+        # `weak` need does re-enter `my_offers` below - carrying `swap_note`, which is the
+        # documented exception rather than a contradiction.
+        swaps = [s for s in swaps
+                 if my_needs.get(s["position"], {}).get("level") not in ("critical", "top-heavy")]
         if swaps:
             result["efficiency_swaps"] = swaps
+            result["efficiency_swap_framing"] = SWAP_FRAMING[me["window"]]
 
             # These contradicted each other before: the swap named a player to sell while
             # the offer list excluded him for being a starter, so the single most

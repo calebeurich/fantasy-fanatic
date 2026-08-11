@@ -821,3 +821,74 @@ def test_persuasion_never_searches_teams_that_are_already_sellers():
     out = trade_targets._persuasion_targets(
         ME, [seller], NEED_RB, {"RB": 100}, {}, {"reb": _prior(12, made_playoffs=False)})
     assert out == []
+
+
+# --------------------------------------------------------------- injury exposure
+
+def test_injury_exposure_is_measured_but_is_not_a_need():
+    """Depth and lineup quality are separate questions. A team whose starting lineup is
+    entirely fine can still be one injury from disaster, and saying so must not turn every
+    position into a "need" - a healthy team would then read as having four problems."""
+    slots = {"QB": 0, "RB": 0, "WR": 2, "TE": 0}
+    thresholds = {p: 100 for p in slots}
+    rosters, players = _league({
+        "brittle": [("WR", 900), ("WR", 800), ("WR", 20)],    # huge cliff behind the starters
+        "deep":    [("WR", 900), ("WR", 800), ("WR", 780)],   # barely any drop
+        "c":       [("WR", 880), ("WR", 790), ("WR", 400)],
+        "d":       [("WR", 870), ("WR", 780), ("WR", 300)],
+    })
+    starters = {r["owner_id"]: set(r["players"][:2]) for r in rosters}
+    out = roster_needs.assess_positions(rosters, players, slots, thresholds, starters)
+
+    assert out["brittle"]["WR"]["level"] == "ok", "the starting lineup is not the problem"
+    assert out["brittle"]["WR"]["drop_if_injured"] == 780, "800 starter -> 20 replacement"
+    assert out["deep"]["WR"]["drop_if_injured"] == 20
+    assert out["brittle"]["WR"]["exposure"] == "high"
+    assert out["deep"]["WR"]["exposure"] == "low"
+    assert roster_needs.needs_only(out["brittle"]) == {}, "exposure must never become a need"
+
+
+def test_injury_drop_prices_the_marginal_lineup_spot():
+    """If a team starts four RBs and its best one is hurt, everyone shuffles up and what
+    actually enters the lineup is the best bench RB. So the loss is (worst starter - best
+    bench), not (best starter - best bench). Real case: a roster starting McCaffrey,
+    Taylor, Henderson and Swift is exposed by 1,043, not by 4,298."""
+    players = {"a": {"name": "Best", "position": "RB", "value": 6653, "redraft_value": 6653},
+               "b": {"name": "Mid", "position": "RB", "value": 2330, "redraft_value": 2330},
+               "c": {"name": "Last", "position": "RB", "value": 1527, "redraft_value": 1527},
+               "d": {"name": "Bench", "position": "RB", "value": 484, "redraft_value": 484}}
+    roster = {"owner_id": "me", "players": list(players)}
+    drop = roster_needs._injury_drop(roster, players, "RB", starters={"a", "b", "c"})
+    assert drop == 1527 - 484
+
+
+def test_injury_exposure_is_absent_rather_than_guessed_without_a_lineup():
+    """No lineup supplied means no exposure read - reported as None, never as 0, which
+    would read as 'perfectly deep'. Same rule as a missing redraft price."""
+    slots = {"QB": 0, "RB": 0, "WR": 2, "TE": 0}
+    thresholds = {p: 100 for p in slots}
+    rosters, players = _league({f"t{i}": [("WR", 900), ("WR", 800)] for i in range(4)})
+    entry = roster_needs.assess_positions(rosters, players, slots, thresholds)["t0"]["WR"]
+    assert entry["drop_if_injured"] is None and entry["exposure"] is None
+
+
+def test_efficiency_swaps_are_allowed_at_a_weak_need_but_not_a_count_need():
+    """A `weak` position has its slots covered and wants a better starter - which is what
+    the freed value buys, at flat production since the swap retains >=90% by construction.
+    A count-shaped need has an empty slot, where promoting the backup spends the last body
+    you had. A blanket rule silenced the only two swaps in a real league."""
+    me = {"owner_id": "me", "owner": "Me", "window": "Contend",
+          "sellable": [
+              {"name": "Pricey", "position": "QB", "value": 3288, "redraft_value": 2744,
+               "bucket": "prime", "is_starter": True},
+              {"name": "Cheap", "position": "QB", "value": 2735, "redraft_value": 2704,
+               "bucket": "prime", "is_starter": False}],
+          "tradeable_surplus": []}
+    thresholds = {"QB": 100}
+
+    def swaps_for(level):
+        need = {"QB": {"level": level, "weakest_starter": 0, "note": "", "rank": 9, "of": 12}}
+        return trade_targets._buy_path(me, [], {"me": need}, thresholds, {}, 3).get("efficiency_swaps", [])
+
+    assert len(swaps_for("weak")) == 1, "capital toward the upgrade, production unchanged"
+    assert swaps_for("critical") == [], "an empty slot must not be filled by spending depth"

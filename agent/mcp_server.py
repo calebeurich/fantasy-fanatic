@@ -82,7 +82,14 @@ def get_roster_needs(league_id: str) -> dict:
     starter, NOT more depth). Positions that are fine are omitted; a team ranking
     mid-league at a position is not a need. Each entry carries the rank, the starting
     production, the league median, and a `note` that states the finding in words - use
-    that wording rather than describing every need as "thin"."""
+    that wording rather than describing every need as "thin".
+
+    Every position ALSO carries `drop_if_injured` (production lost if the last starter
+    there goes down, before a replacement takes over), `exposure_rank` and `exposure`
+    (high/typical/low against the league). **Exposure is not a need** - a team whose
+    starting lineup is entirely fine can still be one injury from disaster, and those are
+    different problems with different fixes. Raise it when asked about depth, injuries or
+    roster risk; do not report it as a hole in the lineup."""
     return roster_needs.league_needs(league_id)
 
 
@@ -101,7 +108,10 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     their value to a contender is only in what they can be traded FOR. Player entries carry
     "tier" (core piece vs depth) and "pick_equivalent" - depth is real but shouldn't
     anchor an offer. "efficiency_swaps", when present, are value decisions rather than
-    lineup upgrades: the two players produce near-identically this season.
+    lineup upgrades: the two players produce near-identically this season, and
+    "efficiency_swap_framing" says why that matters for THIS team's window - a closing
+    window converts future premium into capital, a healthy contender is just taking
+    profit with no urgency.
 
     "persuasion_targets", when present, are a DIFFERENT KIND of suggestion and must be
     presented as such: aging production held by teams that are NOT currently sellers.

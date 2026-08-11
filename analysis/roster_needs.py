@@ -16,6 +16,8 @@ import sys
 
 from sources import sleeper
 
+from .team_values import rank_map, tertile
+
 POSITIONS = ["QB", "RB", "WR", "TE"]
 
 
@@ -136,8 +138,29 @@ def _starting_group(roster: dict, players: dict[str, dict], slots: dict[str, int
     return {pos: sorted(vals, reverse=True)[:slots[pos]] for pos, vals in by_pos.items()}
 
 
+def _injury_drop(roster: dict, players: dict[str, dict], pos: str,
+                 starters: set[str]) -> float | None:
+    """Production lost if this team's *last* starter at `pos` goes down: the gap between
+    the weakest player it currently starts there and the best replacement on its bench.
+
+    The marginal spot is the right one to price. If a team starts four RBs and its RB1 is
+    hurt, everyone shuffles up and what actually enters the lineup is the best bench RB -
+    so the loss is (worst starter - best bench), not (best starter - best bench).
+
+    Returns None when nothing is started at the position, which is a *need*, not exposure -
+    a different problem, already measured."""
+    lineup = [players[p].get("redraft_value") or 0 for p in starters
+              if p in players and players[p]["position"] == pos]
+    if not lineup:
+        return None
+    bench = [players[p].get("redraft_value") or 0 for p in (roster["players"] or [])
+             if p in players and players[p]["position"] == pos and p not in starters]
+    return min(lineup) - max(bench, default=0)
+
+
 def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[str, int],
-                     thresholds: dict[str, float]) -> dict[str, dict[str, dict]]:
+                     thresholds: dict[str, float],
+                     starters: dict[str, set[str]] | None = None) -> dict[str, dict[str, dict]]:
     """Every roster's standing at every position, keyed owner_id -> position.
 
     **Why this replaced a bare count.** The old rule was purely "how many players clear
@@ -169,13 +192,27 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                      is not a need; it's an average position, and calling it one sent
                      teams shopping for problems they didn't have.
 
+    **Injury exposure is measured but is deliberately NOT a need.** `drop_if_injured` is
+    how much production this team loses if its last starter at the position goes down,
+    ranked against the league. It is a separate axis from "is my starting lineup short or
+    weak", and folding it in would tell a perfectly healthy team it has four problems.
+
+    It exists because replacement level cannot express depth at all. `start_thresholds` is
+    the Nth-best player leaguewide where N is every starting slot in the league, so by
+    construction only about enough players clear it to fill everyone's lineups - measured
+    on two real leagues, 10 of 12 teams had *zero* startable bench, which is an artifact of
+    the definition rather than a fact about their rosters. A manager who is genuinely one
+    injury from disaster could not be told so. Drop-off sidesteps the bar entirely by
+    asking about magnitude instead of counting bodies.
+
     Numbers ship with the sentence that interprets them, for the reason documented on
-    `team_state.age_mix_note`: an unlabelled number in a tool result gets a meaning
+    `team_state.window_note`: an unlabelled number in a tool result gets a meaning
     invented for it.
     """
     groups = {r["owner_id"]: _starting_group(r, players, slots) for r in rosters}
     usable = {r["owner_id"]: _usable_by_position(r, players, thresholds, "redraft_value")
               for r in rosters}
+    by_owner = {r["owner_id"]: r for r in rosters}
 
     num_teams = len(rosters)
     top_third = num_teams / 3
@@ -187,6 +224,11 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
         ranks = {owner_id: i for i, owner_id
                  in enumerate(sorted(totals, key=lambda o: -totals[o]), start=1)}
         median = statistics.median(totals.values()) if totals else 0
+
+        # Exposure is ranked worst-first: the biggest drop is rank 1, the most exposed.
+        drops = {oid: _injury_drop(by_owner[oid], players, pos, starters[oid])
+                 for oid in groups} if starters else {}
+        drop_rank = rank_map({o: d for o, d in drops.items() if d is not None})
 
         quality_known = num_teams >= MIN_TEAMS_FOR_QUALITY
         for owner_id, group in groups.items():
@@ -218,6 +260,19 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                 "note": _position_note(pos, level, count, required, total, rank, num_teams,
                                        median, top_third),
             }
+            drop = drops.get(owner_id)
+            entry = out[owner_id][pos]
+            entry["drop_if_injured"] = round(drop) if drop is not None else None
+            entry["exposure"] = entry["exposure_rank"] = None
+            if drop is not None:
+                entry["exposure_rank"] = drop_rank[owner_id]
+                entry["exposure"] = {"top": "high", "middle": "typical", "bottom": "low"}[
+                    tertile(drop_rank[owner_id], len(drop_rank))]
+                entry["note"] += (
+                    f" Depth: losing the last {pos} in this lineup costs {round(drop):,} of "
+                    f"production before a replacement starts, {entry['exposure_rank']} of "
+                    f"{len(drop_rank)} in the league - {entry['exposure']} exposure. That is "
+                    f"a separate question from the need above and is not one.")
     return out
 
 
@@ -378,7 +433,8 @@ def league_assessment(league_id: str) -> dict[str, dict[str, dict]]:
     including the positions that are fine - `league_needs` is the filtered view."""
     from .league import context
     ctx = context(league_id)
-    return assess_positions(ctx.rosters, ctx.players, ctx.needs_slots, ctx.start_thresholds)
+    return assess_positions(ctx.rosters, ctx.players, ctx.needs_slots, ctx.start_thresholds,
+                            ctx.starters)
 
 
 def league_needs(league_id: str) -> dict[str, dict]:
