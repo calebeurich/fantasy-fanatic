@@ -806,15 +806,24 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     """The sell case: cash in declining/non-core value for youth from teams that
     don't need it, same logic a Rebuilding team uses.
 
-    Split by VALUE_BASIS rather than one flat list - a declining piece only loses
-    value from here, real urgency to move it. A prime piece below the cornerstone bar
-    (a genuinely good player, just not elite enough to be this team's long-term core -
-    e.g. a real starting-caliber WR on an already-loaded corps) isn't losing value on
-    a clock, so it's a situational, take-a-fair-offer piece, not an urgent sell -
-    presenting both the same way overstates how clear-cut the prime ones are."""
+    Split by runway rather than one flat list - a piece inside MIN_MEANINGFUL_RUNWAY of its
+    decline cutoff only loses value from here, real urgency to move it. A piece below the
+    cornerstone bar with years still on it (a genuinely good player, just not elite enough to
+    be this team's long-term core - e.g. a real starting-caliber WR on an already-loaded
+    corps) isn't losing value on a clock, so it's a situational, take-a-fair-offer piece,
+    not an urgent sell - presenting both the same way overstates how clear-cut it is.
+
+    **Runway, not bucket** - the correction `MIN_MEANINGFUL_RUNWAY` already made in
+    `team_state.classify`, which this path missed. Splitting on `bucket == "declining"` put
+    Justin Jefferson - 6,828, the most valuable asset on a rebuilding roster, and 1.8 years
+    from his cutoff - under "no urgency", while a 2,145 back at -2.2 read as urgent."""
     real_sellable = [e for e in me["sellable"] if team_state.clears_relevance_floor(e, thresholds)]
-    sell_candidates = [e for e in real_sellable if e["bucket"] == "declining"]
-    situational = [e for e in real_sellable if e["bucket"] != "declining"]
+
+    def on_a_clock(e):
+        return (e["years_to_decline"] or 0) < MIN_MEANINGFUL_RUNWAY
+
+    sell_candidates = [e for e in real_sellable if on_a_clock(e)]
+    situational = [e for e in real_sellable if not on_a_clock(e)]
     # Most now-weighted first, not most valuable first. A seller is converting present into
     # future, so the right order is how much of a player's price is present - the same
     # `redraft / dynasty` reading `_persuasion_targets` buys on, read from the selling side.
@@ -1091,9 +1100,11 @@ def offerable_names(result: dict) -> set[str]:
 
 def _print_pivot(me: dict, pivot: dict) -> None:
     sell = ", ".join(e["name"] for e in pivot["sell_candidates"]) or "none"
-    print(f"sell candidates (declining - value only goes down from here, real urgency to move it): {sell}")
+    print(f"sell candidates (under {MIN_MEANINGFUL_RUNWAY:g} years before decline - value only "
+          f"goes down from here, real urgency to move it): {sell}")
     situational = ", ".join(e["name"] for e in pivot["situational"]) or "none"
-    print(f"situational pieces (good players, just not your long-term core - take a fair offer, no urgency): {situational}")
+    print(f"situational pieces (years still on them, just not your long-term core - take a fair "
+          f"offer, no urgency): {situational}")
     if not pivot["acquire_targets"]:
         print("no obvious acquire targets found")
         return

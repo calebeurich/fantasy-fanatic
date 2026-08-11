@@ -119,7 +119,8 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     explaining why the two paths cost differently - surface that reasoning rather than
     just listing both sets of names.
 
-    A Rebuild result returns "sell_candidates" (declining, urgent), "situational" (everything
+    A Rebuild result returns "sell_candidates" (under two years before their decline cutoff,
+    so urgent - this includes prime-age players, not just declining ones), "situational" (everything
     else worth selling, ordered by how much of the player's price is CURRENT production - the
     top entry is the best sell-high, not the most valuable player) and "acquire_targets".
     A young rebuilding roster legitimately has an empty "sell_candidates"; that is not an

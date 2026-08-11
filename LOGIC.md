@@ -857,14 +857,20 @@ have yet) - deferred rather than faked.
   away its own WRs, which only moves the shortage around rather than fixing it. Applies
   to both "thin" and "critical" needs, not just critical - a thin position is already at
   the bare minimum, trading from it just makes it critical.
-- **Sell candidates split by urgency, not lumped into one list.** A declining player's
-  value only goes down from here - real urgency to move it. A prime player below the
-  cornerstone bar is often still a genuinely good player (e.g. a real starting-caliber
-  WR who just doesn't crack an unusually deep corps) - not losing value on a clock, so
-  it's a situational, take-a-fair-offer piece, not an urgent sell. Presenting both the
-  same way overstated how clear-cut the prime ones actually are - validated against a
-  real case where a startable prime WR was flatly listed alongside a player who's
-  actually declining.
+- **Sell candidates split by urgency, not lumped into one list.** A player inside
+  `MIN_MEANINGFUL_RUNWAY` of his decline cutoff only loses value from here - real urgency
+  to move it. A player below the cornerstone bar with years still on him is often still
+  genuinely good (e.g. a real starting-caliber WR who just doesn't crack an unusually deep
+  corps) - not losing value on a clock, so it's a situational, take-a-fair-offer piece, not
+  an urgent sell. Presenting both the same way overstated how clear-cut the second group is.
+  **Split on runway, not on `bucket`.** Splitting on `bucket == "declining"` put Justin
+  Jefferson - 6,828, the most valuable asset on a rebuilding roster, 1.8 years from his
+  cutoff - under "take a fair offer, no urgency", while a 2,145 back at -2.2 years read as
+  urgent. That is the fourth site of the same defect `MIN_MEANINGFUL_RUNWAY` was introduced
+  to fix (see the age curve above for the first three); the constant was already imported
+  into `trade_targets.py` and this path simply never used it. The printed labels and the
+  MCP tool's own description of `sell_candidates` were corrected in the same change, since
+  both had said "declining" and the block now holds prime-age players too.
 - **Middling teams get both paths, not a silent default.** A Middling team hasn't
   committed to pushing or pivoting - showing only the buy path (like Win-Now) would be
   picking a direction for them. `find_targets` runs `_buy_path` and `_pivot_path` and
