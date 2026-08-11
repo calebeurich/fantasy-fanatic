@@ -483,25 +483,30 @@ DEPTH_NOTE_REBUILD = (
 DEPTH_LIMIT = 6
 
 
-def _depth_adds(me_roster: dict, ctx, states: list[dict], thresholds: dict[str, float],
+def _depth_adds(me_roster: dict, ctx, states: list[dict], filling_lineup: bool,
                 my_starters: set[str], already: set[str]) -> list[dict]:
     """Cheap bodies on rebuilding rosters who would start for me if one player above them
     went down. The complement of `_buy_path`, not an extension of it.
 
-    **Sourced from below replacement level on purpose** - below startable quality, so these
-    are not who the buy path is for. The live case that forced this list into existence
-    missed by *3 dynasty points* on a roster only two deep at his position, and a rule that
-    answers "not worth trading for" to a body that would start next week is wrong in a way
-    no threshold tuning fixes.
+    **Which bar makes someone "only depth" depends on what the asking team is doing**, and
+    it is the two-metric split `roster_needs.replacement_thresholds` documents: filling a
+    lineup is a *redraft* question, holding a lottery ticket is a *dynasty* one.
 
-    **Against the full threshold, not `clears_relevance_floor`.** That floor is *tiered* - a
-    production-priced player clears it at half - so testing it here opened a crack between
-    the two lists rather than partitioning them. On a roster with the league's second-worst
-    RB room, Tony Pollard (1,493) and Jaylen Warren (1,948) both cleared half of RB's 2,576
-    and were dropped as "the buy path already owns him", while the buy path's cap of three
-    ranked them 4th and 5th on production and never showed them. The cheapest, most
-    obviously gettable help in the league was invisible in both lists - the same cap that
-    once hid Chris Olave, hiding the opposite kind of player.
+    - Filling a lineup (Push/Contend/Ascend): above replacement-level **production** and he
+      is a real fix, not insurance. David Montgomery - 2,145 dynasty, 1,779 redraft against
+      RB replacement of 1,708 - was filed as "never worth a real asset" on a roster whose
+      second starting RB produces 633. He is a +1,146 upgrade to the weakest slot in that
+      lineup. Testing dynasty value there answered a question nobody asked.
+    - Rebuilding: production now is beside the point (`DEPTH_NOTE_REBUILD` - the value is a
+      body who inherits a job and *becomes* sellable), so cheap-by-dynasty is the right bar.
+
+    **Not `clears_relevance_floor` either way.** That floor is *tiered* - a production-priced
+    player clears it at half - so testing it here opened a crack between the two lists rather
+    than partitioning them. Tony Pollard (1,493) and Jaylen Warren (1,948) both cleared half
+    of RB's 2,576 and were dropped as "the buy path already owns him", while `_buy_path`'s cap
+    of three ranked them 4th and 5th on production and never showed them either. The cheapest,
+    most obviously gettable help in the league was invisible in both lists - the same cap that
+    once hid Chris Olave for being prime, hiding these two for being cheap.
 
     Needs are binary and that is the gap: a position is a hole or it is fine, so a team
     starting five receivers and a team starting three look identical at WR once both are
@@ -514,6 +519,9 @@ def _depth_adds(me_roster: dict, ctx, states: list[dict], thresholds: dict[str, 
     # is exactly the case neither of the development leagues could produce.
     rebuilders = {s["owner_id"]: s["owner"] for s in states
                   if s["window"] == "Rebuild" and s["owner_id"] != me_roster["owner_id"]}
+    metric = "redraft_value" if filling_lineup else "value"
+    bars = ctx.start_thresholds if filling_lineup else ctx.trade_thresholds
+    bar_label = "replacement-level production" if filling_lineup else "the trade-value floor"
     adds = []
     for roster in ctx.rosters:
         owner = rebuilders.get(roster["owner_id"])
@@ -525,8 +533,8 @@ def _depth_adds(me_roster: dict, ctx, states: list[dict], thresholds: dict[str, 
                 continue
             entry = {**info, "bucket": age_bucket(info["position"], info.get("age"),
                                                   info.get("usage_role"))}
-            if info["value"] >= thresholds[info["position"]]:
-                continue  # startable quality - a real buy target, not depth
+            if (info.get(metric) or 0) >= bars[info["position"]]:
+                continue  # a real fix, not depth - belongs to the buy path
             if not roster_needs.would_start_if_one_out(me_roster, ctx.players, player_id,
                                                       my_starters, ctx.lineup_dedicated,
                                                       ctx.lineup_flex):
@@ -536,8 +544,8 @@ def _depth_adds(me_roster: dict, ctx, states: list[dict], thresholds: dict[str, 
                          "age": info.get("age"), "bucket": entry["bucket"],
                          "from_owner": owner,
                          "note": (f"Would start for you if your weakest {info['position']} "
-                                  f"were out. Below replacement level "
-                                  f"({round(thresholds[info['position']]):,} at "
+                                  f"were out. Below {bar_label} "
+                                  f"({round(bars[info['position']]):,} at "
                                   f"{info['position']}), so the price should be nominal.")})
     adds.sort(key=lambda a: a["value"])
     return adds[:DEPTH_LIMIT]
@@ -917,7 +925,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     # neither. That team had the worst RB room in its league and six qualifying cheap bodies
     # available - and cheap bodies are arguably worth MORE to a rebuilder, since a moonshot
     # back is one injury away from being a real asset and costs a late pick to hold.
-    depth = _depth_adds(my_roster, ctx, states, thresholds, my_starters,
+    depth = _depth_adds(my_roster, ctx, states, me["window"] != "Rebuild", my_starters,
                         set())
     def _wanted_by(position: str) -> list[dict]:
         """Which other teams are short at this position, worst shortage first.

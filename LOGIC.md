@@ -2764,9 +2764,24 @@ current starter at the candidate's position - the marginal lineup spot, the same
 `_injury_drop` makes - adds the candidate, and refills optimally so flex eligibility is
 respected. Counting bodies cannot distinguish the two WR rooms above; a real refill can.
 
-**Sourced from below replacement level** - below startable quality, so these are not who
-`_buy_path` is for and they are cheap by construction. The case that forced this list into
-existence missed the bar by **3 dynasty points** on a roster its owner described as two deep.
+**Which bar makes someone "only depth" depends on what the asking team is doing**, and it is
+the same two-metric split `replacement_thresholds` documents: *filling a lineup is a redraft
+question, holding a lottery ticket is a dynasty one.*
+
+| asking team | bar | why |
+|---|---|---|
+| Push / Contend / Ascend | replacement-level **production** (`start_thresholds`) | above it he is a real fix, not insurance |
+| Rebuild | the **dynasty** trade-value floor (`trade_thresholds`) | production now is beside the point - the value is a body who inherits a job and *becomes* sellable (`DEPTH_NOTE_REBUILD`) |
+
+Testing dynasty value for a lineup-filler answered a question nobody asked. David Montgomery
+- 2,145 dynasty, 1,779 redraft against RB replacement of 1,708 - was filed "never worth a
+real asset" on a roster whose second starting RB produces **633**. He is a +1,146 upgrade to
+the weakest slot in that lineup, and calling him insurance was simply wrong. The roster's
+owner made the call on the split: "when trying to fill your roster it should be redraft value
+... rebuilding teams don't care about filling roster yet."
+
+The case that forced this list into existence missed the bar by **3 dynasty points** on a
+roster its owner described as two deep.
 
 **Against the full threshold, not `clears_relevance_floor`** - fixed after a live spot check.
 The relevance floor is *tiered*: a production-priced player clears it at **half**. Testing it
