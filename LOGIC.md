@@ -220,15 +220,21 @@ dynasty-community heuristics, not a fitted model:
 | TE | 25 | 30 |
 
 **Usage-based overrides** (`player_roles.py`): a flat position curve also misses that
-mobile QBs lean on athleticism (decline pulls forward) and pass-catching RBs age like
-WRs (decline pushes back). Tags come from real 2025 season data (nflreadpy), not a
-guess:
-- `rushing_qb`: carries/game >= 5.0 (curve becomes 26/31 instead of 26/34)
-- `pass_catching_rb`: targets/game >= 4.0 (curve becomes 24/29 instead of 24/27)
+mobile QBs lean on athleticism (decline pulls forward), that a *good* pocket passer
+trades on arm talent and processing (decline pushes back a long way), and that
+pass-catching RBs age like WRs. Tags come from real season data (nflreadpy), not a guess:
+- `rushing_qb`: carries/game >= 5.0 and *not* an elite passer -> 26/32
+- `dual_threat_qb`: carries/game >= 5.0 *and* an elite passer -> 26/34 (the default; the
+  point is the **absence** of a discount, not a bonus)
+- `pocket_passer`: elite passer, not a runner -> 26/38
+- `pass_catching_rb`: targets/game >= 4.0 -> 24/29 instead of 24/27
 
-Thresholds were picked by inspecting the actual 2025 distribution and using the natural
-gap in each (e.g. Lamar Jackson/Josh Allen/Jalen Hurts clear 5 carries/game while pure
-pocket passers don't crack 3) - not arbitrary round numbers.
+"Elite passer" is the top third of passing EPA per game over three seasons
+(`ELITE_PASSER_PERCENTILE`), a measured tier rather than a reputation one. Carry and
+target thresholds were picked from the natural gap in the real distribution (Lamar
+Jackson/Josh Allen/Jalen Hurts clear 5 carries/game while pure pocket passers don't crack
+3) - not arbitrary round numbers. Full reasoning for the three-way QB split, including
+why the pocket end stops at 38 rather than 40, is in `team_values.AGE_CURVE_OVERRIDES`.
 
 ## Team value (`team_values.py`)
 
@@ -1795,10 +1801,41 @@ deliberately avoiding.
   | 28-29 | 36% | 0% | **0%** | - |
   | 31-32 | **0%** | - | 0% | 0% |
 
-  WR shows a clean cliff at **28** against our 29, and TE looks plainly wrong - the market
-  stops paying at ~27 where our curve says **30**.
+  WR shows a clean cliff at **28** against our 29, and TE appeared plainly wrong - the market
+  looked like it stops paying at ~27 where our curve says **30**.
 
-  Three reasons this is not yet actionable. Cells hold 5-55 players, mostly 10-20, so one or
+  **The TE half of that reading was an artifact, and it is now resolved: the curve stays at
+  30.** The cornerstone bar is a single leaguewide 90th percentile, and the entire TE
+  cornerstone population is **four players** (Bowers 23.7, McBride 26.7, Loveland 22.4, Warren
+  24.2) against 13 QB, 13 WR and 10 RB. All four happen to be recent first-round picks, so
+  every cell from 27 up contains **zero** players and reads 0% - which says nothing about
+  aging and everything about there being no one in the cell. Tight end is a position with two
+  or three elite players at a time; a percentile cut shared with QB and WR will nearly always
+  find its TE cells empty.
+
+  The direct evidence points the other way. Kittle at **32.9** is the 11th most valuable TE in
+  the pool (2,424 dynasty / 2,053 redraft) and Kelce at **36.9** is 18th (1,805 / 1,473),
+  ahead of tight ends a decade younger; both carry redraft/dynasty ratios above 0.8, which is
+  exactly what our model should say about a productive declining asset - real now-value, no
+  future. And the curve reproduces the domain read without being tuned to it: McBride at 26.7
+  against a cutoff of 30 yields **3.3 years of runway**, matching the independent judgement
+  that he is good for about three more years.
+
+  **The age cutoff and the now-premium ratio do separate jobs, which is why neither needs to
+  move.** Age alone would lump Kittle (32.9, ratio 0.85), Kelce (36.9, 0.82) and Mark Andrews
+  (31.0, **0.39**) together as declining tight ends; the ratio alone would lump Kittle with
+  Bowers (23.7, 0.82). Read together they separate correctly: Kittle and Kelce are old and
+  still being paid for *now*, Andrews is old and no longer paid for anything, Bowers is young
+  and already producing. Andrews is the TE to move here and the only one the tool pushes -
+  which is the right answer and not one an age cutoff could reach by itself.
+
+  So this is the same confound already flagged for QB, caught a second time: cornerstone value
+  is decline **times remaining years**, and a small cell makes it unreadable. **WR is the one
+  cell where the signal survives** - 13 cornerstones, oldest 27.4, none at 28+ - so 29 may
+  genuinely be a year late. That one is still open. (RB's oldest cornerstone is McCaffrey at
+  30.2 against our cutoff of 27, which is one player and proves nothing.)
+
+  Three reasons the general version is not yet actionable. Cells hold 5-55 players, mostly 10-20, so one or
   two names move a column (RB "recovering" at 29-31 is two backs). It measures a *different*
   quantity: cornerstone value is decline **times remaining years**, so a 33-year-old elite QB
   reads 0% because the market won't pay for years he lacks, not because he has declined -
