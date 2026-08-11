@@ -1746,6 +1746,20 @@ deliberately avoiding.
   and a torn ACL identically, and they are not the same problem for a roster. Doing this
   properly means severity and duration by injury type, which is a real modelling exercise
   and a genuine rabbit hole; noted as somewhere to go deliberately rather than to drift into.
+- **Freak accidents and chronic fragility are counted identically.** A rate cannot tell a
+  player who tore a ligament in a pile-up from one whose soft tissue keeps failing, though
+  only the second predicts anything. Injury *type* is in the report data
+  (`report_primary_injury`) and is not used yet.
+- **Availability is binary here, and playing hurt isn't.** Hamstring injuries in particular
+  linger for weeks after a player returns and depress production the whole time, so a
+  manager sees a healthy-looking `ACT` week and a diminished player. Nothing in this model
+  has a state between available and out, and adding one means joining injury designations to
+  weekly production - which is also the join that would let severity be measured rather than
+  assumed.
+- **Suspension risk is measured but not used.** `weeks_suspended` is reported and
+  deliberately excluded from `miss_rate`. Whether a past suspension predicts a future one is
+  a genuine question, and if it does it belongs in availability forecasting as its own term
+  rather than smuggled in under injury.
 - **Dynasty rosters are deeper than the replacement-level bar assumes.** Dynasty formats
   carry far more players than redraft, so plenty of low-redraft-value players are
   genuinely starter-relevant in a way a value-derived threshold does not reflect. This
@@ -2008,20 +2022,49 @@ weekly injury report, over the last three completed seasons:
 
 | position | share of roster weeks missed |
 |---|---|
-| QB | **0.109** |
-| TE | 0.164 |
-| RB | 0.187 |
-| WR | 0.187 |
+| QB | **0.107** |
+| TE | 0.177 |
+| WR | 0.195 |
+| RB | 0.200 |
 
 Quarterbacks miss roughly **half** as often as skill players, which is what makes the old
 disclaimer real rather than theoretical, and independently matches what the league's manager
 assumed when he built two good QBs plus a cheap third in superflex.
 
-**A missed week is reserve-list *or* an `Out` report, and the reserve half matters most.**
-Season-ending injuries live on IR, and a player on IR often stops appearing on the weekly
-report altogether - so reading the report alone would undercount exactly the absences a
-manager most needs to plan for. `Questionable` and `Doubtful` are excluded: they describe
-uncertainty, not absence, and plenty of questionable players play a full game.
+**A missed week is an *injury* reserve week, an injury inactive, or an `Out` report - and
+the reserve half matters most.** Season-ending injuries live on IR, and a player on IR often
+stops appearing on the weekly report altogether: R01 weeks show up on the report only **5%**
+of the time, so reading the report alone would undercount precisely the absences a manager
+most needs to plan for. `Questionable` and `Doubtful` are excluded, since they describe
+uncertainty rather than absence and plenty of questionable players play a full game.
+
+**Suspension is not fragility, and the first version said it was.** Counting all of status
+`RES` scored suspensions as injuries. A receiver came out at 0.451, six weeks of which were a
+suspension served in perfect health - caught by his owner reading the output, within minutes
+of the module shipping. `status_description_abbr` carries the reason, and the codes were
+classified **empirically** - by how often each also appears on the injury report, and by who
+is in it - rather than by guessing at the NFL's vocabulary:
+
+| code | weeks | on injury report | reading |
+|---|---|---|---|
+| R01 | 12,309 | 5% | Reserve/Injured |
+| R48 | 1,162 | 47% | IR, designated to return |
+| R04 / R05 | 1,328 | ~11% | PUP / non-football injury |
+| I01 | 1,872 | - | inactive, injury |
+| **R40** | 177 | **0%** | **suspended** |
+| **R30** | 51 | **0%** | **suspended, indefinite** |
+| **R06** | 53 | **0%** | **did not report / left squad** |
+
+An **allowlist**, so an unfamiliar or newly-added code counts as not-injury. That is the safe
+direction: understating a rate is a smaller error than telling someone a player is fragile
+when he was suspended. Non-injury absences are dropped from the numerator *and* the
+denominator - leaving them in the denominator would quietly reward being suspended with a
+lower miss rate - and surfaced separately as `weeks_suspended`, because being unavailable is
+still a real fact and suspension arguably predicts itself. What it must not do is arrive
+wearing an injury label.
+
+The correction moves real numbers: 0.451 to 0.378 for the receiver above, and 0.022 for a
+different one whose only absences were a six-week suspension.
 
 **The denominator is weeks actually on an NFL roster, not a flat 17 per season.** The flat
 version silently rates a player who wasn't in the league as perfectly durable. Practice-squad
@@ -2038,9 +2081,10 @@ rather than a year. It costs coverage - 257 of 398 pool players carry a rate - a
 missing ones are reported as **None for unknown, which is not zero**, in line with how this
 project handles every other absent number.
 
-Face validity on the live pool: J.K. Dobbins 0.529, Rashee Rice 0.451, Deshaun Watson 0.725,
-Jonathon Brooks 0.882. Two of those are starters on the same roster, which is precisely the
-"short and injury-prone" room its owner described before any of this was measured.
+Face validity on the live pool: Jonathon Brooks 0.912, Deshaun Watson 0.725, J.K. Dobbins
+0.529, Anthony Richardson 0.510. Dobbins is a starter on the roster whose owner described it
+as "short and injury-prone" before any of this was measured - and the bench body behind him
+sits at 0.441, so the cover is itself fragile.
 
 Pooled over player-*weeks* rather than averaged over players, because the question is what
 happens to a lineup slot, not what the average résumé looks like - a per-player mean lets a

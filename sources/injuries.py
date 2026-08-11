@@ -31,10 +31,41 @@ SEASONS = 3
 # CUT/RET/TRD weeks are gone from the team entirely and mean nothing about health.
 ELIGIBLE_STATUSES = {"ACT", "INA", "RES"}
 
-# Reserve lists (IR, PUP, NFI) are the strongest available signal and the one that matters
-# most: they are where the season-ending injuries live, and a player on IR often stops
-# appearing on the weekly injury report altogether. Reading the report alone would therefore
-# *undercount* exactly the absences a manager most needs to plan for.
+# **Not every reserve week is an injury week, and conflating them was a real bug.** The
+# first version counted all of status RES, which silently scored suspensions as fragility:
+# a receiver's rate came out at 0.451, of which six weeks were a suspension served in full
+# health. His owner spotted it immediately. `status_description_abbr` carries the reason,
+# and the codes were classified empirically - by how often each one also appears on the
+# weekly injury report, and by who is in it - rather than by guessing at the NFL's
+# vocabulary:
+#
+#   R01 (12,309 wks) Reserve/Injured .................. injury
+#   R48 ( 1,162)     IR, designated to return ......... injury (47% also on the report)
+#   R04 (   945)     PUP .............................. injury
+#   R05 (   383)     non-football injury .............. injury
+#   I01 ( 1,872)     inactive - injury ................ injury
+#   R40 (   177)     suspended ........................ NOT injury (0% on the report)
+#   R30 (    51)     suspended, indefinite ............ NOT injury (0%)
+#   R06 (    53)     did not report / left squad ...... NOT injury (0%)
+#
+# Reserve weeks matter most of all, which is why getting this right matters: season-ending
+# injuries live on IR, and a player on IR often stops appearing on the weekly report
+# altogether. Reading the report alone would *undercount* exactly the absences a manager
+# most needs to plan for - note R01 is on the report only 5% of the time.
+#
+# An **allowlist**, so an unfamiliar or newly-introduced code counts as not-injury. That is
+# the safe direction: understating a rate is a smaller error than telling someone a player
+# is fragile when he was suspended.
+INJURY_CODES = {"R01", "R48", "R04", "R05", "I01"}
+
+# Absences that say nothing about durability. Dropped from the numerator *and* the
+# denominator: a suspended or holding-out player was not available, but he also wasn't
+# hurt, and leaving those weeks in the denominator would quietly reward being suspended
+# with a lower miss rate. Counted and reported separately instead - whether suspension
+# predicts future suspension is a real question, and one this rate should not answer by
+# smuggling it in under an injury label.
+NON_INJURY_ABSENCE_CODES = {"R40", "R30", "R06"}
+
 RESERVE_STATUS = "RES"
 
 # The report's own word for "will not play". "Questionable" and "Doubtful" are deliberately
@@ -69,9 +100,13 @@ def _seasons() -> list[int]:
 def player_miss_rates() -> dict[str, dict]:
     """Keyed by **Sleeper player_id**: how much of the time this player was unavailable.
 
-        {"miss_rate": 0.31, "weeks_missed": 17, "weeks_eligible": 55, "seasons": [2023, 2024, 2025]}
+        {"miss_rate": 0.31, "weeks_missed": 17, "weeks_eligible": 55,
+         "weeks_suspended": 0, "seasons": [2023, 2024, 2025]}
 
-    A missed week is one spent on a reserve list, or one the injury report called `Out`. The
+    A missed week is one spent on an **injury** reserve list (see `INJURY_CODES`), one the
+    club listed inactive with an injury, or one the injury report called `Out`. Suspensions
+    and holdouts are excluded from both halves of the fraction and reported separately as
+    `weeks_suspended` - being suspended is not being fragile. The
     denominator is weeks actually on an NFL roster - not a flat 17 per season - because the
     alternative silently rates a player who was never in the league as perfectly durable.
 
@@ -93,13 +128,17 @@ def player_miss_rates() -> dict[str, dict]:
 
     tally: dict[str, dict] = {}
     for row in weekly.iter_rows(named=True):
-        gsis, status = row["gsis_id"], row["status"]
+        gsis, status, code = row["gsis_id"], row["status"], row["status_description_abbr"]
         if not gsis or status not in ELIGIBLE_STATUSES or row["game_type"] != "REG":
             continue
-        entry = tally.setdefault(gsis, {"weeks_eligible": 0, "weeks_missed": 0, "seasons": set()})
+        entry = tally.setdefault(gsis, {"weeks_eligible": 0, "weeks_missed": 0,
+                                        "weeks_suspended": 0, "seasons": set()})
+        if code in NON_INJURY_ABSENCE_CODES:
+            entry["weeks_suspended"] += 1
+            continue  # not availability information either way - see NON_INJURY_ABSENCE_CODES
         entry["weeks_eligible"] += 1
         entry["seasons"].add(row["season"])
-        if status == RESERVE_STATUS or (gsis, row["season"], row["week"]) in out_weeks:
+        if code in INJURY_CODES or (gsis, row["season"], row["week"]) in out_weeks:
             entry["weeks_missed"] += 1
 
     sleeper_ids = gsis_to_sleeper()
@@ -108,6 +147,7 @@ def player_miss_rates() -> dict[str, dict]:
             "miss_rate": round(entry["weeks_missed"] / entry["weeks_eligible"], 3),
             "weeks_missed": entry["weeks_missed"],
             "weeks_eligible": entry["weeks_eligible"],
+            "weeks_suspended": entry["weeks_suspended"],
             "seasons": sorted(entry["seasons"]),
         }
         for gsis, entry in tally.items()
@@ -139,12 +179,14 @@ def position_miss_rates() -> dict[str, float]:
 
     pooled: dict[str, list[int]] = {}
     for row in weekly.iter_rows(named=True):
-        status, position = row["status"], row["position"]
+        status, position, code = row["status"], row["position"], row["status_description_abbr"]
         if status not in ELIGIBLE_STATUSES or row["game_type"] != "REG":
+            continue
+        if code in NON_INJURY_ABSENCE_CODES:
             continue
         eligible, missed = pooled.setdefault(position, [0, 0])
         pooled[position][0] = eligible + 1
-        if status == RESERVE_STATUS or (row["gsis_id"], row["season"], row["week"]) in out_weeks:
+        if code in INJURY_CODES or (row["gsis_id"], row["season"], row["week"]) in out_weeks:
             pooled[position][1] = missed + 1
     return {position: round(missed / eligible, 3)
             for position, (eligible, missed) in pooled.items() if eligible}

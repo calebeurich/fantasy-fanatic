@@ -17,7 +17,12 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
     `miss_rate` is the share of roster weeks this player has actually missed over the last
     three seasons (`sources.injuries`), or **None for unknown** - which is not the same as
     zero and matters most for the youngest players, who are exactly the ones with too little
-    history to judge. Two seasons is the minimum sample, so most rookies carry None here."""
+    history to judge. Two seasons is the minimum sample, so most rookies carry None here.
+
+    `weeks_suspended` is kept *out* of `miss_rate` and reported alongside it. A suspended
+    player was unavailable but not fragile, and merging the two told a manager his receiver
+    was injury-prone when six of those weeks were served in full health. It is still a real
+    availability fact, and arguably predicts itself, so it is surfaced rather than dropped."""
     rows = []
     for player_id in roster["players"] or []:
         info = players.get(player_id)
@@ -26,7 +31,8 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
             rows.append({"name": f"(unvalued player_id {player_id})", "position": "?", "value": 0,
                          "age": None, "bucket": "n/a", "usage_role": None, "contract": None,
                          "lineup_role": lineup_role,
-            "miss_rate": (miss_rates or {}).get(player_id, {}).get("miss_rate"), "miss_rate": None})
+            "miss_rate": (miss_rates or {}).get(player_id, {}).get("miss_rate"),
+            "weeks_suspended": (miss_rates or {}).get(player_id, {}).get("weeks_suspended"), "miss_rate": None})
             continue
         rows.append({
             "name": info["name"],
@@ -38,6 +44,7 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
             "contract": contract_data.get(player_id),
             "lineup_role": lineup_role,
             "miss_rate": (miss_rates or {}).get(player_id, {}).get("miss_rate"),
+            "weeks_suspended": (miss_rates or {}).get(player_id, {}).get("weeks_suspended"),
         })
     rows.sort(key=lambda r: r["value"], reverse=True)
     return rows
