@@ -1206,6 +1206,11 @@ def _print_swaps(swaps: list[dict]) -> None:
         print("no mutual swap fits found")
         return
     print("mutual swaps (both sides fix a different need, no core piece touched):")
+    # The CLI printed the two totals bare, with none of the framing the MCP tool
+    # description and LOGIC.md both carry - so they read as a priced offer, which is the
+    # one thing this project deliberately doesn't compute.
+    print("  totals are a comparable-value sanity check - a shape that could work, not a "
+          "priced offer. Value does not add up across players.")
     for s in swaps:
         receive = ", ".join(e["name"] for e in s["you_receive"])
         send = ", ".join(e["name"] for e in s["you_send"])
