@@ -1739,6 +1739,27 @@ deliberately avoiding.
   FantasyCalc's `ppr` parameter is a flat 0.6% per-position scalar that cannot tell a
   receiving back from an early-down back - so a projections source would close two gaps at
   once and is probably the single highest-value external addition left.
+- **The relevance floor ignores league size and roster depth.** `MIN_RELEVANCE_FRACTION` is a
+  flat 0.5 / 0.25 of a leaguewide top-N bar, and neither number knows how many teams there
+  are, how deep the benches go, or whether there is a taxi squad. Those settings decide how
+  much of the player pool is rosterable at all, which is exactly what "does this player have
+  real value" depends on: in a 10-team league with short benches, good players sit on waivers
+  and a bench piece is genuinely replaceable; in a 14-team league with 35-man rosters and a
+  taxi, almost nothing is.
+
+  The three real leagues here are 12 teams, 10 starters, 14-15 bench, 4 taxi - roughly 336
+  players rostered against 120 starting slots, so **two thirds of every roster is bench**.
+  A flat fraction is being asked to describe all of that.
+
+  This got more load-bearing today, not less: moving `find_surplus` onto the relevance floor
+  took surplus from ~4 entries per league to ~100, so the constant now drives a much larger
+  number than when it was chosen.
+
+  **It cannot be calibrated from what we have** - all three leagues are the same shape, so
+  there is no variation to fit against. Same problem `format_support` handles by flagging
+  shallow leagues as degraded rather than pretending to know. Needs either more league formats
+  or a derivation from first principles (rostered players per team against valued players
+  available), not another guessed constant.
 - **Depth is not yet *weighted* by injury risk.** The rates now exist (`sources/injuries.py`)
   and are reported, but nothing multiplies them together: how much a bench body is worth
   should depend on the starter's own miss rate, the position's rate, and how long a typical
