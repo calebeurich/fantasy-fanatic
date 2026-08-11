@@ -753,14 +753,50 @@ ME = {"owner_id": "me", "owner": "Me", "window": "Push"}
 NEED_RB = {"RB": {"level": "critical", "weakest_starter": 0, "note": "", "rank": 10, "of": 12}}
 
 
-def test_persuasion_excludes_a_reigning_champion_with_the_same_roster():
-    """The clearest "no" available: a manager who just won with this exact core has every
-    reason to run it back. Real case - a contender holding McCaffrey at the second-best
+def test_persuasion_excludes_an_aging_contender_whose_own_window_is_now():
+    """A contender that is itself aging into its window should keep its aging producer -
+    that player is aligned with the seasons the roster is built for. Real case: a contender
+    at 21% ascending against 23% declining, holding McCaffrey at the second-best
     production-per-cost ratio in the league, who would not move him at any sane price.
-    Listing him would put an unattainable name at the top of the list."""
-    champ = _holder("champ", "Contend", "steady", [_aging("Stud", 4000, 6000)])
+
+    This is the case the reigning-champion veto used to catch. The veto is gone: the tilt
+    rejects the same team on its merits, and a title says less than roster shape does."""
+    holder = _holder("aging", "Contend", "steady", [_aging("Stud", 4000, 6000)],
+                     asc=21, dec=23)
     out = trade_targets._persuasion_targets(
-        ME, [champ], NEED_RB, {"RB": 100}, {}, {"champ": _prior(1, champion=True)})
+        ME, [holder], NEED_RB, {"RB": 100}, {}, {"aging": _prior(1, champion=True)})
+    assert out == []
+
+
+def test_persuasion_surfaces_a_cliff_player_when_the_owners_window_outlasts_him():
+    """The mirror, and the case the whole tier was rebuilt for. Same window, same asset,
+    but this owner's production is tilting *ascending* - it contends now and later, so the
+    aging starter is surplus to a future arriving without him.
+
+    A team-level read cannot reach this: the trajectory is `steady` because a young core
+    dilutes one old starter, and the old gate rejected the roster before any player on it
+    was examined. Real case - the league's best team starting a 32.6-year-old RB at 1.54x."""
+    holder = _holder("young", "Contend", "steady", [_aging("Stud", 4000, 6000)],
+                     asc=26, dec=16)
+    out = trade_targets._persuasion_targets(
+        ME, [holder], NEED_RB, {"RB": 100}, {}, {"young": _prior(3)})
+    assert [t["name"] for t in out] == ["Stud"]
+    why = out[0]["why_they_might_listen"]
+    assert "don't line up" in why and "26%" in why, "must name the mismatch, not the age"
+    assert "not currently a seller" in out[0]["cost_note"], "the ask must carry its price"
+
+
+def test_persuasion_cliff_needs_a_starter_the_market_still_pays_for():
+    """Two guards against "every old player is available", on a roster the tilt approves.
+    A declining player on the *bench* is a bad asset, not a conversation - his owner already
+    stopped relying on him. And age alone would surface a 36.9-year-old TE priced at 0.83x:
+    old *and* no longer producing enough for any contender to want."""
+    benched = _aging("Benched", 4000, 6000) | {"is_starter": False}
+    faded = _aging("Faded", 1810, 1504, pos="TE")  # 0.83x - the real Kelce line
+    holder = _holder("young", "Contend", "steady", [benched, faded], asc=26, dec=16)
+    out = trade_targets._persuasion_targets(
+        ME, [holder], {**NEED_RB, "TE": NEED_RB["RB"]}, {"RB": 100, "TE": 100}, {},
+        {"young": _prior(3)})
     assert out == []
 
 
@@ -802,16 +838,19 @@ def test_persuasion_skips_players_who_are_not_age_discounted():
 
 
 def test_persuasion_ignores_last_season_when_the_roster_turned_over():
-    """The champion veto is gated on continuity, because a result describes a *roster*.
-    A manager who won and then tore it down is not running anything back, so the veto
-    must not fire - a falling trajectory should still make them a candidate."""
-    champ = _holder("champ", "Push", "falling", [_aging("Stud", 3000, 4500)])
+    """Last season's result is only allowed to speak about the roster that produced it.
+    "This core hasn't won" is a real second reason to listen when the team still has that
+    core, and meaningless once it has been torn down - so continuity gates the reason
+    without changing whether the player surfaces at all."""
+    holder = _holder("kk", "Push", "falling", [_aging("Stud", 3000, 4500)])
     intact = trade_targets._persuasion_targets(
-        ME, [champ], NEED_RB, {"RB": 100}, {}, {"champ": _prior(1, champion=True, continuity=1.0)})
+        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False, continuity=1.0)})
     turned_over = trade_targets._persuasion_targets(
-        ME, [champ], NEED_RB, {"RB": 100}, {}, {"champ": _prior(1, champion=True, continuity=0.2)})
-    assert [t["name"] for t in intact] == ["Stud"], "falling beats the veto even for a champion"
-    assert [t["name"] for t in turned_over] == ["Stud"]
+        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False, continuity=0.2)})
+    assert [t["name"] for t in intact] == ["Stud"] == [t["name"] for t in turned_over]
+    assert "hasn't delivered" in intact[0]["why_they_might_listen"]
+    assert "hasn't delivered" not in turned_over[0]["why_they_might_listen"], \
+        "a result cannot describe a roster that no longer exists"
 
 
 def test_persuasion_never_searches_teams_that_are_already_sellers():

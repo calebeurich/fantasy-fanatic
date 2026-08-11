@@ -11,9 +11,12 @@ import asyncio
 from analysis import trade_targets
 from .agent import run_query, _trade_violations
 
-DYNASTY_LEAGUE = "1315386978904084480"  # XFL 2
-DYNASTY_LEAGUE_2 = "1319727865188593664"  # second real dynasty league
-REDRAFT_LEAGUE = "1323741311471194112"  # Tangy Football
+# The owner's real leagues, all 12-team. `dezdroppedit27` is the owner in every one of
+# them - spelled out here because the team NAME differs per league, and every manual spot
+# check starts by asking which league and which team, then guessing wrong.
+DYNASTY_LEAGUE = "1315386978904084480"    # XFL 2, superflex dynasty. Owner: "Where's the Lamb Sauce???"
+DYNASTY_LEAGUE_2 = "1319727865188593664"  # [Insert Sh*t League Name Here], superflex dynasty. Owner: "Picken Flowers"
+REDRAFT_LEAGUE = "1323741311471194112"    # Tangy Football, redraft - the `unsupported` fixture. Owner: "Blue Balls"
 
 
 def _tool_names(result: dict) -> list[str]:

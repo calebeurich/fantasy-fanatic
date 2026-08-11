@@ -122,7 +122,9 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
 
     "persuasion_targets", when present, are a DIFFERENT KIND of suggestion and must be
     presented as such: aging production held by teams that are NOT currently sellers.
-    Each carries "why_they_might_listen" (a falling roster, a core that hasn't won) and
+    Each carries "why_they_might_listen" - a falling roster, a core that hasn't won, or a
+    mismatch between that owner's window and the player's (a team contending now AND later
+    can afford to move an aging starter; one aging into its own window cannot) - plus a
     "cost_note". Never describe these as available or as fits - acquiring one means
     persuading that manager to change direction, which prices above market. They are
     ranked by "production_per_cost" (current production per unit of trade value), so the

@@ -1839,19 +1839,67 @@ acquisitions. `MIN_PRODUCTION_PER_COST = 1.0` drops anything not actually discou
 below 1.0 you'd pay a future premium to a team that doesn't want to sell, the worst of
 both. An empty list is the honest answer when nobody's aging production is on sale to you.
 
-**3. Implausible sellers are excluded, not ranked last.** The two best ratios in the league
-sit on a reigning champion and the league's best team. Listing them would put unattainable
-names at the top and make the feature worse than nothing.
+**3. Implausible sellers are excluded, not ranked last.** Listing a name nobody can get
+puts it at the top of a list sorted by ratio and makes the feature worse than nothing. What
+counts as implausible is the subtle part, and the first answer was wrong - see below.
 
 ### What makes a non-seller plausible (`_seller_case`)
 
 A falling trajectory (aging out is the one thing that turns a contender into a seller), or
-a core that missed the playoffs with the roster it still has. Vetoed by one condition: a
-**reigning champion returning the same roster**, which has just proved the core works.
+a core that missed the playoffs with the roster it still has. Both are properties of the
+**team**, and that was originally the whole test: no team-level reason, no suggestion.
 
-That veto is the only place last season is allowed to *stop* a suggestion; everywhere else
-it only adds a reason. And it is deliberately overridden by a falling trajectory - a
-champion whose roster is now aging out is a real candidate again.
+### Why a team-level test wasn't enough (`_cliff_case`)
+
+A trajectory is an average, and an average hides the individual. The league's **best** team
+(contention rank 1) reads `Contend`/`steady` at 26% ascending against 16% declining - a
+young core diluting the signal - while starting a 32.6-year-old RB the market prices at
+1.54x. The team gate rejected that roster before any player on it was examined, so the
+single best production-per-cost target in the league was unreachable.
+
+The fix is a per-player fallback, and it is **not** "the player is old". Old is half of it.
+The real condition is that **the owner's window and the player's don't overlap**:
+
+| held by | contention rank | ascending | declining | tilt | verdict |
+|---|---|---|---|---|---|
+| shivvv | **1** | 26% | 16% | **+10** | surfaced |
+| rjl22 | 2 | 21% | 23% | **−2** | not surfaced |
+
+Two `Contend` teams, the same aging-elite-RB profile, opposite answers. The first contends
+now *and* later, so its aging starter is surplus to a future that arrives without him. The
+second contends now and is aging into it - that player is aligned with its window, and
+keeping him is correct. `ascending_pct > declining_pct` is the entire discriminator, with
+no constant to calibrate.
+
+Three conditions guard it:
+
+- **Declining and starting.** A declining player on the *bench* is just a bad asset. His
+  owner already stopped relying on him, so there's nothing to talk him out of.
+- **`CLIFF_PRODUCTION_PER_COST = 1.25`**, not an age. Age alone surfaces a 36.9-year-old TE
+  priced at 0.83x - old *and* no longer producing enough for any contender to want, which
+  would have been this tier's first plainly wrong answer. Measured, not guessed: declining
+  starters across both real dynasty leagues run 1.60, 1.54, 1.47, 1.35, 1.27, then drop to
+  1.05, 1.00, 0.97, 0.86. 1.25 sits in that gap. Because the ratio is FantasyCalc redraft
+  over dynasty it is a property of the *player*, so the same names sort identically in both
+  leagues and the bar isn't fitted to one roster. It is still a market number and will
+  drift; a league-relative percentile was rejected because with ~24 declining starters it
+  would always surface *someone*, manufacturing a suggestion when the honest answer is none.
+- **The window tilt above.**
+
+Across both 12-team leagues this adds exactly **one** name. That is the intended volume -
+the tier is for the rare case a team-level read structurally cannot see, not a second
+opinion on every roster.
+
+**The reigning-champion veto was removed by this change.** It existed to stop exactly the
+aging-contender case the tilt now rejects on its merits, and it was already redundant on
+the team path (a non-falling champion made the playoffs, so `_seller_case` returned `None`
+anyway). Keeping both would be two mechanisms for one job. The tilt is also the better
+reason: a title says less about whether an owner should sell than the shape of their roster
+does, and a champion tilting ascending is a team that can afford to sell, trophy or not.
+
+This tier deliberately does **not** check whether the owner has a replacement behind the
+player. That question - *should* they do this - belongs to `find_efficiency_swaps`. This one
+only answers *is it worth asking*, and `cost_note` says an ask is all it is.
 
 ### Last season's results (`prior_season.py`)
 
@@ -1861,12 +1909,17 @@ written off entirely - but the *previous* season is finished and sitting there:
 `wins`/`losses`/`fpts`, and `winners_bracket` names the champion.
 
 Nothing in the current-season data separates the two contenders holding elite aging RBs
-convincingly - trajectory splits them only -3 to -11. Last season splits them decisively:
+convincingly - trajectory splits them only -3 to -11. Last season adds the missing reason:
 
 | | 2025 | points for | trajectory | verdict |
 |---|---|---|---|---|
-| rjl22 | **won the title** (10-4) | **2,260 - most in the league** | steady | vetoed |
-| kierankieran | 9th (5-9) | 1,864 | falling | surfaced |
+| rjl22 | **won the title** (10-4) | **2,260 - most in the league** | steady | not surfaced |
+| kierankieran | 9th (5-9) | 1,864 | falling | surfaced, *and* "this core hasn't won" |
+
+Last season's role here is now purely additive. It supplies the second sentence of
+kierankieran's case - a team that missed with the roster it still has is more open than the
+standings suggest - and it no longer *stops* anything, since the champion veto it used to
+power was removed in favour of the window tilt above.
 
 **Gated on measured roster continuity**, because a result describes a *roster*. Matched by
 `owner_id` across the season chain and measured on current starting production, this league

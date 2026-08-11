@@ -73,6 +73,15 @@ PERSUASION_NOTE = (
 # is being discounted for you.
 MIN_PRODUCTION_PER_COST = 1.0
 
+# The same ratio, at the bar where it stops being "discounted" and becomes "the market has
+# written off this player's future entirely" - which is a reason to talk to an owner whose
+# team looks fine in aggregate. Measured, not guessed: across both real dynasty leagues the
+# declining starters run 1.60, 1.54, 1.47, 1.35, 1.27, then drop to 1.05, 1.00, 0.97, 0.86.
+# 1.25 sits in that gap. Because the ratio is FantasyCalc redraft over dynasty, it is a
+# property of the *player*, not of a league - the same names sort identically in both
+# leagues, so this bar behaves the same everywhere rather than being fitted to one roster.
+CLIFF_PRODUCTION_PER_COST = 1.25
+
 DEFAULT_MAX_PER_POSITION = 3  # a parameter, not a hard limit - "give me more" means call again with a higher number
 
 # How much of a lineup player's *current* production a replacement must retain before
@@ -214,9 +223,7 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
     for other in states:
         if other["owner_id"] == me["owner_id"] or other["window"] == "Rebuild":
             continue  # Rebuild teams are already sellers - the normal buy path has them.
-        why = _seller_case(other, prior.get(other["owner_id"]))
-        if why is None:
-            continue
+        team_why = _seller_case(other, prior.get(other["owner_id"]))
         for player in other["sellable"]:
             pos, need = player["position"], my_needs.get(player["position"])
             if need is None or not player.get("redraft_value"):
@@ -225,13 +232,24 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
                 continue
             if need["level"] == "weak" and player["redraft_value"] <= need["weakest_starter"]:
                 continue
-            if player["redraft_value"] / player["value"] < MIN_PRODUCTION_PER_COST:
+            ratio = player["redraft_value"] / player["value"]
+            if ratio < MIN_PRODUCTION_PER_COST:
+                continue
+            # The team's reason if it has one, otherwise a mismatch between the owner's
+            # window and this player's. A team-level trajectory is an average, and an
+            # average hides the individual: the case that forced this was a Contend/steady
+            # team reading 16% declining - diluted by a genuinely young core - while
+            # starting a 32-year-old RB the market prices at 1.54x. Without a per-player
+            # fallback that name is unreachable, because the team gate rejects the whole
+            # roster before any player on it is examined.
+            why = team_why or _cliff_case(player, other, ratio)
+            if why is None:
                 continue
             plausible.append({
                 "position": pos,
                 "need_level": need["level"],
                 **_with_trade_note(player, other, trade_counts),
-                "production_per_cost": round(player["redraft_value"] / player["value"], 2),
+                "production_per_cost": round(ratio, 2),
                 "why_they_might_listen": why,
                 "cost_note": (
                     f"{other['owner']} is not currently a seller, so this is a conversation "
@@ -245,16 +263,9 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
 
 
 def _seller_case(other: dict, prior: dict | None) -> str | None:
-    """Why this non-selling team might listen, or None if it plainly wouldn't.
-
-    A reigning champion returning the same roster is the clearest "no" available - it has
-    just proved the core works and has every reason to run it back. That veto is the only
-    place last season's result is allowed to *stop* a suggestion; everything else it does
-    is add a reason. `describes_this_team` gates all of it, since a result means nothing
-    if the roster turned over (see prior_season.MIN_CONTINUITY)."""
+    """Why this non-selling *team* might listen, or None if nothing about the team says it
+    would. A None here is no longer the end of the search - see `_cliff_case`."""
     same_team = bool(prior and prior["describes_this_team"])
-    if same_team and prior["champion"] and other["trajectory"] != "falling":
-        return None
     if other["trajectory"] == "falling":
         base = (f"Their roster is falling - {other['declining_pct']}% of their current "
                 f"production comes from declining players, against {other['ascending_pct']}% "
@@ -267,6 +278,55 @@ def _seller_case(other: dict, prior: dict | None) -> str | None:
                 f"the same roster it still has is more open to changing course than the "
                 f"standings alone suggest.")
     return None
+
+
+def _cliff_case(player: dict, other: dict, ratio: float) -> str | None:
+    """Why an owner whose team looks fine might still move one aging starter: **their
+    window and the player's don't line up**. Not "he's old" - old is only half of it.
+
+    A team whose production is tilting ascending is set up to contend for years, and the
+    seasons this player still has aren't the seasons it's built for. His current output is
+    real, so keeping him isn't a mistake - it might be what tips this year. But it's the
+    one asset whose price is highest to a team that needs *now* and lowest to its owner's
+    actual plan, which is the whole basis for the ask.
+
+    The tilt is what makes this specific rather than universal, and the live pair proves
+    it. Two Contend teams, same 32-year-old-RB profile: one at 26% ascending against 16%
+    declining, the other at 21% against 23%. The first is contending now *and* later, so
+    the RB is surplus to a future arriving without him. The second is contending now and
+    aging into it - that RB is aligned with its window, and it would be right to keep him.
+
+    The other two conditions keep it honest:
+
+    - **Declining and starting.** A declining player on the bench is just a bad asset, not
+      a conversation - his owner has already stopped relying on him, so there's nothing to
+      talk him out of.
+    - **The market, not the birthday.** Age alone would surface a 36.9-year-old TE priced
+      at 0.83x: old *and* no longer producing enough for a contender to want. He isn't a
+      buy for anybody, and offering him as one would be this tier's first wrong answer.
+      `CLIFF_PRODUCTION_PER_COST` catches only players still producing while priced as
+      though they aren't.
+
+    Two things this deliberately does NOT do. It doesn't check whether the owner has a
+    replacement behind him - that's `find_efficiency_swaps`, which answers "should they do
+    this?", where this tier only answers "is this worth asking?", and `cost_note` already
+    says an ask is all it is. And it no longer special-cases a reigning champion: that veto
+    existed to stop exactly the aging-contender case the tilt now rejects on its merits,
+    and a title says less about whether an owner should sell than the shape of their roster
+    does. A champion tilting ascending is a team that can afford to sell, trophy or not."""
+    if not (player["bucket"] == "declining" and player["is_starter"]):
+        return None
+    if ratio < CLIFF_PRODUCTION_PER_COST:
+        return None
+    if other["ascending_pct"] <= other["declining_pct"]:
+        return None
+    return (f"Nothing about {other['owner']}'s team says seller, but their window and "
+            f"{player['name']}'s don't line up: {other['ascending_pct']}% of their "
+            f"production is ascending against {other['declining_pct']}% declining, so "
+            f"they're built for seasons he won't be part of. He produces {ratio:.2f}x his "
+            f"own trade value - still starting, priced as though his remaining years are "
+            f"gone. Keeping him may well tip this season for them, which is exactly why "
+            f"it's a real decision for them rather than a giveaway.")
 
 
 def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds: dict[str, float],
