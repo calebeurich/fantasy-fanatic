@@ -1756,6 +1756,12 @@ deliberately avoiding.
   has a state between available and out, and adding one means joining injury designations to
   weekly production - which is also the join that would let severity be measured rather than
   assumed.
+- **A rebuild's timeline isn't checked against the age of its own assets.** The window model
+  says rebuild or contend; it never says *how long*. A roster whose best pieces are two
+  28-year-old quarterbacks - one of them a rushing QB, whose curve declines at 31 rather than
+  34 - cannot afford a three-year teardown, because the assets it is rebuilding around expire
+  inside the rebuild. Nothing currently computes when a rebuilding roster's own core stops
+  being good, which is the number that should set the urgency.
 - **Suspension risk is measured but not used.** `weeks_suspended` is reported and
   deliberately excluded from `miss_rate`. Whether a past suspension predicts a future one is
   a genuine question, and if it does it belongs in availability forecasting as its own term
@@ -2093,6 +2099,70 @@ fringe body who spent one year hurt count as much as a decade-long starter.
 Deliberately shallow: this says *whether* a player was available, never the severity, type,
 or recency of what kept him out, and it forecasts nothing. Weighting depth by injury type and
 expected duration is logged under future work rather than half-built here.
+
+## Rebuilding rosters, and five things only a stranger's league exposed
+
+Both development leagues are win-now teams owned by the same manager. Running a third
+league - a rebuilding roster, read by someone who models sports for a living - broke five
+things at once, four of which had shipped earlier the same day. Worth recording as a
+method: **the bugs live in the states your own data never enters.**
+
+### 1. Stranded production (`roster_needs.stranded_starters`)
+
+The roster held **four startable quarterbacks in superflex with two QB-capable slots**. Its
+QB3 priced at 4,880 of current production sat on the bench while a receiver producing 420
+started - and that QB3 alone out-produced the team's entire starting RB room by more than
+three times. Every number was already computed. Nothing put them next to each other, so he
+appeared as an ordinary trade chip in a list sorted by dynasty value.
+
+`stranded_starters` returns bench players who beat the **weakest starter** and are held out
+by positional capacity alone. Capacity, not quality, is the distinction: these are not
+surplus because they're mediocre, they're surplus because the lineup physically cannot field
+them, so their entire value to this roster is what they fetch. True in every window - a
+contender converts one into the position it's short at, a rebuilder into futures.
+
+It immediately found the same shape on a league already examined all session: the owner's
+own QB3, whom he had independently named as his second-biggest trade piece.
+
+### 2. Sell lists sorted by dynasty value
+
+The same bug fixed for buy targets earlier that day, untouched on the selling side. A
+31-year-old QB priced at **1.36x** current-to-dynasty - the market paying for this season and
+writing off the rest, on a team with no this-season - ranked *below* a 25-year-old receiver
+who is exactly what a rebuild should keep. `situational` now sorts by that ratio, which is
+`_persuasion_targets`' buy-side signal read from the selling side. Unpriced players sort
+last: unknown, not zero.
+
+### 3. Advice that contradicted the roster
+
+`window_note` told a team with **0% declining production** and an empty sell list to "sell
+what's declining while it still has value." Keyed on the window, not on the roster it was
+describing - the tell of a template. `REBUILD_NOTHING_DECLINING` covers the young-rebuild
+case, and the teams most likely to hit it are the ones furthest into a rebuild.
+
+### 4. Depth and stranded never ran for rebuilders
+
+Both were computed inside the buy branch, and `Rebuild` returns before it. The team with the
+**worst RB room in its league** and six qualifying cheap bodies available got neither. Both
+now run before the window dispatch.
+
+Cheap depth is arguably worth *more* to a rebuilder, which the original placement had exactly
+backwards: a moonshot back is one injury from being a real asset and costs a late pick to
+hold. That is a rebuilding team's cheapest source of upside.
+
+### 5. `_depth_adds` recommended the team its own players
+
+It searched every rebuilding roster including the asking team's. Invisible until the asking
+team was itself a rebuilder - a state neither development league could produce.
+
+### Unpriced replacements (`roster_needs.replacement_is_unpriced`)
+
+Not a rebuild issue, but found the same way. Exposure said losing this roster's TE cost
+3,848 - **100%** of its TE production - with a rostered NFL tight end behind him carrying
+`redraft_value = None`, which the arithmetic reads as zero. Redraft coverage runs out around
+the 30th player at a position while dynasty rosters keep going, so this is structural on deep
+rosters: **80 of 153 receivers** in that league's pool have no redraft price at all. The
+figure is unanswerable rather than wrong, and the note now says which.
 
 ## Depth as a third state (`roster_needs.would_start_if_one_out`, `_depth_adds`)
 

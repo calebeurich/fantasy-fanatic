@@ -109,6 +109,12 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     explaining why the two paths cost differently - surface that reasoning rather than
     just listing both sets of names.
 
+    A Rebuild result returns "sell_candidates" (declining, urgent), "situational" (everything
+    else worth selling, ordered by how much of the player's price is CURRENT production - the
+    top entry is the best sell-high, not the most valuable player) and "acquire_targets".
+    A young rebuilding roster legitimately has an empty "sell_candidates"; that is not an
+    error, and its window_note will say so rather than telling it to sell decline it lacks.
+
     Also returns draft picks, in the direction that team should be moving them:
     "picks_to_trade_away" for a contender and "picks_to_acquire" for a rebuilder.
     Picks are currency, not production - a first becomes a rookie at the next offseason's
@@ -143,6 +149,12 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     correct - it contends either way, so this is a choice about HOW, not whether. Do not
     report it as indecision or as a downgrade, and do not recommend one path as the answer
     without giving the cost of the other.
+
+    "stranded" + "stranded_note", when present, is the FIRST thing to raise. These players
+    out-produce the weakest man in this team's own starting lineup and cannot be played, held
+    out purely by positional capacity - a superflex roster's QB3, say. Their whole value to
+    this team is what they fetch, in any window. Never describe them as depth or as bench
+    players who aren't good enough; say what they produce and what the lineup starts instead.
 
     "depth_adds" + "depth_note" are NOT needs and must never be presented as fits. Each is a
     cheap body who would step into this lineup only if a starter at his position were out -

@@ -201,6 +201,19 @@ WINDOW_NOTE = {
                 "and picks."),
 }
 
+# The Rebuild line above assumes there is something declining to sell, and on a young
+# rebuilding roster there isn't. A real team read "sell what's declining" with **0% of its
+# production from declining players** and an empty sell list - advice keyed on the window
+# rather than on the roster it was describing, which is the tell of a template. The teams
+# most likely to hit this are the ones furthest into a rebuild, i.e. exactly the audience.
+REBUILD_NOTHING_DECLINING = (
+    "Not in contention this season and not rising fast enough to change that. Nothing here "
+    "is declining, so there is no aging value to cash in - this roster is already young. "
+    "That makes the sell list short by nature, and what it has to trade is production that "
+    "doesn't fit its timeline rather than players running out of time. Keep accumulating "
+    "youth and picks, and convert anything the lineup cannot actually field."
+)
+
 
 def window_note(window: str, contention_rank: int, num_teams: int, pct_of_best: int,
                 asc_pct: int, dec_pct: int) -> str:
@@ -211,7 +224,9 @@ def window_note(window: str, contention_rank: int, num_teams: int, pct_of_best: 
     a bare `{"diff": -11}` and the model reliably described teams as "below their expected
     win total" or "underperforming by 25 points" - neither of which exists, least of all
     in a preseason with no games played."""
-    return (f"{WINDOW_NOTE[window]} Current starting production ranks {contention_rank} of "
+    lead = (REBUILD_NOTHING_DECLINING if window == "Rebuild" and dec_pct == 0
+            else WINDOW_NOTE[window])
+    return (f"{lead} Current starting production ranks {contention_rank} of "
             f"{num_teams} ({pct_of_best}% of the league's best lineup); {asc_pct}% of that "
             f"production comes from ascending players and {dec_pct}% from declining ones. "
             f"Both are roster-composition measures - there are no wins or points scored "

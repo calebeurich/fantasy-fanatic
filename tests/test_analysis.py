@@ -349,6 +349,46 @@ def test_depth_is_measured_by_refilling_the_lineup_not_by_counting():
         thin, players, "cand", thin_starters, slots, flex), "nothing behind the starter"
 
 
+def test_stranded_production_is_capacity_not_quality():
+    """The miss that a live rebuilding roster exposed: four startable QBs in superflex, two
+    QB-capable slots, and the QB3 producing 4,880 sat on the bench while a receiver producing
+    420 started. Every number was already computed; nothing put them side by side.
+
+    `stranded` is a *capacity* statement - these players out-produce the weakest starter and
+    cannot be fielded - so it must not sweep in ordinary bench depth that simply isn't good
+    enough. Both are on the roster below."""
+    slots, flex = {"QB": 1, "WR": 1}, []
+    players = {
+        "qb1": {"name": "QB1", "position": "QB", "redraft_value": 900, "value": 900},
+        "qb2": {"name": "QB2", "position": "QB", "redraft_value": 800, "value": 800},
+        "wr1": {"name": "WR1", "position": "WR", "redraft_value": 100, "value": 100},
+        "wr2": {"name": "WR2", "position": "WR", "redraft_value": 50, "value": 50},
+    }
+    roster = {"players": ["qb1", "qb2", "wr1", "wr2"]}
+    starters = roster_needs.projected_starters(roster, players, slots, flex)
+    stranded = roster_needs.stranded_starters(roster, players, starters)
+    assert [players[p]["name"] for p in stranded] == ["QB2"], (
+        "QB2 beats the weakest starter and cannot be fielded; WR2 is merely worse")
+
+
+def test_exposure_flags_an_unpriced_replacement():
+    """Redraft coverage runs out around the 30th player at a position while dynasty rosters
+    keep going, so a real backup can carry `redraft_value = None` - which the arithmetic
+    reads as zero. A live roster was told losing its TE cost 100% of its TE production with
+    a rostered NFL tight end sitting behind him. The number is unanswerable, not wrong, and
+    the caller has to be told which."""
+    slots, flex = {"TE": 1}, []
+    priced = {"te1": {"name": "TE1", "position": "TE", "redraft_value": 900, "value": 900},
+              "te2": {"name": "TE2", "position": "TE", "redraft_value": 300, "value": 300}}
+    unpriced = {"te1": priced["te1"],
+                "te2": {"name": "TE2", "position": "TE", "redraft_value": None, "value": 300}}
+    roster = {"players": ["te1", "te2"]}
+    for players, expected in ((priced, False), (unpriced, True)):
+        starters = roster_needs.projected_starters(roster, players, slots, flex)
+        assert roster_needs.replacement_is_unpriced(
+            roster, players, "TE", starters, slots, flex) is expected
+
+
 def test_depth_needs_someone_to_be_behind():
     """An empty position is a *need*, handled elsewhere and with a different fix. Returning
     True here would double-report it as cheap insurance and invite filling a hole with a

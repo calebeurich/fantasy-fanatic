@@ -72,6 +72,16 @@ CONTEND_CHOICE_NOTE = (
     "contender with no clock can wait for a good price rather than chase one."
 )
 
+STRANDED_NOTE = (
+    "STRANDED PRODUCTION - the most valuable thing this roster owns that it cannot use. "
+    "Each of these out-produces the WEAKEST player in the starting lineup and is kept out "
+    "of it purely by positional capacity, not by being worse. That makes their entire value "
+    "to this team whatever they fetch in a trade, which is true whichever direction the team "
+    "is heading: a contender should convert one into the position it is short at, a "
+    "rebuilder into futures. Lead with these before anything else in the sell lists - "
+    "holding them costs a starting slot's worth of production every week and fixes nothing."
+)
+
 PERSUASION_NOTE = (
     "These are held by teams that are NOT currently sellers, so none of them is available "
     "the way a rebuilding team's pieces are. Each carries why that owner might listen and "
@@ -358,7 +368,12 @@ def _depth_adds(me_roster: dict, ctx, states: list[dict], thresholds: dict[str, 
     filled, even though only one of them is a single absence from an empty slot. Depth is a
     third state, and deliberately a weak one - the note tells the caller not to overpay,
     because the failure mode here is paying real value for insurance."""
-    rebuilders = {s["owner_id"]: s["owner"] for s in states if s["window"] == "Rebuild"}
+    # Excluding my own roster is not incidental: a rebuilding team searching rebuilding teams
+    # includes itself, and the first live run cheerfully advised its owner to acquire two
+    # players he already had. It only surfaced once the *asking* team was a rebuilder, which
+    # is exactly the case neither of the development leagues could produce.
+    rebuilders = {s["owner_id"]: s["owner"] for s in states
+                  if s["window"] == "Rebuild" and s["owner_id"] != me_roster["owner_id"]}
     adds = []
     for roster in ctx.rosters:
         owner = rebuilders.get(roster["owner_id"])
@@ -628,7 +643,8 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
 
 
 def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trade_counts: dict[str, int],
-                picks_by_owner: dict[int, list[dict]] | None = None) -> dict:
+                picks_by_owner: dict[int, list[dict]] | None = None,
+                stranded: list[dict] | None = None) -> dict:
     """The sell case: cash in declining/non-core value for youth from teams that
     don't need it, same logic a Rebuilding team uses.
 
@@ -641,6 +657,14 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     real_sellable = [e for e in me["sellable"] if team_state.clears_relevance_floor(e, thresholds)]
     sell_candidates = [e for e in real_sellable if e["bucket"] == "declining"]
     situational = [e for e in real_sellable if e["bucket"] != "declining"]
+    # Most now-weighted first, not most valuable first. A seller is converting present into
+    # future, so the right order is how much of a player's price is present - the same
+    # `redraft / dynasty` reading `_persuasion_targets` buys on, read from the selling side.
+    # Sorting by dynasty value put a 31-year-old QB priced at 1.36x (i.e. the market paying
+    # for this season and writing off the rest, on a team with no this-season) *below* a
+    # 25-year-old receiver who is exactly the kind of asset a rebuild should keep.
+    # Players with no redraft price sort last: unknown, not zero.
+    situational.sort(key=lambda e: -((e.get("redraft_value") or 0) / e["value"]) if e["value"] else 0)
     acquire_targets = []
     for other in states:
         if other["owner_id"] == me["owner_id"] or other["window"] == "Rebuild":
@@ -654,6 +678,9 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     acquire_targets.sort(key=lambda t: (-t["value"], -t["from_owner_trades"]))
     result = {"sell_candidates": sell_candidates, "situational": situational,
               "acquire_targets": acquire_targets}
+    if stranded:
+        result["stranded"] = stranded
+        result["stranded_note"] = STRANDED_NOTE
 
     # The mirror: a rebuilding team wants picks, and the teams holding them that
     # *shouldn't* want them are the contenders - a Win-Now team's future 1st is worth
@@ -714,8 +741,35 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     # a team actually trying to win now.
     my_picks = picks_by_owner.get(me["roster_id"], [])
 
+    # Computed once, before the window dispatch, because every one of these applies in every
+    # window and the previous placement (inside the buy branch only) meant a Rebuild team got
+    # neither. That team had the worst RB room in its league and six qualifying cheap bodies
+    # available - and cheap bodies are arguably worth MORE to a rebuilder, since a moonshot
+    # back is one injury away from being a real asset and costs a late pick to hold.
+    depth = _depth_adds(my_roster, ctx, states, thresholds, my_starters,
+                        set())
+    stranded_ids = roster_needs.stranded_starters(my_roster, ctx.players, my_starters)
+    by_name = {e["name"]: e for e in me["sellable"] + me["tradeable_surplus"]}
+    stranded = []
+    for player_id in stranded_ids:
+        info = ctx.players[player_id]
+        entry = by_name.get(info["name"], {"name": info["name"], "position": info["position"],
+                                           "value": info["value"],
+                                           "redraft_value": info.get("redraft_value")})
+        stranded.append({**entry, "blocked_by": info["position"],
+                         "note": (f"Produces {info.get('redraft_value') or 0:,} this season - more than "
+                                  f"the weakest player in your lineup - but cannot be started: "
+                                  f"this roster has no slot left for another {info['position']}.")})
+
+    def with_extras(result: dict) -> dict:
+        if depth:
+            result["depth_adds"], result["depth_note"] = depth, DEPTH_NOTE
+        return result
+
     if me["window"] == "Rebuild":
-        return {"me": me, "mode": "rebuild", **_pivot_path(me, states, thresholds, trade_counts, picks_by_owner)}
+        return with_extras({"me": me, "mode": "rebuild",
+                            **_pivot_path(me, states, thresholds, trade_counts, picks_by_owner,
+                                          stranded)})
 
     if me["window"] == "Ascend":
         # Hasn't committed to a direction - show what pushing looks like AND what
@@ -723,25 +777,22 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         # actually makes sense usually depends on something we don't have yet (the
         # season record - a Middling team two games out of a playoff spot should push,
         # one that's clearly out should pivot even mid-season) - logged in LOGIC.md.
-        return {"me": me, "mode": "ascend", "timing_note": ASCEND_TIMING_NOTE,
+        return with_extras({"me": me, "mode": "ascend", "timing_note": ASCEND_TIMING_NOTE,
                 "push": _buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
                                   max_per_position, pick_values, my_picks, prior,
                                   premium_bars, covered),
-                "pivot": _pivot_path(me, states, thresholds, trade_counts, picks_by_owner)}
+                "pivot": _pivot_path(me, states, thresholds, trade_counts, picks_by_owner,
+                                     stranded)})
 
     result = {"me": me, "mode": "buy",
               **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
                           max_per_position, pick_values, my_picks, prior,
                           premium_bars, covered)}
 
-    # Depth is a third state alongside need and not-need: cheap bodies who'd start if one
-    # player above them went down. Sourced below the relevance floor so it can't compete
-    # with the buy targets - see _depth_adds.
-    depth = _depth_adds(my_roster, ctx, states, thresholds, my_starters,
-                        {t["name"] for t in result.get("targets", [])})
-    if depth:
-        result["depth_adds"] = depth
-        result["depth_note"] = DEPTH_NOTE
+    result = with_extras(result)
+    if stranded:
+        result["stranded"] = stranded
+        result["stranded_note"] = STRANDED_NOTE
 
     # Additive on purpose - `window` is untouched. A contender tilting ascending contends
     # whichever path it takes, so the label is right either way and only the tactics differ.

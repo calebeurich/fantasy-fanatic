@@ -168,6 +168,38 @@ def _injury_drop(roster: dict, players: dict[str, dict], pos: str, starters: set
     return production_lost_without(roster, players, weakest, starters, dedicated, flex)
 
 
+def stranded_starters(roster: dict, players: dict[str, dict], starters: set[str]) -> list[str]:
+    """Player ids of bench players who out-produce this lineup's *weakest* starter and are
+    kept out of it only by positional capacity. The most valuable thing a roster owns that
+    it cannot use.
+
+    **The case this was missing is the whole reason superflex exists as a format.** A real
+    rebuilding roster held four startable quarterbacks with two QB-capable slots. Its QB3
+    priced at 4,880 of current production sat on the bench while the team started a receiver
+    producing 420 - and QB3 alone out-produced its entire starting RB room by more than
+    three times. Every number needed to see that was already computed; nothing put them
+    next to each other, so the tool listed him as an ordinary trade chip.
+
+    Capacity, not quality, is what makes this different from ordinary bench depth. These
+    players are not surplus because they're mediocre - they're surplus because the lineup
+    physically cannot field them, which means their entire value to *this* roster is what
+    they fetch. That is true regardless of window: a contender should convert one into the
+    position it's short at, and a rebuilder should convert one into futures.
+
+    Compared against the weakest starter because that is the lineup spot actually in play -
+    the same marginal-slot logic `_injury_drop` uses. A bench player who beats the weakest
+    starter would improve the lineup if he were eligible for that slot, and the fact that he
+    isn't is a roster-construction problem no amount of holding will fix."""
+    lineup = [p for p in starters if p in players]
+    if not lineup:
+        return []
+    weakest = min((players[p].get("redraft_value") or 0) for p in lineup)
+    bench = [p for p in (roster["players"] or [])
+             if p not in starters and p in players
+             and (players[p].get("redraft_value") or 0) > weakest]
+    return sorted(bench, key=lambda p: -(players[p].get("redraft_value") or 0))
+
+
 def would_start_if_one_out(roster: dict, players: dict[str, dict], candidate_id: str,
                            starters: set[str], dedicated: dict[str, int],
                            flex: list[tuple[str, ...]]) -> bool:
@@ -198,6 +230,28 @@ def would_start_if_one_out(roster: dict, players: dict[str, dict], candidate_id:
     hypothetical = {**roster,
                     "players": [p for p in (roster["players"] or []) if p != weakest] + [candidate_id]}
     return candidate_id in projected_starters(hypothetical, players, dedicated, flex)
+
+
+def replacement_is_unpriced(roster: dict, players: dict[str, dict], pos: str,
+                            starters: set[str], dedicated: dict[str, int],
+                            flex: list[tuple[str, ...]]) -> bool:
+    """Whether the player who would enter the lineup after an absence at `pos` has **no
+    redraft price at all**, which makes the drop-off above an upper bound rather than a
+    measurement.
+
+    Redraft coverage runs out well before dynasty rosters do - roughly the top 30 at a
+    position - so a genuine backup can carry `redraft_value = None`, which the arithmetic
+    then treats as zero. A live roster reported "losing your TE costs 3,848", i.e. **100%**
+    of its TE production, with a rostered NFL tight end sitting behind him unpriced. The
+    figure isn't so much wrong as unanswerable, and saying so beats implying the bench is
+    empty - especially since deep dynasty rosters are exactly where this happens."""
+    mine = [p for p in starters if p in players and players[p]["position"] == pos]
+    if not mine:
+        return False
+    weakest = min(mine, key=lambda p: players[p].get("redraft_value") or 0)
+    without = {**roster, "players": [p for p in (roster["players"] or []) if p != weakest]}
+    promoted = projected_starters(without, players, dedicated, flex) - starters
+    return any(players[p].get("redraft_value") is None for p in promoted if p in players)
 
 
 def production_lost_without(roster: dict, players: dict[str, dict], player_id: str,
@@ -289,6 +343,8 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
         median = statistics.median(totals.values()) if totals else 0
 
         # Exposure is ranked worst-first: the biggest drop is rank 1, the most exposed.
+        unpriced = ({oid: replacement_is_unpriced(by_owner[oid], players, pos, starters[oid], *lineup)
+                     for oid in by_owner} if lineup and starters else {})
         drops = ({oid: _injury_drop(by_owner[oid], players, pos, starters[oid], *lineup)
                   for oid in groups} if starters and lineup else {})
         drop_rank = rank_map({o: d for o, d in drops.items() if d is not None})
@@ -347,12 +403,19 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                     " Likelihood is not modelled here, so compare this only against the same "
                     "position.")
                 entry["position_miss_rate"] = rate
+                entry["replacement_unpriced"] = unpriced.get(owner_id, False)
+                caveat = (
+                    " NOTE: the player who would replace him has no redraft price in the "
+                    "market data, so this figure treats him as producing nothing and is an "
+                    "upper bound rather than a measurement - redraft coverage runs out well "
+                    "before dynasty rosters do."
+                    if unpriced.get(owner_id) else "")
                 entry["note"] += (
                     f" Depth: losing the last {pos} in this lineup costs {round(drop):,} of "
                     f"production before a replacement starts, {entry['exposure_rank']} of "
                     f"{len(drop_rank)} in the league - {entry['exposure']} exposure. This is "
-                    f"the magnitude IF it happens, not an expected loss.{likelihood} "
-                    f"Separate from the need above, and not one.")
+                    f"the magnitude IF it happens, not an expected loss.{likelihood}"
+                    f"{caveat} Separate from the need above, and not one.")
     return out
 
 
