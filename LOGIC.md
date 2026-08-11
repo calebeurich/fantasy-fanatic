@@ -1739,14 +1739,13 @@ deliberately avoiding.
   FantasyCalc's `ppr` parameter is a flat 0.6% per-position scalar that cannot tell a
   receiving back from an early-down back - so a projections source would close two gaps at
   once and is probably the single highest-value external addition left.
-- **Injury proneness is not modelled and it changes the depth answer.** `drop_if_injured`
-  says how bad an absence would be and explicitly disclaims saying how *likely* one is.
-  Per-position rates are the obvious first cut, but the sharper version is per-player
-  history - a two-deep RB room of players who have each missed time is a materially
-  different risk from a two-deep room that hasn't. nflverse weekly data carries games missed
-  and injury designations, so this is a real source rather than a guess, and unlike
-  projections it needs no new vendor. Would turn exposure from a magnitude into something
-  closer to an expected loss.
+- **Depth is not yet *weighted* by injury risk.** The rates now exist (`sources/injuries.py`)
+  and are reported, but nothing multiplies them together: how much a bench body is worth
+  should depend on the starter's own miss rate, the position's rate, and how long a typical
+  absence lasts. That last one isn't measured at all - a rate treats a one-week hamstring
+  and a torn ACL identically, and they are not the same problem for a roster. Doing this
+  properly means severity and duration by injury type, which is a real modelling exercise
+  and a genuine rabbit hole; noted as somewhere to go deliberately rather than to drift into.
 - **Dynasty rosters are deeper than the replacement-level bar assumes.** Dynasty formats
   carry far more players than redraft, so plenty of low-redraft-value players are
   genuinely starter-relevant in a way a value-derived threshold does not reflect. This
@@ -1998,6 +1997,58 @@ does, and a champion tilting ascending is a team that can afford to sell, trophy
 This tier deliberately does **not** check whether the owner has a replacement behind the
 player. That question - *should* they do this - belongs to `find_efficiency_swaps`. This one
 only answers *is it worth asking*, and `cost_note` says an ask is all it is.
+
+## How often players actually miss games (`sources/injuries.py`)
+
+`drop_if_injured` measured magnitude and disclaimed likelihood in its own note - "injury
+rates differ by position and are not modelled, so an equal number at QB and at RB is not
+equally worrying." That told a reader the number wasn't comparable across positions without
+giving them any way to compare it. Now it is measured, from nflverse weekly rosters plus the
+weekly injury report, over the last three completed seasons:
+
+| position | share of roster weeks missed |
+|---|---|
+| QB | **0.109** |
+| TE | 0.164 |
+| RB | 0.187 |
+| WR | 0.187 |
+
+Quarterbacks miss roughly **half** as often as skill players, which is what makes the old
+disclaimer real rather than theoretical, and independently matches what the league's manager
+assumed when he built two good QBs plus a cheap third in superflex.
+
+**A missed week is reserve-list *or* an `Out` report, and the reserve half matters most.**
+Season-ending injuries live on IR, and a player on IR often stops appearing on the weekly
+report altogether - so reading the report alone would undercount exactly the absences a
+manager most needs to plan for. `Questionable` and `Doubtful` are excluded: they describe
+uncertainty, not absence, and plenty of questionable players play a full game.
+
+**The denominator is weeks actually on an NFL roster, not a flat 17 per season.** The flat
+version silently rates a player who wasn't in the league as perfectly durable. Practice-squad
+weeks are excluded too - those players aren't expected to dress, so counting them would read
+as availability nobody wanted.
+
+**Two sample floors, and the second was found by looking at the output.** With only a week
+floor, the tail was nonsense at both ends: players who spent one season on IR and were never
+otherwise rostered scored exactly 1.000 (17 of 17), and *every rookie* scored 0.000. The
+second error is the more dangerous one, since rookies are what a dynasty manager is most
+often asked to price, and "never been hurt" is a very different claim from "we have watched
+him for four months." `MIN_SEASONS = 2` is the point at which the number describes a player
+rather than a year. It costs coverage - 257 of 398 pool players carry a rate - and the
+missing ones are reported as **None for unknown, which is not zero**, in line with how this
+project handles every other absent number.
+
+Face validity on the live pool: J.K. Dobbins 0.529, Rashee Rice 0.451, Deshaun Watson 0.725,
+Jonathon Brooks 0.882. Two of those are starters on the same roster, which is precisely the
+"short and injury-prone" room its owner described before any of this was measured.
+
+Pooled over player-*weeks* rather than averaged over players, because the question is what
+happens to a lineup slot, not what the average résumé looks like - a per-player mean lets a
+fringe body who spent one year hurt count as much as a decade-long starter.
+
+Deliberately shallow: this says *whether* a player was available, never the severity, type,
+or recency of what kept him out, and it forecasts nothing. Weighting depth by injury type and
+expected duration is logged under future work rather than half-built here.
 
 ## Depth as a third state (`roster_needs.would_start_if_one_out`, `_depth_adds`)
 

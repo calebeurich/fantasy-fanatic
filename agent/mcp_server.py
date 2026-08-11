@@ -91,12 +91,13 @@ def get_roster_needs(league_id: str) -> dict:
     different problems with different fixes. Raise it when asked about depth, injuries or
     roster risk; do not report it as a hole in the lineup.
 
-    Two things exposure is NOT. It is the magnitude *if* an injury happens, not an expected
-    loss - injury rates differ by position (QBs go down less often than RBs) and nothing
-    here models that, so an equal number at QB and RB is not equally worrying. And it
-    already accounts for flex slots: in superflex a lost QB is backfilled by the best
-    remaining player of any position, so two good QBs plus a cheap third is a sound build
-    rather than a gap to fix."""
+    Exposure is still the magnitude *if* an injury happens rather than an expected loss, but
+    the likelihood half is now measured: `position_miss_rate` is the share of roster weeks
+    players at that position have actually missed over the last three seasons (QB ~0.11 vs
+    RB ~0.19), so an equal drop-off at QB and RB is genuinely not equally worrying and you
+    can now say why with a number. Exposure already accounts for flex slots: in superflex a
+    lost QB is backfilled by the best remaining player of any position, so two good QBs plus
+    a cheap third is a sound build rather than a gap to fix."""
     return roster_needs.league_needs(league_id)
 
 
@@ -201,7 +202,13 @@ def get_optimal_lineup(league_id: str, owner_name: str, without: list[str] = Non
 @mcp.tool()
 def get_roster_detail(league_id: str, owner_name: str) -> dict:
     """Full player-by-player breakdown for one team: value, age, win-window bucket,
-    starter/bench status, and contract detail where available."""
+    starter/bench status, contract detail where available, and `miss_rate` - the share of
+    roster weeks that player has actually missed over the last three seasons.
+
+    `miss_rate` is **None for unknown, which is not zero**. It needs two seasons of history,
+    so most rookies carry None; never read a missing rate as durability. Use it when asked
+    about injury risk or depth - a starting lineup that is fine on paper reads differently
+    when two of its starters have missed a third of their weeks."""
     return roster_detail.get_roster_rows(league_id, owner_name)
 
 

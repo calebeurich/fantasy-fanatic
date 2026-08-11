@@ -4,15 +4,20 @@ this is what actually makes up that aggregate. Usage: python -m analysis.roster_
 
 import sys
 
-from sources import contracts
+from sources import contracts, injuries
 from .team_values import age_bucket
 
 
 def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, dict],
-               starter_ids: set[str]) -> list[dict]:
+               starter_ids: set[str], miss_rates: dict[str, dict] | None = None) -> list[dict]:
     """`starter_ids` is the value-derived lineup, not Sleeper's current-week snapshot -
     this is the roster view a user actually reads, so a preseason snapshot listing one QB
-    in a superflex league labelled a real starter as bench right on the screen."""
+    in a superflex league labelled a real starter as bench right on the screen.
+
+    `miss_rate` is the share of roster weeks this player has actually missed over the last
+    three seasons (`sources.injuries`), or **None for unknown** - which is not the same as
+    zero and matters most for the youngest players, who are exactly the ones with too little
+    history to judge. Two seasons is the minimum sample, so most rookies carry None here."""
     rows = []
     for player_id in roster["players"] or []:
         info = players.get(player_id)
@@ -20,7 +25,8 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
         if info is None:
             rows.append({"name": f"(unvalued player_id {player_id})", "position": "?", "value": 0,
                          "age": None, "bucket": "n/a", "usage_role": None, "contract": None,
-                         "lineup_role": lineup_role})
+                         "lineup_role": lineup_role,
+            "miss_rate": (miss_rates or {}).get(player_id, {}).get("miss_rate"), "miss_rate": None})
             continue
         rows.append({
             "name": info["name"],
@@ -31,6 +37,7 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
             "usage_role": info.get("usage_role"),
             "contract": contract_data.get(player_id),
             "lineup_role": lineup_role,
+            "miss_rate": (miss_rates or {}).get(player_id, {}).get("miss_rate"),
         })
     rows.sort(key=lambda r: r["value"], reverse=True)
     return rows
@@ -47,7 +54,8 @@ def get_roster_rows(league_id: str, owner_name: str) -> dict:
 
     roster = ctx.roster_for(owner_name)
     owner = owner_names[roster["owner_id"]]
-    rows = build_rows(roster, players, contract_data, ctx.starters_for(roster))
+    rows = build_rows(roster, players, contract_data, ctx.starters_for(roster),
+                      injuries.player_miss_rates())
     return {"owner": owner, "league_name": league["name"], "rows": rows}
 
 
