@@ -82,8 +82,9 @@ def find_outliers(player_ids: list[str], players: dict[str, dict], contract_data
     return outliers
 
 
-def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty: bool) -> dict[str, dict]:
-    players = fantasycalc.get_players(num_qbs, num_teams, ppr, is_dynasty)
+def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty: bool,
+                           tep_tier: str = "none") -> dict[str, dict]:
+    players = fantasycalc.get_players(num_qbs, num_teams, ppr, is_dynasty, tep_tier)
     for player_id, role in player_roles.get_roles().items():
         if player_id in players:
             players[player_id]["usage_role"] = role
@@ -113,7 +114,9 @@ def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty:
     # market. Missing entries get redraft_value=None and future_premium=None rather than a
     # fabricated number - callers must handle absence, not silently treat it as zero.
     if is_dynasty:
-        redraft = fantasycalc.get_players(num_qbs, num_teams, ppr, is_dynasty=False)
+        # Same tep_tier: a TE-premium league scores TEs higher this season too, so the
+        # redraft pull needs the adjustment as much as the dynasty one does.
+        redraft = fantasycalc.get_players(num_qbs, num_teams, ppr, False, tep_tier)
         for player_id, info in players.items():
             r = redraft.get(player_id)
             info["redraft_value"] = r["value"] if r else None

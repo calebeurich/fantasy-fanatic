@@ -17,6 +17,7 @@ Run: python -m pytest tests/ -q
 import pytest
 
 from analysis import roster_needs, team_state, trade_targets
+from sources import fantasycalc, sleeper
 from analysis.team_values import AGE_CURVE, age_bucket
 
 
@@ -657,3 +658,51 @@ def test_mutual_swap_will_not_fix_a_weak_position_with_a_worse_player(monkeypatc
                  surplus={"me": {"QB": [_spare("MyQB3", "QB", 2000, 1900)]},
                           "you": {"TE": [_spare("RealUpgrade", "TE", 2076, 1800)]}})
     assert len(trade_targets.find_mutual_swaps("L", "Me")["swaps"]) == 1
+
+
+# ------------------------------------------------------------------- league format
+
+@pytest.mark.parametrize("bonus,te_slots,expected", [
+    (0,    1, "none"),    # no TE premium
+    (0.25, 1, "none"),    # FantasyCalc's Off band is "no/minimal (<=0.25)"
+    (0.5,  1, "tep"),     # both real leagues in this project
+    (1.0,  1, "tep"),     # top of the "+0.5 to 1.0" band
+    (1.5,  1, "teppp"),   # ">1.0 TEP"
+    (0,    2, "teppp"),   # "Start 2 TE" reaches the top band on slots alone
+])
+def test_tep_tier_follows_fantasycalc_bands(bonus, te_slots, expected):
+    """The bands are FantasyCalc's, taken from their own control labels, because the
+    multipliers we apply are theirs. Boundaries are the point: 0.25 is Off and 1.0 is
+    still TEP+, so an off-by-one here silently mis-scales every TE in the league."""
+    assert sleeper.tep_tier(bonus, te_slots) == expected
+
+
+def test_superflex_and_2qb_both_price_as_two_qbs():
+    """FantasyCalc serves one market for numQbs>=2. Superflex is one dedicated QB slot
+    plus a flex, so counting dedicated slots alone would fetch 1QB values - and the QB
+    market between the two differs by a flat 1.88x, the largest mispricing available
+    here."""
+    sf = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "FLEX", "SUPER_FLEX"]
+    assert sleeper.starting_qbs(sf) == 2
+    assert sleeper.starting_qbs(["QB", "QB", "RB", "WR"]) == 2, "true 2QB"
+    assert sleeper.starting_qbs(["QB", "RB", "WR", "FLEX"]) == 1, "1QB - FLEX takes no QB"
+    assert sleeper.starting_qbs(["QB", "QB", "SUPER_FLEX"]) == 2, "clamped: one market above 2"
+
+
+def test_te_premium_scales_only_tight_ends(monkeypatch):
+    """TEP is applied locally because FantasyCalc applies it in the browser - their API
+    404s on every tep value but 'none'. It must touch TEs and nothing else."""
+    raw = [{"player": {"sleeperId": "1", "position": "TE", "name": "TE1", "maybeAge": 25}, "value": 1000},
+           {"player": {"sleeperId": "2", "position": "WR", "name": "WR1", "maybeAge": 25}, "value": 1000}]
+
+    class FakeResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return raw
+
+    monkeypatch.setattr(fantasycalc.requests, "get", lambda *a, **k: FakeResp())
+    fantasycalc.get_players.cache_clear()
+    out = fantasycalc.get_players(2, 12, 1.0, True, "tep")
+    assert out["1"]["value"] == round(1000 * fantasycalc.TEP_MULTIPLIER["tep"])
+    assert out["2"]["value"] == 1000, "non-TE values must not move"
+    fantasycalc.get_players.cache_clear()

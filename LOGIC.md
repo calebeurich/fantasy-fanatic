@@ -87,21 +87,62 @@ across questions too.
 
 - Dynasty vs redraft/keeper comes from Sleeper's own `settings.type` flag (2 = dynasty).
 - Superflex = `SUPER_FLEX` present in `roster_positions`.
-- TE premium = `scoring_settings.bonus_rec_te > 0`.
-- `is_dynasty`/`is_superflex` (-> `numQbs`)/`num_teams`/`ppr` feed FantasyCalc's own
-  `values/current` API params directly, so QB inflation in superflex, PPR-vs-standard
-  scoring, and dynasty-vs-redraft pricing all come from FantasyCalc's own value model
-  recalculating at the source - not something this project approximates itself.
-- **`is_te_premium` is computed here but never used downstream - confirmed via a full
-  grep, not an oversight to fix.** FantasyCalc's `values/current` endpoint has no
-  TE-premium parameter at all (checked their documented param list: `ppr`, `num_qbs`,
-  `num_teams`, `is_dynasty` only) - there's nothing to feed it into. In a TE-premium
-  league, every TE value pulled here is priced as standard scoring, so TEs are likely
-  undervalued relative to what they're actually worth in that league. No clean fix:
-  inventing a manual TE multiplier with no real data to calibrate it against would be
-  exactly the kind of guessed heuristic this project avoids everywhere else (same
-  reasoning as the punted offensive-line-quality gap below). Logged as a real,
-  source-level limitation, not a bug in this codebase.
+- TE premium maps to one of FantasyCalc's three bands (`sleeper.tep_tier`).
+- `is_dynasty`/`num_qbs`/`num_teams`/`ppr` feed FantasyCalc's `values/current` API params
+  directly, so PPR-vs-standard scoring and dynasty-vs-redraft pricing come from their
+  value model at the source rather than anything approximated here.
+
+### What FantasyCalc's format parameters actually do (probed, not assumed)
+
+**`numQbs` has exactly two settings.** `numQbs=1`, and `numQbs>=2` which returns byte-
+identical data for 2, 3, and 0. There is no separate superflex market - superflex and 2QB
+are one market, which matches how the format actually plays: starting two QBs is generally
+the best projection when you can, so the second QB is near-mandatory in practice without
+being mandatory in the rules.
+
+**And that market is four per-position scalars, not a re-derivation.** Comparing every
+player present in both pulls (excluding sub-500 values, where integer rounding dominates):
+
+| position | 1QB -> SF/2QB ratio | spread across the position |
+|---|---|---|
+| QB | **1.883** | 1.8819 - 1.8845 |
+| RB | 0.923 | 0.9221 - 0.9237 |
+| WR | 1.007 | 1.0059 - 1.0078 |
+| TE | 1.101 | 1.1000 - 1.1015 |
+| PICK | ~1.066 | 1.026 - 1.148 (genuinely varies) |
+
+Josh Allen and the QB40 move by the same 1.883. Two consequences worth holding onto:
+*within*-position comparisons are format-independent (the scalar cancels, so
+`find_efficiency_swaps` comparing two QBs is unaffected), while *cross*-position
+comparisons rest entirely on those four numbers. **Not modelled by the source: superflex
+QB scarcity is not steepened.** The real cliff in a superflex league is around QB12-QB13,
+where the last startable QB2s go - a flat scalar cannot express that, so the marginal QB2
+is probably worth more than these values say. Picks are the one thing that genuinely
+varies, which makes sense: a pick's worth depends on the player pool it converts into.
+
+**TE premium is applied by FantasyCalc in the browser, not on the server.** Their site
+only ever requests `tep=none`; the API 404s on every other `tep` value. Selecting TEP+ or
+TEP++ on their page fires no network request and rescales the TE column client-side, by a
+flat multiplier - identical to four decimals across every TE, and unchanged between 10-
+and 12-team settings. So `fantasycalc.TEP_MULTIPLIER` replicates it: **TEP+ x1.1490,
+TEP++ x1.2900**, TEs only. Bands are theirs, verbatim from their control labels: Off
+(<=0.25), TEP+ (0.5 to 1.0), TEP++ (start 2 TE or >1.0).
+
+**This corrects a wrong conclusion previously recorded here**, which said TE premium was
+unfixable because the endpoint had no parameter for it and there was "no real data to
+calibrate a manual multiplier against." Both halves were wrong, and the reason is worth
+keeping: that conclusion came from reading FantasyCalc's *documented parameter list*
+instead of watching what their site actually sends. The calibration data was sitting in
+their own UI the whole time. Checking the documentation and stopping was the mistake.
+
+It matters here rather than being academic - **both real leagues in this project score
+`bonus_rec_te = 0.5`**, which is TEP+, so every TE was ~15% undervalued. Being a flat
+scalar, it changes no TE-vs-TE comparison (ranks, thresholds, and needs are identical);
+what it fixes is TE-vs-everything-else, which is exactly what trade valuation runs on.
+
+*Caveat*: this replicates a client-side transform, not an API contract. If FantasyCalc
+retunes it we drift silently, so `python -m sources.fantasycalc` prints the multipliers
+in use next to the resulting TE values for a one-command check against their site.
 
 ## Format support gate (`format_support.py`)
 

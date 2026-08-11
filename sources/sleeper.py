@@ -82,24 +82,62 @@ def describe_format(league: dict) -> dict:
         "is_superflex": "SUPER_FLEX" in positions,
         "num_qbs": starting_qbs(positions),
         "ppr": scoring.get("rec", 0),
-        "is_te_premium": scoring.get("bonus_rec_te", 0) > 0,
+        "tep_tier": tep_tier(scoring.get("bonus_rec_te", 0), positions.count("TE")),
     }
+
+
+# FantasyCalc's own three bands, taken verbatim from the labels on their TEP control:
+#   Off    - "No/minimal TEP (<=0.25)"
+#   TEP+   - "+0.5 to 1.0 TEP"
+#   TEP++  - "Start 2 TE or >1.0 TEP"
+TEP_MINIMAL = 0.25
+TEP_HEAVY = 1.0
+
+
+def tep_tier(bonus_rec_te: float, te_slots: int) -> str:
+    """Which of FantasyCalc's three TE-premium bands this league falls in.
+
+    Replaces `is_te_premium`, a bare boolean that was computed and - as LOGIC.md recorded
+    - consumed by nothing, because at the time there was believed to be no way to apply
+    it. There is (see `fantasycalc.TEP_MULTIPLIER`), and it matters here: both real
+    leagues in this project score `bonus_rec_te = 0.5`, which is TEP+, so every TE value
+    was ~15% low and every TE comparison inherited that."""
+    if bonus_rec_te > TEP_HEAVY or te_slots >= 2:
+        return "teppp"
+    if bonus_rec_te > TEP_MINIMAL:
+        return "tep"
+    return "none"
 
 
 def starting_qbs(roster_positions: list[str]) -> int:
     """How many QBs a team in this league actually starts - FantasyCalc's `numQbs`.
 
-    This used to be `2 if is_superflex else 1`, which is wrong for a **true 2QB league**:
-    two literal QB slots and no SUPER_FLEX gives `is_superflex == False`, so it fetched
-    1QB values and underpriced every QB in the one format where QBs are scarcest. The
-    superflex flag answers "can a non-QB fill the second slot", which is a different
-    question from "how many QBs start" - only the second one prices the market.
+    **FantasyCalc publishes exactly two QB markets**, verified against the live API:
+    `numQbs=1`, and `numQbs>=2` which returns identical data for 2, 3, and 0. There is no
+    separate superflex market. So this is a binary decision, and getting it wrong is the
+    single largest mispricing available in this project - the entire QB market moves by a
+    flat **1.88x** between the two (Josh Allen 5,502 -> 10,361; the multiplier is the same
+    for every QB), while RBs shift 0.92x and WRs 1.01x as the pool renormalizes.
 
-    Clamped to 2 because FantasyCalc publishes 1QB and superflex/2QB values and nothing
-    beyond; a 2QB+SUPER_FLEX league gets the closest published market rather than a
-    request for a price that doesn't exist. `roster_needs.dedicated_slots` is *not*
-    clamped - that one is counting real roster slots, where a third QB genuinely is
-    required."""
+    Superflex is *technically* one QB slot plus a flex that accepts one. It prices like a
+    2QB league because starting two QBs is generally the best projection when you can, so
+    the second QB is near-mandatory in practice without being mandatory in the rules -
+    which is exactly why FantasyCalc serves both from one market. Mapping superflex to 1
+    because it has one dedicated QB slot would be the worst available error here.
+
+    The old form was `2 if is_superflex else 1`, keyed on a flag that answers "can a
+    non-QB fill the second slot" - a different question from "how many QBs start", and
+    only the second prices the market. It got superflex right by luck and a true 2QB
+    league (two literal QB slots, no SUPER_FLEX) wrong. That format is close to extinct in
+    practice, so this is correctness rather than an impactful bug.
+
+    Clamped to 2 to say out loud that everything at or above 2 is one market;
+    `roster_needs.dedicated_slots` is deliberately unclamped, since it counts real roster
+    slots where a third QB genuinely is required.
+
+    *Not modelled*: superflex's optionality. A real superflex manager can start a RB in
+    the flex, so elite QBs are marginally less mandatory there than in true 2QB. The
+    market doesn't price that distinction and neither can we."""
     return min(2, roster_positions.count("QB") + roster_positions.count("SUPER_FLEX"))
 
 
