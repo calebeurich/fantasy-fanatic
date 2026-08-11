@@ -88,11 +88,12 @@ def get_roles() -> dict[str, str]:
     """Sleeper player_id -> 'rushing_qb', 'pocket_passer' or 'pass_catching_rb'. Absent =
     no adjustment.
 
-    `rushing_qb` and `pocket_passer` are mutually exclusive **by construction**, and the
-    rushing test wins: a quarterback who runs enough to clear that bar carries the rushing
-    decline risk whatever his arm does, so an elite dual-threat stays on the earlier curve.
-    That is the conservative reading and it is a real judgement call - it puts the league's
-    best passers-who-also-run on a curve that may be too pessimistic for them."""
+    The three quarterback tags come from two independent measurements - does he run, and does
+    he throw well - which gives a genuine third case rather than a tie to break. A QB who runs
+    *and* passes at an elite level is `dual_threat_qb`: when the legs go he is still a good
+    passer, so the rushing discount that suits a mobility-only quarterback does not fit him.
+    An earlier version made the two exclusive with rushing winning, which put the league's
+    best run-and-throw QBs on the most pessimistic curve available."""
     stats = nfl.load_player_stats(seasons=_seasons())
     id_map = gsis_to_sleeper()
     roles = {}
@@ -104,10 +105,9 @@ def get_roles() -> dict[str, str]:
         .filter(pl.col("games") >= MIN_GAMES)
         .with_columns((pl.col("carries") / pl.col("games")).alias("rate"))
     )
-    for row in qb_usage.iter_rows(named=True):
-        sleeper_id = id_map.get(row["player_id"])
-        if sleeper_id and row["rate"] >= RUSHING_QB_CARRIES_PER_GAME:
-            roles[sleeper_id] = "rushing_qb"
+    rushers = {id_map.get(row["player_id"]) for row in qb_usage.iter_rows(named=True)
+               if row["rate"] >= RUSHING_QB_CARRIES_PER_GAME}
+    rushers.discard(None)
 
     passers = (
         stats.filter((pl.col("position") == "QB") & (pl.col("attempts") >= 10))
@@ -118,14 +118,21 @@ def get_roles() -> dict[str, str]:
     )
     rates = sorted(r["epa_per_game"] for r in passers.iter_rows(named=True)
                    if r["epa_per_game"] is not None)
+    elite = set()
     if rates:
         bar = rates[int(ELITE_PASSER_PERCENTILE * (len(rates) - 1))]
-        for row in passers.iter_rows(named=True):
-            sleeper_id = id_map.get(row["player_id"])
-            # `not in roles` is the mutual-exclusion rule: a rushing QB keeps that tag.
-            if (sleeper_id and sleeper_id not in roles
-                    and row["epa_per_game"] is not None and row["epa_per_game"] >= bar):
-                roles[sleeper_id] = "pocket_passer"
+        elite = {id_map.get(row["player_id"]) for row in passers.iter_rows(named=True)
+                 if row["epa_per_game"] is not None and row["epa_per_game"] >= bar}
+        elite.discard(None)
+
+    # Three quarterback archetypes, from the two measurements above. The earlier version made
+    # rushing and passing mutually exclusive with rushing winning, which forced the league's
+    # best run-and-throw QBs onto the curve for players whose game is *only* mobility - and
+    # the market plainly disagrees, paying 10,415 for one of them at 29.5.
+    for sleeper_id in rushers:
+        roles[sleeper_id] = "dual_threat_qb" if sleeper_id in elite else "rushing_qb"
+    for sleeper_id in elite - rushers:
+        roles[sleeper_id] = "pocket_passer"
 
     rb_usage = (
         stats.filter((stats["position"] == "RB") & (stats["carries"] > 0))
@@ -144,6 +151,6 @@ def get_roles() -> dict[str, str]:
 
 if __name__ == "__main__":
     roles = get_roles()
-    for tag in ("rushing_qb", "pocket_passer", "pass_catching_rb"):
+    for tag in ("rushing_qb", "dual_threat_qb", "pocket_passer", "pass_catching_rb"):
         count = sum(1 for r in roles.values() if r == tag)
         print(f"{tag}: {count} players")

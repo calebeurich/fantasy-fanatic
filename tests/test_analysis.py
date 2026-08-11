@@ -34,12 +34,21 @@ def test_age_bucket_boundaries_are_inclusive_on_decline(position, cutoffs):
     assert age_bucket(position, old) == "declining"
 
 
-def test_rushing_qb_declines_earlier_than_pocket_qb():
-    """The usage-role override is the point of player_roles.py: a mobile QB's decline
-    pulls forward (34 -> 31). At 32 the same player is prime as a pocket passer and
-    declining as a rusher."""
-    assert age_bucket("QB", 32) == "prime"
-    assert age_bucket("QB", 32, role="rushing_qb") == "declining"
+def test_the_qb_curve_has_three_archetypes_not_two():
+    """Four cutoffs by role: 32 mobility-only, 34 default and dual-threat, 38 elite pocket.
+
+    An earlier version made running and passing mutually exclusive with rushing winning,
+    which put the league's best run-and-throw quarterbacks on the most pessimistic curve
+    available - and the market plainly disagreed, paying 10,415 for one of them at 29.5. A
+    QB who does both has something to fall back on when the legs go; one whose game is only
+    mobility does not."""
+    assert age_bucket("QB", 33) == "prime"
+    assert age_bucket("QB", 33, role="rushing_qb") == "declining", "mobility-only, marked down"
+    assert age_bucket("QB", 33, role="dual_threat_qb") == "prime", (
+        "runs AND throws - no rushing discount, because the arm outlasts the legs")
+    assert age_bucket("QB", 35, role="dual_threat_qb") == "declining", (
+        "but not priced like a pure pocket passer either; his value still leans on mobility")
+    assert age_bucket("QB", 35, role="pocket_passer") == "prime"
 
 
 def test_pass_catching_rb_declines_later_than_standard_rb():
@@ -63,8 +72,11 @@ def test_runway_distinguishes_two_players_in_the_same_bucket():
     wants. The live case: a 28.0 rushing QB and a 31.8 pocket passer both read `prime` while
     being three years apart in runway - and the older man has more of it."""
     assert age_bucket("QB", 28.0, "rushing_qb") == age_bucket("QB", 31.8, "pocket_passer")
-    assert years_to_decline("QB", 28.0, "rushing_qb") == 3.0
+    assert years_to_decline("QB", 28.0, "rushing_qb") == 4.0
     assert years_to_decline("QB", 31.8, "pocket_passer") == 6.2
+    # The third archetype sits between them: a QB who runs *and* throws well carries no
+    # rushing discount, because when the legs go he is still a good passer.
+    assert years_to_decline("QB", 28.0, "dual_threat_qb") == 6.0
     assert years_to_decline("QB", 38.0) < 0, "negative once past the cutoff"
     assert years_to_decline("QB", None) is None
 

@@ -2227,6 +2227,35 @@ run-and-throw QBs on a curve that may be too pessimistic for them.
 is priced on one more season however well he is playing. The curve should turn before the
 market does, not with it.
 
+### Three archetypes, because running and throwing are separate measurements
+
+Making rushing and passing mutually exclusive - with rushing winning - forced the league's
+best run-and-throw quarterbacks onto the curve built for players whose game is *only*
+mobility. The market disagreed loudly: **Josh Allen is 10,415 dynasty at 30.2 with 7.1 carries
+a game**, and the old curve gave him 0.8 years of runway. It is hard to hold both views.
+
+The two measurements are independent, so there is a genuine third case rather than a tie to
+break. A quarterback who runs *and* passes at an elite level has something to fall back on
+when the legs go; one who only runs does not.
+
+| tag | cutoff | who | why |
+|---|---|---|---|
+| `rushing_qb` | **32** | Hurts (2.99 EPA/g, 8.5 car/g), Daniels, Nix, Murray | mobility-only, marked down |
+| `dual_threat_qb` | **34** | Allen (6.05, 7.1), Lamar (5.25, 7.9), Maye | no discount - the *default* curve |
+| `pocket_passer` | **38** | Goff, Purdy, Stafford, Burrow, Mahomes | arm and processing outlast legs |
+
+`dual_threat_qb`'s cutoff is just the default QB curve: the point is the **absence** of a
+discount, not a new bonus, and a named tag says that where an untagged player would leave it
+implicit. Not 38 either - their value still leans on mobility.
+
+Runway moves accordingly: Allen 0.8 → **3.8**, Lamar 1.4 → **4.4**, while Hurts stays on the
+rushing curve at 4.0. Pure rushing also moved 31 → 32.
+
+**This also cleared the overshoot recorded above.** Allen and Lamar were "sellable" only
+because a discount they should never have carried put them under `MIN_MEANINGFUL_RUNWAY`;
+both are cornerstones again, and the audit stays clean. Two findings that arrived separately
+turned out to be one bug.
+
 ### The change is currently a no-op, and that is worth stating
 
 Nine QBs across three real leagues carry the tag. **Zero of them change bucket**, because none

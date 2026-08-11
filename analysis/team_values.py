@@ -28,8 +28,22 @@ AGE_CURVE = {
 # 38, not 40. The claim under test is that these players hold *dynasty trade value*, and a
 # 39-year-old quarterback is priced on one more season however well he is playing - the curve
 # should turn before the market does, not with it.
+#
+# **`dual_threat_qb` exists because the rushing discount assumed a QB has nothing to fall back
+# on.** A quarterback who runs *and* throws at an elite level does: when the legs go he is
+# still a good passer, so he should not be marked down like one whose game is only mobility.
+# The two are visibly different in the same data - over three seasons Allen posts 6.05 passing
+# EPA per game and Lamar 5.25, both clearing the elite-passer bar, while Hurts sits at 2.99
+# with the heaviest carry rate of the three.
+#
+# Its cutoff is 34, which is simply the default QB curve - the point is the *absence* of a
+# discount, not a new bonus, and saying so with a named tag beats leaving it implicit in an
+# untagged player. Not 38: their value still leans on mobility, so they should not be priced
+# like a pure pocket passer either. That the market pays 10,415 for a 29.5-year-old Allen -
+# while the old curve gave him 1.5 years of runway - is the disagreement this resolves.
 AGE_CURVE_OVERRIDES = {
-    "rushing_qb": (26, 31),
+    "rushing_qb": (26, 32),
+    "dual_threat_qb": (26, 34),
     "pocket_passer": (26, 38),
     "pass_catching_rb": (24, 29),
 }
