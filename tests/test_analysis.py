@@ -210,7 +210,6 @@ def test_surplus_is_measured_against_your_own_lineup_not_a_leaguewide_bar():
     `clears_relevance_floor` does and why the offer pool always used it: **replacement level
     is a win-now idea**, and a young player below it isn't replaceable to a team that will be
     good in two years - he's a starter who hasn't arrived yet."""
-    slots = {"QB": 1, "RB": 2, "WR": 2, "TE": 1}
     thresholds = {"QB": 1000, "RB": 1000, "WR": 1000, "TE": 1000}
     players = {
         "s1": {"name": "Starter1", "position": "WR", "value": 900, "redraft_value": 900, "age": 26},
@@ -223,7 +222,7 @@ def test_surplus_is_measured_against_your_own_lineup_not_a_leaguewide_bar():
     starters = {"s1", "s2"}
 
     names = [e["name"] for e in roster_needs.find_surplus(
-        roster, players, slots, thresholds, starters)["WR"]]
+        roster, players, thresholds, starters)["WR"]]
     assert "Starter1" not in names and "Starter2" not in names, "in the lineup is not spare"
     assert "PrimeOk" in names, "prime clears at 50% of replacement"
     assert "PrimeNo" not in names, "400 is below that 500 bar"
@@ -269,7 +268,7 @@ def test_a_position_cannot_be_both_a_need_and_a_surplus():
     })
     needs = roster_needs.needs_only(
         roster_needs.assess_positions(rosters, players, slots, thresholds)["a"])
-    surplus = roster_needs.find_surplus(rosters[0], players, slots, thresholds)
+    surplus = roster_needs.find_surplus(rosters[0], players, thresholds)
     count_needs = {pos for pos, e in needs.items() if e["level"] in ("critical", "top-heavy")}
     assert not (count_needs & set(surplus))
 

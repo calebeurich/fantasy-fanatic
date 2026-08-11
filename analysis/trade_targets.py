@@ -1,7 +1,6 @@
-"""Surface obvious trade fits: a team needing a position looks at Rebuilding teams'
-sellable players there (their sell candidates), from owners who've actually made
-trades before. This is a discovery tool, not a fairness calculator - it finds *who*
-to call, not whether a specific package is fair (see CLAUDE.md/prior discussion on why
+"""Surface obvious trade fits: a team needing a position looks at what other teams can
+part with, shaped by which window each side is in. This is a discovery tool, not a
+fairness calculator - it finds *who* to call, not whether a specific package is fair (see CLAUDE.md/prior discussion on why
 a real value calculator is a separate, harder problem: roster construction means bench
 depth isn't fungible with a starter's value).
 
@@ -122,6 +121,34 @@ MIN_PRODUCTION_RETAINED = 0.90
 # And how much dynasty value the swap has to free up to be worth mentioning at all -
 # below this it's churn, not arbitrage.
 MIN_VALUE_FREED = 300
+
+# Windows where a team is still trying to field a winning lineup this season.
+SWAP_ELIGIBLE_WINDOWS = ("Push", "Contend", "Ascend")
+
+
+def _others(states: list[dict], me: dict, window_test) -> list[dict]:
+    """Every team but this one whose window passes `window_test`.
+
+    The same two-part condition - not me, and the right side of the market - was written
+    inline in five places with three different window tests, which is how it came to read
+    `== "Rebuild"` in one path and `!= "Rebuild"` in the one right below it. Naming it makes
+    the direction of each search explicit at the call site."""
+    return [o for o in states if o["owner_id"] != me["owner_id"] and window_test(o["window"])]
+
+
+def IS_SELLER(window: str) -> bool:
+    """Rebuilding teams - the ones actually trying to move current value."""
+    return window == "Rebuild"
+
+
+def NOT_SELLER(window: str) -> bool:
+    """Everyone else, who has to be talked into it."""
+    return window != "Rebuild"
+
+
+def STILL_COMPETING(window: str) -> bool:
+    """Teams trying to field a winning lineup this season."""
+    return window in SWAP_ELIGIBLE_WINDOWS
 
 
 def _with_trade_note(entry: dict, other: dict, trade_counts: dict[str, int]) -> dict:
@@ -296,9 +323,7 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
        make the feature worse than no feature.
     """
     plausible = []
-    for other in states:
-        if other["owner_id"] == me["owner_id"] or other["window"] == "Rebuild":
-            continue  # Rebuild teams are already sellers - the normal buy path has them.
+    for other in _others(states, me, NOT_SELLER):  # sellers are the normal buy path's job
         team_why = _seller_case(other, prior.get(other["owner_id"]))
         for player in other["sellable"]:
             pos, need = player["position"], my_needs.get(player["position"])
@@ -532,9 +557,7 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         # and a player without a redraft price shouldn't be excluded for lacking one.
         upgrade_bar = need["weakest_starter"] if need["level"] == "weak" else None
         pos_targets = []
-        for other in states:
-            if other["owner_id"] == me["owner_id"] or other["window"] != "Rebuild":
-                continue
+        for other in _others(states, me, IS_SELLER):
             for player in other["sellable"]:
                 if player["position"] != pos or not team_state.clears_relevance_floor(player, thresholds):
                     continue
@@ -680,9 +703,7 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     # Players with no redraft price sort last: unknown, not zero.
     situational.sort(key=lambda e: -((e.get("redraft_value") or 0) / e["value"]) if e["value"] else 0)
     acquire_targets = []
-    for other in states:
-        if other["owner_id"] == me["owner_id"] or other["window"] == "Rebuild":
-            continue
+    for other in _others(states, me, NOT_SELLER):
         for player in other["tradeable_surplus"]:
             if not team_state.clears_relevance_floor(player, thresholds):
                 continue
@@ -702,9 +723,7 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     # owner actually trades, same as player targets.
     if picks_by_owner:
         pick_targets = []
-        for other in states:
-            if other["owner_id"] == me["owner_id"] or other["window"] == "Rebuild":
-                continue
+        for other in _others(states, me, NOT_SELLER):
             for pick in picks_by_owner.get(other["roster_id"], []):
                 pick_targets.append({
                     **pick, "from_owner": other["owner"],
@@ -821,7 +840,6 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     return result
 
 
-SWAP_ELIGIBLE_WINDOWS = ("Push", "Contend", "Ascend")
 
 
 # How lopsided the two sides of a mutual swap may be before it stops being a realistic
@@ -876,9 +894,7 @@ def find_mutual_swaps(league_id: str, owner_query: str) -> dict:
     my_surplus = surplus_by_owner.get(me["owner_id"], {})
 
     swaps = []
-    for other in states:
-        if other["owner_id"] == me["owner_id"] or other["window"] not in SWAP_ELIGIBLE_WINDOWS:
-            continue
+    for other in _others(states, me, STILL_COMPETING):
         other_needs = needs_by_owner.get(other["owner_id"], {})
         other_surplus = surplus_by_owner.get(other["owner_id"], {})
         for need_pos, other_surplus_entries in other_surplus.items():

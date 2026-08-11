@@ -74,16 +74,17 @@ def replacement_thresholds(players: dict[str, dict], slots: dict[str, int], num_
 
 def _usable_by_position(roster: dict, players: dict[str, dict], thresholds: dict[str, float],
                         metric: str, starters: set[str] | None = None) -> dict[str, list[dict]]:
-    """Every rostered player at each position that clears this league's replacement
-    level, best to worst. The one shared walk `assess_positions` and `find_surplus` both
-    read from, so "usable" means exactly the same thing in a need (too few of them) as it
-    does in a surplus (more than the starting slots require).
+    """Every rostered player at each position that clears this league's replacement level,
+    best to worst. Used by `assess_positions` to count how many startable bodies a team has.
 
-    **Sorted by the same metric it filters on.** It previously filtered on redraft value
-    and then sorted on dynasty value, so `find_surplus` - which calls the top `slots[pos]`
-    entries your starters and everything after them spare - could hand a better current
-    producer to the surplus pile while keeping a pricier prospect. Two metrics inside one
-    ordering is the same conflation `replacement_thresholds` documents at length."""
+    **Sorted by the same metric it filters on**, which was once a real bug: it filtered on
+    redraft value and sorted on dynasty value, so a caller taking the top N as "the starters"
+    and the rest as spare could keep a pricier prospect over a better current producer. Two
+    metrics inside one ordering is the conflation `replacement_thresholds` documents at length.
+
+    It used to be shared with `find_surplus` so that "usable" meant one thing in both. That
+    stopped being true when surplus moved off replacement level entirely - see `find_surplus`
+    for why a leaguewide top-N bar cannot answer "is he spare to *me*".""" 
     by_pos = {pos: [] for pos in POSITIONS}
     for pid in roster["players"] or []:
         info = players.get(pid)
@@ -475,8 +476,8 @@ def needs_only(assessed: dict[str, dict]) -> dict[str, dict]:
     return {pos: entry for pos, entry in assessed.items() if entry["level"] != "ok"}
 
 
-def find_surplus(roster: dict, players: dict[str, dict], slots: dict[str, int],
-                 thresholds: dict[str, float], starters: set[str] | None = None) -> dict:
+def find_surplus(roster: dict, players: dict[str, dict], thresholds: dict[str, float],
+                 starters: set[str] | None = None) -> dict:
     """Players a team can trade without touching its lineup: **anyone not in the projected
     starting eleven who still has real trade value**. Spare is measured against this team's
     own lineup, not against a leaguewide bar.
@@ -517,8 +518,9 @@ def find_surplus(roster: dict, players: dict[str, dict], slots: dict[str, int],
     50% - which is why the offer pool has always used it. Using it here makes the two
     genuinely one concept rather than two that happen to agree.
 
-    `slots` is retained for signature compatibility and deliberately unused - it encoded the
-    zero-sum arithmetic."""
+    The `slots` argument is gone. It encoded the zero-sum arithmetic and nothing reads it now;
+    keeping it "for signature compatibility" would have left a parameter that lies about what
+    the function considers."""
     from . import team_state  # lazy: team_state never imports this module, so no cycle
     spare: dict[str, list[dict]] = {}
     for player_id in roster["players"] or []:
@@ -690,13 +692,20 @@ def league_needs(league_id: str) -> dict[str, dict]:
 
 
 def league_surplus(league_id: str) -> dict[str, dict]:
-    """Positional surplus for every roster, keyed by owner_id - the mirror of
-    league_needs, reused by trade_targets.find_mutual_swaps to match one team's
-    spare depth against another's need."""
+    """Spare players for every roster, keyed by owner_id then position, used by
+    `trade_targets.find_mutual_swaps` to match one team's spare against another's need.
+
+    **No longer the mirror of `league_needs`, and the two are not symmetric.** A need is
+    measured against the league (is this group bottom-third, are there enough startable
+    bodies); spare is measured against this roster's own lineup. They were mirrors while both
+    ran off replacement level, and that symmetry is exactly what made surplus zero-sum and
+    unusable - see `find_surplus`. A team can now legitimately show both a need and spare
+    depth at the same position: the need says the starting group ranks badly, the spare says
+    a bench player there is still worth something to somebody. Both are true."""
     from .league import context
     ctx = context(league_id)
     return {
-        r["owner_id"]: find_surplus(r, ctx.players, ctx.needs_slots, ctx.trade_thresholds,
+        r["owner_id"]: find_surplus(r, ctx.players, ctx.trade_thresholds,
                                     ctx.starters_for(r))
         for r in ctx.rosters
     }
