@@ -460,8 +460,8 @@ DEPTH_NOTE = (
     "DEPTH, NOT NEEDS. Each of these is a player who does not crack this lineup today but "
     "would step straight into it if one starter at his position were out - which byes "
     "guarantee and injuries make likely. They are listed because every one of them sits "
-    "BELOW the trade-relevance floor, meaning they are cheap by definition and invisible to "
-    "the buy targets above. Treat them as sweeteners and insurance: worth a late pick or a "
+    "BELOW replacement level - startable quality - meaning they are cheap by definition and "
+    "not who the buy targets above are for. Treat them as sweeteners and insurance: worth a late pick or a "
     "spare body, never worth a real asset, and never a substitute for filling an actual "
     "need. Cheapest first, because at this tier price is the entire point."
 )
@@ -488,12 +488,20 @@ def _depth_adds(me_roster: dict, ctx, states: list[dict], thresholds: dict[str, 
     """Cheap bodies on rebuilding rosters who would start for me if one player above them
     went down. The complement of `_buy_path`, not an extension of it.
 
-    **Sourced from below the relevance floor on purpose.** That floor is what makes a player
-    a real trade target, so everything here failed it and is therefore invisible to the buy
-    path by construction - the two lists cannot overlap or compete. The live case that
-    forced this missed by *3 dynasty points* on a roster only two deep at his position, and
-    a rule that answers "not worth trading for" to a body that would start next week is
-    wrong in a way no threshold tuning fixes.
+    **Sourced from below replacement level on purpose** - below startable quality, so these
+    are not who the buy path is for. The live case that forced this list into existence
+    missed by *3 dynasty points* on a roster only two deep at his position, and a rule that
+    answers "not worth trading for" to a body that would start next week is wrong in a way
+    no threshold tuning fixes.
+
+    **Against the full threshold, not `clears_relevance_floor`.** That floor is *tiered* - a
+    production-priced player clears it at half - so testing it here opened a crack between
+    the two lists rather than partitioning them. On a roster with the league's second-worst
+    RB room, Tony Pollard (1,493) and Jaylen Warren (1,948) both cleared half of RB's 2,576
+    and were dropped as "the buy path already owns him", while the buy path's cap of three
+    ranked them 4th and 5th on production and never showed them. The cheapest, most
+    obviously gettable help in the league was invisible in both lists - the same cap that
+    once hid Chris Olave, hiding the opposite kind of player.
 
     Needs are binary and that is the gap: a position is a hole or it is fine, so a team
     starting five receivers and a team starting three look identical at WR once both are
@@ -517,8 +525,8 @@ def _depth_adds(me_roster: dict, ctx, states: list[dict], thresholds: dict[str, 
                 continue
             entry = {**info, "bucket": age_bucket(info["position"], info.get("age"),
                                                   info.get("usage_role"))}
-            if team_state.clears_relevance_floor(entry, thresholds):
-                continue  # a real trade target - the buy path already owns him
+            if info["value"] >= thresholds[info["position"]]:
+                continue  # startable quality - a real buy target, not depth
             if not roster_needs.would_start_if_one_out(me_roster, ctx.players, player_id,
                                                       my_starters, ctx.lineup_dedicated,
                                                       ctx.lineup_flex):
@@ -528,7 +536,7 @@ def _depth_adds(me_roster: dict, ctx, states: list[dict], thresholds: dict[str, 
                          "age": info.get("age"), "bucket": entry["bucket"],
                          "from_owner": owner,
                          "note": (f"Would start for you if your weakest {info['position']} "
-                                  f"were out. Below the trade-relevance floor "
+                                  f"were out. Below replacement level "
                                   f"({round(thresholds[info['position']]):,} at "
                                   f"{info['position']}), so the price should be nominal.")})
     adds.sort(key=lambda a: a["value"])
@@ -1165,9 +1173,7 @@ def _print_report(result: dict) -> None:
         tank_note = "" if me["owns_next_first"] else " (doesn't own next 1st, so tanking for a pick wouldn't help)"
         print(f"{me['owner']}: Rebuilding{tank_note} - playing for future value, not starting-lineup needs")
         _print_pivot(me, result)
-        return
-
-    if result["mode"] == "ascend":
+    elif result["mode"] == "ascend":
         print(f"{me['owner']}: Ascend - can push now or arrive cheaper next season")
         print(f"  {me['window_note']}")
         print(f"\n  {result['timing_note']}")
@@ -1175,11 +1181,24 @@ def _print_report(result: dict) -> None:
         _print_push(result["push"])
         print("\n-- if pivoting --")
         _print_pivot(me, result["pivot"])
-        return
+    else:
+        print(f"{me['owner']}: {me['window']}, needs: {_needs_summary(result['needs'])}")
+        print(f"  {me['window_note']}")
+        _print_push(result)
 
-    print(f"{me['owner']}: {me['window']}, needs: {_needs_summary(result['needs'])}")
-    print(f"  {me['window_note']}")
-    _print_push(result)
+    _print_depth(result)
+
+
+def _print_depth(result: dict) -> None:
+    """Was computed for every window and printed for none - `depth_adds` reached the agent
+    over MCP but never the CLI the author spot-checks with."""
+    if not result.get("depth_adds"):
+        return
+    print("\ncheap depth (cheapest first - nominal price, never worth a real asset):")
+    for a in result["depth_adds"]:
+        print(f"  {a['name']} ({a['position']}, value={a['value']}, "
+              f"{a['redraft_value'] or 0:,} this season) from {a['from_owner']}")
+    print(f"  {result['depth_note']}")
 
 
 def _print_swaps(swaps: list[dict]) -> None:

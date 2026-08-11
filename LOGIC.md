@@ -2764,10 +2764,26 @@ current starter at the candidate's position - the marginal lineup spot, the same
 `_injury_drop` makes - adds the candidate, and refills optimally so flex eligibility is
 respected. Counting bodies cannot distinguish the two WR rooms above; a real refill can.
 
-**Sourced from below the relevance floor**, which makes overlap with `_buy_path` impossible
-rather than merely unlikely: that floor is exactly what makes someone a real trade target,
-so everything here failed it and is cheap by construction. The case that forced this missed
-the floor by **3 dynasty points** on a roster its owner described as two deep.
+**Sourced from below replacement level** - below startable quality, so these are not who
+`_buy_path` is for and they are cheap by construction. The case that forced this list into
+existence missed the bar by **3 dynasty points** on a roster its owner described as two deep.
+
+**Against the full threshold, not `clears_relevance_floor`** - fixed after a live spot check.
+The relevance floor is *tiered*: a production-priced player clears it at **half**. Testing it
+here therefore opened a crack between the two lists instead of partitioning them. On the
+roster with XFL 2's second-worst RB room, Tony Pollard (1,493) and Jaylen Warren (1,948) both
+cleared half of RB's 2,576 and were dropped as "the buy path already owns him" - while
+`_buy_path`'s `max_per_position` cap of three ranked them 4th and 5th on production and never
+showed them either. The cheapest and most obviously gettable help in the league was invisible
+in both lists. The team's owner named those two players unprompted as what he expected to see
+first, which is how it was caught; the same cap that once hid Chris Olave for being *prime*
+was hiding these two for being *cheap*.
+
+This mattered more than one roster: `depth_adds` carried **22** entries across all three
+leagues before the fix and **213** after, against a ceiling of 216 (`DEPTH_LIMIT` of 6 x 36
+teams). It had been a near-dead feature. Near-saturation is acceptable here precisely because
+the tier is weak by design - six cheap insurance bodies per team is a menu, not a
+recommendation - but it is the reason the note leads with "DEPTH, NOT NEEDS".
 
 Deliberately a *weak* signal. `DEPTH_NOTE` tells the caller not to overpay, because the
 failure mode is paying a real asset for insurance, and the tier is capped at
