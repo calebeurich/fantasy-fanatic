@@ -67,6 +67,12 @@ MIN_MEANINGFUL_RUNWAY = 2.0
 
 # A "declining" player still on a multi-year deal is a weaker sell than the age curve
 # alone suggests - a team is still paying for the role, not just letting it expire.
+#
+# Years alone doesn't measure that, and reading them as if they did printed "contract-secure:
+# J.K. Dobbins (2yr/$0.0M gtd)" - a line that refutes itself. 461 of 1,695 active contracts
+# guarantee nothing at all, 44 of them with 2+ years left, and at ~$1M APY those are
+# veteran-minimum deals a team walks away from for free. Guaranteed money is the part that
+# binds a team to the role, so the flag requires both.
 SECURE_YEARS_REMAINING = 2
 
 # How many future draft classes to count as pick capital. Beyond this, picks are too
@@ -211,7 +217,7 @@ def find_outliers(player_ids: list[str], players: dict[str, dict], contract_data
             continue
         if age_bucket(info["position"], info["age"], info.get("usage_role")) != "declining":
             continue
-        if contract["years_remaining"] >= SECURE_YEARS_REMAINING:
+        if contract["years_remaining"] >= SECURE_YEARS_REMAINING and contract["guaranteed"] > 0:
             outliers.append(f"{info['name']} ({contract['years_remaining']}yr/${contract['guaranteed']:.1f}M gtd)")
     return outliers
 

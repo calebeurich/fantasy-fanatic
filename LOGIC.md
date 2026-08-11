@@ -248,6 +248,20 @@ why the pocket end stops at 38 rather than 40, is in `team_values.AGE_CURVE_OVER
   still has 2+ years left on a real contract is a weaker sell than the age curve implies
   - the NFL team is still paying for the role, not letting it expire. Source: real
   guaranteed money and years remaining from `contracts.py`, not a guess.
+  **Both conditions, not just years**: 461 of 1,695 active contracts guarantee $0, 44 of
+  them with 2+ years remaining, and at ~$1M APY those are veteran-minimum deals carrying
+  no commitment at all. Testing years alone printed "contract-secure: J.K. Dobbins
+  (2yr/$0.0M gtd)", which refutes itself on the same line. Guaranteed money is the part
+  that binds, so the flag requires `guaranteed > 0` as well.
+  *Known limitation*: `> 0` is a categorical line (is the team committed at all), not a
+  calibrated one - $0.3M guaranteed clears it. A dollar threshold would need calibration
+  this project doesn't have, and the categorical version fixes the contradiction.
+
+  Note this flag is **display-only** by design and feeds no downstream math. See the age
+  curve above: the market's own dynasty/redraft split already prices "how long does he
+  have left" continuously, while a contract encodes what a team believed at signing,
+  possibly years stale. Kittle (3yr/$35M) and Mark Andrews (2yr/$20.9M) trip this flag
+  identically while the market prices them nothing alike.
 
 ## Team windows: two measured axes (`team_state.py`)
 
