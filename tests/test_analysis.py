@@ -1018,8 +1018,18 @@ def test_persuasion_says_what_the_other_owner_would_actually_want():
     it needs value that scores this season and is still there later. Saying "he needs nothing,
     so there's no deal" misses the trade that is the whole reason his aging starter is on the
     list."""
-    offers = [{"name": "SpareQB", "position": "QB", "redraft_value": 3349, "bucket": "prime"},
-              {"name": "OldTE", "position": "TE", "redraft_value": 600, "bucket": "declining"}]
+    offers = [
+        {"name": "SpareQB", "position": "QB", "redraft_value": 3349, "bucket": "prime",
+         "years_to_decline": 7.1, "value_over_replacement": 700},
+        # Prime by bucket, but 0.3 years from his own cutoff - the real case that broke this.
+        {"name": "AboutToTurn", "position": "WR", "redraft_value": 781, "bucket": "prime",
+         "years_to_decline": 0.3, "value_over_replacement": 400},
+        # Long runway, but depth rather than a core piece - not worth restructuring around.
+        {"name": "Filler", "position": "TE", "redraft_value": 33, "bucket": "ascending",
+         "years_to_decline": 6.0, "value_over_replacement": -900},
+        {"name": "OldTE", "position": "TE", "redraft_value": 600, "bucket": "declining",
+         "years_to_decline": -1.0, "value_over_replacement": 100},
+    ]
 
     short_at_qb = _holder("needy", "Push", "falling", [], asc=10, dec=30)
     fit = trade_targets._counterparty_fit(
@@ -1029,7 +1039,9 @@ def test_persuasion_says_what_the_other_owner_would_actually_want():
     # No hole, but rising while starting aging players - wants now-and-later value.
     rising = _holder("rising", "Contend", "steady", [], asc=26, dec=16)
     fit = trade_targets._counterparty_fit(rising, {}, offers)
-    assert fit["you_could_offer"] == ["SpareQB"], "the declining TE is not 'still there later'"
+    assert fit["you_could_offer"] == ["SpareQB"], (
+        "'still there later' means runway, not bucket - a player 0.3 years from his own "
+        "decline cutoff still reads `prime`, and offering him as a lasting asset was the bug")
     assert "no positional hole" in fit["why_it_fits"]
 
     # Aging into its own window with nothing to fill: no obvious fit, and say so.

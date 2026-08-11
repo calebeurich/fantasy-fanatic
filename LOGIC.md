@@ -2398,6 +2398,27 @@ all, and re-sorting this tier by fit would push the low-friction options down in
 bigger ask. Two orderings inside one list is a mistake this module already made once, when
 trade activity outranked value.
 
+Three corrections landed the moment a manager read the first output, and each was the tool
+asserting something it had not checked:
+
+- **"Still there later" was tested with `bucket != "declining"`**, which passed a 28.7-year-old
+  receiver **0.3 years** from his own cutoff - offered as value that would last two seasons.
+  `years_to_decline` is the number that sentence actually claims, so it is now the test, and
+  it is carried on every player entry rather than only in `roster_detail`.
+- **"Scores this season" admitted anyone above zero**, padding the list to three names with a
+  33-redraft tight end. `_my_offer_pool` already separates "core piece - above replacement"
+  from "depth - a sweetener not a centerpiece"; only the first is worth restructuring around.
+  With both fixes the list is exactly the two players the manager named unprompted.
+- **`cost_note` contradicted `why_it_fits` printed beside it**, telling a reader that filling
+  an owner's *critical* need meant "persuading them to change direction". Where the owner has
+  a hole this team can fill, the trade serves his existing plan and the note now says so;
+  where there is no hole, the pivot framing is right and stays.
+
+And a fourth of the same kind: `from_owner_trades: 0` was a bare integer in the dict an agent
+reads, while only the CLI printed "NEVER TRADES". That is precisely the `{"diff": -11}`
+failure this project already documented - an unlabelled number gets a meaning invented for it -
+so a zero now carries `never_trades` explaining what it does and doesn't imply.
+
 ### Why this was a tool bug and not a prompting problem
 
 Worth recording, because it cuts against the temptation to fix things in the system prompt.

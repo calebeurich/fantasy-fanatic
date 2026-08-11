@@ -44,7 +44,7 @@ import sys
 
 from sources import sleeper, fantasycalc
 from . import trade_activity
-from .team_values import (age_bucket, get_players_with_roles, rank_map,
+from .team_values import (age_bucket, years_to_decline, get_players_with_roles, rank_map,
                           owned_picks, pick_capital,
                           split_starters_bench, tertile)
 
@@ -162,6 +162,11 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
                  "is_starter": pid in starter_ids}
         bucket = age_bucket(info["position"], info["age"], info.get("usage_role"))
         entry["bucket"] = bucket
+        # The distance to the decline cutoff, not just which side of it he's on. `bucket`
+        # alone called a receiver four months from declining "prime", and a caller reading
+        # that as "has a future" offered him as a piece that would "still be there later".
+        entry["years_to_decline"] = years_to_decline(info["position"], info["age"],
+                                                     info.get("usage_role"))
         if info["value"] < threshold:
             # Not a foundational piece either way, but the two cases mean different
             # things: ascending-but-small is a lottery ticket you'd offer as filler;

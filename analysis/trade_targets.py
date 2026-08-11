@@ -122,6 +122,13 @@ MIN_PRODUCTION_RETAINED = 0.90
 # below this it's churn, not arbitrage.
 MIN_VALUE_FREED = 300
 
+# How many seasons a player must have before his own decline cutoff to be offered as value
+# that is "still there later". Two, because that is exactly what the claim says - the bar is
+# the sentence, not a tuned parameter. Using `bucket != "declining"` instead let a receiver
+# 0.3 years from the cutoff through, which is the same off-by-a-boundary error `age_bucket`
+# makes by design and `years_to_decline` exists to fix.
+MIN_RUNWAY_FOR_LATER = 2.0
+
 # Windows where a team is still trying to field a winning lineup this season.
 SWAP_ELIGIBLE_WINDOWS = ("Push", "Contend", "Ascend")
 
@@ -162,8 +169,17 @@ def _with_trade_note(entry: dict, other: dict, trade_counts: dict[str, int]) -> 
         f"Listed as a starter for {other['owner']}, but they are rebuilding - that reflects "
         f"his value on that roster, not that the owner is trying to win with him.")}
         if entry.get("is_starter") and other["window"] == "Rebuild" else {})
-    return {**entry, "from_owner": other["owner"],
-            "from_owner_trades": trade_counts.get(other["owner_id"], 0), **starter_note}
+    trades = trade_counts.get(other["owner_id"], 0)
+    # A bare `0` is an unlabelled number, and this project has already shipped one of those:
+    # `{"diff": -11}` reliably got a meaning invented for it. The CLI printed "NEVER TRADES"
+    # while the dict an agent actually reads carried only the integer.
+    never = ({"never_trades": (
+        f"{other['owner']} has made no trades in this league's history. Not a reason to skip "
+        f"him - it may just mean nobody has asked - but expect a harder conversation than "
+        f"with an active trader, and weigh that against how much this player helps.")}
+        if trades == 0 else {})
+    return {**entry, "from_owner": other["owner"], "from_owner_trades": trades,
+            **never, **starter_note}
 
 
 def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict],
@@ -326,9 +342,19 @@ def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict]) -> 
                                 f"than asking him to do you a favour.")}
 
     if other["ascending_pct"] > other["declining_pct"]:
-        # Scores now and is still there later - what a team converting aging production wants.
+        # Scores now and is still there later. "Not declining" was the wrong test for the
+        # second half: it passed a 28.7-year-old receiver whose runway to his own decline
+        # cutoff was **0.3 years**, offered as a piece that would "still be there in two".
+        # `years_to_decline` is the number the sentence is actually claiming, so use it.
+        # Above replacement, not merely non-zero. `_my_offer_pool` already separates "core
+        # piece - above replacement, scarce" from "depth - a sweetener not a centerpiece",
+        # and only the first is a piece worth restructuring a roster around. Without this the
+        # list padded itself out to three names with a 33-redraft tight end, offered as value
+        # that "scores this season".
         both = sorted((e for e in my_offers
-                       if (e.get("redraft_value") or 0) > 0 and e.get("bucket") != "declining"),
+                       if e.get("value_over_replacement", 0) > 0
+                       and (e.get("redraft_value") or 0) > 0
+                       and (e.get("years_to_decline") or 0) >= MIN_RUNWAY_FOR_LATER),
                       key=lambda e: -(e.get("redraft_value") or 0))
         if both:
             return {"you_could_offer": [e["name"] for e in both[:3]],
@@ -408,7 +434,18 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
                 **_with_trade_note(player, other, trade_counts),
                 "production_per_cost": round(ratio, 2),
                 "why_they_might_listen": why,
+                # Two different asks, and they were being described identically. Where the
+                # owner has a hole this team can fill, the trade *serves* his existing plan -
+                # calling that "persuading them to change direction" contradicted the
+                # `why_it_fits` line printed beside it. Where there is no hole, the pivot
+                # framing is right and the price really is above market.
                 "cost_note": (
+                    f"{other['owner']} has a need you can fill, so this need not be a change "
+                    f"of direction for him - it can be a straight trade that serves both "
+                    f"plans. He is still not shopping {player['name']}, so you are opening "
+                    f"the conversation and should expect to pay something for that, but this "
+                    f"is nearer a fit than a pitch."
+                    if fit and "need at" in (fit.get("why_it_fits") or "") else
                     f"{other['owner']} is not currently a seller, so this is a conversation "
                     f"rather than a fit: acquiring {player['name']} means persuading them to "
                     f"change direction, which is a commitment on their part and prices above "
