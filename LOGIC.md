@@ -1678,6 +1678,35 @@ it actually fails would be its own form of the scope creep this project keeps
 deliberately avoiding.
 
 ## Known limitations / future work
+- **NEXT UP: `redraft_value` is a trade price, not a weekly point projection, and the
+  difference has a direction.** A trade price bakes in *positional scarcity* - a TE is
+  valued partly because you are forced to start one and the good ones are scarce, which is
+  a real advantage in the dedicated TE slot. But a FLEX decision is not about scarcity, it
+  is about raw expected points, and an RB or WR priced the same as a TE will usually
+  project higher week to week.
+
+  So `fill_lineup` is systematically biased toward putting tight ends in flex slots. The
+  live case is the one that prompted this: with the RB2 lost, the vacated FLEX went to
+  Dallas Goedert (627) over Wan'Dale Robinson (259) - and in reality Robinson is the more
+  likely start. The magnitude looks small enough to live with for now ("probably close
+  enough"), and TEP scaling pushes in the right direction for TE-premium leagues, but the
+  bias is directional rather than random so it will not average out.
+
+  A real fix needs actual weekly projections rather than trade values, which is a new data
+  source rather than a tweak. Note the same root cause is already documented for PPR -
+  FantasyCalc's `ppr` parameter is a flat 0.6% per-position scalar that cannot tell a
+  receiving back from an early-down back - so a projections source would close two gaps at
+  once and is probably the single highest-value external addition left.
+- **Dynasty rosters are deeper than the replacement-level bar assumes.** Dynasty formats
+  carry far more players than redraft, so plenty of low-redraft-value players are
+  genuinely starter-relevant in a way a value-derived threshold does not reflect. This
+  interacts with `start_thresholds` and with "startable" everywhere it appears - and with
+  the depth finding above, where the bar is already known to define surplus out of
+  existence. Worth revisiting the whole "usable" concept once projections exist.
+- **Spot-check oddly low redraft prices.** Wan'Dale Robinson at 259 redraft looks wrong
+  for a rostered NFL starter, and low outliers feed directly into flex fills, injury
+  drop-offs and surplus. Worth sampling a handful against a second source before trusting
+  the tail of that distribution.
 ## Injury exposure (`roster_needs._injury_drop`)
 
 Replacement level **cannot express depth at all**, which is not a gap so much as a
