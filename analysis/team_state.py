@@ -44,7 +44,8 @@ import sys
 
 from sources import sleeper, fantasycalc
 from . import trade_activity
-from .team_values import (age_bucket, years_to_decline, get_players_with_roles, rank_map,
+from .team_values import (age_bucket, years_to_decline, MIN_MEANINGFUL_RUNWAY,
+                          get_players_with_roles, rank_map,
                           owned_picks, pick_capital,
                           split_starters_bench, tertile)
 
@@ -177,9 +178,16 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
             elif bucket in ("prime", "declining"):
                 sellable.append(entry)
             continue
-        if bucket == "declining":
+        # **Runway, not bucket.** A cornerstone is a piece to build the next several seasons
+        # around, so the test is whether he has several seasons - not which side of a birthday
+        # he sits on. Live: an elite back 0.1 years from his cutoff was a cornerstone and
+        # therefore unreachable, while the same player one month older would have been a sell
+        # candidate; another at 1.2 years sat on the one team the tool was already telling to
+        # convert aging production, invisible to that path. Both are exactly who a contender
+        # should be asking about.
+        if (entry["years_to_decline"] or 0) < MIN_MEANINGFUL_RUNWAY:
             win_now_core.append(entry)
-            sellable.append(entry)  # valuable and declining - still sellable, just pricier
+            sellable.append(entry)  # valuable but short - still sellable, just pricier
         else:
             cornerstones.append(entry)
     tradeable_surplus.sort(key=lambda e: -e["value"])

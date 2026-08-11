@@ -13,7 +13,8 @@ from sources import fantasycalc
 
 from . import team_state, roster_needs, trade_activity, prior_season
 from .league import context
-from .team_values import owned_picks, pick_equivalent, now_premium_bar, age_bucket
+from .team_values import (owned_picks, pick_equivalent, now_premium_bar, age_bucket,
+                          MIN_MEANINGFUL_RUNWAY)
 
 # Same VALUE_BASIS classification (team_state.py) drives both sides of a trade, just
 # phrased for who's on which side of it.
@@ -122,12 +123,9 @@ MIN_PRODUCTION_RETAINED = 0.90
 # below this it's churn, not arbitrage.
 MIN_VALUE_FREED = 300
 
-# How many seasons a player must have before his own decline cutoff to be offered as value
-# that is "still there later". Two, because that is exactly what the claim says - the bar is
-# the sentence, not a tuned parameter. Using `bucket != "declining"` instead let a receiver
-# 0.3 years from the cutoff through, which is the same off-by-a-boundary error `age_bucket`
-# makes by design and `years_to_decline` exists to fix.
-MIN_RUNWAY_FOR_LATER = 2.0
+# "Still there later" is the same question `team_state` asks of a cornerstone, so it uses the
+# same answer - see team_values.MIN_MEANINGFUL_RUNWAY.
+MIN_RUNWAY_FOR_LATER = MIN_MEANINGFUL_RUNWAY
 
 # Windows where a team is still trying to field a winning lineup this season.
 SWAP_ELIGIBLE_WINDOWS = ("Push", "Contend", "Ascend")
@@ -639,6 +637,11 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
     ordered_positions = sorted(
         my_needs, key=lambda p: roster_needs.NEED_PRIORITY[my_needs[p]["level"]])
 
+    # Everything this team could realistically put on the table - the denominator for
+    # `cost_share`. Offers plus the picks it should be moving anyway.
+    my_capital = (sum(e["value"] for e in _my_offer_pool(me, thresholds, my_needs, pick_values, covered))
+                  + sum(p["value"] for p in (my_picks or [])))
+
     targets = []
     for pos in ordered_positions:
         need = my_needs[pos]
@@ -656,8 +659,21 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
                     continue
                 if upgrade_bar is not None and (player.get("redraft_value") or 0) <= upgrade_bar:
                     continue
+                # The two things a reader uses to tell a realistic target from an
+                # aspirational one, and neither was here. `production_per_cost` is the same
+                # efficiency measure the persuasion tier already reports - a buy list that
+                # omitted it left an elite player and a cheap one looking equivalent.
+                # `cost_share` is blunter and answers "can I actually pay": his price as a
+                # fraction of everything this team could put on the table. A player at 64% of
+                # a roster's entire tradeable value is technically available and practically
+                # not, which is a different statement from "expensive".
+                ratio = ((player.get("redraft_value") or 0) / player["value"]
+                         if player.get("value") else None)
                 pos_targets.append({"position": pos, "need_level": need["level"],
                                      "need_note": need["note"],
+                                     "production_per_cost": round(ratio, 2) if ratio else None,
+                                     "cost_share": (round(100 * player["value"] / my_capital)
+                                                    if my_capital else None),
                                      **_with_trade_note(player, other, trade_counts)})
         # Window fit before raw value. A Win-Now buyer wants *current production*, and
         # this project's own pricing model says declining players are "production-priced"

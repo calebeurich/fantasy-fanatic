@@ -2479,6 +2479,46 @@ Not part of `pytest`: it needs the network, and `tests/` is free and offline by 
 two layers answer different questions and both are needed - the unit tests would have caught
 none of this, and the audit would catch none of the boundary conditions they guard.
 
+## Runway, not buckets, wherever a boundary decides something
+
+`age_bucket` is a **discretization**, and treating it as the answer failed three separate
+times in one day - a receiver 0.3 years from his cutoff offered as value that would "still be
+there in two"; an elite back **0.1 years** from his classified as a franchise cornerstone
+while the same player one month older would have been a sell candidate; and that same boundary
+hiding a 1.2-year starter from the conversion path on the one team already being told to
+convert. Nobody's value falls off a cliff on a birthday.
+
+`MIN_MEANINGFUL_RUNWAY = 2.0` in `team_values` is now the single definition of "has a future
+worth building on", shared by every caller that used to ask `bucket != "declining"`. Buckets
+stay for the coarse questions - what kind of value is this, how is a roster trending - where a
+category is genuinely what's wanted.
+
+**Cornerstone now routes on runway.** A cornerstone is a piece to build several seasons
+around, so the test is whether he has several seasons. Windows did not move (trajectory reads
+buckets, not cornerstones), but the reachable pool changed a lot - a pushing team's RB targets
+went from 1,850 / 1,139 / 688 redraft to **4,314 / 3,284 / 2,570**.
+
+**It overshoots at the top, and that is a real cost.** Josh Allen (10,415 dynasty, 0.8 years
+of runway) is now "sellable", along with Lamar, Jefferson and Lamb - because runway alone
+ignores magnitude, and a player 2.4x the cornerstone bar is a franchise asset whatever his
+birthday. The audit came back clean and those names surface only as *targets* for teams that
+need them, never as casual offers, so no bad recommendation results. Left as-is rather than
+adding a second tuned threshold to rescue it, but recorded as a known distortion.
+
+**What the annotation fixes instead.** The manager's own reaction to seeing Allen listed was
+that these are "reasonable but harder to get and less production value efficient" - which is
+two measurements, neither of which the buy list carried. `production_per_cost` (already
+reported by the persuasion tier, absent here) and `cost_share`, a player's price as a
+percentage of everything this team could put on the table:
+
+| target | dynasty | prod/cost | cost share |
+|---|---|---|---|
+| Chase Brown | 4,069 | 1.06 | **25%** |
+| Josh Allen | 10,415 | 1.00 | **67%** |
+
+67% of a roster's entire tradeable value is technically available and practically not, which
+is a different statement from "expensive" and the one a reader needs.
+
 ## Leverage: what a team could become (`team_state.leverage`)
 
 The window model answers *what should this team do with the roster it has*. It had nothing

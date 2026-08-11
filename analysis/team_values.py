@@ -34,6 +34,23 @@ AGE_CURVE_OVERRIDES = {
     "pass_catching_rb": (24, 29),
 }
 
+# How many seasons before his own decline cutoff a player needs for his future to be worth
+# anything to a plan. **The single definition of "has a future"**, shared by every caller that
+# used to ask `bucket != "declining"` instead.
+#
+# `age_bucket` is a *discretization* of a continuous thing, and treating it as the answer
+# failed three separate times in one day: a receiver 0.3 years from his cutoff offered as
+# value that would "still be there in two"; an elite back 0.1 years from his read as a
+# franchise cornerstone while an identical player one month older would have been a sell
+# candidate; and the same boundary hiding a short-runway starter from the conversion path.
+# Nobody's value falls off a cliff on a birthday - the buckets are a convenience for talking
+# about age, and `years_to_decline` is the quantity underneath them.
+#
+# Two seasons because that is the horizon the claims actually make ("still there later", "a
+# piece to build on"). Buckets are kept for the coarse questions - what kind of value is this,
+# how is a roster trending - where a category is genuinely what's wanted.
+MIN_MEANINGFUL_RUNWAY = 2.0
+
 # A "declining" player still on a multi-year deal is a weaker sell than the age curve
 # alone suggests - a team is still paying for the role, not just letting it expire.
 SECURE_YEARS_REMAINING = 2
