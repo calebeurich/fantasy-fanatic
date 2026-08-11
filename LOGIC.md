@@ -2148,6 +2148,18 @@ two live paths. Additive, so nothing downstream that reads `window` changes.
 contention and trajectory are already cut. Teams whose two ranks agree get nothing, which is
 most of them: 2 to 4 flags per 12-team league across three real leagues.
 
+**Composition is reported, not weighted (`pick_share`).** Two teams with the same
+`asset_value` are not equally convertible. A pick is **position-agnostic** - it fits any
+deal, where a surplus of young receivers needs a partner who happens to want receivers - and
+it is **value-insulated**, carrying none of the age, injury or lost-role decay a player does.
+So the same number held in picks converts more easily than the same number held in players.
+
+By *how much* is not calibratable here, and a guessed multiplier buried inside the ranking
+would be worse than an honest number printed beside it. The observed spread carries the point
+unaided: **3% to 41%** across three real leagues, with the most mortgaged contender at the
+bottom and the deepest rebuild at the top. The owner's own two teams sit at 4% and 10%, which
+is his unprompted "I don't even have my future first" appearing as a measurement.
+
 **Picks are priced flat here, deliberately.** `owned_picks` can price a pick by the window of
 the team it originated from, and the window is what this measure helps describe - letting
 that in would make the label feed its own input.
