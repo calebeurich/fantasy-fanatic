@@ -467,9 +467,11 @@ DEPTH_NOTE = (
     "would step straight into it if one starter at his position were out - which byes "
     "guarantee and injuries make likely. They are listed because every one of them sits "
     "BELOW replacement level - startable quality - meaning they are cheap by definition and "
-    "not who the buy targets above are for. Treat them as sweeteners and insurance: worth a late pick or a "
-    "spare body, never worth a real asset, and never a substitute for filling an actual "
-    "need. Cheapest first, because at this tier price is the entire point."
+    "not who the buy targets above are for. Price them as sweeteners: worth a late pick or a "
+    "spare body, never worth a real asset. But below LEAGUE replacement is not the same as "
+    "unable to help THIS lineup - each line says whether the player actually outproduces your "
+    "weakest starter at the position or only covers an absence, and on a thin roster several "
+    "will. Cheapest first, because at this tier price is the entire point."
 )
 
 # Same cheap bodies, a different reason to want them. For a contender they are insurance
@@ -528,6 +530,20 @@ def _depth_adds(me_roster: dict, ctx, states: list[dict], filling_lineup: bool,
     metric = "redraft_value" if filling_lineup else "value"
     bars = ctx.start_thresholds if filling_lineup else ctx.trade_thresholds
     bar_label = "replacement-level production" if filling_lineup else "the trade-value floor"
+    # Below *league* replacement is not the same as "can't help me". On a roster whose second
+    # RB produces 633 against a replacement level of 1,708, three players called insurance
+    # were all upgrades to that slot - Warren by 511. Stated per line rather than used as a
+    # bar: excluding them would push them into the buy path, where they rank below the
+    # per-position cap on production and vanish entirely, which is how they were hidden
+    # before. The reader needs the number, not a different list.
+    weakest_starter = {}
+    for pid in my_starters:
+        info = ctx.players.get(pid)
+        if info:
+            produced = info.get("redraft_value") or 0
+            pos = info["position"]
+            if pos not in weakest_starter or produced < weakest_starter[pos]:
+                weakest_starter[pos] = produced
     adds = []
     for roster in ctx.rosters:
         owner = rebuilders.get(roster["owner_id"])
@@ -545,14 +561,26 @@ def _depth_adds(me_roster: dict, ctx, states: list[dict], filling_lineup: bool,
                                                       my_starters, ctx.lineup_dedicated,
                                                       ctx.lineup_flex):
                 continue
+            edge = ((info.get("redraft_value") or 0)
+                    - weakest_starter.get(info["position"], 0)) if filling_lineup else None
+            if edge is None:
+                verdict = ""
+            elif edge > 0:
+                verdict = (f" Also outproduces your weakest {info['position']} starter by "
+                           f"{edge:,} right now, so he is a real if modest upgrade there, "
+                           f"not only cover.")
+            else:
+                verdict = (f" Does not outproduce your weakest {info['position']} starter, "
+                           f"so he is cover for an absence and nothing more.")
             adds.append({"name": info["name"], "position": info["position"],
                          "value": info["value"], "redraft_value": info.get("redraft_value"),
                          "age": info.get("age"), "bucket": entry["bucket"],
-                         "from_owner": owner,
+                         "from_owner": owner, "over_weakest_starter": edge,
                          "note": (f"Would start for you if your weakest {info['position']} "
                                   f"were out. Below {bar_label} "
                                   f"({round(bars[info['position']]):,} at "
-                                  f"{info['position']}), so the price should be nominal.")})
+                                  f"{info['position']}), so the price should be nominal."
+                                  + verdict)})
     adds.sort(key=lambda a: a["value"])
     return adds[:DEPTH_LIMIT]
 
@@ -1215,8 +1243,11 @@ def _print_depth(result: dict) -> None:
         return
     print("\ncheap depth (cheapest first - nominal price, never worth a real asset):")
     for a in result["depth_adds"]:
+        edge = a.get("over_weakest_starter")
+        edge_note = ("" if edge is None else
+                     f", {edge:+,} vs your weakest {a['position']} starter")
         print(f"  {a['name']} ({a['position']}, value={a['value']}, "
-              f"{a['redraft_value'] or 0:,} this season) from {a['from_owner']}")
+              f"{a['redraft_value'] or 0:,} this season{edge_note}) from {a['from_owner']}")
     print(f"  {result['depth_note']}")
 
 
