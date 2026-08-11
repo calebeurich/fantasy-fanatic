@@ -1703,10 +1703,22 @@ deliberately avoiding.
   interacts with `start_thresholds` and with "startable" everywhere it appears - and with
   the depth finding above, where the bar is already known to define surplus out of
   existence. Worth revisiting the whole "usable" concept once projections exist.
-- **Spot-check oddly low redraft prices.** Wan'Dale Robinson at 259 redraft looks wrong
-  for a rostered NFL starter, and low outliers feed directly into flex fills, injury
-  drop-offs and surplus. Worth sampling a handful against a second source before trusting
-  the tail of that distribution.
+- **The redraft tail collapses to noise, and it caps the persuasion tier.** Not scattered
+  outliers - a systematic floor effect below roughly the 30th-ranked player at a position.
+  Real WR board: Brandon Aiyuk **1**, Jerry Jeudy 70, Jalen Nailor 76, Tank Dell 114,
+  Khalil Shakir 140. Those are rostered NFL receivers whose weekly points are plainly not
+  ~0; a redraft value of 1 means "nobody would trade anything for him", which is a *price*,
+  not a forecast. (Wan'Dale Robinson at 259 was the first sighting of this, recorded then
+  as a possible one-off.)
+
+  The consequence is structural rather than cosmetic. `now_premium_bar` divides by these
+  numbers, so any mid-tier veteran's ratio is pushed toward zero and the whole persuasion
+  tier is effectively limited to the top ~30 per position. The live case: a 28.7-year-old
+  WR at WR36 reads 0.43 - "priced more for the future than for now" - which is not a
+  believable description of him, and his owner flagged it by eye. The bar is not too tight;
+  the denominator is unreliable down there. Loosening the bar to compensate would import the
+  noise instead of fixing it, so it is deliberately left alone until projections exist.
+  Same root cause as the two entries above.
 ## Injury exposure (`roster_needs._injury_drop`)
 
 Replacement level **cannot express depth at all**, which is not a gap so much as a
@@ -1936,6 +1948,32 @@ does, and a champion tilting ascending is a team that can afford to sell, trophy
 This tier deliberately does **not** check whether the owner has a replacement behind the
 player. That question - *should* they do this - belongs to `find_efficiency_swaps`. This one
 only answers *is it worth asking*, and `cost_note` says an ask is all it is.
+
+### Both paths for a contender still rising (`_conversion_candidates`)
+
+The tilt that decides whether *another* team's aging starter is gettable decides the same
+thing about your own. A contender whose production is still tilting ascending has two live
+plays, and reporting only one is a false choice:
+
+- **Stack** - buy more current production. It already has the strongest lineup, so the
+  marginal win is cheaper for it than for anyone else, and nothing is given up on.
+- **Convert** - move the aging starters into value that matches the seasons the rest of the
+  roster is built for.
+
+`window` is deliberately **not** made plural for these teams. Making it a list was the more
+"honest-looking" option and the wrong one: a window says *whether* a team competes, and this
+one competes on either path - the choice is about how. Plural windows would also have
+touched `_buy_path`, `_pivot_path`, the agent prompt, the MCP tool description and an eval
+asserting the exact string, to express something none of them are asking about. So the block
+is additive, exactly like the `Ascend` push/pivot split it copies.
+
+It reuses `_cliff_case` rather than reimplementing the test. If the rest of the league is
+told a manager's 32-year-old RB is the one piece worth calling about, that manager must be
+told the same thing in the same terms - two rules would eventually disagree, and the
+disagreement would surface as the tool contradicting itself between two questions.
+
+On the live league this fires for one team, listing the two players its owner had already
+identified by eye as the ones to consider moving.
 
 ### Last season's results (`prior_season.py`)
 

@@ -871,6 +871,21 @@ def test_persuasion_ignores_last_season_when_the_roster_turned_over():
         "a result cannot describe a roster that no longer exists"
 
 
+def test_a_contender_still_rising_is_shown_its_own_conversion_candidates():
+    """The same rule read from the other side. If the rest of the league is told your aging
+    starter is the one piece worth calling you about, you should be told so too - in the
+    same terms, from the same function, so the two can never disagree.
+
+    Only for a contender whose production is still tilting ascending: it contends either
+    way, so this is a choice about *how*, which is why `window` stays untouched. A team
+    aging into its own window has no such choice and gets nothing here."""
+    aging_starter = _aging("Old Star", 4000, 6000)
+    rising = _holder("rising", "Contend", "steady", [aging_starter], asc=26, dec=16)
+    aging = _holder("aging", "Contend", "steady", [aging_starter], asc=21, dec=23)
+    assert [c["name"] for c in trade_targets._conversion_candidates(rising, BARS)] == ["Old Star"]
+    assert trade_targets._conversion_candidates(aging, BARS) == []
+
+
 def test_persuasion_never_searches_teams_that_are_already_sellers():
     """Rebuild teams are what the normal buy path covers. Including them here would
     double-list the same player under a framing that says it's a hard ask."""

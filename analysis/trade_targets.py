@@ -56,6 +56,22 @@ SWAP_FRAMING = {
                 "chase one."),
 }
 
+# A contender whose production is tilting ascending has two live plays, and the window
+# label alone hides that. It contends either way - which is exactly why `window` stays
+# "Contend" and this is additive: the choice is about *how* it contends, not whether. A
+# team aging into its own window has no such choice, and neither does one already falling.
+CONTEND_CHOICE_NOTE = (
+    "TWO LIVE PATHS. This roster contends now and its production is still tilting "
+    "ascending, so it is not choosing whether to compete - it is choosing how. STACK: buy "
+    "more current production. Already the strongest lineup, so the marginal win is cheaper "
+    "here than for anyone else, and nothing has to be given up on. CONVERT: move the aging "
+    "starters listed in `conversion_candidates` for value that matches the seasons the rest "
+    "of the roster is built for. Both are defensible; the cost is that stacking spends "
+    "future value on a lead this team already has, while converting gives up real "
+    "production this season for a roster that stays strong longer. Neither is urgent - a "
+    "contender with no clock can wait for a good price rather than chase one."
+)
+
 PERSUASION_NOTE = (
     "These are held by teams that are NOT currently sellers, so none of them is available "
     "the way a rebuilding team's pieces are. Each carries why that owner might listen and "
@@ -265,6 +281,26 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
             })
     plausible.sort(key=lambda t: -t["production_per_cost"])
     return plausible
+
+
+def _conversion_candidates(me: dict, premium_bars: dict[str, float]) -> list[dict]:
+    """`_cliff_case` turned around and pointed at your own roster: the aging starters whose
+    remaining seasons don't reach the ones your roster is built for.
+
+    Deliberately the same rule read from the other side, not a second heuristic. If the
+    league's other managers are told your 32-year-old RB is the one piece worth calling you
+    about, you should be told the same thing about him, in the same terms - two rules would
+    guarantee they eventually disagreed."""
+    return [{**player,
+             "production_per_cost": round(player["redraft_value"] / player["value"], 2),
+             "note": (f"Still starting for you and still producing, but priced at "
+                      f"{player['redraft_value'] / player['value']:.2f}x his own trade "
+                      f"value - the market is paying for this season and writing off the "
+                      f"rest, which is the season your roster is least short of.")}
+            for player in me["sellable"]
+            if player.get("redraft_value") and player.get("value")
+            and player["redraft_value"] / player["value"] >= premium_bars.get(player["position"], float("inf"))
+            and _cliff_case(player, me, player["redraft_value"] / player["value"])]
 
 
 def _seller_case(other: dict, prior: dict | None) -> str | None:
@@ -555,10 +591,20 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
                                   premium_bars),
                 "pivot": _pivot_path(me, states, thresholds, trade_counts, picks_by_owner)}
 
-    return {"me": me, "mode": "buy",
-            **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
-                        max_per_position, pick_values, my_picks, prior,
-                        premium_bars)}
+    result = {"me": me, "mode": "buy",
+              **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
+                          max_per_position, pick_values, my_picks, prior,
+                          premium_bars)}
+
+    # Additive on purpose - `window` is untouched. A contender tilting ascending contends
+    # whichever path it takes, so the label is right either way and only the tactics differ.
+    # Making `window` plural here would have been the more "honest" shape and the wrong one:
+    # it reads as a decision about whether to compete, which this team has already made.
+    conversions = _conversion_candidates(me, premium_bars)
+    if conversions:
+        result["choice_note"] = CONTEND_CHOICE_NOTE
+        result["conversion_candidates"] = conversions
+    return result
 
 
 SWAP_ELIGIBLE_WINDOWS = ("Push", "Contend", "Ascend")

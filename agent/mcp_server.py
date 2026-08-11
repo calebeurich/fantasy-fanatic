@@ -131,6 +131,14 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     top entry is often NOT the most valuable player - that is deliberate and worth saying,
     because the cheaper name delivers more of what a contending team is buying.
 
+    "conversion_candidates" + "choice_note" appear only for a contender whose production is
+    still tilting ascending. That team has TWO live paths and the answer must present both:
+    stack more current production, or convert those aging starters into value matching the
+    seasons the rest of its roster is built for. Its `window` is still "Contend" and that is
+    correct - it contends either way, so this is a choice about HOW, not whether. Do not
+    report it as indecision or as a downgrade, and do not recommend one path as the answer
+    without giving the cost of the other.
+
     max_per_position caps results per position - call again with a higher number if
     asked for more, rather than assuming this is the full list."""
     return trade_targets.find_targets(league_id, owner_name, max_per_position)
