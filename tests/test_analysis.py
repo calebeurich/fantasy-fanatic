@@ -84,21 +84,91 @@ def _players(spec):
             for i, (pos, val) in enumerate(spec)}
 
 
-def test_needs_critical_thin_and_satisfied():
-    """Fewer usable than required is critical; exactly enough is thin (no cushion);
-    more is neither."""
-    slots = {"QB": 1, "RB": 2, "WR": 2, "TE": 1}
+def _league(specs: dict[str, list[tuple[str, int]]]) -> tuple[list[dict], dict]:
+    """A whole league from {owner_id: [(position, value), ...]}. Quality is measured
+    against the rest of the league, so these tests need one - a single roster can't
+    express the distinction being tested."""
+    players, rosters = {}, []
+    for owner_id, spec in specs.items():
+        ids = []
+        for pos, val in spec:
+            pid = str(len(players))
+            players[pid] = {"name": f"{owner_id}-{pid}", "position": pos, "value": val,
+                            "redraft_value": val, "age": 26}
+            ids.append(pid)
+        rosters.append({"owner_id": owner_id, "roster_id": len(rosters) + 1,
+                        "players": ids, "starters": []})
+    return rosters, players
+
+
+def test_needs_name_the_shape_of_the_problem_not_just_its_severity():
+    """The four levels, in one league, at one position.
+
+    This replaced a pure count rule (fewer usable than slots = critical, exactly = thin)
+    that measured close to *inverted* on a real 12-team league: the 2nd-best WR room in
+    the league read `critical` because its WR3 sat below the bar, while the 10th-best read
+    as no need at all because four players cleared a low bar by a little. `top-heavy` and
+    `weak` are the two halves that count alone conflated - one wants bodies, one wants an
+    upgrade.
+    """
+    slots = {"QB": 0, "RB": 0, "WR": 3, "TE": 0}
     thresholds = {"QB": 100, "RB": 100, "WR": 100, "TE": 100}
-    players = _players([("QB", 500),                      # 1 usable QB  -> thin
-                        ("RB", 500),                      # 1 usable RB  -> critical (needs 2)
-                        ("WR", 500), ("WR", 500), ("WR", 500),  # 3 usable WR -> fine
-                        ("TE", 50)])                      # below threshold -> critical
-    roster = {"players": list(players), "starters": []}
-    needs = roster_needs.find_needs(roster, players, slots, thresholds)
-    assert needs["QB"] == "thin"
-    assert needs["RB"] == "critical"
-    assert needs["TE"] == "critical"
-    assert "WR" not in needs
+    rosters, players = _league({
+        "strong":   [("WR", 1000), ("WR", 900), ("WR", 800)],   # 2,700 - best room
+        "quality":  [("WR", 900), ("WR", 800), ("WR", 50)],     # 1,750 but only 2 startable
+        "mid":      [("WR", 700), ("WR", 600), ("WR", 500)],    # 1,800 - unremarkable
+        "mid2":     [("WR", 650), ("WR", 550), ("WR", 450)],    # 1,650 - unremarkable
+        "quantity": [("WR", 200), ("WR", 180), ("WR", 160), ("WR", 150)],  # 4 bodies, 540
+        "empty":    [("WR", 80), ("WR", 60)],                   # nothing startable
+    })
+    assessed = roster_needs.assess_positions(rosters, players, slots, thresholds)
+    level = {owner: entry["WR"]["level"] for owner, entry in assessed.items()}
+
+    assert level["empty"] == "critical", "no startable bodies and a bottom-of-league room"
+    assert level["quality"] == "top-heavy", (
+        "2 of 3 slots filled but the 3rd-best room in the league - wants a body, not an "
+        "upgrade. The old count rule called this critical")
+    assert level["quantity"] == "weak", (
+        "4 bodies over the bar for 3 slots, and the worst room in the league bar one - "
+        "wants an upgrade, not depth. The old count rule called this no need at all")
+    assert level["strong"] == "ok" and level["mid"] == "ok" and level["mid2"] == "ok", (
+        "mid-table with the slots filled is not a need - shopping for problems you don't "
+        "have is what 'thin' used to cause")
+
+    # And the priority ordering follows the shape: can't-field beats can-field-badly.
+    assert (roster_needs.NEED_PRIORITY["critical"]
+            < roster_needs.NEED_PRIORITY["top-heavy"]
+            < roster_needs.NEED_PRIORITY["weak"])
+
+
+def test_a_mid_ranked_group_can_still_be_weak_in_absolute_terms():
+    """Rank alone misses skewed positions. On a real league the 8th-of-12 TE room (648)
+    was 39% of the league median and 10% of the best - "average" by rank, plainly a hole
+    in points. `WEAK_VS_MEDIAN` catches that without touching the ordinary cases."""
+    slots = {"QB": 0, "RB": 0, "WR": 0, "TE": 1}
+    thresholds = {"QB": 100, "RB": 100, "WR": 100, "TE": 100}
+    rosters, players = _league({
+        "a": [("TE", 6000)], "b": [("TE", 5500)], "c": [("TE", 5000)],
+        "skewed": [("TE", 700)], "e": [("TE", 600)], "f": [("TE", 500)],
+    })
+    entry = roster_needs.assess_positions(rosters, players, slots, thresholds)["skewed"]["TE"]
+
+    assert entry["rank"] == 4 and entry["of"] == 6, "4th of 6 is not the bottom tertile"
+    assert entry["startable"] == entry["slots"], "the slot is filled, so this isn't a count problem"
+    assert entry["level"] == "weak", "700 against a league median of 2,850 is a real shortfall"
+
+
+def test_quality_is_not_asserted_when_the_league_is_too_small_to_measure_it():
+    """A 1-team league's rank is simultaneously first and last, which the naive tertile
+    test read as bottom-tertile - i.e. every position weak, from no evidence. Below
+    MIN_TEAMS_FOR_QUALITY the count test stands alone."""
+    slots = {"QB": 0, "RB": 0, "WR": 2, "TE": 0}
+    thresholds = {"QB": 100, "RB": 100, "WR": 100, "TE": 100}
+    rosters, players = _league({"solo": [("WR", 500), ("WR", 400)]})
+    assert roster_needs.assess_positions(rosters, players, slots, thresholds)["solo"]["WR"]["level"] == "ok"
+
+    rosters, players = _league({"solo": [("WR", 500)]})
+    assert roster_needs.assess_positions(rosters, players, slots, thresholds)["solo"]["WR"]["level"] == "critical"
 
 
 def test_surplus_is_the_mirror_of_needs_and_excludes_the_starting_group():
@@ -127,24 +197,34 @@ def test_needs_are_measured_on_current_production_not_dynasty_value():
     }
     slots = {"QB": 0, "RB": 0, "WR": 1, "TE": 0}
     thresholds = roster_needs.replacement_thresholds(pool, slots, num_teams=1, metric="redraft_value")
-    roster = {"players": ["1"], "starters": []}
+    rosters = [{"owner_id": "vet", "players": ["1"], "starters": []},
+               {"owner_id": "prospect", "players": ["2"], "starters": []}]
+    assessed = roster_needs.assess_positions(rosters, pool, slots, thresholds)
 
-    # The veteran produces now, so he fills the slot - "thin" (exactly enough), not
-    # "critical" (can't field one at all), despite the lower dynasty value.
-    assert roster_needs.find_needs(roster, pool, slots, thresholds)["WR"] == "thin"
+    # The veteran produces now, so he fills the slot, despite the lower dynasty value.
+    assert assessed["vet"]["WR"]["startable"] == 1
     # The prospect is the more valuable asset and still can't start.
-    prospect_only = {"players": ["2"], "starters": []}
-    assert roster_needs.find_needs(prospect_only, pool, slots, thresholds)["WR"] == "critical"
+    assert assessed["prospect"]["WR"]["startable"] == 0
+    assert assessed["prospect"]["WR"]["level"] == "critical"
 
 
 def test_a_position_cannot_be_both_a_need_and_a_surplus():
+    """A count shortage and spare depth are mutually exclusive by construction. A `weak`
+    position can legitimately have surplus, though - that's the consolidation case, where
+    the spare bodies are exactly what you'd package for one better starter."""
     slots = {"QB": 1, "RB": 2, "WR": 2, "TE": 1}
     thresholds = {p: 100 for p in slots}
-    players = _players([("QB", 500), ("RB", 500), ("RB", 400), ("WR", 500), ("TE", 500)])
-    roster = {"players": list(players), "starters": []}
-    needs = roster_needs.find_needs(roster, players, slots, thresholds)
-    surplus = roster_needs.find_surplus(roster, players, slots, thresholds)
-    assert not (set(needs) & set(surplus))
+    rosters, players = _league({
+        "a": [("QB", 500), ("RB", 500), ("RB", 400), ("WR", 500), ("WR", 450), ("TE", 500)],
+        "b": [("QB", 520), ("RB", 510), ("RB", 410), ("WR", 510), ("WR", 460), ("TE", 510)],
+        "c": [("QB", 480), ("RB", 490), ("RB", 390), ("WR", 490), ("WR", 440), ("TE", 490)],
+        "d": [("QB", 470), ("RB", 480), ("RB", 380), ("WR", 480), ("WR", 430), ("TE", 480)],
+    })
+    needs = roster_needs.needs_only(
+        roster_needs.assess_positions(rosters, players, slots, thresholds)["a"])
+    surplus = roster_needs.find_surplus(rosters[0], players, slots, thresholds)
+    count_needs = {pos for pos, e in needs.items() if e["level"] in ("critical", "top-heavy")}
+    assert not (count_needs & set(surplus))
 
 
 # ------------------------------------------------------------- team window classification
@@ -330,7 +410,8 @@ def test_win_now_buyer_sees_production_priced_targets_first():
             {"name": "AgingGuy", "position": "WR", "value": 2000, "bucket": "declining", "is_starter": False},
         ],
     }
-    out = trade_targets._buy_path(me, [seller], {"me": {"WR": "critical"}}, thresholds,
+    need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12}
+    out = trade_targets._buy_path(me, [seller], {"me": {"WR": need}}, thresholds,
                                   trade_counts={}, max_per_position=5, projected=set())
     assert [t["name"] for t in out["targets"]][0] == "AgingGuy", \
         "declining (production-priced) should outrank higher-value prime for a Win-Now buyer"

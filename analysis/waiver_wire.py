@@ -37,7 +37,7 @@ def get_waiver_budgets(league_id: str) -> dict[str, int]:
 
 
 def find_upgrades(roster: dict, players: dict[str, dict], available: dict[str, dict],
-                   needs: dict[str, str], thresholds: dict[str, float]) -> list[dict]:
+                   needs: dict[str, dict], thresholds: dict[str, float]) -> list[dict]:
     """Where an available player is either a straight upgrade over this team's worst
     rostered player at the position, or fills a real need even if it isn't."""
     upgrades = []
@@ -61,8 +61,11 @@ def find_upgrades(roster: dict, players: dict[str, dict], available: dict[str, d
         best = max(candidates, key=lambda info: info["value"])
         if best["value"] > worst_mine:
             reason = "upgrade over your worst rostered player at the position"
-        elif position in needs:
-            reason = f"not better than your worst, but fills a {needs[position]} need"
+        elif needs.get(position, {}).get("level") in ("critical", "top-heavy"):
+            # Only count-shaped needs. A `weak` position has the bodies and wants a better
+            # starter - the best name on waivers is by definition not that, so claiming
+            # one there is churn, not a fix.
+            reason = f"not better than your worst, but fills a {needs[position]['level']} need"
         else:
             continue
         upgrades.append({"position": position, "name": best["name"], "value": best["value"], "reason": reason})

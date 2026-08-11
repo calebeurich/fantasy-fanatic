@@ -437,14 +437,81 @@ comparison. Worth stating as a rule - **if the question is "this season", the me
 "Usable" is relative to the league's own format, not a hardcoded value cutoff:
 replacement level at a position = the value of the Nth-best player at that position
 **leaguewide**, where N = how many dedicated starting slots the whole league has there
-(`roster_positions.count(pos)`, plus superflex counted as an extra QB slot). A team with
-fewer usable players than its own starting requirement at a position is `critical`;
-exactly enough with no depth cushion is `thin`. Flex slots aren't attributed to any
-specific position (approximation, disclosed rather than hidden).
+(`roster_positions.count(pos)`, plus superflex counted as an extra QB slot). Flex slots
+aren't attributed to any specific position (approximation, disclosed rather than hidden).
+
+### Count vs quality: why "thin" was replaced (`assess_positions`)
+
+The rule above was originally the *whole* rule: fewer usable players than starting slots
+= `critical`, exactly enough = `thin`, more = no need. That is purely a **count** of
+bodies clearing a floor, and measured against a real 12-team superflex league it was
+close to **inverted**:
+
+| team | WR room (starting production) | rank | old label | new label |
+|---|---|---|---|---|
+| bergenjay | 13,116 (Nacua + Nabers) | **2nd of 12** | `critical` | `top-heavy` |
+| rjl22 | 10,081 | 7th | `thin` | *(not a need)* |
+| bigbuttboi | 6,322 (four bodies just over the bar) | **9th** | *(no need)* | `weak` |
+| BenSimonds | 2,251 | 12th | `critical` | `critical` |
+
+The second-best WR room in the league read `critical` because its WR3 sat below the bar;
+the 9th-best read as no need at all because four players cleared a low bar (794) by a
+little. Replacement level answers *"can this player start"* - a floor. Applied to *"is
+this group good"* it passes teams that are merely numerous and fails teams that are
+merely top-heavy.
+
+Worse, it pointed at the wrong position entirely. rjl22 was told "thin at WR", where he
+ranked an unremarkable 7th of 12, while his genuinely bad positions were invisible: **QB
+9th of 12 in a superflex league**, and TE 8th at 39% of the league median. Both read as
+fine, because he owned enough warm bodies at each.
+
+So a position now carries both readings, and the level names the **shape** of the problem
+rather than its severity alone - because the shapes have opposite fixes:
+
+- `critical` - can't field the slots *and* the group is weak. Needs bodies and quality.
+- `top-heavy` - can't field the slots, but what's there is good. Wants a **body**; the
+  stars are already in place. (bergenjay: Nacua and Nabers don't need upgrading.)
+- `weak` - can field the slots, but the group is bottom-tertile or below
+  `WEAK_VS_MEDIAN` of the league median. Wants an **upgrade**, not depth - this is the
+  consolidation case, and it had no representation at all before.
+- `ok` - neither. Notably includes "mid-league with no star", which is *not* a need.
+  Calling that "thin" sent teams shopping for problems they didn't have.
+
+**Why a median test as well as a rank test.** Positional distributions are skewed, TE
+especially, so rank alone hides real gaps: rjl22's TE room ranked a middling 8th of 12
+while sitting at 648 against a league median of 1,667 - 10% of the best room in the
+league. Half the league's median production from a position means giving up roughly a
+full starter's worth of scoring against a typical opponent every week, which is a need
+wherever it happens to sort. A team is weak if *either* test fires.
+
+**Quality isn't asserted below `MIN_TEAMS_FOR_QUALITY` (4).** In a 1-team league every
+rank is simultaneously first and last, which the naive tertile test read as bottom-tertile
+- i.e. every position weak, from no evidence. Below the cutoff the count test stands alone
+and a shortage falls back to `critical`, the old conservative label. Same reasoning as
+`format_support`'s degraded tier, applied one level down.
+
+**Downstream, the shape decides the fix**, or the split would be cosmetic:
+- The buy path applies an **upgrade bar** to `weak` positions only - a target must beat
+  the current worst starter there, since anyone who wouldn't displace him is not a fix,
+  however cheap. Count-shaped needs have an empty slot, so any relevant body helps.
+- Waiver claims only fill `critical`/`top-heavy`. The best name on waivers is by
+  definition not an upgrade over a startable player, so claiming one at a `weak`
+  position is churn.
+- Efficiency swaps are suppressed at any need position. Selling a starter to promote his
+  backup raises capital you'd have to spend straight back on the same position - and the
+  swap injection adds that player to `my_offers`, re-introducing the very position the
+  offer pool excludes for being a need.
+
+There is deliberately **no single-roster `find_needs`** any more. Quality is measured
+against the rest of the league, so a per-roster entry point would have had to either take
+the league as an argument anyway or quietly degrade to a 1-of-1 ranking. A function that
+silently answers a different question than the one asked is how the count-only rule
+survived this long.
 
 **Surplus - the mirror of need** (`find_surplus`/`league_surplus`): a position where a
 team has *more* usable players than its starting slots require, and specifically which
-players are the spare ones (everyone beyond the top `slots[pos]`, by value). Added
+players are the spare ones (everyone beyond the top `slots[pos]`, by value, **minus
+anyone who actually starts**). Added
 alongside `find_needs` as a shared refactor (`_usable_by_position` now does the one
 "which players clear replacement level here" walk both functions read from, and
 `_league_setup` collapses what had been three separate copies of the same league/
@@ -453,7 +520,16 @@ copy of that setup was about to be added for `league_surplus` anyway, and CLAUDE
 rule against letting a concept re-diverge across a file applies just as much to
 boilerplate as it does to business logic.
 
-This uses the same replacement-level threshold as `find_needs` - a **stricter**, single
+The `projected` exclusion was a real bug, not a precaution. `slots` here is `needs_slots`,
+which folds SUPER_FLEX into a QB and **ignores FLEX entirely** - so in a league running
+RB 2 / FLEX 2, a team's third RB falls outside `slots["RB"]` and was offered as spare
+depth while starting every week. Live case: rjl22's RB3 (Ashton Jeanty, a genuine asset)
+was offered in a mutual swap for a fringe backup QB on exactly that basis. This is the
+same snapshot-vs-projected distinction `_my_offer_pool` already respected - the fix had
+been applied on one path and not the other, which is the recurring failure mode in this
+file.
+
+This uses the same replacement-level threshold as the need assessment - a **stricter**, single
 uniform bar than `team_state.clears_relevance_floor`'s age-bucket-adjusted floor used
 everywhere else in `trade_targets.py`. That's intentional, not an inconsistency: a
 mutual swap (see below) is supposed to trade genuinely startable-quality depth for
@@ -620,6 +696,15 @@ match is an independent `(need_pos, their_need_pos)` pairing, not a single best-
 recommendation - if a team has multiple needs matchable against another's multiple
 surplus positions, all valid pairings are returned and left for the model/user to
 combine sensibly, rather than the code guessing which one pairing is "the" trade.
+
+**Both sides are filtered by whether they actually fix the need** (`_fills`), which the
+count-vs-quality split made necessary. Spare depth fills an *empty slot* fine, so a
+`critical`/`top-heavy` need takes any usable body. A `weak` position already has its
+slots covered and only improves if the incoming player beats the current worst starter -
+otherwise the swap list offers a fringe backup as the cure for a bottom-third room, which
+is churn dressed up as a fit. Live case before the filter: rjl22, weak at QB and TE, was
+offered Cam Ward and Isaiah Likely. After it, he correctly has no mutual swaps at all -
+his needs are upgrade-shaped and nobody's *bench* upgrades him.
 
 Validated against real data before any agent wiring (free, since it's pure Python):
 spot-checked `league_surplus` output against a real league (e.g. a known "loaded"

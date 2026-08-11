@@ -56,7 +56,17 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
 
 @mcp.tool()
 def get_roster_needs(league_id: str) -> dict:
-    """Positional needs (critical or thin) for every team, keyed by owner_id."""
+    """Positional needs for every team, keyed by owner_id, with the shape of each need.
+
+    A need is one of three different problems, and they call for opposite fixes:
+    "critical" (too few startable players AND a bottom-of-the-league group - needs both
+    bodies and quality), "top-heavy" (too few startable players but the ones there are
+    good - needs a body, NOT an upgrade), and "weak" (the slots are fillable but the
+    group ranks poorly - needs an upgrade, i.e. consolidating depth into one better
+    starter, NOT more depth). Positions that are fine are omitted; a team ranking
+    mid-league at a position is not a need. Each entry carries the rank, the starting
+    production, the league median, and a `note` that states the finding in words - use
+    that wording rather than describing every need as "thin"."""
     return roster_needs.league_needs(league_id)
 
 

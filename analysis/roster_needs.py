@@ -1,12 +1,17 @@
-"""Which positions a team is actually thin at - not total value, but real depth. A team
-can be fine at RB in total value while only having one RB worth starting; that's a need
-even if the aggregate number looks okay. "Usable" is relative to the league's own format:
-the Nth-best player at a position leaguewide, where N = how many starting slots the whole
-league has at that position, sets the bar - not a hardcoded value cutoff.
+"""Which positions a team is actually short at, in the two different ways that can be
+true: **count** (not enough bodies clearing the bar) and **quality** (enough bodies, but
+the group is bad compared to the rest of the league). These are separate problems with
+opposite fixes - one wants any warm body, the other wants an upgrade - and collapsing
+them into one "thin" label was actively misleading. See `assess_positions`.
+
+"Usable" is relative to the league's own format: the Nth-best player at a position
+leaguewide, where N = how many starting slots the whole league has at that position,
+sets the bar - not a hardcoded value cutoff.
 
 Smoke test: python -m analysis.roster_needs <league_id>
 """
 
+import statistics
 import sys
 
 from sources import sleeper
@@ -51,41 +56,207 @@ def replacement_thresholds(players: dict[str, dict], slots: dict[str, int], num_
 def _usable_by_position(roster: dict, players: dict[str, dict], thresholds: dict[str, float],
                         metric: str = "redraft_value") -> dict[str, list[dict]]:
     """Every rostered player at each position that clears this league's replacement
-    level, best to worst. The one shared walk find_needs and find_surplus both read
-    from, so "usable" means exactly the same thing in a need (too few of them) as it
-    does in a surplus (more than the starting slots require)."""
+    level, best to worst. The one shared walk `assess_positions` and `find_surplus` both
+    read from, so "usable" means exactly the same thing in a need (too few of them) as it
+    does in a surplus (more than the starting slots require).
+
+    **Sorted by the same metric it filters on.** It previously filtered on redraft value
+    and then sorted on dynasty value, so `find_surplus` - which calls the top `slots[pos]`
+    entries your starters and everything after them spare - could hand a better current
+    producer to the surplus pile while keeping a pricier prospect. Two metrics inside one
+    ordering is the same conflation `replacement_thresholds` documents at length."""
     by_pos = {pos: [] for pos in POSITIONS}
     for pid in roster["players"] or []:
         info = players.get(pid)
         if info and info["position"] in by_pos and (info.get(metric) or 0) >= thresholds[info["position"]]:
-            by_pos[info["position"]].append({"name": info["name"], "position": info["position"], "value": info["value"]})
+            by_pos[info["position"]].append({"name": info["name"], "position": info["position"],
+                                             "value": info["value"],
+                                             "redraft_value": info.get("redraft_value")})
     for entries in by_pos.values():
-        entries.sort(key=lambda e: -e["value"])
+        entries.sort(key=lambda e: -(e.get(metric) or 0))
     return by_pos
 
 
-def find_needs(roster: dict, players: dict[str, dict], slots: dict[str, int], thresholds: dict[str, float]) -> dict:
-    usable = _usable_by_position(roster, players, thresholds)
-    needs = {}
+# A group can rank mid-table and still be badly short in absolute terms, because
+# positional distributions are skewed - TE especially. In a real league the 8th-best TE
+# room (648) was 39% of the league median (1,667) and 10% of the best (6,670); rank alone
+# called that "average". Half the league's median production from a position means giving
+# up roughly a full starter's worth of scoring against a typical opponent every week,
+# which is a real need regardless of where it happens to sort.
+WEAK_VS_MEDIAN = 0.5
+
+# Below this, "bottom tertile" and "league median" describe a sample too small to carry
+# either meaning - in a 1-team league every rank is simultaneously first and last, which
+# made the naive tertile test call *every* position weak. Quality simply isn't assessed
+# there; the count test stands alone and a shortage falls back to `critical`, rather than
+# emitting a confident label derived from nothing. `format_support` already flags leagues
+# under 8 teams as degraded for the same underlying reason.
+MIN_TEAMS_FOR_QUALITY = 4
+
+# Which shortage to go fix first. A position you can't field at all outranks one you can
+# field badly.
+NEED_PRIORITY = {"critical": 0, "top-heavy": 1, "weak": 2}
+
+
+def _starting_group(roster: dict, players: dict[str, dict], slots: dict[str, int]) -> dict[str, list[float]]:
+    """Each position's best `slots[pos]` players by **redraft** value.
+
+    Deliberately a uniform top-N per position rather than `projected_starters`' real
+    lineup. Comparing WR rooms across teams has to compare the same shape - a team that
+    happens to flex two WRs would otherwise show a bigger "WR room" than one that flexes
+    RBs, which measures lineup construction, not receiving talent. `projected_starters`
+    remains the right answer for "who do I actually start"; this is for "who's better at
+    this position".
+
+    Redraft, not dynasty: "is my WR room good" is a current-production question. Using
+    dynasty value here would rate a room of prospects above a room of producers.
+    """
+    by_pos: dict[str, list[float]] = {pos: [] for pos in POSITIONS}
+    for pid in roster["players"] or []:
+        info = players.get(pid)
+        if info and info["position"] in by_pos:
+            by_pos[info["position"]].append(info.get("redraft_value") or 0)
+    return {pos: sorted(vals, reverse=True)[:slots[pos]] for pos, vals in by_pos.items()}
+
+
+def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[str, int],
+                     thresholds: dict[str, float]) -> dict[str, dict[str, dict]]:
+    """Every roster's standing at every position, keyed owner_id -> position.
+
+    **Why this replaced a bare count.** The old rule was purely "how many players clear
+    replacement level": fewer than the starting slots = critical, exactly = thin. Measured
+    against a real 12-team superflex league, that rule was close to *inverted*:
+
+    - The team with the **2nd-best WR room in the league** (13,141 of starting production,
+      Nacua + Nabers) read `critical` at WR, because its WR3 sat below the bar.
+    - The team with the **10th-best WR room** (6,308) read as having no WR need at all,
+      because four players cleared a low bar (794) by a little.
+    - One team was told it was "thin at WR" - where it ranked a perfectly ordinary 7th of
+      12 - while its genuinely bad positions, QB (9th) and TE (8th, at 39% of the league
+      median), were reported as fine. In a superflex league, no less.
+
+    Replacement level answers "can this player start", which is a floor. It cannot answer
+    "is this group good", and a floor test applied to a quality question passes teams that
+    are merely numerous and fails teams that are merely top-heavy.
+
+    So each position now carries both readings, and the level names the shape of the
+    problem rather than its severity alone:
+
+    - `critical`   - can't field the slots AND the group is weak. A real hole.
+    - `top-heavy`  - can't field the slots, but what's there is good. Wants *bodies*;
+                     the stars are already in place.
+    - `weak`       - can field the slots, but the group is bottom-tertile or under
+                     `WEAK_VS_MEDIAN` of the league median. Wants an *upgrade*, not depth.
+                     This is the case that had no representation at all before.
+    - `ok`         - neither. Notably includes "middle of the league with no star", which
+                     is not a need; it's an average position, and calling it one sent
+                     teams shopping for problems they didn't have.
+
+    Numbers ship with the sentence that interprets them, for the reason documented on
+    `team_state.age_mix_note`: an unlabelled number in a tool result gets a meaning
+    invented for it.
+    """
+    groups = {r["owner_id"]: _starting_group(r, players, slots) for r in rosters}
+    usable = {r["owner_id"]: _usable_by_position(r, players, thresholds) for r in rosters}
+
+    num_teams = len(rosters)
+    top_third = num_teams / 3
+    bottom_third = num_teams - num_teams / 3
+
+    out: dict[str, dict[str, dict]] = {owner_id: {} for owner_id in groups}
     for pos in POSITIONS:
-        count = len(usable[pos])
-        required = slots[pos]
-        if count < required:
-            needs[pos] = "critical"
-        elif count == required:
-            needs[pos] = "thin"
-    return needs
+        totals = {owner_id: sum(g[pos]) for owner_id, g in groups.items()}
+        ranks = {owner_id: i for i, owner_id
+                 in enumerate(sorted(totals, key=lambda o: -totals[o]), start=1)}
+        median = statistics.median(totals.values()) if totals else 0
+
+        quality_known = num_teams >= MIN_TEAMS_FOR_QUALITY
+        for owner_id, group in groups.items():
+            total, rank = totals[owner_id], ranks[owner_id]
+            count, required = len(usable[owner_id][pos]), slots[pos]
+            is_weak = quality_known and (rank > bottom_third or total < median * WEAK_VS_MEDIAN)
+
+            if count < required:
+                # Without a quality read there's no basis to call a shortage merely
+                # top-heavy, so it stays `critical` - the old, conservative label.
+                level = "top-heavy" if (quality_known and not is_weak) else "critical"
+            elif is_weak:
+                level = "weak"
+            else:
+                level = "ok"
+
+            out[owner_id][pos] = {
+                "level": level,
+                "startable": count,
+                "slots": required,
+                "starting_production": round(total),
+                "rank": rank,
+                "of": num_teams,
+                "league_median": round(median),
+                "best": round(group[pos][0]) if group[pos] else 0,
+                # The bar an acquisition has to clear to actually improve the starting
+                # group rather than just join it - what `weak` needs, by definition.
+                "weakest_starter": round(group[pos][-1]) if group[pos] else 0,
+                "note": _position_note(pos, level, count, required, total, rank, num_teams,
+                                       median, top_third),
+            }
+    return out
 
 
-def find_surplus(roster: dict, players: dict[str, dict], slots: dict[str, int], thresholds: dict[str, float]) -> dict:
-    """Mirror of find_needs: positions where a team has MORE usable players than its
-    starting slots need, and which players specifically are the spare ones. Only
+def _position_note(pos: str, level: str, count: int, required: int, total: float, rank: int,
+                   num_teams: int, median: float, top_third: float) -> str:
+    have = f"No startable {pos}s" if count == 0 else f"{count} startable {pos}{'' if count == 1 else 's'}"
+    short = f"{have} for {required} slot{'' if required == 1 else 's'}"
+    standing = (f"Starting {pos} production ranks {rank} of {num_teams} "
+                f"({round(total):,} against a league median of {round(median):,}).")
+
+    if level == "critical":
+        return (f"{short}, and the group is among the league's worst. {standing} "
+                f"A real hole - needs both bodies and quality.")
+    if level == "top-heavy":
+        strength = "one of the league's best" if rank <= top_third else "solidly mid-league"
+        return (f"{short}, but what's there is {strength}. {standing} Needs a body to fill "
+                f"the slot, not an upgrade at the top - the good players are already here.")
+    if level == "weak":
+        return (f"{have} covers all {required} slot{'' if required == 1 else 's'}, so this "
+                f"isn't a shortage of bodies. {standing} The group itself is the problem - "
+                f"this wants an upgrade (consolidating depth into one better starter), not "
+                f"more depth.")
+    return f"{have} for {required} slot{'' if required == 1 else 's'}, and no quality shortfall. {standing} Not a need."
+
+
+def needs_only(assessed: dict[str, dict]) -> dict[str, dict]:
+    """The not-`ok` positions from one roster's assessment.
+
+    There is deliberately no single-roster `find_needs` any more. Quality is measured
+    against the rest of the league, so a per-roster entry point would have had to either
+    take the league as an argument anyway or quietly degrade to a 1-of-1 ranking - and a
+    function that silently answers a different question than the one asked is how the old
+    count-only rule survived as long as it did."""
+    return {pos: entry for pos, entry in assessed.items() if entry["level"] != "ok"}
+
+
+def find_surplus(roster: dict, players: dict[str, dict], slots: dict[str, int],
+                 thresholds: dict[str, float], projected: set[str] | None = None) -> dict:
+    """The mirror of a need: positions where a team has MORE usable players than its
+    starting slots require, and which players specifically are the spare ones. Only
     players beyond the required starter count count as surplus - the top `slots[pos]`
     are the actual starting group and never get offered here. This is what makes a
     win-now-to-win-now swap real: a team's true extra depth at a position it doesn't
-    need, not just any valuable player on the roster."""
+    need, not just any valuable player on the roster.
+
+    **`projected` removes anyone who actually starts.** `slots` here is `needs_slots`,
+    which folds SUPER_FLEX into a QB and ignores FLEX entirely - so in a league running
+    RB 2 / FLEX 2, a team's third RB sits outside `slots["RB"]` and was being offered as
+    spare depth while starting every week. A real case: rjl22's RB3 (Ashton Jeanty, a
+    genuine asset) was offered in a mutual swap for a fringe QB on exactly this basis.
+    Same snapshot-vs-projected distinction `_my_offer_pool` already respects; this path
+    never got it."""
     usable = _usable_by_position(roster, players, thresholds)
-    return {pos: usable[pos][slots[pos]:] for pos in POSITIONS if len(usable[pos]) > slots[pos]}
+    spare = {pos: [e for e in usable[pos][slots[pos]:]
+                   if projected is None or e["name"] not in projected]
+             for pos in POSITIONS if len(usable[pos]) > slots[pos]}
+    return {pos: entries for pos, entries in spare.items() if entries}
 
 
 # Which positions each flex-type slot can be filled with. Sleeper names these in
@@ -195,14 +366,18 @@ def league_thresholds(league_id: str) -> dict[str, float]:
     return context(league_id).trade_thresholds
 
 
-def league_needs(league_id: str) -> dict[str, dict]:
-    """Positional needs for every roster, keyed by owner_id."""
+def league_assessment(league_id: str) -> dict[str, dict[str, dict]]:
+    """Every roster's standing at every position, keyed by owner_id. The full picture,
+    including the positions that are fine - `league_needs` is the filtered view."""
     from .league import context
     ctx = context(league_id)
-    return {
-        r["owner_id"]: find_needs(r, ctx.players, ctx.needs_slots, ctx.start_thresholds)
-        for r in ctx.rosters
-    }
+    return assess_positions(ctx.rosters, ctx.players, ctx.needs_slots, ctx.start_thresholds)
+
+
+def league_needs(league_id: str) -> dict[str, dict]:
+    """Positional needs for every roster, keyed by owner_id."""
+    return {owner_id: needs_only(assessed)
+            for owner_id, assessed in league_assessment(league_id).items()}
 
 
 def league_surplus(league_id: str) -> dict[str, dict]:
@@ -211,8 +386,10 @@ def league_surplus(league_id: str) -> dict[str, dict]:
     spare depth against another's need."""
     from .league import context
     ctx = context(league_id)
+    projected = league_projected_starters(league_id)
     return {
-        r["owner_id"]: find_surplus(r, ctx.players, ctx.needs_slots, ctx.start_thresholds)
+        r["owner_id"]: find_surplus(r, ctx.players, ctx.needs_slots, ctx.start_thresholds,
+                                    projected.get(r["owner_id"]))
         for r in ctx.rosters
     }
 
@@ -223,11 +400,13 @@ def main(league_id: str) -> None:
 
     for owner_id, needs in needs_by_owner_id.items():
         owner = owner_names.get(owner_id, "Unknown")
-        if needs:
-            summary = ", ".join(f"{pos} ({level})" for pos, level in needs.items())
-            print(f"  {owner}: {summary}")
-        else:
+        if not needs:
             print(f"  {owner}: no positional needs")
+            continue
+        summary = ", ".join(f"{pos} ({e['level']}, {e['rank']}/{e['of']})" for pos, e in needs.items())
+        print(f"  {owner}: {summary}")
+        for pos, entry in needs.items():
+            print(f"       {entry['note']}")
 
 
 if __name__ == "__main__":

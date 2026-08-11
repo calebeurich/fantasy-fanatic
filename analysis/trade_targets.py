@@ -150,13 +150,22 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
               my_picks: list[dict] | None = None) -> dict:
     """The push case: fill needs with sellable value from Rebuilding teams."""
     my_needs = needs_by_owner_id.get(me["owner_id"], {})
-    # Critical needs (can't fill the position at all) get searched before thin ones
-    # (fine, just no depth cushion) - a real recommendation should exhaust the urgent
-    # gap before suggesting extra names for a position that isn't actually a problem.
-    ordered_positions = sorted(my_needs, key=lambda p: 0 if my_needs[p] == "critical" else 1)
+    # Worst-shaped need first (roster_needs.NEED_PRIORITY): a position you can't field at
+    # all outranks one you can field but only badly. A real recommendation should exhaust
+    # the urgent gap before suggesting upgrades somewhere merely mediocre.
+    ordered_positions = sorted(
+        my_needs, key=lambda p: roster_needs.NEED_PRIORITY[my_needs[p]["level"]])
 
     targets = []
     for pos in ordered_positions:
+        need = my_needs[pos]
+        # A `weak` position already has the slots filled - the problem is that the group
+        # is bad. Anyone who wouldn't displace the current worst starter is not a fix for
+        # it, however cheap. Count-shaped needs (critical/top-heavy) have an empty slot to
+        # fill, so any relevant body helps there.
+        # None for count-shaped needs: there's an empty slot, so any relevant body helps
+        # and a player without a redraft price shouldn't be excluded for lacking one.
+        upgrade_bar = need["weakest_starter"] if need["level"] == "weak" else None
         pos_targets = []
         for other in states:
             if other["owner_id"] == me["owner_id"] or other["effective_strategy"] != "Rebuilding":
@@ -164,7 +173,10 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
             for player in other["sellable"]:
                 if player["position"] != pos or not team_state.clears_relevance_floor(player, thresholds):
                     continue
-                pos_targets.append({"position": pos, "need_level": my_needs[pos],
+                if upgrade_bar is not None and (player.get("redraft_value") or 0) <= upgrade_bar:
+                    continue
+                pos_targets.append({"position": pos, "need_level": need["level"],
+                                     "need_note": need["note"],
                                      **_with_trade_note(player, other, trade_counts)})
         # Window fit before raw value. A Win-Now buyer wants *current production*, and
         # this project's own pricing model says declining players are "production-priced"
@@ -198,6 +210,13 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
     # the future premium it would be selling.
     if me["effective_strategy"] == "Win-Now" and projected:
         swaps = find_efficiency_swaps(me["sellable"] + me["tradeable_surplus"], projected)
+        # Never at a position you're already short at. The swap frees dynasty value by
+        # selling a starter and promoting his backup - fine where you have spare bodies,
+        # circular where you don't, since the capital it raises is capital you'd have to
+        # spend back on the same position. This also kept the offer list honest: the swap
+        # injection below adds the sold player to `my_offers`, which would otherwise
+        # re-introduce the very position `_my_offer_pool` excludes for being a need.
+        swaps = [s for s in swaps if s["position"] not in my_needs]
         if swaps:
             result["efficiency_swaps"] = swaps
 
@@ -321,6 +340,18 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
 SWAP_ELIGIBLE_STRATEGIES = ("Win-Now", "Middling")
 
 
+def _fills(entries: list[dict], need: dict | None) -> list[dict]:
+    """The subset of `entries` that actually addresses `need` - empty if it doesn't, or
+    if there's no need there at all. A count-shaped need (critical/top-heavy) has an open
+    slot, so any usable body fills it; a `weak` one is already covered and only improves
+    if the incoming player beats the current worst starter."""
+    if not need:
+        return []
+    if need["level"] != "weak":
+        return entries
+    return [e for e in entries if (e.get("redraft_value") or 0) > need["weakest_starter"]]
+
+
 def find_mutual_swaps(league_id: str, owner_query: str) -> dict:
     """Two-way trades between teams both still trying to win: each side has a
     positional surplus (real spare depth, from roster_needs.league_surplus) that
@@ -354,14 +385,22 @@ def find_mutual_swaps(league_id: str, owner_query: str) -> dict:
         for need_pos, other_surplus_entries in other_surplus.items():
             if need_pos not in my_needs:
                 continue
+            # Their spare depth only fixes a `weak` position if it actually beats what's
+            # already starting there - a weak group has the slots filled and wants an
+            # upgrade. Without this the swap list offered a fringe backup as the cure for
+            # a bottom-third room, which is churn dressed up as a fit.
+            incoming = _fills(other_surplus_entries, my_needs[need_pos])
+            if not incoming:
+                continue
             for their_need_pos, my_surplus_entries in my_surplus.items():
-                if their_need_pos in other_needs:
+                outgoing = _fills(my_surplus_entries, other_needs.get(their_need_pos))
+                if outgoing:
                     swaps.append({
                         "with_owner": other["owner"],
                         "fills_your_need_at": need_pos,
-                        "you_receive": other_surplus_entries,
+                        "you_receive": incoming,
                         "fills_their_need_at": their_need_pos,
-                        "you_send": my_surplus_entries,
+                        "you_send": outgoing,
                     })
     return {"me": me, "swaps": swaps}
 
@@ -398,7 +437,13 @@ def _print_pivot(me: dict, pivot: dict) -> None:
         print(f"  {t['name']} ({t['position']}, value={t['value']}) from {t['from_owner']} - {trade_note}")
 
 
+def _needs_summary(needs: dict) -> str:
+    return ", ".join(f"{pos} ({e['level']}, {e['rank']}/{e['of']})" for pos, e in needs.items()) or "none"
+
+
 def _print_push(push: dict) -> None:
+    for pos, entry in push["needs"].items():
+        print(f"  need at {pos}: {entry['note']}")
     if push["my_offers"]:
         print("you could offer (cheapest give-up cost first):")
         for e in push["my_offers"]:
@@ -432,13 +477,13 @@ def _print_report(result: dict) -> None:
 
     if result["mode"] == "middling":
         print(f"{me['owner']}: Middling - hasn't committed to a direction, here's both paths")
-        print(f"\n-- if pushing (needs: {result['push']['needs'] or 'none'}) --")
+        print(f"\n-- if pushing (needs: {_needs_summary(result['push']['needs'])}) --")
         _print_push(result["push"])
         print("\n-- if pivoting --")
         _print_pivot(me, result["pivot"])
         return
 
-    print(f"{me['owner']}: {me['effective_strategy']}, needs: {result['needs'] or 'none'}")
+    print(f"{me['owner']}: {me['effective_strategy']}, needs: {_needs_summary(result['needs'])}")
     _print_push(result)
 
 
