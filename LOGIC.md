@@ -1686,6 +1686,33 @@ deliberately avoiding.
   McCaffrey (**6,585**, on a `Contend` team) never appeared. A 15x gap in current
   production, hidden by a binary seller/non-seller split.
 
+  **Two traps found while scoping it, both worth fixing in the same change:**
+
+  1. *Do not source it from `win_now_core`.* That list is gated on the cornerstone
+     threshold (4,289 here), so it holds Jonathan Taylor (5,240) and silently drops Saquon
+     Barkley (3,746) - who is on the same roster and is the better target. `sellable` plus
+     the relevance floor is the correct source.
+  2. *Do not rank it by dynasty value.* The buy path sorts targets by raw value
+     descending, which is backwards for a win-now buyer. Ranked instead by **current
+     production per unit of trade cost** (`redraft_value / value`), the same RB pool
+     reorders completely:
+
+     | player | held by | window | dynasty | redraft | prod/cost |
+     |---|---|---|---|---|---|
+     | Derrick Henry | shivvv | Contend | 2,978 | 4,603 | **1.55x** |
+     | Christian McCaffrey | rjl22 | Contend | 4,437 | 6,585 | 1.48x |
+     | **Saquon Barkley** | kierankieran | Push | 3,746 | 5,081 | **1.36x** |
+     | Jonathan Taylor | kierankieran | Push | 5,240 | 6,649 | 1.27x |
+     | Chase Brown | spugz13 | Rebuild | 4,054 | 4,311 | 1.06x |
+     | Breece Hall | spugz13 | Rebuild | 3,787 | 3,381 | 0.89x |
+
+     Barkley beats Taylor on the ratio *and* costs less outright, because at 29.5 the
+     market discounts him for seasons a pushing team is not buying. That discount is the
+     whole point - it is the same arbitrage `find_efficiency_swaps` already exploits
+     *within* a roster, never yet applied to acquisitions. Note the top two ratios sit on
+     teams that will not sell, which is exactly why the persuasion tier needs the
+     seller-plausibility ranking rather than just a better sort.
+
   The fix is not to widen the seller pool - those teams genuinely aren't selling. It's a
   **separate, clearly-labelled tier**: aging production held by teams that aren't sellers
   *yet* but have a plausible reason to become one (a falling trajectory, an aging core
