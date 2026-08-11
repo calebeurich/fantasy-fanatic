@@ -1678,6 +1678,37 @@ it actually fails would be its own form of the scope creep this project keeps
 deliberately avoiding.
 
 ## Known limitations / future work
+- **NEXT UP: aging production is only visible on teams already labelled `Rebuild`.**
+  `_buy_path` only searches sellers, so the best available fits at a need position can be
+  invisible. Measured on the real league: a `Push` team needing RB was offered Rachaad
+  White (449 redraft) and Tony Pollard (697), while Jonathan Taylor (**6,649**, on a
+  `Push` team that is the most steeply *falling* contender in the league) and Christian
+  McCaffrey (**6,585**, on a `Contend` team) never appeared. A 15x gap in current
+  production, hidden by a binary seller/non-seller split.
+
+  The fix is not to widen the seller pool - those teams genuinely aren't selling. It's a
+  **separate, clearly-labelled tier**: aging production held by teams that aren't sellers
+  *yet* but have a plausible reason to become one (a falling trajectory, an aging core
+  they can't win with). The framing has to carry the cost honestly - acquiring it means
+  persuading that manager to change direction, which is a commitment on their part, so it
+  prices above market and is a conversation rather than a fit. Surfaced as an option, not
+  a gimme. Ranking should probably favour the *most* falling non-sellers, since they have
+  the most reason to listen.
+- **Choosing a lane should account for how many others have chosen it.** Contending is
+  worth more when almost nobody else is contending, and rebuilding is worth more when you
+  own your pick and last place is uncontested. Both are supply effects the current model
+  can't see: `contention` and `trajectory` are measured per team, but the *value* of a
+  window depends on the league-wide distribution of windows. Related: `Ascend` teams are
+  **optional** sellers, not motivated ones - they can pivot if the price is right but have
+  no need to, which should raise what they'd demand rather than putting them in the same
+  bucket as a committed rebuilder.
+- **Playoff spots are in the Sleeper settings and unused.** `league["settings"]` carries
+  the number of playoff teams, which is the real definition of "in contention" - being 6th
+  of 12 means something very different in a 6-team playoff than a 4-team one. Mid-season
+  this changes the advice materially: a team close to the last spot should usually try to
+  sneak in *without* mortgaging the future, because making the playoffs at all buys a real
+  chance at the title. Needs the season to have started to validate (every team is 0-0 in
+  the current offseason data), same blocker as the record item below.
 - **Team window classification ignores actual win/loss record entirely.** A team
   that's mathematically out of playoff contention can't really be "Win-Now" for the
   current season no matter how its age composition reads - record should gate the
