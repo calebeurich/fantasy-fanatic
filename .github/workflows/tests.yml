@@ -10,9 +10,11 @@ name: tests
 # Those stay manual. CI should fail because the code is broken, not because someone
 # else's API had a bad afternoon or because a run cost money.
 
+# Runs on every branch, not just main. Analysis work happens on `dev`, which must be
+# tested continuously even though it never deploys - deploy.yml only watches main, so
+# broadening this costs nothing but a runner minute and catches breakage before merge.
 on:
   push:
-    branches: [main]
   pull_request:
 
 jobs:

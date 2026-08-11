@@ -1694,6 +1694,42 @@ deliberately avoiding.
   prices above market and is a conversation rather than a fit. Surfaced as an option, not
   a gimme. Ranking should probably favour the *most* falling non-sellers, since they have
   the most reason to listen.
+- **Last season's results are available right now and completely unused.**
+  `sleeper.get_season_chain` already walks `previous_league_id`, and the prior league is
+  `status: complete` with final `wins`/`losses`/`fpts` on every roster, plus a
+  `winners_bracket` endpoint giving the actual champion. The *current* record is useless
+  in the preseason (everyone is 0-0), which is why record was written off entirely - but
+  the previous season is finished and sitting there.
+
+  It's the missing signal for the persuasion tier above, and it separates the exact two
+  teams that motivated it. Both are contenders holding an elite aging RB:
+
+  | | 2025 finish | points for | 2026 trajectory | plausible seller? |
+  |---|---|---|---|---|
+  | rjl22 | **won the title** (10-4) | **2,260 - most in the league** | steady (-3) | no - just won, running it back |
+  | kierankieran | 9th (5-9) | 1,864 | falling (-11) | yes - aging core that has not won |
+
+  Trajectory alone splits them, but weakly (-3 vs -11, and both are "contenders"). Prior
+  results split them decisively, and match how the managers actually behave: the reigning
+  champion is not moving McCaffrey at any sensible price, while a 5-9 team with a
+  declining core has real reason to listen about Jonathan Taylor.
+
+  *Caveat before building on it*: a champion's commitment is a behavioural inference, not
+  a roster fact. It belongs in the persuasion tier's ranking and framing, and must not
+  touch the window classification itself.
+
+  **Gate it on roster continuity, which must be measured rather than assumed.** Last
+  season's result says nothing about this season's team if the roster turned over. Matched
+  by `owner_id` across the season chain, this league retains 83-100% of each team's current
+  starting production from last year's roster, and the two teams in question both return
+  **10 of 10 starters at 100% of production** - so the signal genuinely transfers here.
+
+  That will not hold generally: continuity is near-total specifically because this is a
+  dynasty league in the preseason *before* the rookie draft. Mid-season, post-draft, or in
+  a league with heavy trade volume it would be materially lower, and in a redraft league it
+  is zero by construction. So the continuity fraction is a required gate on using prior
+  results at all, not a footnote - and it is cheap, since `get_season_chain` and
+  `get_rosters` are already here.
 - **Choosing a lane should account for how many others have chosen it.** Contending is
   worth more when almost nobody else is contending, and rebuilding is worth more when you
   own your pick and last place is uncontested. Both are supply effects the current model
@@ -1707,8 +1743,8 @@ deliberately avoiding.
   of 12 means something very different in a 6-team playoff than a 4-team one. Mid-season
   this changes the advice materially: a team close to the last spot should usually try to
   sneak in *without* mortgaging the future, because making the playoffs at all buys a real
-  chance at the title. Needs the season to have started to validate (every team is 0-0 in
-  the current offseason data), same blocker as the record item below.
+  chance at the title. Needs the *current* season to have started before it can gate live
+  advice.
 - **Team window classification ignores actual win/loss record entirely.** A team
   that's mathematically out of playoff contention can't really be "Win-Now" for the
   current season no matter how its age composition reads - record should gate the
