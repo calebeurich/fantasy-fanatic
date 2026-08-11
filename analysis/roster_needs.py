@@ -164,11 +164,24 @@ def _injury_drop(roster: dict, players: dict[str, dict], pos: str, starters: set
     if not mine:
         return None
     weakest = min(mine, key=lambda p: players[p].get("redraft_value") or 0)
+    return production_lost_without(roster, players, weakest, starters, dedicated, flex)
+
+
+def production_lost_without(roster: dict, players: dict[str, dict], player_id: str,
+                            starters: set[str], dedicated: dict[str, int],
+                            flex: list[tuple[str, ...]]) -> float:
+    """Current production this lineup loses if `player_id` is gone and the lineup refills
+    optimally. Zero means the roster covers him from the bench for free.
+
+    Shared deliberately. This began as the guts of `_injury_drop`, and the question turns
+    out to be the same one two callers were asking in opposite directions: "how bad is it if
+    I lose him" and "can I afford to trade him away". Answering it twice would guarantee the
+    two eventually disagreed about the same player on the same roster."""
 
     def produced(ids):
         return sum(players[p].get("redraft_value") or 0 for p in ids if p in players)
 
-    without = {**roster, "players": [p for p in (roster["players"] or []) if p != weakest]}
+    without = {**roster, "players": [p for p in (roster["players"] or []) if p != player_id]}
     refilled = projected_starters(without, players, dedicated, flex)
     return produced(starters) - produced(refilled)
 

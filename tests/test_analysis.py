@@ -271,20 +271,51 @@ def test_window_needs_both_axes_not_either_one():
         "young and genuinely bad is still a rebuild - being young doesn't make you close")
 
 
-def test_offer_pool_excludes_starters_but_keeps_equivalent_bench_players():
-    """A valuable non-cornerstone *starter* is the team, not spare parts. Regression
-    guard for a real bug where a team was told to offer its own starting QB2. Tested by
-    comparing two otherwise-identical players so the assertion can't pass vacuously -
-    same position, same value, same bucket, differing only in is_starter."""
+def test_offer_pool_protects_starters_who_are_actually_producing():
+    """A valuable non-cornerstone *starter* is the team, not spare parts. Regression guard
+    for a real bug where a team was told to offer its own starting QB2. Tested by comparing
+    two otherwise-identical players so the assertion can't pass vacuously - same position,
+    same value, same bucket, differing only in is_starter."""
     thresholds = {"QB": 100}
     starter = {"name": "QB2", "position": "QB", "value": 900, "is_starter": True, "bucket": "prime"}
     bench = {"name": "QB3", "position": "QB", "value": 900, "is_starter": False, "bucket": "prime"}
 
-    offered = trade_targets._my_offer_pool({"sellable": [starter, bench], "tradeable_surplus": []},
+    offered = trade_targets._my_offer_pool({"sellable": [starter, bench], "tradeable_surplus": [],
+                                            "window": "Push"},
                                            thresholds, needs={})
     names = [e["name"] for e in offered]
     assert "QB3" in names, "bench depth at this value should be offerable"
-    assert "QB2" not in names, "a starter must never be offered as surplus"
+    assert "QB2" not in names, "a prime starter is current production, not surplus"
+
+
+def test_offer_pool_lets_a_push_team_offer_an_ascending_starter():
+    """"Is he a starter" was a proxy for "does moving him cost me", and on a real roster it
+    hid the owner's single biggest trade chip: an ascending TE at 3,660 dynasty against
+    1,035 redraft, i.e. mostly future value sitting in a win-now lineup. A closing window
+    exists to spend exactly that.
+
+    Three players, identical except for the one attribute each is testing:
+      - ascending starter -> offerable while pushing, protected while contending
+      - prime starter at the same value -> protected in both (he IS the production)
+      - a starter the bench replaces for free -> offerable regardless of window
+    """
+    thresholds = {"TE": 100}
+    rising = {"name": "Rising", "position": "TE", "value": 900, "is_starter": True, "bucket": "ascending"}
+    producing = {"name": "Producing", "position": "TE", "value": 900, "is_starter": True, "bucket": "prime"}
+    free = {"name": "Free", "position": "TE", "value": 900, "is_starter": True, "bucket": "prime"}
+    covered = {"Rising": 420.0, "Producing": 380.0, "Free": 0.0}
+    roster = {"sellable": [rising, producing, free], "tradeable_surplus": []}
+
+    pushing = trade_targets._my_offer_pool({**roster, "window": "Push"}, thresholds,
+                                           needs={}, covered=covered)
+    contending = trade_targets._my_offer_pool({**roster, "window": "Contend"}, thresholds,
+                                              needs={}, covered=covered)
+
+    assert sorted(e["name"] for e in pushing) == ["Free", "Rising"]
+    assert [e["name"] for e in contending] == ["Free"], "no clock, no reason to sell the future"
+    # The cost is reported, not used as a veto - what it's worth paying depends on the
+    # return, which this module deliberately doesn't price.
+    assert next(e for e in pushing if e["name"] == "Rising")["lineup_cost"] == 420
 
 
 # --------------------------------------------------------------------- offerable names

@@ -806,6 +806,32 @@ have yet) - deferred rather than faked.
   trade chip (pure roster-construction surplus, independent of age) that an age-bucket-
   only view couldn't see, while the fix had to avoid pulling in that same team's actual
   starting QB2 just because he sat below the cornerstone threshold too.
+- **"Is he a starter" was a proxy, and it hid the biggest chip on the board.** The rule
+  excluded every starter, which is right for the case it was written for (a team told to
+  offer its own starting QB2) and wrong for the question it was standing in for: *what does
+  moving him actually cost*. The live example is a `Push` team whose two largest trade
+  pieces were an ascending TE (3,660 dynasty against 1,035 redraft) and a backup QB. Its
+  owner named the TE first when asked what he'd move. The tool could not list him at all -
+  while a bench TE covers most of the production and the rest is future value, which is
+  precisely what a closing window exists to spend.
+
+  A starter is now offerable when either: the bench **covers him for free**
+  (`roster_needs.production_lost_without` returns 0 - he's in the lineup only because
+  somebody has to be), or he is **ascending and the team is `Push`**. Declining and prime
+  starters stay protected in every window; they *are* the current production a pushing team
+  is trying to keep. On the live roster this correctly offers the TE at 1,035-against-3,660
+  and never the best WR at 3,961-against-3,773.
+
+  The free-cover test alone would still have missed him: replacing him costs 230 of current
+  production, which is real. So the cost is **reported** (`lineup_cost`) rather than used as
+  a veto - whether it's worth paying depends on the return, which this module deliberately
+  doesn't price. The efficiency-swap writeback attaches the same field, so both routes into
+  `my_offers` answer the question in the same units.
+
+  `production_lost_without` is `_injury_drop`'s guts, extracted rather than reimplemented.
+  "How bad is it if I lose him" and "can I afford to trade him" are the same computation
+  asked in opposite directions, and two copies would eventually have disagreed about the
+  same player on the same roster.
 - **Never offer a position you yourself have a need at.** The offer pool didn't check
   this originally - a real Win-Now team with a critical WR need was being told to offer
   away its own WRs, which only moves the shortage around rather than fixing it. Applies
@@ -827,9 +853,25 @@ have yet) - deferred rather than faked.
   sense for a specific Middling team likely depends on something not built yet -
   the season record (see below) - so showing both rather than guessing is the honest
   answer until that exists.
-- Results are always sorted with trade activity first, value second - a bigger name from
-  an owner who never trades is a worse real-world target than a smaller one from an
-  active trader.
+- **Trade activity is a flag, not a ranking.** It used to sort *first*, on the reasoning
+  that a smaller name from an active trader beats a bigger name from someone who never
+  trades. That reasoning is fine and the implementation was not: how often an owner trades
+  ended up deciding which players a manager was shown at all. On the live league the #1 RB
+  recommendation to a `Push` team produced **738** redraft and came from the most active
+  trader, while the second-best current production available (**1,883**) sat 5th - off the
+  end of the default three - because its owner had never traded. Activity says something
+  about whether a call gets returned; it says nothing about whether the player helps. It is
+  now the last tiebreak and stays fully visible (`from_owner_trades`, rendered as
+  "NEVER TRADES" in the text output) so the caller can weigh it themselves. Applied to all
+  three sorts - buy targets, acquire targets, pick targets - rather than the one that
+  surfaced it, since siblings keeping the old behaviour is this project's second-most
+  common bug.
+- **Rank on the metric the window is buying.** The same sort then broke its own tiebreak by
+  ordering on dynasty value, directly contradicting the line above it that puts declining
+  players first *because* current production is the point. A `Push` team now orders by
+  `redraft_value`; everyone else still orders by dynasty value, which is correct for them.
+  This is the recurring root cause (dynasty value answering a current-season question)
+  found for the fifth separate time.
 - **Draft picks move in the direction the window implies** (`team_values.owned_picks`).
   Picks were previously used only as an aggregate - `pick_capital` for "who has draft
   capital" and `owns_next_first` for whether tanking is even coherent - which is enough
@@ -1697,6 +1739,31 @@ deliberately avoiding.
   FantasyCalc's `ppr` parameter is a flat 0.6% per-position scalar that cannot tell a
   receiving back from an early-down back - so a projections source would close two gaps at
   once and is probably the single highest-value external addition left.
+- **Cheap depth has real value and nothing here prices it.** Three separate live cases, all
+  the same gap. (1) A declining WR on a rebuilding team is never suggested because WR isn't
+  a *need* - but the asking team starts **five** receivers (3 dedicated + 2 flex), so that
+  player is one injury or bye from the lineup, and the price is nominal. (2) A cheap RB body
+  fails the relevance floor by **3 dynasty points** and would still be worth having, because
+  that team's RB room is two deep. (3) A depth piece is useful as *trade lubricant* - the
+  thing that makes the other side's pivot work - which is a function of the deal, not of
+  either roster. The current model has exactly two states, need and not-need, and depth is
+  neither. It should be its own weak signal ("would be startable if one player above him
+  were out"), never something worth overpaying for. Interacts with the replacement-bar entry
+  below and with `drop_if_injured`, which measures the same exposure from the other side.
+- **Injury proneness is not modelled and it changes the depth answer.** `drop_if_injured`
+  says how bad an absence would be and explicitly disclaims saying how *likely* one is.
+  Per-position rates are the obvious first cut, but the sharper version is per-player
+  history - a two-deep RB room of players who have each missed time is a materially
+  different risk from a two-deep room that hasn't. nflverse weekly data carries games missed
+  and injury designations, so this is a real source rather than a guess, and unlike
+  projections it needs no new vendor. Would turn exposure from a magnitude into something
+  closer to an expected loss.
+- **`is_starter` is meaningless on a tanking roster.** The value-derived lineup marks a
+  best-eleven for every team, including one openly rebuilding, so a "starter" on a team
+  trying to lose is just its least-bad player. Nothing currently distinguishes those, which
+  makes `is_starter` read as a claim about intent when it's only a claim about value. Cheap
+  to caveat where it's reported for a `Rebuild` team; leaving it silent risks the tool
+  saying a rebuilder "would have to give up a starter."
 - **Dynasty rosters are deeper than the replacement-level bar assumes.** Dynasty formats
   carry far more players than redraft, so plenty of low-redraft-value players are
   genuinely starter-relevant in a way a value-derived threshold does not reflect. This

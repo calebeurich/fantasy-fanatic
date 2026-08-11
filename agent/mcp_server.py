@@ -114,7 +114,11 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     draft, which is another upside asset and the opposite of what a contender needs, so
     their value to a contender is only in what they can be traded FOR. Player entries carry
     "tier" (core piece vs depth) and "pick_equivalent" - depth is real but shouldn't
-    anchor an offer. "efficiency_swaps", when present, are value decisions rather than
+    anchor an offer. An entry in "my_offers" carrying "lineup_cost" is a current STARTER
+    who is nonetheless offerable, and the number is how much current production the lineup
+    loses if he goes, after refilling itself optimally. Say that number when you name him -
+    it is a cost, not a reason to omit him, and for a Push team an ascending starter is
+    often the single biggest chip available precisely because his value is future. "efficiency_swaps", when present, are value decisions rather than
     lineup upgrades: the two players produce near-identically this season, and
     "efficiency_swap_framing" says why that matters for THIS team's window - a closing
     window converts future premium into capital, a healthy contender is just taking

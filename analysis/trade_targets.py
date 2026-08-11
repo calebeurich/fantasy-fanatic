@@ -119,21 +119,55 @@ def _with_trade_note(entry: dict, other: dict, trade_counts: dict[str, int]) -> 
 
 
 def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict],
-                   pick_values: dict[str, int] | None = None) -> list[dict]:
+                   pick_values: dict[str, int] | None = None,
+                   covered: dict[str, float] | None = None) -> list[dict]:
     """What you could realistically offer: bench value that isn't elite enough to be a
     cornerstone but also isn't part of your actual lineup (e.g. a 3rd QB in a 2-QB-max
-    format), plus young surplus - never a valuable *starter*, even a non-cornerstone
-    one, since that's not surplus, that's your team. Also never a position you
-    yourself have a need at - trading away a WR while WR is your own critical need
-    just moves the shortage, it doesn't fix anything. Cheapest give-up cost first."""
+    format), plus young surplus, plus any starter the roster **covers from the bench for
+    free**. Never a position you yourself have a need at - trading away a WR while WR is
+    your own critical need just moves the shortage, it doesn't fix anything. Cheapest
+    give-up cost first.
+
+    `covered` maps player name -> current production lost if he leaves and the lineup
+    refills optimally (`roster_needs.production_lost_without`). Two ways a starter gets in:
+
+    1. **The bench covers him for free** (`covered == 0`). He's in the lineup only because
+       somebody has to be; the next man up scores the same. True in any window.
+    2. **He's ascending and this team is `Push`.** A closing window sells future value and
+       buys present - that is the module's whole premise - and an ascending starter is
+       future value occupying a lineup slot. Declining and prime starters stay protected:
+       they *are* the current production a pushing team is trying to keep.
+
+    **"Is he a starter" was the wrong question and it hid the best asset on the board.** A
+    real Push team's two biggest trade chips were an ascending TE (3,660 dynasty against
+    1,035 redraft) and a backup QB. The TE was excluded for occupying a lineup slot, though
+    his owner named him first when asked what he'd move - correctly, since a bench TE
+    covers most of it and the rest is a future that team is trying to spend. Rule 1 alone
+    would still have missed him: replacing him costs 420 of current production, which is
+    real. That cost is now stated (`lineup_cost`) rather than used as a veto, because
+    whether it's worth paying depends on what comes back, which this module deliberately
+    doesn't price.
+
+    The same test protects the players it should. That roster's best WR is declining with
+    3,961 redraft against 3,773 dynasty - nearly all present value - so he is never offered,
+    while the TE at 1,035 against 3,660 is."""
     # `is_starter` is the value-derived lineup (LeagueContext.starters), so this is just
     # a field read now. It used to be Sleeper's current-week snapshot, which is
     # meaningless before Week 1 - a superflex team's QB2 was offered away as surplus
     # because the preseason lineup listed only one QB - and the fix was a `projected` set
     # of names threaded through five functions. Fixing the flag at its source deleted all
     # of that.
-    offers = [e for e in me["sellable"] + me["tradeable_surplus"]
-              if not e["is_starter"] and e["position"] not in needs
+    covered = covered or {}
+
+    def offerable(e):
+        if not e["is_starter"]:
+            return True
+        return covered.get(e["name"]) == 0 or (
+            me.get("window") == "Push" and e["bucket"] == "ascending")
+
+    offers = [{**e, "lineup_cost": round(covered[e["name"]])} if e["name"] in covered else e
+              for e in me["sellable"] + me["tradeable_surplus"]
+              if offerable(e) and e["position"] not in needs
               and team_state.clears_relevance_floor(e, thresholds)]
 
     # Trade value is not linear in raw value, and presenting it as if it were produced a
@@ -377,7 +411,8 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
               pick_values: dict[str, int] | None = None,
               my_picks: list[dict] | None = None,
               prior: dict[str, dict] | None = None,
-              premium_bars: dict[str, float] | None = None) -> dict:
+              premium_bars: dict[str, float] | None = None,
+              covered: dict[str, float] | None = None) -> dict:
     """The push case: fill needs with sellable value from Rebuilding teams."""
     my_needs = needs_by_owner_id.get(me["owner_id"], {})
     # Worst-shaped need first (roster_needs.NEED_PRIORITY): a position you can't field at
@@ -419,16 +454,29 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         # Only a *closing* window justifies preferring aging production. A `Contend`
         # team is good and not declining, so it has no reason to buy the shorter asset,
         # and an `Ascend` team least of all.
+        # Trade history is a *flag*, not a ranking. It used to sort ahead of value, which
+        # meant how often an owner trades decided which players you were shown: a real
+        # league's #1 RB recommendation produced 738 redraft, from the most active trader,
+        # while the second-best current production available (1,883) sat 5th and off the
+        # end of the default list because its owner had never made a trade. Activity says
+        # something about whether a call gets returned - it says nothing about whether the
+        # player helps - so it drops to a last-resort tiebreak and stays visible as
+        # `from_owner_trades` ("NEVER TRADES" in the text output).
+        #
+        # And rank on the metric the window is actually buying. Sorting a Push team's
+        # targets by dynasty value contradicts the line above it, which puts declining
+        # players first *because* current production is the point; dynasty value then
+        # reorders them by the future years that team isn't buying.
         prefer_production = me["window"] == "Push"
         pos_targets.sort(key=lambda t: (
             0 if (prefer_production and t["bucket"] == "declining") else 1,
+            -(t.get("redraft_value") or 0) if prefer_production else -t["value"],
             -t["from_owner_trades"],
-            -t["value"],
         ))
         targets += pos_targets[:max_per_position]
 
     result = {"needs": my_needs, "targets": targets,
-              "my_offers": _my_offer_pool(me, thresholds, my_needs, pick_values)}
+              "my_offers": _my_offer_pool(me, thresholds, my_needs, pick_values, covered)}
 
     # Sellers-only search misses the best available production - see _persuasion_targets.
     stretch = _persuasion_targets(me, states, my_needs, thresholds, trade_counts, prior or {},
@@ -496,6 +544,13 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
                     "tier": "core piece - startable, but replaceable at little cost this season",
                     "pick_equivalent": pick_equivalent(entry["value"], pick_values) if pick_values else None,
                     "swap_note": swap["note"],
+                    # Same field the offer pool attaches, so both routes into this list
+                    # answer "what does moving him cost my lineup" in the same units. The
+                    # swap's own >=90% guarantee is measured pairwise within a position;
+                    # this is measured against the whole refilled lineup, so they can differ
+                    # and the concrete number is the more useful one to state.
+                    **({"lineup_cost": round(covered[entry["name"]])}
+                       if covered and entry["name"] in covered else {}),
                 })
             result["my_offers"].sort(key=lambda e: -e["value_over_replacement"])
     return result
@@ -523,7 +578,9 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
             if not team_state.clears_relevance_floor(player, thresholds):
                 continue
             acquire_targets.append(_with_trade_note(player, other, trade_counts))
-    acquire_targets.sort(key=lambda t: (-t["from_owner_trades"], -t["value"]))
+    # Value first, activity as the tiebreak - see the buy path for why trade history
+    # ranking ahead of value hid the best available player behind a chatty owner.
+    acquire_targets.sort(key=lambda t: (-t["value"], -t["from_owner_trades"]))
     result = {"sell_candidates": sell_candidates, "situational": situational,
               "acquire_targets": acquire_targets}
 
@@ -542,7 +599,7 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
                     "from_owner_trades": trade_counts.get(other["owner_id"], 0),
                     "note": f"{other['owner']} is in {other['window']} mode - future picks are worth less to them than to you",
                 })
-        pick_targets.sort(key=lambda t: (-t["from_owner_trades"], -t["value"]))
+        pick_targets.sort(key=lambda t: (-t["value"], -t["from_owner_trades"]))
         if pick_targets:
             result["picks_to_acquire"] = pick_targets[:8]
     return result
@@ -570,6 +627,16 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
 
     me = ctx.pick_owner(owner_query, states)
 
+    # What each of my starters actually costs to lose, after the lineup refills itself.
+    # A zero means the bench covers him for free, which is the real question behind the
+    # old "never offer a starter" rule - see _my_offer_pool.
+    my_roster = ctx.roster_for(owner_query)
+    my_starters = ctx.starters_for(my_roster)
+    covered = {ctx.players[pid]["name"]: roster_needs.production_lost_without(
+                   my_roster, ctx.players, pid, my_starters,
+                   ctx.lineup_dedicated, ctx.lineup_flex)
+               for pid in my_starters if pid in ctx.players}
+
     # A rebuilding team (especially one tanking for a pick) isn't trying to fill
     # starting-lineup needs with proven vets - it wants to sell what age value it has
     # left and stockpile youth/picks instead. Buy-target-by-need only makes sense for
@@ -588,13 +655,13 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         return {"me": me, "mode": "ascend", "timing_note": ASCEND_TIMING_NOTE,
                 "push": _buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
                                   max_per_position, pick_values, my_picks, prior,
-                                  premium_bars),
+                                  premium_bars, covered),
                 "pivot": _pivot_path(me, states, thresholds, trade_counts, picks_by_owner)}
 
     result = {"me": me, "mode": "buy",
               **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
                           max_per_position, pick_values, my_picks, prior,
-                          premium_bars)}
+                          premium_bars, covered)}
 
     # Additive on purpose - `window` is untouched. A contender tilting ascending contends
     # whichever path it takes, so the label is right either way and only the tactics differ.
