@@ -477,22 +477,51 @@ def needs_only(assessed: dict[str, dict]) -> dict[str, dict]:
 
 def find_surplus(roster: dict, players: dict[str, dict], slots: dict[str, int],
                  thresholds: dict[str, float], starters: set[str] | None = None) -> dict:
-    """The mirror of a need: positions where a team has MORE usable players than its
-    starting slots require, and which players specifically are the spare ones. Only
-    players beyond the required starter count count as surplus - the top `slots[pos]`
-    are the actual starting group and never get offered here. This is what makes a
-    win-now-to-win-now swap real: a team's true extra depth at a position it doesn't
-    need, not just any valuable player on the roster.
+    """Players a team can trade without touching its lineup: **anyone not in the projected
+    starting eleven who still has real trade value**. Spare is measured against this team's
+    own lineup, not against a leaguewide bar.
 
-    **Anyone who actually starts is removed.** `slots` here is `needs_slots`, which folds
-    SUPER_FLEX into a QB and ignores FLEX entirely - so in a league running RB 2 / FLEX 2,
-    a team's third RB sits outside `slots["RB"]` and was being offered as spare depth
-    while starting every week. A real case: rjl22's RB3 (Ashton Jeanty, a genuine asset)
-    was offered in a mutual swap for a fringe QB on exactly this basis."""
-    usable = _usable_by_position(roster, players, thresholds, "redraft_value", starters)
-    spare = {pos: [e for e in usable[pos][slots[pos]:] if not e["is_starter"]]
-             for pos in POSITIONS if len(usable[pos]) > slots[pos]}
-    return {pos: entries for pos, entries in spare.items() if entries}
+    **The old definition was zero-sum, and that is why nothing ever qualified.** It took
+    players above `replacement_thresholds` and beyond `slots[pos]` - but replacement level is
+    *defined* as the Nth-best player leaguewide where N is every starting slot at that
+    position, so above-replacement supply equals demand by construction. Measured on two real
+    leagues, exactly:
+
+        QB slots 24, rostered above the bar 24.  RB 24/24.  WR 36/36.  TE 12/12.
+
+    Surplus under that rule could only exist where one team held more than its share, matched
+    one-for-one by another team's deficit. Total surplus across a league was therefore ~0,
+    only 3 of 12 teams had any, and `find_mutual_swaps` - which needs *two* teams to have
+    surplus the other needs - returned nothing in 36 consecutive team-reads across three
+    leagues. It was not a tuning problem; the quantity could barely exist.
+
+    Deep flex made it worse. With three FLEX and a SUPER_FLEX, ten starters absorb almost
+    everyone above replacement, so "usable but not starting" is nearly empty by construction.
+
+    The lineup-relative version is not zero-sum: whether *my* bench player is spare to *me*
+    has nothing to do with how the rest of the league is stocked. The quality question -
+    does he actually help the team receiving him - is asked separately by `_fills` against
+    that team's need, which is where it belongs.
+
+    Dynasty value against the trade bar, not redraft against the start bar: this asks "is he
+    worth something in a trade", not "could he start for me". `slots` is retained for
+    signature compatibility and deliberately unused - it encoded the zero-sum arithmetic."""
+    spare: dict[str, list[dict]] = {}
+    for player_id in roster["players"] or []:
+        info = players.get(player_id)
+        if not info or info["position"] not in POSITIONS:
+            continue
+        if player_id in (starters or set()):
+            continue  # in the lineup - not spare, whatever the arithmetic says
+        if (info.get("value") or 0) < thresholds[info["position"]]:
+            continue
+        spare.setdefault(info["position"], []).append({
+            "name": info["name"], "position": info["position"], "value": info["value"],
+            "redraft_value": info.get("redraft_value"), "is_starter": False,
+        })
+    for entries in spare.values():
+        entries.sort(key=lambda e: -e["value"])
+    return spare
 
 
 # Which positions each flex-type slot can be filled with. Sleeper names these in
@@ -652,7 +681,7 @@ def league_surplus(league_id: str) -> dict[str, dict]:
     from .league import context
     ctx = context(league_id)
     return {
-        r["owner_id"]: find_surplus(r, ctx.players, ctx.needs_slots, ctx.start_thresholds,
+        r["owner_id"]: find_surplus(r, ctx.players, ctx.needs_slots, ctx.trade_thresholds,
                                     ctx.starters_for(r))
         for r in ctx.rosters
     }

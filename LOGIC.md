@@ -2267,6 +2267,70 @@ who fall off leave the valued pool entirely, so the ones still in it are those w
 Doing it properly means snapshotting the market periodically - the first persistent state this
 project would own, and a deliberate decision rather than a casual one.
 
+## Why there was never any surplus (`find_surplus`)
+
+`find_mutual_swaps` returned nothing for **36 consecutive team-reads across three leagues**.
+Not a tuning problem - the quantity it depended on could barely exist.
+
+Surplus was defined as players above `replacement_thresholds` and beyond `slots[pos]`. But
+replacement level is *defined* as the Nth-best player leaguewide where N is every starting
+slot at that position, so above-replacement supply equals demand **by construction**. Measured,
+and it is exact:
+
+| | QB | RB | WR | TE |
+|---|---|---|---|---|
+| starting slots leaguewide | 24 | 24 | 36 | 12 |
+| rostered players above the bar | **24** | **24** | **36** | **12** |
+
+So surplus could only ever be one team's hoard against another team's deficit, summing to
+zero across the league. Only 3 of 12 teams had any. A *mutual* swap needs two teams to each
+hold surplus the other is short at - a double coincidence on a near-zero quantity.
+
+Deep flex made it worse: with three FLEX and a SUPER_FLEX, ten starters absorb almost
+everyone above replacement, so "usable but not starting" is nearly empty before the slot
+arithmetic even runs.
+
+**Spare is now measured against the team's own lineup**: not in the projected starters, and
+worth something in a trade. That is not zero-sum - whether my bench player is spare to me has
+nothing to do with how the rest of the league is stocked. Surplus rose to 7 of 12 and 4 of 12
+teams, and mutual swaps began producing real two-sided fits (a Kyle Pitts for KC Concepcion
+shape, each side filling the other's need). The quality question - does he actually help the
+receiving team - was always asked separately by `_fills`, which is where it belongs.
+
+Dynasty value against the trade bar rather than redraft against the start bar, because the
+question is "is he worth something in a trade", not "could he start for me". `slots` is kept
+for signature compatibility and deliberately unused; it encoded the zero-sum arithmetic.
+
+**Three definitions of spare value now rest on one predicate** - not in the lineup -
+specialising only where they must: `find_surplus` keys by position for matching against
+another team's need, `stranded_starters` picks out the subset that beats the weakest starter
+(capacity-blocked, lead with these), and `_my_offer_pool` adds tiering and the covered-starter
+case. The shared predicate is what stops them contradicting each other.
+
+**A known limit, surfaced by the fix.** Both remaining zero-swap leagues are legitimate, but
+one shape is structurally unreachable: a team with *no needs* can never appear in a mutual
+swap even holding exactly the piece another team wants. Two live examples. Mutuality is the
+feature's premise, so this is a boundary rather than a bug - but a one-way "they hold what you
+need and want value back" path would catch it.
+
+## What the market source already gives us and we never read
+
+`values/current` returns more per player than the four fields this project reads. Verified by
+inspecting the payload rather than guessing endpoint names - which is how `tep` was found, and
+guessing had already failed here (four 404s on invented history paths).
+
+- **`redraftValue` is embedded in the dynasty response**, and is *identical* to the value from
+  the separate `isDynasty=false` call - 192 of 192 players matched exactly, zero differences.
+  The project makes that second HTTP request for data it already has.
+- **`trend30Day`** exists but is **not** the decay signal the value-insulation thesis needs.
+  Medians sit at or near zero for every position (QB −34, RB −2, TE −5, WR 0) with roughly
+  half of each position negative. That is a month of market drift, not an aging curve; reading
+  positional decay into it would be exactly the kind of plausible-looking mistake this file
+  exists to prevent.
+- **`maybeTradeFrequency`** measures how often a player is actually traded - a real liquidity
+  measure, and the honest version of the "picks are easier to move" intuition that `pick_share`
+  currently reports without weighting.
+
 ## Leverage: what a team could become (`team_state.leverage`)
 
 The window model answers *what should this team do with the roster it has*. It had nothing

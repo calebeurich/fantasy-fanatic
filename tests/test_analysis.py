@@ -193,18 +193,34 @@ def test_quality_is_not_asserted_when_the_league_is_too_small_to_measure_it():
     assert roster_needs.assess_positions(rosters, players, slots, thresholds)["solo"]["WR"]["level"] == "critical"
 
 
-def test_surplus_is_the_mirror_of_needs_and_excludes_the_starting_group():
-    """Only players *beyond* the required starter count are surplus - the top slots[pos]
-    are the actual lineup and must never be offered as spare depth."""
+def test_surplus_is_measured_against_your_own_lineup_not_a_leaguewide_bar():
+    """Spare means "my lineup doesn't miss him", and that must not depend on how the rest of
+    the league is stocked.
+
+    The old rule was zero-sum and so produced almost nothing. It counted players above
+    `replacement_thresholds` and beyond `slots[pos]` - but replacement level is *defined* as
+    the Nth-best leaguewide where N is every starting slot at that position, so supply above
+    the bar equals demand by construction. Measured on two real leagues it was exact: QB
+    24 slots / 24 above the bar, RB 24/24, WR 36/36, TE 12/12. Surplus could only exist as
+    one team's hoard against another's deficit, 3 of 12 teams had any, and mutual swaps
+    returned nothing across 36 consecutive team-reads.
+
+    Now: not in the lineup, and worth something in a trade. Both parts are load-bearing."""
     slots = {"QB": 1, "RB": 2, "WR": 2, "TE": 1}
-    thresholds = {"QB": 100, "RB": 100, "WR": 100, "TE": 100}
-    players = _players([("WR", 900), ("WR", 800), ("WR", 700), ("WR", 600)])
-    roster = {"players": list(players), "starters": []}
-    surplus = roster_needs.find_surplus(roster, players, slots, thresholds)
-    names = [e["name"] for e in surplus["WR"]]
-    assert len(names) == 2, "4 usable WR with 2 slots should yield exactly 2 surplus"
-    assert [e["value"] for e in surplus["WR"]] == [700, 600], "surplus is the lowest-valued, not the best"
-    assert "QB" not in surplus, "a position with no usable players is a need, never a surplus"
+    thresholds = {"QB": 500, "RB": 500, "WR": 500, "TE": 500}
+    players = _players([("WR", 900), ("WR", 800), ("WR", 700), ("WR", 400)])
+    ids = list(players)
+    roster = {"players": ids, "starters": []}
+    starters = {ids[0], ids[1]}  # the two best WRs are in the lineup
+
+    surplus = roster_needs.find_surplus(roster, players, slots, thresholds, starters)
+    assert [e["value"] for e in surplus["WR"]] == [700], (
+        "the 700 is spare; the two starters are not, and the 400 is below the trade bar")
+    assert "QB" not in surplus, "a position with nobody on the roster cannot be a surplus"
+
+    # The point of the change: identical roster, identical answer, regardless of anything
+    # happening elsewhere in the league. The old rule could not say that.
+    assert roster_needs.find_surplus(roster, players, slots, thresholds, starters) == surplus
 
 
 def test_needs_are_measured_on_current_production_not_dynasty_value():

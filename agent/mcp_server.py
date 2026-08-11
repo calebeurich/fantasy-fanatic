@@ -184,12 +184,14 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
 @mcp.tool()
 def get_mutual_swaps(league_id: str, owner_name: str) -> dict:
     """Two-way trade fits between this team and another team still trying to win, where
-    each side has a positional surplus (real spare starting-caliber depth) that's the
-    other's need - both teams improve, neither gives up a core piece. Different from
+    each side has spare depth - a player NOT in its own starting lineup who still has real
+    trade value - that happens to be the other's need - both teams improve, neither gives up a core piece. Different from
     get_trade_targets, which only matches this team against rebuilding teams' sell
     candidates in one direction. Each swap carries a "balance" block with both sides'
     totals - the two are checked to be of comparable value, but this is a shape that
-    could work, not a priced offer. Use this when the question is about trading with
+    could work, not a priced offer. An empty list is common and meaningful: it needs BOTH
+    teams to hold spare depth the other is short at, so a team with no needs of its own can
+    never appear here even when it holds exactly the piece someone wants. Use this when the question is about trading with
     another specific contender, or "how do I improve without giving up my best guys."""
     return trade_targets.find_mutual_swaps(league_id, owner_name)
 
