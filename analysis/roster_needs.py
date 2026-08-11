@@ -17,7 +17,7 @@ import sys
 from sources import sleeper
 
 from sources import injuries
-from .team_values import rank_map, tertile
+from .team_values import age_bucket, rank_map, tertile
 
 POSITIONS = ["QB", "RB", "WR", "TE"]
 
@@ -503,9 +503,23 @@ def find_surplus(roster: dict, players: dict[str, dict], slots: dict[str, int],
     does he actually help the team receiving him - is asked separately by `_fills` against
     that team's need, which is where it belongs.
 
-    Dynasty value against the trade bar, not redraft against the start bar: this asks "is he
-    worth something in a trade", not "could he start for me". `slots` is retained for
-    signature compatibility and deliberately unused - it encoded the zero-sum arithmetic."""
+    **The value bar is `clears_relevance_floor`, not a raw replacement threshold**, and that
+    correction came from the same observation. Both `start_thresholds` and `trade_thresholds`
+    are Nth-best-leaguewide bars, so swapping one for the other keeps the zero-sum property in
+    the *value* test even after the slot arithmetic is gone. On a real roster only 2 of 18
+    receivers cleared the raw dynasty bar - a 3,039-value receiver missed by 242, and a young
+    one at 1,620 whose owner rates him a future starter was nowhere near.
+
+    That is the deeper point: **replacement level is a win-now idea**. A player below it is
+    not replaceable to a team that will be good in two years, he is a starter who hasn't
+    arrived. `clears_relevance_floor` already encodes this by scaling the bar with the
+    player's bucket - ascending value clears at 25% of replacement, realised production at
+    50% - which is why the offer pool has always used it. Using it here makes the two
+    genuinely one concept rather than two that happen to agree.
+
+    `slots` is retained for signature compatibility and deliberately unused - it encoded the
+    zero-sum arithmetic."""
+    from . import team_state  # lazy: team_state never imports this module, so no cycle
     spare: dict[str, list[dict]] = {}
     for player_id in roster["players"] or []:
         info = players.get(player_id)
@@ -513,12 +527,13 @@ def find_surplus(roster: dict, players: dict[str, dict], slots: dict[str, int],
             continue
         if player_id in (starters or set()):
             continue  # in the lineup - not spare, whatever the arithmetic says
-        if (info.get("value") or 0) < thresholds[info["position"]]:
+        entry = {"name": info["name"], "position": info["position"], "value": info["value"],
+                 "redraft_value": info.get("redraft_value"), "is_starter": False,
+                 "bucket": age_bucket(info["position"], info.get("age"),
+                                      info.get("usage_role"))}
+        if not team_state.clears_relevance_floor(entry, thresholds):
             continue
-        spare.setdefault(info["position"], []).append({
-            "name": info["name"], "position": info["position"], "value": info["value"],
-            "redraft_value": info.get("redraft_value"), "is_starter": False,
-        })
+        spare.setdefault(info["position"], []).append(entry)
     for entries in spare.values():
         entries.sort(key=lambda e: -e["value"])
     return spare

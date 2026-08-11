@@ -2291,15 +2291,30 @@ everyone above replacement, so "usable but not starting" is nearly empty before 
 arithmetic even runs.
 
 **Spare is now measured against the team's own lineup**: not in the projected starters, and
-worth something in a trade. That is not zero-sum - whether my bench player is spare to me has
-nothing to do with how the rest of the league is stocked. Surplus rose to 7 of 12 and 4 of 12
-teams, and mutual swaps began producing real two-sided fits (a Kyle Pitts for KC Concepcion
-shape, each side filling the other's need). The quality question - does he actually help the
-receiving team - was always asked separately by `_fills`, which is where it belongs.
+worth something in a trade.
 
-Dynasty value against the trade bar rather than redraft against the start bar, because the
-question is "is he worth something in a trade", not "could he start for me". `slots` is kept
-for signature compatibility and deliberately unused; it encoded the zero-sum arithmetic.
+Both halves had to change, and the second was caught only because the first wasn't enough.
+Swapping the redraft bar for the dynasty one still left a top-24-leaguewide test - the same
+zero-sum shape in the *value* check. On a real roster **only 2 of 18 receivers** cleared the
+raw dynasty bar; a 3,039-value receiver missed by 242, and a 1,620-value young one his owner
+rates a future starter was nowhere near.
+
+The manager's framing is the correction: **replacement level is a win-now idea.** A player
+below it isn't replaceable to a team that will be good in two years - he is a starter who
+hasn't arrived. `clears_relevance_floor` already encodes exactly that, scaling the bar by what
+kind of value the player carries (ascending clears at 25% of replacement, realised production
+at 50%), which is why `_my_offer_pool` has always used it. Using it here makes the two
+genuinely one concept instead of two that happened to agree.
+
+| | teams with surplus | mutual swaps |
+|---|---|---|
+| original (redraft bar + slot arithmetic) | 3/12 | **0 across all three leagues** |
+| lineup-relative + raw dynasty bar | 7/12, 4/12 | 4 |
+| lineup-relative + relevance floor | **12/12** | **10 / 0 / 6** |
+
+The quality question - does he actually help the receiving team - was always asked separately
+by `_fills`, which is why a permissive candidate bar is safe here. `slots` is kept for
+signature compatibility and deliberately unused; it encoded the zero-sum arithmetic.
 
 **Three definitions of spare value now rest on one predicate** - not in the lineup -
 specialising only where they must: `find_surplus` keys by position for matching against

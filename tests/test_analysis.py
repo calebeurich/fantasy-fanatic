@@ -194,33 +194,42 @@ def test_quality_is_not_asserted_when_the_league_is_too_small_to_measure_it():
 
 
 def test_surplus_is_measured_against_your_own_lineup_not_a_leaguewide_bar():
-    """Spare means "my lineup doesn't miss him", and that must not depend on how the rest of
-    the league is stocked.
+    """Spare means "my lineup doesn't miss him, and someone would want him", and neither half
+    may depend on how the rest of the league is stocked.
 
-    The old rule was zero-sum and so produced almost nothing. It counted players above
-    `replacement_thresholds` and beyond `slots[pos]` - but replacement level is *defined* as
-    the Nth-best leaguewide where N is every starting slot at that position, so supply above
-    the bar equals demand by construction. Measured on two real leagues it was exact: QB
-    24 slots / 24 above the bar, RB 24/24, WR 36/36, TE 12/12. Surplus could only exist as
-    one team's hoard against another's deficit, 3 of 12 teams had any, and mutual swaps
-    returned nothing across 36 consecutive team-reads.
+    The old rule was zero-sum twice over. It counted players above `replacement_thresholds`
+    and beyond `slots[pos]` - but replacement level is *defined* as the Nth-best leaguewide
+    where N is every starting slot at that position, so supply above the bar equals demand by
+    construction. Measured on two real leagues it was exact: QB 24 slots / 24 above the bar,
+    RB 24/24, WR 36/36, TE 12/12. Only 3 of 12 teams had any surplus and mutual swaps returned
+    nothing across 36 consecutive team-reads.
 
-    Now: not in the lineup, and worth something in a trade. Both parts are load-bearing."""
+    Swapping the redraft bar for the dynasty one does NOT fix that - both are Nth-best
+    leaguewide. On a real roster only 2 of 18 receivers cleared the raw dynasty bar. The bar
+    has to scale with what kind of value the player carries, which is what
+    `clears_relevance_floor` does and why the offer pool always used it: **replacement level
+    is a win-now idea**, and a young player below it isn't replaceable to a team that will be
+    good in two years - he's a starter who hasn't arrived yet."""
     slots = {"QB": 1, "RB": 2, "WR": 2, "TE": 1}
-    thresholds = {"QB": 500, "RB": 500, "WR": 500, "TE": 500}
-    players = _players([("WR", 900), ("WR", 800), ("WR", 700), ("WR", 400)])
-    ids = list(players)
-    roster = {"players": ids, "starters": []}
-    starters = {ids[0], ids[1]}  # the two best WRs are in the lineup
+    thresholds = {"QB": 1000, "RB": 1000, "WR": 1000, "TE": 1000}
+    players = {
+        "s1": {"name": "Starter1", "position": "WR", "value": 900, "redraft_value": 900, "age": 26},
+        "s2": {"name": "Starter2", "position": "WR", "value": 800, "redraft_value": 800, "age": 26},
+        "prime_ok": {"name": "PrimeOk", "position": "WR", "value": 600, "redraft_value": 600, "age": 26},
+        "prime_no": {"name": "PrimeNo", "position": "WR", "value": 400, "redraft_value": 400, "age": 26},
+        "rising": {"name": "Rising", "position": "WR", "value": 300, "redraft_value": 20, "age": 23},
+    }
+    roster = {"players": list(players), "starters": []}
+    starters = {"s1", "s2"}
 
-    surplus = roster_needs.find_surplus(roster, players, slots, thresholds, starters)
-    assert [e["value"] for e in surplus["WR"]] == [700], (
-        "the 700 is spare; the two starters are not, and the 400 is below the trade bar")
-    assert "QB" not in surplus, "a position with nobody on the roster cannot be a surplus"
-
-    # The point of the change: identical roster, identical answer, regardless of anything
-    # happening elsewhere in the league. The old rule could not say that.
-    assert roster_needs.find_surplus(roster, players, slots, thresholds, starters) == surplus
+    names = [e["name"] for e in roster_needs.find_surplus(
+        roster, players, slots, thresholds, starters)["WR"]]
+    assert "Starter1" not in names and "Starter2" not in names, "in the lineup is not spare"
+    assert "PrimeOk" in names, "prime clears at 50% of replacement"
+    assert "PrimeNo" not in names, "400 is below that 500 bar"
+    assert "Rising" in names, (
+        "ascending clears at 25%, so a 300-value 23-year-old with almost no current "
+        "production is still a real asset - this is the case a flat bar threw away")
 
 
 def test_needs_are_measured_on_current_production_not_dynasty_value():
