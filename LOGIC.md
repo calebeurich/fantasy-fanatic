@@ -1756,7 +1756,11 @@ deliberately avoiding.
   has a state between available and out, and adding one means joining injury designations to
   weekly production - which is also the join that would let severity be measured rather than
   assumed.
-- **The QB age curve may be wrong at both ends, per a domain expert.** `AGE_CURVE["QB"]` is
+- **The pocket/rushing split may still be too coarse.** An elite QB who both throws and runs
+  (top passing EPA *and* 7+ carries a game) is forced onto the rushing curve by the
+  mutual-exclusion rule, which may badly underrate the passing half of his value. Resolving it
+  needs decline data split by archetype rather than another judgement call.
+- **Superseded: the QB age curve was wrong at both ends, per a domain expert.** `AGE_CURVE["QB"]` is
   (26, 34), pulled to 31 for a tagged `rushing_qb`. A sports-modelling data scientist argued
   that a pure pocket passer can hold value to nearly 40 while a rushing QB slows sharply
   closer to 30 - so the real spread between the two roles is much wider than 34-vs-31, and
@@ -2116,6 +2120,76 @@ fringe body who spent one year hurt count as much as a decade-long starter.
 Deliberately shallow: this says *whether* a player was available, never the severity, type,
 or recency of what kept him out, and it forecasts nothing. Weighting depth by injury type and
 expected duration is logged under future work rather than half-built here.
+
+## The QB curve by archetype, and runway (`player_roles`, `years_to_decline`)
+
+The QB age curve was 34, pulled to 31 for a tagged `rushing_qb`. A sports-modelling data
+scientist reviewing the tool argued the pocket end was badly pessimistic: a genuine pocket
+passer trades on arm talent and processing, which hold into the late thirties, while a rushing
+QB leans on legs that slow near 30. **The only constant in this project changed on an outside
+opinion** - and changed because the data backed it.
+
+Quality is the operative part. A *mediocre* pocket passer does not age gracefully; he gets
+replaced. Measured over three seasons of passing EPA per game, the top tier is exactly the
+archetype:
+
+| QB | EPA/g | CPOE | carries/g |
+|---|---|---|---|
+| Jared Goff | **6.87** | 3.66 | 1.7 |
+| Brock Purdy | 6.62 | 3.97 | 3.7 |
+| Matthew Stafford | 5.33 | −0.47 | 1.6 |
+| Joe Burrow | 4.51 | 4.68 | 2.5 |
+| Patrick Mahomes | 4.30 | 2.40 | 4.6 |
+| *Jalen Hurts* | 2.99 | 5.30 | **8.5** |
+| *Justin Herbert* | **1.66** | 0.41 | 4.5 |
+
+**EPA rather than CPOE, despite CPOE being the better-isolated statistic.** Completion
+percentage over expected penalises aggressive downfield throwing, and Stafford posts −0.47
+CPOE against 5.33 EPA per game - requiring positive CPOE would drop one of the clearest
+examples of the archetype the tag exists to capture. Top *third* rather than a fixed EPA
+number, so it recalibrates with the league's passing environment.
+
+Quality is measured over three seasons where usage stays on one, deliberately: "is he a good
+passer" is a durable trait, "does he run" is a fact about his current role that flips with a
+coordinator change. `rushing_qb` and `pocket_passer` are mutually exclusive and rushing wins -
+a QB who runs enough to clear that bar carries the rushing risk whatever his arm does. That
+is the conservative reading and a real judgement call, since it puts the league's best
+run-and-throw QBs on a curve that may be too pessimistic for them.
+
+**38, not 40.** The claim is that these players hold dynasty *trade value*, and a 39-year-old
+is priced on one more season however well he is playing. The curve should turn before the
+market does, not with it.
+
+### The change is currently a no-op, and that is worth stating
+
+Nine QBs across three real leagues carry the tag. **Zero of them change bucket**, because none
+sits between 34 and 38 - Goff is 31.8 and Dak 33.1 (prime either way), Stafford 38.5
+(declining either way). It is a forward-looking correction that will start mattering within a
+year, not a fix to anything visible today. Recording that rather than letting a green test
+suite imply otherwise.
+
+### Runway (`years_to_decline`)
+
+What *did* resolve the underlying disagreement. `age_bucket` answers "which side of the line"
+and discards the distance to it, which is the number a dynasty seller wants:
+
+| | age | role | years to decline |
+|---|---|---|---|
+| Justin Herbert | 28.4 | rushing_qb | **2.6** |
+| Jalen Hurts | 28.0 | rushing_qb | **3.0** |
+| Sam Darnold | 29.2 | - | 4.8 |
+| Jared Goff | 31.8 | pocket_passer | **6.2** |
+
+All four read `prime`. The tool's sell list ranked Goff first, because it ranks on how
+now-weighted the market's price is. The expert said sell Hurts and keep Goff - the older man
+throws from the pocket and has twice the runway, and the market has not priced the rushing
+decline. Both answers are defensible and they answer different questions; only one of them was
+computable before this.
+
+Deliberately **not** folded into any existing sort. Two orderings competing inside one list is
+exactly how the buy path ended up ranking trade activity above value. It is reported so a
+caller can weigh runway against price - and it is the input the rebuild-timeline backlog item
+needs, since a roster whose core turns in three years cannot run a four-year teardown.
 
 ## Leverage: what a team could become (`team_state.leverage`)
 

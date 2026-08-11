@@ -18,7 +18,7 @@ import pytest
 
 from analysis import roster_needs, team_state, trade_targets
 from sources import fantasycalc, sleeper
-from analysis.team_values import AGE_CURVE, age_bucket
+from analysis.team_values import AGE_CURVE, age_bucket, years_to_decline
 
 
 # --------------------------------------------------------------------------- age curve
@@ -46,6 +46,27 @@ def test_pass_catching_rb_declines_later_than_standard_rb():
     """Mirror case: receiving work ages better than between-the-tackles work (27 -> 29)."""
     assert age_bucket("RB", 28) == "declining"
     assert age_bucket("RB", 28, role="pass_catching_rb") == "prime"
+
+
+def test_elite_pocket_passers_get_a_much_later_decline():
+    """The QB curve is 31 / 34 / 38 by role. A domain expert argued the pocket end was too
+    pessimistic - a genuine pocket passer holds value to nearly 40 while a rusher slows near
+    30 - and the passing-EPA data agreed, so the spread widened from three years to seven."""
+    assert age_bucket("QB", 35) == "declining", "an ordinary QB is past it at 35"
+    assert age_bucket("QB", 35, role="pocket_passer") == "prime", "a stud pocket passer is not"
+    assert age_bucket("QB", 35, role="rushing_qb") == "declining"
+    assert age_bucket("QB", 38, role="pocket_passer") == "declining", "the curve still turns"
+
+
+def test_runway_distinguishes_two_players_in_the_same_bucket():
+    """`age_bucket` throws away the distance to the boundary, which is what a dynasty seller
+    wants. The live case: a 28.0 rushing QB and a 31.8 pocket passer both read `prime` while
+    being three years apart in runway - and the older man has more of it."""
+    assert age_bucket("QB", 28.0, "rushing_qb") == age_bucket("QB", 31.8, "pocket_passer")
+    assert years_to_decline("QB", 28.0, "rushing_qb") == 3.0
+    assert years_to_decline("QB", 31.8, "pocket_passer") == 6.2
+    assert years_to_decline("QB", 38.0) < 0, "negative once past the cutoff"
+    assert years_to_decline("QB", None) is None
 
 
 def test_unknown_age_or_position_is_not_guessed():

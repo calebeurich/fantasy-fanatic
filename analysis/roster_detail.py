@@ -5,7 +5,7 @@ this is what actually makes up that aggregate. Usage: python -m analysis.roster_
 import sys
 
 from sources import contracts, injuries
-from .team_values import age_bucket
+from .team_values import age_bucket, years_to_decline
 
 
 def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, dict],
@@ -30,6 +30,7 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
         if info is None:
             rows.append({"name": f"(unvalued player_id {player_id})", "position": "?", "value": 0,
                          "age": None, "bucket": "n/a", "usage_role": None, "contract": None,
+                         "years_to_decline": None,
                          "lineup_role": lineup_role,
             "miss_rate": (miss_rates or {}).get(player_id, {}).get("miss_rate"),
             "weeks_suspended": (miss_rates or {}).get(player_id, {}).get("weeks_suspended"), "miss_rate": None})
@@ -40,6 +41,10 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
             "value": info["value"],
             "age": info["age"],
             "bucket": age_bucket(info["position"], info["age"], info.get("usage_role")),
+            # The distance to the boundary, not just which side of it he's on - two players
+            # can both read "prime" with years between them. See team_values.years_to_decline.
+            "years_to_decline": years_to_decline(info["position"], info["age"],
+                                                 info.get("usage_role")),
             "usage_role": info.get("usage_role"),
             "contract": contract_data.get(player_id),
             "lineup_role": lineup_role,

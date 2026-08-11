@@ -13,10 +13,24 @@ AGE_CURVE = {
     "TE": (25, 30),
 }
 
-# Usage-based overrides (see player_roles.py): mobile QBs lean on athleticism, so their
-# decline pulls forward; receiving-down RBs age more like WRs, so theirs pushes back.
+# Role-based overrides (see player_roles.py). Mobile QBs lean on athleticism, so their
+# decline pulls forward; receiving-down RBs age more like WRs, so theirs pushes back; and a
+# *good* pocket passer trades on arm talent and processing, which hold far longer than legs.
+#
+# The QB spread is now 31 / 34 / 38 rather than 31 / 34, after a sports-modelling data
+# scientist argued the pocket end was too pessimistic - that a genuine pocket passer can hold
+# value to nearly 40, so the gap between the two archetypes is much wider than three years.
+# That is the only constant in this project changed on an outside opinion, and it was changed
+# because the data backed it: over three seasons the top passing-EPA tier is Goff, Purdy,
+# Stafford, Burrow and Mahomes, all pocket throwers, and the tag is earned by measured
+# production rather than reputation.
+#
+# 38, not 40. The claim under test is that these players hold *dynasty trade value*, and a
+# 39-year-old quarterback is priced on one more season however well he is playing - the curve
+# should turn before the market does, not with it.
 AGE_CURVE_OVERRIDES = {
     "rushing_qb": (26, 31),
+    "pocket_passer": (26, 38),
     "pass_catching_rb": (24, 29),
 }
 
@@ -43,6 +57,38 @@ def age_bucket(position: str, age: float | None, role: str | None = None) -> str
     if age >= old_cutoff:
         return "declining"
     return "prime"
+
+
+def years_to_decline(position: str, age: float | None, role: str | None = None) -> float | None:
+    """How long until this player reaches his curve's decline cutoff. Negative once past it.
+
+    `age_bucket` answers "what is he now" and throws away the distance to the boundary, which
+    is the number a dynasty seller actually wants. Two quarterbacks can both read `prime` and
+    be in completely different situations, and on one live roster they were:
+
+        Justin Herbert   28.4  rushing_qb      2.6 years left
+        Jalen Hurts      28.0  rushing_qb      3.0
+        Jared Goff       31.8  pocket_passer   6.2
+
+    The tool's sell list ranked Goff first, because it ranks on how now-weighted the market's
+    price is - which is a real signal and a different question. A domain expert reading the
+    same roster said sell Hurts and keep Goff: the older man throws from the pocket and has
+    twice the runway, and the market has not priced the rushing decline. Both answers are
+    defensible; only one of them was computable before this.
+
+    Deliberately **not** folded into any existing sort. Two orderings competing inside one
+    list is how `_buy_path` ended up ranking trade activity above value. This is reported so
+    a caller can weigh runway against price, and it is the input the rebuild-timeline work
+    needs: a roster whose core turns in three years cannot run a four-year teardown."""
+    if age is None:
+        return None
+    if role in AGE_CURVE_OVERRIDES:
+        _, old_cutoff = AGE_CURVE_OVERRIDES[role]
+    elif position in AGE_CURVE:
+        _, old_cutoff = AGE_CURVE[position]
+    else:
+        return None
+    return round(old_cutoff - age, 1)
 
 
 ORDINAL_SUFFIXES = {1: "st", 2: "nd", 3: "rd"}
