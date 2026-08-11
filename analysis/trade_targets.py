@@ -187,8 +187,10 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict
     cornerstone but also isn't part of your actual lineup (e.g. a 3rd QB in a 2-QB-max
     format), plus young surplus, plus any starter the roster **covers from the bench for
     free**. Never a position you yourself have a need at - trading away a WR while WR is
-    your own critical need just moves the shortage, it doesn't fix anything. Biggest chip
-    first, by value over replacement - give-up cost labels each name, it doesn't order them.
+    your own critical need just moves the shortage, it doesn't fix anything. Most value over
+    replacement first - which is printed, because raw value alone makes the order look wrong
+    (a WR at 1,792 outranks a TE at 1,815, since WR replacement level is higher). Give-up
+    cost labels each name, it doesn't order them.
 
     `covered` maps player name -> current production lost if he leaves and the lineup
     refills optimally (`roster_needs.production_lost_without`). Two ways a starter gets in:
@@ -1114,10 +1116,11 @@ def _print_push(push: dict) -> None:
     for pos, entry in push["needs"].items():
         print(f"  need at {pos}: {entry['note']}")
     if push["my_offers"]:
-        print("you could offer (biggest chip first):")
+        print("you could offer (most value over replacement first):")
         for e in push["my_offers"]:
             cost = OFFER_GIVE_UP_COST[team_state.VALUE_BASIS[e["bucket"]]]
-            print(f"  {e['name']} ({e['position']}, value={e['value']}) - give-up cost: {cost}")
+            print(f"  {e['name']} ({e['position']}, value={e['value']}, "
+                  f"{e['value_over_replacement']:+} vs replacement) - give-up cost: {cost}")
     else:
         print("you could offer: no obvious surplus")
     if push.get("picks_to_trade_away"):
