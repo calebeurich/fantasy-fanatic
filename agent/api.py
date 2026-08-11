@@ -94,7 +94,7 @@ def league_overview(league_id: str) -> dict:
     already computes team windows, ranks, needs and cornerstones exactly, so paying
     Claude tokens to *recite* them is both wasteful and the one place confabulation
     can creep in (the model inventing a rank or a player). The agent is for reasoning
-    - "should I trade for him", "why is this team Win-Now" - not for reading a table
+    - "should I trade for him", "why is this team in Push mode" - not for reading a table
     aloud.
 
     Free and fast in practice: `sources/cache.py` means a second view of the same
@@ -116,12 +116,15 @@ def league_overview(league_id: str) -> dict:
         "teams": [
             {
                 "owner": t["owner"],
-                "rank": t["starter_value_rank"],
+                "rank": t["contention_rank"],
+                "starting_production": t["starting_production"],
+                "pct_of_best": t["pct_of_best"],
                 "starter_value": t["starter_value"],
-                "strategy": t["effective_strategy"],
-                "raw_state": t["state"],
-                "is_thin": t["is_thin"],
-                "is_loaded": t["is_loaded"],
+                "window": t["window"],
+                "contention": t["contention"],
+                "trajectory": t["trajectory"],
+                "ascending_pct": t["ascending_pct"],
+                "declining_pct": t["declining_pct"],
                 "owns_next_first": t["owns_next_first"],
                 "cornerstones": [e["name"] for e in t["cornerstones"]],
                 "needs": needs.get(t["owner_id"], {}),

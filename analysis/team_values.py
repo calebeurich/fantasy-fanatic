@@ -56,6 +56,26 @@ def ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
+def tertile(rank: int, count: int) -> str:
+    """Which third of a ranked field a 1-based rank falls in: "top", "middle", "bottom".
+
+    Lives here with `ordinal` and `age_bucket` as a shared pure helper. Both
+    `roster_needs.assess_positions` (is this position group bottom-of-the-league?) and
+    `team_state` (is this team a contender?) cut the league into thirds, and had begun
+    doing it with their own inline arithmetic."""
+    if rank <= count / 3:
+        return "top"
+    if rank > count - count / 3:
+        return "bottom"
+    return "middle"
+
+
+def rank_map(scores: dict, high_is_first: bool = True) -> dict:
+    """{key: score} -> {key: 1-based rank}. Ties break arbitrarily but stably."""
+    order = sorted(scores, key=lambda k: -scores[k] if high_is_first else scores[k])
+    return {key: i for i, key in enumerate(order, start=1)}
+
+
 def team_breakdown(player_ids: list[str], players: dict[str, dict]) -> dict:
     totals = {"ascending": 0, "prime": 0, "declining": 0, "unknown": 0}
     for player_id in player_ids:
@@ -126,7 +146,7 @@ def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty:
 # A pick's slot depends on how good the team it *originally* belongs to turns out to be,
 # so a window maps to a rough draft position. FantasyCalc publishes Early/Mid/Late prices
 # for the next class, which is exactly this distinction already priced by the market.
-STRATEGY_TO_PICK_TIER = {"Rebuilding": "Early", "Middling": "Mid", "Win-Now": "Late"}
+WINDOW_TO_PICK_TIER = {"Rebuild": "Early", "Ascend": "Mid", "Contend": "Late", "Push": "Late"}
 
 
 def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list[int],
@@ -171,7 +191,7 @@ def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list
                 current_owner = traded_map.get((pick_season, round_num, rid), rid)
 
                 # Tier by the ORIGINAL owner's window, not the holder's.
-                tier = STRATEGY_TO_PICK_TIER.get((strategy_by_roster or {}).get(rid))
+                tier = WINDOW_TO_PICK_TIER.get((strategy_by_roster or {}).get(rid))
                 tiered_value = pick_values.get(f"{name} ({tier})") if tier else None
 
                 # Indexed, not setdefault: every owner is a roster in this league, so an

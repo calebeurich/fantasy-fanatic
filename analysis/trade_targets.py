@@ -29,6 +29,21 @@ OFFER_GIVE_UP_COST = {
     "upside": "high - real future value you won't get back",
 }
 
+# The choice an Ascend team is actually facing, stated rather than left implicit. Showing
+# both paths without it - which is what the old "Middling" mode did - hands over two lists
+# and no basis for choosing between them, when the whole reason this window exists is that
+# one of them is cheaper.
+ASCEND_TIMING_NOTE = (
+    "TIMING: both paths are shown because both are live, but they cost differently. "
+    "Pushing now means buying current production at market price - and this roster's own "
+    "ascending players are scheduled to supply that production next season for free, so a "
+    "push is paying a premium for one extra year of contention. Waiting is the cheaper "
+    "default. Push anyway when the price is below market (a seller who has to move a "
+    "piece), when the gap to the top team is small enough that one addition closes it, or "
+    "when a need is count-shaped rather than quality-shaped - an empty starting slot costs "
+    "points every week and no amount of patience fills it."
+)
+
 DEFAULT_MAX_PER_POSITION = 3  # a parameter, not a hard limit - "give me more" means call again with a higher number
 
 # How much of a lineup player's *current* production a replacement must retain before
@@ -161,7 +176,7 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         upgrade_bar = need["weakest_starter"] if need["level"] == "weak" else None
         pos_targets = []
         for other in states:
-            if other["owner_id"] == me["owner_id"] or other["effective_strategy"] != "Rebuilding":
+            if other["owner_id"] == me["owner_id"] or other["window"] != "Rebuild":
                 continue
             for player in other["sellable"]:
                 if player["position"] != pos or not team_state.clears_relevance_floor(player, thresholds):
@@ -179,7 +194,10 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         # buy targets, every one of them prime, and none of the cheaper production it
         # actually needed. Rebuilding/Middling buyers keep the old ordering, since they
         # have no reason to prefer aging players.
-        prefer_production = me["effective_strategy"] == "Win-Now"
+        # Only a *closing* window justifies preferring aging production. A `Contend`
+        # team is good and not declining, so it has no reason to buy the shorter asset,
+        # and an `Ascend` team least of all.
+        prefer_production = me["window"] == "Push"
         pos_targets.sort(key=lambda t: (
             0 if (prefer_production and t["bucket"] == "declining") else 1,
             -t["from_owner_trades"],
@@ -201,7 +219,9 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         result["picks_to_trade_away"] = my_picks
     # Only meaningful for a team actually trying to win now - a rebuilding team wants
     # the future premium it would be selling.
-    if me["effective_strategy"] == "Win-Now":
+    # Converting future premium into trade capital is a Push move: it only makes sense
+    # when the future you're selling is further away than your window.
+    if me["window"] == "Push":
         swaps = find_efficiency_swaps(me["sellable"] + me["tradeable_surplus"])
         # Never at a position you're already short at. The swap frees dynasty value by
         # selling a starter and promoting his backup - fine where you have spare bodies,
@@ -251,7 +271,7 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     situational = [e for e in real_sellable if e["bucket"] != "declining"]
     acquire_targets = []
     for other in states:
-        if other["owner_id"] == me["owner_id"] or other["effective_strategy"] not in ("Win-Now", "Middling"):
+        if other["owner_id"] == me["owner_id"] or other["window"] == "Rebuild":
             continue
         for player in other["tradeable_surplus"]:
             if not team_state.clears_relevance_floor(player, thresholds):
@@ -268,13 +288,13 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     if picks_by_owner:
         pick_targets = []
         for other in states:
-            if other["owner_id"] == me["owner_id"] or other["effective_strategy"] not in ("Win-Now", "Middling"):
+            if other["owner_id"] == me["owner_id"] or other["window"] == "Rebuild":
                 continue
             for pick in picks_by_owner.get(other["roster_id"], []):
                 pick_targets.append({
                     **pick, "from_owner": other["owner"],
                     "from_owner_trades": trade_counts.get(other["owner_id"], 0),
-                    "note": f"{other['owner']} is {other['effective_strategy']} - future picks are worth less to them than to you",
+                    "note": f"{other['owner']} is in {other['window']} mode - future picks are worth less to them than to you",
                 })
         pick_targets.sort(key=lambda t: (-t["from_owner_trades"], -t["value"]))
         if pick_targets:
@@ -290,10 +310,9 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     trade_counts = trade_activity.get_trade_counts(league_id)
     pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.num_teams,
                                               ctx.fmt["ppr"], ctx.fmt["is_dynasty"])
-    # Keyed on effective_strategy (the corrected label - see team_state's thin/loaded
-    # overrides), so a "Rebuilding" team that's actually loaded doesn't get its pick
-    # priced as an early one.
-    strategy_by_roster = {r["roster_id"]: r["effective_strategy"] for r in states}
+    # Keyed on the window, which is where a pick's slot actually comes from: how good the
+    # originating team finishes. Contending teams pick late, rebuilders early.
+    strategy_by_roster = {r["roster_id"]: r["window"] for r in states}
     picks_by_owner = owned_picks(league_id, int(ctx.league["season"]),
                                  ctx.league["settings"]["draft_rounds"],
                                  [r["roster_id"] for r in ctx.rosters], pick_values,
@@ -307,16 +326,16 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     # a team actually trying to win now.
     my_picks = picks_by_owner.get(me["roster_id"], [])
 
-    if me["effective_strategy"] == "Rebuilding":
+    if me["window"] == "Rebuild":
         return {"me": me, "mode": "rebuild", **_pivot_path(me, states, thresholds, trade_counts, picks_by_owner)}
 
-    if me["effective_strategy"] == "Middling":
+    if me["window"] == "Ascend":
         # Hasn't committed to a direction - show what pushing looks like AND what
         # pivoting looks like, rather than silently picking one. Whichever path
         # actually makes sense usually depends on something we don't have yet (the
         # season record - a Middling team two games out of a playoff spot should push,
         # one that's clearly out should pivot even mid-season) - logged in LOGIC.md.
-        return {"me": me, "mode": "middling",
+        return {"me": me, "mode": "ascend", "timing_note": ASCEND_TIMING_NOTE,
                 "push": _buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
                                   max_per_position, pick_values, my_picks),
                 "pivot": _pivot_path(me, states, thresholds, trade_counts, picks_by_owner)}
@@ -326,7 +345,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
                         max_per_position, pick_values, my_picks)}
 
 
-SWAP_ELIGIBLE_STRATEGIES = ("Win-Now", "Middling")
+SWAP_ELIGIBLE_WINDOWS = ("Push", "Contend", "Ascend")
 
 
 # How lopsided the two sides of a mutual swap may be before it stops being a realistic
@@ -372,7 +391,7 @@ def find_mutual_swaps(league_id: str, owner_query: str) -> dict:
 
     me = ctx.pick_owner(owner_query, states)
 
-    if me["effective_strategy"] not in SWAP_ELIGIBLE_STRATEGIES:
+    if me["window"] not in SWAP_ELIGIBLE_WINDOWS:
         # A Rebuilding team isn't trying to fix a starting lineup right now - it's
         # selling current value for youth, which is the pivot path above, not this.
         return {"me": me, "swaps": []}
@@ -382,7 +401,7 @@ def find_mutual_swaps(league_id: str, owner_query: str) -> dict:
 
     swaps = []
     for other in states:
-        if other["owner_id"] == me["owner_id"] or other["effective_strategy"] not in SWAP_ELIGIBLE_STRATEGIES:
+        if other["owner_id"] == me["owner_id"] or other["window"] not in SWAP_ELIGIBLE_WINDOWS:
             continue
         other_needs = needs_by_owner.get(other["owner_id"], {})
         other_surplus = surplus_by_owner.get(other["owner_id"], {})
@@ -424,7 +443,7 @@ def offerable_names(result: dict) -> set[str]:
     that check never has to re-derive the mode-specific logic above itself."""
     if result["mode"] == "rebuild":
         return {e["name"] for e in result["sell_candidates"] + result["situational"]}
-    if result["mode"] == "middling":
+    if result["mode"] == "ascend":
         return ({e["name"] for e in result["push"]["my_offers"]}
                 | {e["name"] for e in result["pivot"]["sell_candidates"] + result["pivot"]["situational"]})
     return {e["name"] for e in result["my_offers"]}
@@ -487,15 +506,18 @@ def _print_report(result: dict) -> None:
         _print_pivot(me, result)
         return
 
-    if result["mode"] == "middling":
-        print(f"{me['owner']}: Middling - hasn't committed to a direction, here's both paths")
+    if result["mode"] == "ascend":
+        print(f"{me['owner']}: Ascend - can push now or arrive cheaper next season")
+        print(f"  {me['window_note']}")
+        print(f"\n  {result['timing_note']}")
         print(f"\n-- if pushing (needs: {_needs_summary(result['push']['needs'])}) --")
         _print_push(result["push"])
         print("\n-- if pivoting --")
         _print_pivot(me, result["pivot"])
         return
 
-    print(f"{me['owner']}: {me['effective_strategy']}, needs: {_needs_summary(result['needs'])}")
+    print(f"{me['owner']}: {me['window']}, needs: {_needs_summary(result['needs'])}")
+    print(f"  {me['window_note']}")
     _print_push(result)
 
 
@@ -517,7 +539,7 @@ def main(league_id: str, owner_query: str = None, max_per_position: int = DEFAUL
     if owner_query:
         result = find_targets(league_id, owner_query, max_per_position)
         _print_report(result)
-        if result["mode"] in ("buy", "middling"):
+        if result["mode"] in ("buy", "ascend"):
             print()
             _print_swaps(find_mutual_swaps(league_id, owner_query)["swaps"])
         return

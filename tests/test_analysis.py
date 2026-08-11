@@ -239,18 +239,36 @@ def _roster(starter_specs):
     return {"owner_id": "me", "players": ids}, players, set(ids)
 
 
-def test_window_classification_follows_the_age_mix():
-    """Win-Now when value skews declining, Rebuilding when it skews ascending.
-    Thresholds (-10 / +30) are organic breakpoints from a real league's distribution."""
-    old_roster, old_players, old_starters = _roster([("RB", 1000), ("RB", 1000)])
-    for info in old_players.values():
-        info["age"] = 30  # RB declines at 27
-    assert team_state.classify(old_roster, old_players, 10_000, old_starters)["state"] == "Win-Now"
+def test_trajectory_measures_current_production_not_dynasty_value():
+    """"Will my lineup get better or worse on its own" has to be measured in the currency
+    that scores points. Weighting by dynasty value double-counts the very thing being
+    measured: ascending players are *priced* on the growth in question, so a young roster's
+    ascending share is inflated by the market's opinion rather than by roster facts.
 
-    young_roster, young_players, young_starters = _roster([("WR", 1000), ("WR", 1000)])
-    for info in young_players.values():
-        info["age"] = 22  # WR ascends below 25
-    assert team_state.classify(young_roster, young_players, 10_000, young_starters)["state"] == "Rebuilding"
+    Here the young player is worth far more in dynasty terms but produces less right now,
+    so production-weighted trajectory reads mildly rising where value-weighted would read
+    overwhelmingly so."""
+    roster, players, starters = _roster([("WR", 9000), ("WR", 1000)])
+    players["0"] |= {"age": 22, "redraft_value": 1000}   # ascending prospect, big price
+    players["1"] |= {"age": 30, "redraft_value": 1000}   # declining vet, same production
+
+    result = team_state.classify(roster, players, 10_000, starters)
+    assert result["ascending_pct"] == 50 and result["declining_pct"] == 50
+    assert result["trajectory_score"] == 0, "equal production means a flat trajectory"
+    assert result["starting_production"] == 2000
+
+
+def test_window_needs_both_axes_not_either_one():
+    """The whole point of the two-axis model: neither axis alone determines the answer.
+    A falling roster is Push if it can compete and Rebuild if it can't; a fringe roster is
+    Ascend if rising and Rebuild if not."""
+    assert team_state.window_for("contender", "falling") == "Push"
+    assert team_state.window_for("contender", "rising") == "Contend"
+    assert team_state.window_for("contender", "steady") == "Contend"
+    assert team_state.window_for("fringe", "rising") == "Ascend"
+    assert team_state.window_for("fringe", "falling") == "Rebuild"
+    assert team_state.window_for("also-ran", "rising") == "Rebuild", (
+        "young and genuinely bad is still a rebuild - being young doesn't make you close")
 
 
 def test_offer_pool_excludes_starters_but_keeps_equivalent_bench_players():
@@ -276,12 +294,12 @@ def test_offerable_names_covers_every_find_targets_mode():
     a mode returning an empty set would silently ban every player on the roster."""
     buy = {"mode": "buy", "my_offers": [{"name": "A"}]}
     rebuild = {"mode": "rebuild", "sell_candidates": [{"name": "B"}], "situational": [{"name": "C"}]}
-    middling = {"mode": "middling",
+    ascend = {"mode": "ascend",
                 "push": {"my_offers": [{"name": "D"}]},
                 "pivot": {"sell_candidates": [{"name": "E"}], "situational": [{"name": "F"}]}}
     assert trade_targets.offerable_names(buy) == {"A"}
     assert trade_targets.offerable_names(rebuild) == {"B", "C"}
-    assert trade_targets.offerable_names(middling) == {"D", "E", "F"}
+    assert trade_targets.offerable_names(ascend) == {"D", "E", "F"}
 
 
 def test_missing_next_first_reads_differently_by_window():
@@ -290,17 +308,20 @@ def test_missing_next_first_reads_differently_by_window():
     pick" - in the same answer that correctly told it to spend picks aggressively. Having
     spent that pick is the window working as intended; it only hurts a rebuilder, who
     loses the one payoff for a bad season."""
-    contender = team_state.next_first_note(False, "Win-Now")
-    rebuilder = team_state.next_first_note(False, "Rebuilding")
+    contender = team_state.next_first_note(False, "Push")
+    rebuilder = team_state.next_first_note(False, "Rebuild")
 
     assert "not a concern" in contender.lower()
     assert "not a reason to trade back" in contender.lower()
-    assert "a real problem" in rebuilder.lower()
+    assert "a real constraint" in rebuilder.lower()
     assert contender != rebuilder, "the same fact must not read the same way in both windows"
-    assert "own" in team_state.next_first_note(True, "Rebuilding").lower()
+    assert "own" in team_state.next_first_note(True, "Rebuild").lower()
+    # It lowers the RETURN on pivoting rather than removing the option - a contender with
+    # real current production can still sell, it just gets back less than it gives up.
+    assert "return on pivoting" in contender.lower()
 
 
-def test_age_mix_ships_with_an_explanation_not_a_bare_number():
+def test_window_ships_with_an_explanation_not_a_bare_number():
     """Regression guard for a real confabulation: the field was once emitted as a bare
     {"diff": -11}, and the model reliably invented meanings for it - "below their
     expected win total", "underperforming by 25 points" - none of which exist, least of
@@ -310,12 +331,12 @@ def test_age_mix_ships_with_an_explanation_not_a_bare_number():
     for info in players.values():
         info["age"] = 30
     result = team_state.classify(roster, players, 10_000, starters)
-
     assert "diff" not in result, "bare unlabelled 'diff' must not come back"
-    assert result["age_mix_score"] < 0
-    note = result["age_mix_note"].lower()
-    assert "age-composition" in note
-    assert "says nothing about wins" in note, "the note must rule out the wrong reading"
+
+    note = team_state.window_note("Push", contention_rank=4, num_teams=12,
+                                  pct_of_best=80, asc_pct=3, dec_pct=23).lower()
+    assert "4 of 12" in note and "80%" in note, "the measurements that produced it"
+    assert "no wins or points scored" in note, "the note must rule out the wrong reading"
 
 
 def test_projected_starters_ignores_the_live_snapshot():
@@ -405,10 +426,10 @@ def test_win_now_buyer_sees_production_priced_targets_first():
     it. A real Win-Now team was handed six buy targets, every one prime."""
     # _buy_path also builds the offer pool, so `me` needs those lists even though this
     # test only asserts on target ordering.
-    me = {"owner_id": "me", "effective_strategy": "Win-Now", "sellable": [], "tradeable_surplus": []}
+    me = {"owner_id": "me", "window": "Push", "sellable": [], "tradeable_surplus": []}
     thresholds = {"WR": 100}
     seller = {
-        "owner_id": "them", "owner": "them", "effective_strategy": "Rebuilding",
+        "owner_id": "them", "owner": "them", "window": "Rebuild",
         "sellable": [
             {"name": "PrimeGuy", "position": "WR", "value": 4000, "bucket": "prime", "is_starter": False},
             {"name": "AgingGuy", "position": "WR", "value": 2000, "bucket": "declining", "is_starter": False},
@@ -469,7 +490,7 @@ def test_efficiency_swap_target_reaches_the_offer_pool():
     that's the finding - so it must join the pool, carrying its reasoning."""
     thresholds = {"QB": 2131}
     me = {
-        "owner_id": "me", "effective_strategy": "Win-Now",
+        "owner_id": "me", "window": "Push",
         "sellable": [
             {"name": "QB2", "position": "QB", "value": 2728, "redraft_value": 2744,
              "bucket": "prime", "is_starter": True},
@@ -522,7 +543,7 @@ def test_pick_slot_follows_the_original_team_not_the_holder(monkeypatch):
                    "2027 1st (Mid)": 2955, "2027 1st (Late)": 2263}
     owned = team_values.owned_picks(
         "L", season=2026, draft_rounds=1, roster_ids=[1, 2], pick_values=pick_values,
-        strategy_by_roster={1: "Win-Now", 2: "Rebuilding"},
+        strategy_by_roster={1: "Push", 2: "Rebuild"},
     )
     # Roster 1 (a contender) acquired roster 2's (a rebuilder's) first.
     acquired = next(p for p in owned[1] if p["originally"] == 2)
@@ -555,11 +576,11 @@ def test_rebuilder_is_pointed_at_picks_held_by_contenders():
     rebuilding team isn't going anywhere and shouldn't be suggested."""
     me = {"owner_id": "me", "roster_id": 1, "sellable": [], "tradeable_surplus": []}
     states = [
-        me | {"owner": "me", "effective_strategy": "Rebuilding"},
+        me | {"owner": "me", "window": "Rebuild"},
         {"owner_id": "win", "roster_id": 2, "owner": "Contender",
-         "effective_strategy": "Win-Now", "tradeable_surplus": []},
+         "window": "Push", "tradeable_surplus": []},
         {"owner_id": "reb", "roster_id": 3, "owner": "OtherRebuild",
-         "effective_strategy": "Rebuilding", "tradeable_surplus": []},
+         "window": "Rebuild", "tradeable_surplus": []},
     ]
     picks = {
         2: [{"pick": "2027 1st", "value": 2853, "round": 1, "season": 2027, "originally": 2}],
@@ -575,7 +596,7 @@ def test_rebuilder_pick_targets_are_empty_without_pick_data():
     """No pick data must mean no suggestions, not an empty-looking key that reads as
     'this team has no picks available'."""
     me = {"owner_id": "me", "roster_id": 1, "owner": "me",
-          "effective_strategy": "Rebuilding", "sellable": [], "tradeable_surplus": []}
+          "window": "Rebuild", "sellable": [], "tradeable_surplus": []}
     out = trade_targets._pivot_path(me, [me], thresholds={}, trade_counts={}, picks_by_owner=None)
     assert "picks_to_acquire" not in out
 
@@ -596,8 +617,8 @@ def _swap_league(monkeypatch, needs, surplus):
     """A two-team Win-Now league with the given needs/surplus, so find_mutual_swaps can be
     exercised without network. Both teams are swap-eligible; the strategy gate and the
     owner lookup are covered elsewhere."""
-    states = [{"owner_id": "me", "owner": "Me", "roster_id": 1, "effective_strategy": "Win-Now"},
-              {"owner_id": "you", "owner": "You", "roster_id": 2, "effective_strategy": "Win-Now"}]
+    states = [{"owner_id": "me", "owner": "Me", "roster_id": 1, "window": "Push"},
+              {"owner_id": "you", "owner": "You", "roster_id": 2, "window": "Push"}]
     monkeypatch.setattr(team_state, "classify_league", lambda _: states)
     monkeypatch.setattr(roster_needs, "league_needs", lambda _: needs)
     monkeypatch.setattr(roster_needs, "league_surplus", lambda _: surplus)

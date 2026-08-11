@@ -30,7 +30,13 @@ async def case_team_window() -> None:
         verbose=False,
     )
     assert "get_team_state" in " ".join(_tool_names(result)), f"didn't call get_team_state: {_tool_names(result)}"
-    assert "win-now" in result["text"].lower(), f"expected Win-Now in response: {result['text']}"
+    # Asserted against the production label set rather than one hardcoded string, so this
+    # tracks team_state instead of going stale the next time a window is renamed - and so
+    # it can't pass on a window this team isn't actually in.
+    from analysis import team_state
+    expected = next(t["window"] for t in team_state.classify_league(DYNASTY_LEAGUE)
+                    if t["owner"] == "dezdroppedit27")
+    assert expected.lower() in result["text"].lower(),         f"expected window {expected!r} in response: {result['text']}"
     print(f"case_team_window: PASS (${result['cost_usd']:.4f}, {result['num_turns']} turns)")
 
 

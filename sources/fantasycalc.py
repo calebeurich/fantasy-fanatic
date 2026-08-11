@@ -30,7 +30,26 @@ def get_players(num_qbs: int, num_teams: int, ppr: float, is_dynasty: bool = Tru
 
     The format parameters that reach the API are `isDynasty`, `numQbs`, `numTeams` and
     `ppr`; `numQbs` has two settings, 1 and >=2 (see `sleeper.starting_qbs`). TE premium
-    is applied locally - see `TEP_MULTIPLIER`."""
+    is applied locally - see `TEP_MULTIPLIER`.
+
+    **`ppr` is a flat per-position scalar, and a nearly-invisible one.** Measured 0 PPR ->
+    1.0 PPR: RB x0.9943, WR x1.0180, TE x1.0232, QB x1.0114, each constant across the whole
+    position to four decimals. So the single largest scoring setting in fantasy football
+    moves RB values by 0.6%.
+
+    It also cannot distinguish receiving backs from early-down backs, which is what full
+    PPR most changes:
+
+        Christian McCaffrey   4,462 -> 4,437   x0.9944
+        Derrick Henry         2,995 -> 2,978   x0.9943
+
+    A pure receiving back and a pure rushing back move identically. In a real full-PPR
+    league McCaffrey's edge over Henry is far larger than in standard scoring, and none of
+    that is in these numbers. Nothing to fix at this layer - there is no per-player PPR
+    data here to apply, and inventing a multiplier off `player_roles.pass_catching_rb`
+    would be a guessed heuristic with nothing to calibrate against (unlike TEP, where
+    FantasyCalc's own UI supplied the calibration). Recorded so the `ppr` passthrough
+    isn't mistaken for format precision it doesn't have."""
     params = {
         "isDynasty": str(is_dynasty).lower(),
         "numQbs": num_qbs,

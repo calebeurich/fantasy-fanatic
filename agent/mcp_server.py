@@ -38,13 +38,29 @@ def check_league_format(league_id: str) -> dict:
 
 @mcp.tool()
 def get_team_state(league_id: str, owner_name: str = None) -> dict:
-    """Win-Now / Middling / Rebuilding classification, with each team's cornerstones
+    """Strategic window per team, with each team's cornerstones
     (long-term foundation), sellable players (real trade chips, split declining=urgent
     vs prime=situational), and tradeable surplus (young non-core depth). Pass
     owner_name for a question about one team (much smaller result, and this IS the
     authoritative classification - don't re-derive a team's window from
     get_roster_detail instead). Omit owner_name only when you actually need every
-    team, e.g. comparing teams or finding trade partners."""
+    team, e.g. comparing teams or finding trade partners.
+
+    The `window` is one of four, derived from two measured axes - `contention` (this
+    team's CURRENT starting production, ranked against the league) and `trajectory`
+    (how much of that production comes from ascending vs declining players):
+
+      Push    - contender whose roster declines if it waits. Buy production, spend picks.
+      Contend - contender that is steady or rising. No clock; don't pay premiums.
+      Ascend  - fringe now but rising. Can push, but its own young players supply next
+                season's production for free, so pushing costs a premium. Both paths.
+      Rebuild - anything else. Sell decline, accumulate youth and picks.
+
+    Every row carries `window_note`, which states the measurements behind the label
+    (rank, % of the league's best lineup, ascending/declining shares). Use that wording -
+    do NOT describe these as records, wins, or points scored; no games have been played.
+    `starter_value` is dynasty value and answers a different question ("what is this
+    roster worth"); `starting_production` is what decides the window."""
     teams = team_state.classify_league(league_id)
     if owner_name:
         teams = [t for t in teams if owner_name.lower() in t["owner"].lower()]
@@ -72,11 +88,14 @@ def get_roster_needs(league_id: str) -> dict:
 
 @mcp.tool()
 def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3) -> dict:
-    """Trade recommendations for one team: buy targets if Win-Now, sell/acquire
-    targets if Rebuilding, or both paths (labeled push/pivot) if Middling.
+    """Trade recommendations for one team, shaped by its window (see get_team_state):
+    buy targets for Push/Contend, sell and acquire targets for Rebuild, or BOTH paths
+    (labeled push/pivot) for Ascend. An Ascend result also carries "timing_note",
+    explaining why the two paths cost differently - surface that reasoning rather than
+    just listing both sets of names.
 
     Also returns draft picks, in the direction that team should be moving them:
-    "picks_to_trade_away" for a Win-Now team and "picks_to_acquire" for a Rebuilding one.
+    "picks_to_trade_away" for a contender and "picks_to_acquire" for a rebuilder.
     Picks are currency, not production - a first becomes a rookie at the next offseason's
     draft, which is another upside asset and the opposite of what a contender needs, so
     their value to a contender is only in what they can be traded FOR. Player entries carry
@@ -91,11 +110,13 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
 
 @mcp.tool()
 def get_mutual_swaps(league_id: str, owner_name: str) -> dict:
-    """Two-way trade fits between this team and another Win-Now/Middling team, where
+    """Two-way trade fits between this team and another team still trying to win, where
     each side has a positional surplus (real spare starting-caliber depth) that's the
     other's need - both teams improve, neither gives up a core piece. Different from
-    get_trade_targets, which only matches this team against Rebuilding teams' sell
-    candidates in one direction. Use this when the question is about trading with
+    get_trade_targets, which only matches this team against rebuilding teams' sell
+    candidates in one direction. Each swap carries a "balance" block with both sides'
+    totals - the two are checked to be of comparable value, but this is a shape that
+    could work, not a priced offer. Use this when the question is about trading with
     another specific contender, or "how do I improve without giving up my best guys."""
     return trade_targets.find_mutual_swaps(league_id, owner_name)
 

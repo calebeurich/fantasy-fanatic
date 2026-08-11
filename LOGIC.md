@@ -120,6 +120,27 @@ where the last startable QB2s go - a flat scalar cannot express that, so the mar
 is probably worth more than these values say. Picks are the one thing that genuinely
 varies, which makes sense: a pick's worth depends on the player pool it converts into.
 
+**`ppr` is a flat per-position scalar too, and a nearly-invisible one.** Measured 0 PPR
+-> 1.0 PPR: RB x0.9943, WR x1.0180, TE x1.0232, QB x1.0114, each constant across its whole
+position to four decimals. The single largest scoring setting in fantasy football moves RB
+values by 0.6%.
+
+Worse, it cannot distinguish a receiving back from an early-down back, which is precisely
+what full PPR most changes:
+
+| player | 0 PPR | 1.0 PPR | ratio |
+|---|---|---|---|
+| Christian McCaffrey | 4,462 | 4,437 | **x0.9944** |
+| Derrick Henry | 2,995 | 2,978 | **x0.9943** |
+
+A pure receiving back and a pure between-the-tackles back move identically. In a real
+full-PPR league McCaffrey's edge over Henry is far larger than in standard scoring, and
+none of that is in these numbers. Nothing to fix at this layer: there's no per-player PPR
+data here to apply, and inventing a multiplier off `player_roles.pass_catching_rb` would be
+a guessed heuristic with nothing to calibrate against - unlike TEP, where FantasyCalc's own
+UI supplied the calibration. Recorded so the `ppr` passthrough isn't mistaken for format
+precision it doesn't have.
+
 **TE premium is applied by FantasyCalc in the browser, not on the server.** Their site
 only ever requests `tep=none`; the API 404s on every other `tep` value. Selecting TEP+ or
 TEP++ on their page fires no network request and rescales the TE column client-side, by a
@@ -221,6 +242,82 @@ pocket passers don't crack 3) - not arbitrary round numbers.
   still has 2+ years left on a real contract is a weaker sell than the age curve implies
   - the NFL team is still paying for the role, not letting it expire. Source: real
   guaranteed money and years remaining from `contracts.py`, not a guess.
+
+## Team windows: two measured axes (`team_state.py`)
+
+A team's window comes from two things that are actually measured, not from age alone.
+
+**Axis 1 - contention: can this team compete *this season*?** The total **redraft** value
+of its projected starting lineup, ranked against the league.
+
+**Axis 2 - trajectory: where does the roster go on its own?** Ascending minus declining
+share of that same current production.
+
+Both are cut into league tertiles (`team_values.tertile`), so neither axis carries a
+constant tuned to one league. The raw numbers - rank, % of the league's best lineup,
+ascending/declining shares - ship in `window_note` alongside the label.
+
+### Why this replaced the age-only model
+
+The predecessor read Win-Now / Middling / Rebuilding purely off the age split, then bolted
+on two overrides to fix the answers age got wrong: `is_thin` ("bottom-third starter value
+with barely any cornerstones") and `is_loaded` ("top-third but reads Rebuilding"). Both
+were crude proxies for a missing contention axis, and measuring contention properly
+subsumes them exactly - **two special cases deleted, one honest axis added.**
+
+And the contention proxy those overrides used was the recurring bug in this project one
+more time: it ranked the league by **dynasty** starter value, which prices future seasons
+that score no points now. Swapping to redraft moved teams four and five places on two real
+leagues:
+
+| team | dynasty rank | production rank | reads |
+|---|---|---|---|
+| dezdroppedit27 | 8th of 12 | **4th** (80% of the best lineup) | old, but genuinely close |
+| bergenjay | 2nd of 12 | **6th** (75%) | price is mostly potential |
+| tchoezin (league 2) | 4th of 12 | **9th** (53%) | 87% of production is ascending |
+| mgibbons612 (league 2) | 10th of 12 | **6th** (62%) | 40% declining, better than it looked |
+
+The first row is the case that motivated the change - a manager who described his own team
+as *"close, not just old and bad"* was being told he was mid-pack by a metric that
+discounted him for being old.
+
+**Trajectory is measured on production, not dynasty value**, for a related reason. Dynasty
+value would double-count the very effect being measured: ascending players are *priced* on
+the growth in question, so weighting by it inflates every young roster's ascending share
+and reports the market's opinion back as though it were a roster fact.
+
+### The four windows
+
+- **`Push`** - contender whose roster is falling. The window is open and closing on its
+  own, so waiting costs value. Buy production, spend picks. Pivoting stays *available*, it
+  just returns poorly: the production making the team competitive is priced on
+  already-realized value, so selling it converts a lot of what wins games into
+  comparatively little dynasty value. Being decent now is itself the argument against
+  tearing down.
+- **`Contend`** - contender that is steady or rising. Good now with no clock, so nothing
+  needs buying at a premium and nothing needs selling.
+- **`Ascend`** - fringe now, rising. Both paths are shown *with the cost difference stated*
+  (`ASCEND_TIMING_NOTE`), which is the whole reason the window exists: this roster's own
+  ascending players supply next season's production for free, so pushing now pays a market
+  premium for one extra year of contention. Waiting is the cheaper default; push anyway
+  when the price is below market, when one addition closes the gap to the top, or when a
+  need is *count*-shaped - an empty starting slot costs points every week and no amount of
+  patience fills it. The old "Middling" mode handed over two lists and no basis to choose.
+- **`Rebuild`** - anything else. Sell what's declining, accumulate youth and picks.
+
+Downstream routing follows the window rather than a parallel vocabulary: `prefer_production`
+and `find_efficiency_swaps` are **Push-only** (converting future premium into capital only
+makes sense when the future you're selling is further out than your window), sellers are
+`Rebuild` teams, and `WINDOW_TO_PICK_TIER` prices picks by where the originating team
+finishes.
+
+### Owning your own next 1st is a constraint on the pivot, not a fourth tier
+
+Tanking only pays if you hold the pick your bad season earns. Without it, a losing season
+buys nothing, so the case for selling has to stand on trade returns alone. That **lowers
+the return on pivoting rather than removing the option** - and it doesn't change the
+window, since a rebuild is still a rebuild (you acquire young assets by trade instead of by
+finishing last). So it ships as a note. Both real leagues have several teams in this spot.
 
 ## Team window classification (`team_state.py`)
 
