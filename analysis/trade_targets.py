@@ -14,7 +14,7 @@ from sources import fantasycalc
 
 from . import team_state, roster_needs, trade_activity, prior_season
 from .league import context
-from .team_values import owned_picks, pick_equivalent, now_premium_bar
+from .team_values import owned_picks, pick_equivalent, now_premium_bar, age_bucket
 
 # Same VALUE_BASIS classification (team_state.py) drives both sides of a trade, just
 # phrased for who's on which side of it.
@@ -115,7 +115,18 @@ MIN_VALUE_FREED = 300
 
 
 def _with_trade_note(entry: dict, other: dict, trade_counts: dict[str, int]) -> dict:
-    return {**entry, "from_owner": other["owner"], "from_owner_trades": trade_counts.get(other["owner_id"], 0)}
+    # `is_starter` is a claim about *value* - the best lineup this roster could field - and
+    # on a rebuilding team it is not a claim about intent. A team openly tanking is not
+    # trying to start anybody; its "starter" is just its least-bad player at the position.
+    # Without saying so, a buy target reads as "you'd have to prise away someone he's
+    # relying on", which inverts the actual conversation: those are the players he most
+    # wants to convert into picks.
+    starter_note = ({"starter_caveat": (
+        f"Listed as a starter for {other['owner']}, but they are rebuilding - that reflects "
+        f"his value on that roster, not that the owner is trying to win with him.")}
+        if entry.get("is_starter") and other["window"] == "Rebuild" else {})
+    return {**entry, "from_owner": other["owner"],
+            "from_owner_trades": trade_counts.get(other["owner_id"], 0), **starter_note}
 
 
 def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict],
@@ -315,6 +326,66 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
             })
     plausible.sort(key=lambda t: -t["production_per_cost"])
     return plausible
+
+
+DEPTH_NOTE = (
+    "DEPTH, NOT NEEDS. Each of these is a player who does not crack this lineup today but "
+    "would step straight into it if one starter at his position were out - which byes "
+    "guarantee and injuries make likely. They are listed because every one of them sits "
+    "BELOW the trade-relevance floor, meaning they are cheap by definition and invisible to "
+    "the buy targets above. Treat them as sweeteners and insurance: worth a late pick or a "
+    "spare body, never worth a real asset, and never a substitute for filling an actual "
+    "need. Cheapest first, because at this tier price is the entire point."
+)
+
+DEPTH_LIMIT = 6
+
+
+def _depth_adds(me_roster: dict, ctx, states: list[dict], thresholds: dict[str, float],
+                my_starters: set[str], already: set[str]) -> list[dict]:
+    """Cheap bodies on rebuilding rosters who would start for me if one player above them
+    went down. The complement of `_buy_path`, not an extension of it.
+
+    **Sourced from below the relevance floor on purpose.** That floor is what makes a player
+    a real trade target, so everything here failed it and is therefore invisible to the buy
+    path by construction - the two lists cannot overlap or compete. The live case that
+    forced this missed by *3 dynasty points* on a roster only two deep at his position, and
+    a rule that answers "not worth trading for" to a body that would start next week is
+    wrong in a way no threshold tuning fixes.
+
+    Needs are binary and that is the gap: a position is a hole or it is fine, so a team
+    starting five receivers and a team starting three look identical at WR once both are
+    filled, even though only one of them is a single absence from an empty slot. Depth is a
+    third state, and deliberately a weak one - the note tells the caller not to overpay,
+    because the failure mode here is paying real value for insurance."""
+    rebuilders = {s["owner_id"]: s["owner"] for s in states if s["window"] == "Rebuild"}
+    adds = []
+    for roster in ctx.rosters:
+        owner = rebuilders.get(roster["owner_id"])
+        if owner is None:
+            continue
+        for player_id in roster["players"] or []:
+            info = ctx.players.get(player_id)
+            if not info or not info.get("value") or info["name"] in already:
+                continue
+            entry = {**info, "bucket": age_bucket(info["position"], info.get("age"),
+                                                  info.get("usage_role"))}
+            if team_state.clears_relevance_floor(entry, thresholds):
+                continue  # a real trade target - the buy path already owns him
+            if not roster_needs.would_start_if_one_out(me_roster, ctx.players, player_id,
+                                                      my_starters, ctx.lineup_dedicated,
+                                                      ctx.lineup_flex):
+                continue
+            adds.append({"name": info["name"], "position": info["position"],
+                         "value": info["value"], "redraft_value": info.get("redraft_value"),
+                         "age": info.get("age"), "bucket": entry["bucket"],
+                         "from_owner": owner,
+                         "note": (f"Would start for you if your weakest {info['position']} "
+                                  f"were out. Below the trade-relevance floor "
+                                  f"({round(thresholds[info['position']]):,} at "
+                                  f"{info['position']}), so the price should be nominal.")})
+    adds.sort(key=lambda a: a["value"])
+    return adds[:DEPTH_LIMIT]
 
 
 def _conversion_candidates(me: dict, premium_bars: dict[str, float]) -> list[dict]:
@@ -662,6 +733,15 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
               **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
                           max_per_position, pick_values, my_picks, prior,
                           premium_bars, covered)}
+
+    # Depth is a third state alongside need and not-need: cheap bodies who'd start if one
+    # player above them went down. Sourced below the relevance floor so it can't compete
+    # with the buy targets - see _depth_adds.
+    depth = _depth_adds(my_roster, ctx, states, thresholds, my_starters,
+                        {t["name"] for t in result.get("targets", [])})
+    if depth:
+        result["depth_adds"] = depth
+        result["depth_note"] = DEPTH_NOTE
 
     # Additive on purpose - `window` is untouched. A contender tilting ascending contends
     # whichever path it takes, so the label is right either way and only the tactics differ.

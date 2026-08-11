@@ -318,6 +318,47 @@ def test_offer_pool_lets_a_push_team_offer_an_ascending_starter():
     assert next(e for e in pushing if e["name"] == "Rising")["lineup_cost"] == 420
 
 
+def test_depth_is_measured_by_refilling_the_lineup_not_by_counting():
+    """Needs are binary, so a team starting five receivers and one starting three look
+    identical at WR once both are filled - even though only one is a single absence from an
+    empty slot. `would_start_if_one_out` tells them apart by actually removing the weakest
+    starter at the position and refilling.
+
+    Both rosters below hold the same candidate. The deep one has better bodies behind the
+    starter, so he never sees the field and is not depth for them; the thin one has nothing,
+    so he is. This is the real reason a live candidate was correctly refused: he was fifth
+    at his position, not second."""
+    slots, flex = {"RB": 1, "WR": 1}, [("RB", "WR")]
+    players = {
+        "rb1": {"name": "RB1", "position": "RB", "redraft_value": 900, "value": 900},
+        "rb2": {"name": "RB2", "position": "RB", "redraft_value": 600, "value": 600},
+        "wr1": {"name": "WR1", "position": "WR", "redraft_value": 800, "value": 800},
+        "wr2": {"name": "WR2", "position": "WR", "redraft_value": 500, "value": 500},
+        "cand": {"name": "Cand", "position": "RB", "redraft_value": 200, "value": 200},
+    }
+    # More bodies than slots on both, so the flex is genuinely contested - otherwise
+    # everyone starts and the test passes for the wrong reason.
+    deep = {"players": ["rb1", "rb2", "wr1", "wr2"]}
+    thin = {"players": ["rb1", "wr1", "wr2"]}
+
+    deep_starters = roster_needs.projected_starters(deep, players, slots, flex)
+    thin_starters = roster_needs.projected_starters(thin, players, slots, flex)
+    assert not roster_needs.would_start_if_one_out(
+        deep, players, "cand", deep_starters, slots, flex), "RB2 covers it - not depth here"
+    assert roster_needs.would_start_if_one_out(
+        thin, players, "cand", thin_starters, slots, flex), "nothing behind the starter"
+
+
+def test_depth_needs_someone_to_be_behind():
+    """An empty position is a *need*, handled elsewhere and with a different fix. Returning
+    True here would double-report it as cheap insurance and invite filling a hole with a
+    body nobody wants."""
+    slots, flex = {"RB": 1}, []
+    players = {"cand": {"name": "Cand", "position": "RB", "redraft_value": 200, "value": 200}}
+    assert not roster_needs.would_start_if_one_out({"players": []}, players, "cand",
+                                                    set(), slots, flex)
+
+
 # --------------------------------------------------------------------- offerable names
 
 def test_offerable_names_covers_every_find_targets_mode():

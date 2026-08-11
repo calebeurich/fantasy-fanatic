@@ -1739,17 +1739,6 @@ deliberately avoiding.
   FantasyCalc's `ppr` parameter is a flat 0.6% per-position scalar that cannot tell a
   receiving back from an early-down back - so a projections source would close two gaps at
   once and is probably the single highest-value external addition left.
-- **Cheap depth has real value and nothing here prices it.** Three separate live cases, all
-  the same gap. (1) A declining WR on a rebuilding team is never suggested because WR isn't
-  a *need* - but the asking team starts **five** receivers (3 dedicated + 2 flex), so that
-  player is one injury or bye from the lineup, and the price is nominal. (2) A cheap RB body
-  fails the relevance floor by **3 dynasty points** and would still be worth having, because
-  that team's RB room is two deep. (3) A depth piece is useful as *trade lubricant* - the
-  thing that makes the other side's pivot work - which is a function of the deal, not of
-  either roster. The current model has exactly two states, need and not-need, and depth is
-  neither. It should be its own weak signal ("would be startable if one player above him
-  were out"), never something worth overpaying for. Interacts with the replacement-bar entry
-  below and with `drop_if_injured`, which measures the same exposure from the other side.
 - **Injury proneness is not modelled and it changes the depth answer.** `drop_if_injured`
   says how bad an absence would be and explicitly disclaims saying how *likely* one is.
   Per-position rates are the obvious first cut, but the sharper version is per-player
@@ -1758,12 +1747,6 @@ deliberately avoiding.
   and injury designations, so this is a real source rather than a guess, and unlike
   projections it needs no new vendor. Would turn exposure from a magnitude into something
   closer to an expected loss.
-- **`is_starter` is meaningless on a tanking roster.** The value-derived lineup marks a
-  best-eleven for every team, including one openly rebuilding, so a "starter" on a team
-  trying to lose is just its least-bad player. Nothing currently distinguishes those, which
-  makes `is_starter` read as a claim about intent when it's only a claim about value. Cheap
-  to caveat where it's reported for a `Rebuild` team; leaving it silent risks the tool
-  saying a rebuilder "would have to give up a starter."
 - **Dynasty rosters are deeper than the replacement-level bar assumes.** Dynasty formats
   carry far more players than redraft, so plenty of low-redraft-value players are
   genuinely starter-relevant in a way a value-derived threshold does not reflect. This
@@ -2015,6 +1998,48 @@ does, and a champion tilting ascending is a team that can afford to sell, trophy
 This tier deliberately does **not** check whether the owner has a replacement behind the
 player. That question - *should* they do this - belongs to `find_efficiency_swaps`. This one
 only answers *is it worth asking*, and `cost_note` says an ask is all it is.
+
+## Depth as a third state (`roster_needs.would_start_if_one_out`, `_depth_adds`)
+
+Needs are binary - a position is a hole or it's fine - and that left depth invisible. A team
+starting **five** receivers (3 dedicated + 2 flex) and one starting three look identical at
+WR once both are filled, though only one is a single absence from an empty slot. Byes are
+certain and injuries close to it, so a body who steps straight in has real value at a
+nominal price, and nothing in the model could say so.
+
+**Measured by refilling, not by counting.** `would_start_if_one_out` removes the *weakest*
+current starter at the candidate's position - the marginal lineup spot, the same choice
+`_injury_drop` makes - adds the candidate, and refills optimally so flex eligibility is
+respected. Counting bodies cannot distinguish the two WR rooms above; a real refill can.
+
+**Sourced from below the relevance floor**, which makes overlap with `_buy_path` impossible
+rather than merely unlikely: that floor is exactly what makes someone a real trade target,
+so everything here failed it and is cheap by construction. The case that forced this missed
+the floor by **3 dynasty points** on a roster its owner described as two deep.
+
+Deliberately a *weak* signal. `DEPTH_NOTE` tells the caller not to overpay, because the
+failure mode is paying a real asset for insurance, and the tier is capped at
+`DEPTH_LIMIT = 6` and sorted cheapest first - at this level price is the entire point.
+
+The live results are the validation. In one league the tool returns nothing for its owner,
+correctly: the candidate he had in mind is *fifth* at his position behind two bench players
+who outproduce him, so he would never see the field. In his other league - the one he
+independently described as "one injury away from disaster" - it returns two backup
+quarterbacks in a superflex format. Different answers from the same rule, both matching what
+the manager already believed.
+
+One limit, stated because it is the obvious next question: this models **one** absence. A
+thin room whose players are individually injury-prone is a different risk, and that needs
+the per-player injury history logged under future work.
+
+### `is_starter` is a claim about value, not intent (`starter_caveat`)
+
+The value-derived lineup marks a best-eleven for every team, including one openly tanking -
+where the "starter" is just its least-bad player at that position. Left unsaid, a buy target
+reads as "you'd have to prise away someone he's relying on", which inverts the actual
+conversation: those are precisely the players a rebuilder most wants to turn into picks.
+Buy targets who start for a `Rebuild` team now carry `starter_caveat` saying so. Presentation
+only - no logic reads `is_starter` differently, because as a *value* claim it was never wrong.
 
 ### Both paths for a contender still rising (`_conversion_candidates`)
 

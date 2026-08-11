@@ -143,6 +143,16 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     report it as indecision or as a downgrade, and do not recommend one path as the answer
     without giving the cost of the other.
 
+    "depth_adds" + "depth_note" are NOT needs and must never be presented as fits. Each is a
+    cheap body who would step into this lineup only if a starter at his position were out -
+    real insurance, since byes are certain and injuries likely, but every one of them sits
+    below the trade-relevance floor. Worth a late pick or a spare body, never a real asset.
+    An empty list is a meaningful answer: it means the roster already covers itself.
+
+    A target carrying "starter_caveat" starts for a REBUILDING team. Do not describe him as
+    someone that owner is relying on - that reflects his value on the roster, not intent,
+    and those players are exactly what a rebuilder wants to convert into picks.
+
     max_per_position caps results per position - call again with a higher number if
     asked for more, rather than assuming this is the full list."""
     return trade_targets.find_targets(league_id, owner_name, max_per_position)

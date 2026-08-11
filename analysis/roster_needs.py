@@ -167,6 +167,38 @@ def _injury_drop(roster: dict, players: dict[str, dict], pos: str, starters: set
     return production_lost_without(roster, players, weakest, starters, dedicated, flex)
 
 
+def would_start_if_one_out(roster: dict, players: dict[str, dict], candidate_id: str,
+                           starters: set[str], dedicated: dict[str, int],
+                           flex: list[tuple[str, ...]]) -> bool:
+    """Would adding this player put him in the lineup once one starter above him is out?
+
+    The mirror of `production_lost_without`, and the missing half of how this project talks
+    about rosters. Needs are binary - a position is a hole or it isn't - and that leaves
+    depth invisible, because a player who doesn't crack the lineup today reads as worth
+    nothing. He isn't: byes are certain and injuries are close to it, so a body who steps
+    straight in when someone goes down has real value at a nominal price.
+
+    "One starter out" rather than "any player out" keeps it honest. Simulated by removing
+    the *weakest* current starter at his position - the marginal lineup spot, same choice
+    `_injury_drop` makes and for the same reason - and refilling optimally, so flex
+    eligibility is respected. A team starting five receivers has a very different sixth-WR
+    picture from one starting three, and only a real refill can tell them apart.
+
+    Deliberately says nothing about price. Whether he's worth acquiring is a separate
+    judgement and an easy one to get wrong in the expensive direction, which is why callers
+    are expected to pair this with "don't overpay" rather than treat it as a need."""
+    position = players[candidate_id]["position"] if candidate_id in players else None
+    if position is None:
+        return False
+    at_position = [p for p in starters if p in players and players[p]["position"] == position]
+    if not at_position:
+        return False  # nothing to be behind - that's a need, and needs are handled elsewhere
+    weakest = min(at_position, key=lambda p: players[p].get("redraft_value") or 0)
+    hypothetical = {**roster,
+                    "players": [p for p in (roster["players"] or []) if p != weakest] + [candidate_id]}
+    return candidate_id in projected_starters(hypothetical, players, dedicated, flex)
+
+
 def production_lost_without(roster: dict, players: dict[str, dict], player_id: str,
                             starters: set[str], dedicated: dict[str, int],
                             flex: list[tuple[str, ...]]) -> float:
