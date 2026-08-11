@@ -292,9 +292,62 @@ def find_efficiency_swaps(roster_entries: list[dict]) -> list[dict]:
     return swaps
 
 
+def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict]) -> dict | None:
+    """What *I* hold that would interest this particular owner, or None if nothing obvious.
+
+    **The gap this closes.** Persuasion targets were ranked purely on production-per-cost and
+    never looked at the other side of the table. On a live roster that put a 1.54x back at the
+    top, held by the one team in the league with **no needs at all** - unattainable - above a
+    1.37x back whose owner had a *critical* need for the exact quarterback the asking team
+    could not play. Every fact was computed; nothing joined them.
+
+    Two ways an owner is interested, and the second matters as much as the first:
+
+    1. **He is short at a position I can offer.** The obvious case.
+    2. **He should be converting aging production, and I hold what he'd convert into.** A team
+       contending now *and* tilting ascending (the `_cliff_case` shape) does not need a
+       position - it needs value that scores this season *and* is still there later. Players
+       carrying both a real redraft price and a non-declining future are exactly that. Missing
+       this reads "he needs nothing, so there's no deal", when the deal is the whole reason
+       his aging starter showed up on the list.
+
+    Deliberately **annotation, not ranking.** Cheap targets from teams already selling need no
+    persuasion at all, and re-sorting this tier by fit would push those low-friction options
+    down in favour of a bigger ask. Two orderings inside one list is a mistake this module has
+    already made once."""
+    offers = [e for e in my_offers if e["position"] in their_needs]
+    if offers:
+        positions = sorted({e["position"] for e in offers})
+        return {"you_could_offer": [e["name"] for e in offers[:3]],
+                "why_it_fits": (f"{other['owner']} has a "
+                                f"{their_needs[positions[0]]['level']} need at "
+                                f"{'/'.join(positions)}, which you can fill from your own "
+                                f"spare pieces - so this is a two-way conversation rather "
+                                f"than asking him to do you a favour.")}
+
+    if other["ascending_pct"] > other["declining_pct"]:
+        # Scores now and is still there later - what a team converting aging production wants.
+        both = sorted((e for e in my_offers
+                       if (e.get("redraft_value") or 0) > 0 and e.get("bucket") != "declining"),
+                      key=lambda e: -(e.get("redraft_value") or 0))
+        if both:
+            return {"you_could_offer": [e["name"] for e in both[:3]],
+                    "why_it_fits": (f"{other['owner']} has no positional hole, so there is "
+                                    f"nothing to fill - but his roster is tilting ascending "
+                                    f"({other['ascending_pct']}% against "
+                                    f"{other['declining_pct']}% declining) while he starts "
+                                    f"aging players, so what he wants is value that scores "
+                                    f"this season and is still there in two. These carry both "
+                                    f"a current price and a future, which is the trade he "
+                                    f"should be making anyway.")}
+    return None
+
+
 def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds: dict[str, float],
                         trade_counts: dict[str, int], prior: dict[str, dict],
-                        premium_bars: dict[str, float]) -> list[dict]:
+                        premium_bars: dict[str, float],
+                        needs_by_owner_id: dict | None = None,
+                        my_offers: list[dict] | None = None) -> list[dict]:
     """Aging production held by teams that **aren't sellers yet** but could be talked into
     it - the tier `_buy_path` structurally cannot see, because it only searches `Rebuild`
     teams.
@@ -346,9 +399,12 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
             why = team_why or _cliff_case(player, other, ratio)
             if why is None:
                 continue
+            fit = _counterparty_fit(other, (needs_by_owner_id or {}).get(other["owner_id"], {}),
+                                    my_offers or [])
             plausible.append({
                 "position": pos,
                 "need_level": need["level"],
+                **(fit or {}),
                 **_with_trade_note(player, other, trade_counts),
                 "production_per_cost": round(ratio, 2),
                 "why_they_might_listen": why,
@@ -603,7 +659,7 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
 
     # Sellers-only search misses the best available production - see _persuasion_targets.
     stretch = _persuasion_targets(me, states, my_needs, thresholds, trade_counts, prior or {},
-                                  premium_bars or {})
+                                  premium_bars or {}, needs_by_owner_id, result["my_offers"])
     if stretch:
         result["persuasion_targets"] = stretch[:max_per_position * 2]
         result["persuasion_note"] = PERSUASION_NOTE

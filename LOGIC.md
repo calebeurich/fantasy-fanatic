@@ -1739,6 +1739,12 @@ deliberately avoiding.
   FantasyCalc's `ppr` parameter is a flat 0.6% per-position scalar that cannot tell a
   receiving back from an early-down back - so a projections source would close two gaps at
   once and is probably the single highest-value external addition left.
+- **Injury rates are reported for players who could never play.** `miss_rate` is attached to
+  every roster row, so a deep bench body with a 44% rate reads as a risk when he was not going
+  to see the field either way - his availability changes nothing. The tool description now
+  says to weigh it only for starters and the bodies immediately behind them, but the data
+  itself doesn't distinguish. `would_start_if_one_out` already answers "could he plausibly
+  reach the lineup" and could gate it properly.
 - **The relevance floor ignores league size and roster depth.** `MIN_RELEVANCE_FRACTION` is a
   flat 0.5 / 0.25 of a leaguewide top-N bar, and neither number knows how many teams there
   are, how deep the benches go, or whether there is a taxi squad. Those settings decide how
@@ -2366,6 +2372,46 @@ guessing had already failed here (four 404s on invented history paths).
 - **`maybeTradeFrequency`** measures how often a player is actually traded - a real liquidity
   measure, and the honest version of the "picks are easier to move" intuition that `pick_share`
   currently reports without weighting.
+
+## Joining facts the tool already had (`_counterparty_fit`)
+
+Persuasion targets were ranked purely on production-per-cost and never looked at the other
+side of the table. On a live roster that put **Derrick Henry (1.54x) first, held by the one
+team in the league with no needs at all** - unattainable - above **Saquon Barkley (1.37x),
+whose owner had a *critical* QB need for the exact quarterback the asking team could not
+play**. Stranded knew about the quarterback. `league_needs` knew about the critical need.
+Persuasion knew about the back. Nothing joined them.
+
+Two ways an owner is interested, and the second is the one that mattered:
+
+1. **He is short at a position I can offer.** The obvious case, and the one that surfaces the
+   Barkley trade.
+2. **He should be converting aging production, and I hold what he'd convert into.** A team
+   contending now *and* tilting ascending - the `_cliff_case` shape - has no positional hole,
+   but wants value that scores this season *and* is still there later. Reading "he needs
+   nothing, so there is no deal" misses the trade that is the entire reason his aging starter
+   appeared on the list. The manager put it exactly: *"shiv may not need a position strictly,
+   but could still get off his old players with generally non-cliff-facing assets."*
+
+**Annotation, not ranking.** Cheap targets from teams already selling need no persuasion at
+all, and re-sorting this tier by fit would push the low-friction options down in favour of a
+bigger ask. Two orderings inside one list is a mistake this module already made once, when
+trade activity outranked value.
+
+### Why this was a tool bug and not a prompting problem
+
+Worth recording, because it cuts against the temptation to fix things in the system prompt.
+The join above was first made **by a human and an assistant sharing a very long session**,
+with every intermediate result in front of them. A single agent run does not have that. It
+calls a handful of tools, gets a handful of JSON blobs, and would have to notice unprompted
+that a stranded QB on one roster answers a critical need on another whose owner holds the
+back it wants - across three separate tool results, none of which references the others.
+
+That is exactly the reasoning a smaller or cheaper orchestrating model will not do reliably,
+and this project's stated position is that a deterministic Python check beats a prompt
+instruction every time. **If two facts have to be combined to make a recommendation
+actionable, the combining belongs in the tool.** The prompt's job is to report what the tool
+found, not to rediscover it.
 
 ## Leverage: what a team could become (`team_state.leverage`)
 

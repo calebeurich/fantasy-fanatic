@@ -152,6 +152,16 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     top entry is often NOT the most valuable player - that is deliberate and worth saying,
     because the cheaper name delivers more of what a contending team is buying.
 
+    Where a persuasion target carries "you_could_offer" and "why_it_fits", LEAD WITH THAT -
+    it names what this team holds that the other owner actually wants, which is the
+    difference between a trade idea and a wish. Note an owner with no positional hole can
+    still be a real partner: a team contending now and tilting ascending wants value that
+    scores this season and lasts, so it may well move an aging starter for it.
+
+    The buy targets above need no persuasion at all. Do not let a bigger persuasion name
+    crowd them out - a smaller player from a team already selling is a far easier trade than
+    talking a contender into changing direction.
+
     "conversion_candidates" + "choice_note" appear only for a contender whose production is
     still tilting ascending. That team has TWO live paths and the answer must present both:
     stack more current production, or convert those aging starters into value matching the
@@ -232,7 +242,12 @@ def get_roster_detail(league_id: str, owner_name: str) -> dict:
     `miss_rate` is **None for unknown, which is not zero**. It needs two seasons of history,
     so most rookies carry None; never read a missing rate as durability. Use it when asked
     about injury risk or depth - a starting lineup that is fine on paper reads differently
-    when two of its starters have missed a third of their weeks."""
+    when two of its starters have missed a third of their weeks.
+
+    **Only material for players who could plausibly reach the lineup.** A high rate on a deep
+    bench player is noise: he wasn't going to play anyway, so his availability changes
+    nothing. Weigh it for starters and for the bodies immediately behind them, and don't
+    report a fringe player's injury history as a roster risk."""
     return roster_detail.get_roster_rows(league_id, owner_name)
 
 

@@ -1007,6 +1007,36 @@ def test_persuasion_includes_a_falling_contender_that_has_not_won():
     assert "not currently a seller" in out[0]["cost_note"], "the ask must carry its price"
 
 
+def test_persuasion_says_what_the_other_owner_would_actually_want():
+    """Ranking on production-per-cost alone put a 1.54x back at the top, held by the one team
+    in the league with **no needs at all**, above a 1.37x back whose owner had a critical need
+    for the exact quarterback the asking team could not play. Every fact was computed; nothing
+    joined them.
+
+    Two ways an owner is interested, and the second is the one that was missing: a team with
+    no positional hole that is contending now *and* tilting ascending doesn't need a position,
+    it needs value that scores this season and is still there later. Saying "he needs nothing,
+    so there's no deal" misses the trade that is the whole reason his aging starter is on the
+    list."""
+    offers = [{"name": "SpareQB", "position": "QB", "redraft_value": 3349, "bucket": "prime"},
+              {"name": "OldTE", "position": "TE", "redraft_value": 600, "bucket": "declining"}]
+
+    short_at_qb = _holder("needy", "Push", "falling", [], asc=10, dec=30)
+    fit = trade_targets._counterparty_fit(
+        short_at_qb, {"QB": {"level": "critical"}}, offers)
+    assert fit["you_could_offer"] == ["SpareQB"] and "critical need at QB" in fit["why_it_fits"]
+
+    # No hole, but rising while starting aging players - wants now-and-later value.
+    rising = _holder("rising", "Contend", "steady", [], asc=26, dec=16)
+    fit = trade_targets._counterparty_fit(rising, {}, offers)
+    assert fit["you_could_offer"] == ["SpareQB"], "the declining TE is not 'still there later'"
+    assert "no positional hole" in fit["why_it_fits"]
+
+    # Aging into its own window with nothing to fill: no obvious fit, and say so.
+    assert trade_targets._counterparty_fit(
+        _holder("aging", "Contend", "steady", [], asc=21, dec=23), {}, offers) is None
+
+
 def test_persuasion_ranks_by_production_per_cost_not_by_value():
     """The trap this exists to avoid. Ranking by dynasty value puts the *more valuable*
     player first, which is backwards for a win-now buyer: the cheaper name delivers more
