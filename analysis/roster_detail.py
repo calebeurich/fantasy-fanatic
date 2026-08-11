@@ -4,7 +4,7 @@ this is what actually makes up that aggregate. Usage: python -m analysis.roster_
 
 import sys
 
-from sources import contracts, injuries
+from sources import contracts, injuries, nflverse_ids
 from .team_values import age_bucket, years_to_decline
 
 
@@ -28,8 +28,10 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
         info = players.get(player_id)
         lineup_role = "starter" if player_id in starter_ids else "bench"
         if info is None:
-            rows.append({"name": f"(unvalued player_id {player_id})", "position": "?", "value": 0,
-                         "age": None, "bucket": "n/a", "usage_role": None, "contract": None,
+            known = nflverse_ids.sleeper_names().get(player_id, {})
+            rows.append({"name": known.get("name") or f"(unknown player_id {player_id})",
+                         "position": known.get("position") or "?", "value": 0,
+                         "age": None, "bucket": "unvalued", "usage_role": None, "contract": None,
                          "years_to_decline": None,
                          "lineup_role": lineup_role,
                          "miss_rate": (miss_rates or {}).get(player_id, {}).get("miss_rate"),
@@ -77,7 +79,7 @@ def main(league_id: str, owner_name: str) -> None:
     for row in result["rows"]:
         age = f"{row['age']:.1f}" if row["age"] is not None else "?"
         bucket = row["bucket"] + (f" ({row['usage_role']})" if row["usage_role"] else "")
-        line = f"  [{row['lineup_role']:<7}] {row['name']:<22} {row['position']:<3} value={row['value']:<6} age={age:<5} {bucket}"
+        line = f"  [{row['lineup_role']:<7}] {row['name']:<24} {row['position']:<3} value={row['value']:<6} age={age:<5} {bucket}"
         if row["contract"]:
             c = row["contract"]
             line += f"  ({c['years_remaining']}yr/${c['guaranteed']:.1f}M gtd)"
