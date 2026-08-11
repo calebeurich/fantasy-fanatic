@@ -117,6 +117,29 @@ MIN_TEAMS_FOR_QUALITY = 4
 # field badly.
 NEED_PRIORITY = {"critical": 0, "top-heavy": 1, "weak": 2}
 
+# **Everything in this module is a win-now measurement**, and about a third of any league is
+# not playing that game. `replacement_thresholds` has always said so in its docstring - "read
+# a rebuilder's positional needs as what a contending version of this roster would be short
+# of, not a to-do list" - and nothing in the output ever said it, so the tool reported a
+# deliberate allocation as a hole.
+#
+# The live case: a manager who stacks receivers and tight ends on purpose (cheaper than QB,
+# and value-insulated compared to RB) and stays light at running back knowingly, because RB
+# value decays fastest. The tool called his RB room `critical`. It is not wrong about the
+# lineup - it is answering a question he isn't asking.
+#
+# Two things flip for a rebuilding team, not one. A *need* becomes descriptive rather than
+# prescriptive. And *exposure* stops being a risk at all: a team not playing for this season
+# loses nothing it wants when a starter goes down, so presenting high exposure as a concern
+# is not merely mistimed, it is backwards.
+REBUILD_LENS = (
+    "NOT A TO-DO. This team is rebuilding, so it is not trying to field the best lineup it "
+    "can this season. Read this as what a CONTENDING version of this roster would be short "
+    "of - useful for valuing the roster, misleading as advice. Being light at a position can "
+    "be a deliberate allocation rather than a hole, and the exposure figure above is not a "
+    "risk to this team: losing a starter costs it nothing it is currently playing for."
+)
+
 
 def _starting_group(roster: dict, players: dict[str, dict], slots: dict[str, int]) -> dict[str, list[float]]:
     """Each position's best `slots[pos]` players by **redraft** value.
@@ -603,9 +626,23 @@ def league_assessment(league_id: str) -> dict[str, dict[str, dict]]:
 
 
 def league_needs(league_id: str) -> dict[str, dict]:
-    """Positional needs for every roster, keyed by owner_id."""
-    return {owner_id: needs_only(assessed)
-            for owner_id, assessed in league_assessment(league_id).items()}
+    """Positional needs for every roster, keyed by owner_id.
+
+    Rebuilding teams' entries are marked `applies_this_season: False` and carry
+    `REBUILD_LENS`, because every number in this module is a win-now measurement and a
+    rebuilder is not playing that game."""
+    from . import team_state
+    windows = {row["owner_id"]: row["window"] for row in team_state.classify_league(league_id)}
+    out = {}
+    for owner_id, assessed in league_assessment(league_id).items():
+        needs = needs_only(assessed)
+        rebuilding = windows.get(owner_id) == "Rebuild"
+        for entry in needs.values():
+            entry["applies_this_season"] = not rebuilding
+            if rebuilding:
+                entry["note"] += f" {REBUILD_LENS}"
+        out[owner_id] = needs
+    return out
 
 
 def league_surplus(league_id: str) -> dict[str, dict]:

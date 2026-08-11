@@ -348,6 +348,20 @@ DEPTH_NOTE = (
     "need. Cheapest first, because at this tier price is the entire point."
 )
 
+# Same cheap bodies, a different reason to want them. For a contender they are insurance
+# against a lineup he is trying to protect; for a rebuilder there is no lineup worth
+# protecting, and the value is that a back who inherits a starting job becomes a real asset
+# to sell. The manager who made this point put it as "one injury to a starter away from
+# relevance" - which is an upside argument, not a depth argument, and the note has to say
+# which or it recommends the right players for a reason that doesn't apply.
+DEPTH_NOTE_REBUILD = (
+    "LOTTERY TICKETS, NOT INSURANCE. Each of these would start for this team if a player "
+    "above him were out - but this team is not protecting a lineup, so that is not the "
+    "point. The point is that a body who inherits a starting role becomes a genuinely "
+    "sellable asset, and at this price he costs a late pick to hold. Cheap upside on a "
+    "roster whose whole plan is accumulating it. Still never worth a real asset."
+)
+
 DEPTH_LIMIT = 6
 
 
@@ -763,7 +777,9 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
 
     def with_extras(result: dict) -> dict:
         if depth:
-            result["depth_adds"], result["depth_note"] = depth, DEPTH_NOTE
+            result["depth_adds"] = depth
+            result["depth_note"] = (DEPTH_NOTE_REBUILD if me["window"] == "Rebuild"
+                                    else DEPTH_NOTE)
         return result
 
     if me["window"] == "Rebuild":

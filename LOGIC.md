@@ -2201,6 +2201,72 @@ exactly how the buy path ended up ranking trade activity above value. It is repo
 caller can weigh runway against price - and it is the input the rebuild-timeline backlog item
 needs, since a roster whose core turns in three years cannot run a four-year teardown.
 
+## Win-now measurements handed to teams that aren't playing (`REBUILD_LENS`)
+
+Everything `roster_needs` computes is a win-now measurement, and about a third of any league
+is not playing that game. `replacement_thresholds` has said so in its docstring since it was
+written - "read a rebuilder's positional needs as what a contending version of this roster
+would be short of, not a to-do list" - and **nothing in the output ever said it**, so the tool
+reported a deliberate allocation as a hole.
+
+The live case: a manager who stacks receivers and tight ends on purpose and stays light at
+running back knowingly. The tool called his RB room `critical`. It is not wrong about the
+lineup; it is answering a question he is not asking.
+
+Two things flip for a rebuilding team, not one:
+
+- **A need becomes descriptive.** Useful for valuing the roster, misleading as advice.
+- **Exposure stops being a risk at all.** A team not playing for this season loses nothing it
+  wants when a starter goes down. Presenting high exposure to a rebuilder as a concern is not
+  merely mistimed, it is backwards - and that had never been said anywhere.
+
+Needs entries now carry `applies_this_season: False` plus `REBUILD_LENS`, and `depth_adds`
+switches note: for a contender those cheap bodies are insurance for a lineup worth
+protecting, for a rebuilder they are lottery tickets, because a back who inherits a starting
+job becomes a sellable asset. Same players, different reason, and the note has to say which
+or it recommends the right thing for a reason that doesn't apply.
+
+## Positional market structure, and the limits of testing an allocation thesis
+
+The same manager's stated strategy is that WR and TE are *cheaper than QB* and more
+value-insulated than RB, so he accumulates there and stays light at running back. Worth
+recording what could and could not be checked, because the first attempt got the reasoning
+wrong.
+
+**Raw dynasty values ARE comparable across positions** - that is the entire premise of a
+trade calculator, one currency for every player. What is *not* comparable across positions is
+the `redraft / dynasty` ratio, since those are two unnormalized scales (see
+`now_premium_bar`). Extending "the ratio isn't cross-comparable" to "the values aren't
+cross-comparable" was simply wrong, and it briefly ruled out a measurement that is perfectly
+sound.
+
+Dynasty cost of the Nth-best player at each position, in a 12-team superflex TE-premium
+league (2 QB slots, 2 RB, 2 WR, 1 TE, 3 flex):
+
+| rank | QB | RB | WR | TE |
+|---|---|---|---|---|
+| 1 | 10,423 | 10,189 | 9,929 | 8,406 |
+| 12 | **4,671** | 3,848 | 4,368 | **2,329** |
+| 24 (replacement) | 2,698 | 2,599 | **3,281** | 2,329 |
+| 36 | 1,285 | 1,663 | 2,118 | 781 |
+| 48 | **291** | 1,317 | 1,784 | 270 |
+
+**The thesis is half right.** TE is genuinely cheap - TE12 costs 2,329 against QB12 at 4,671,
+less than half. But WR is the *most* expensive position at replacement level (3,281), above
+QB, because receivers fill the flex slots too. "WR is cheaper than QB" does not survive
+contact with this league's own market.
+
+The more interesting structure is the **cliff**: QB48 is 291 against WR48 at 1,784. Elite QBs
+cost about what elite receivers cost, and then QB depth simply vanishes. In superflex the
+scarcity is in the tail, not the top - which is a fact about format, not about players, and is
+exactly the kind of thing this tool could report.
+
+**The value-insulation half remains untestable here.** Measuring decay needs the same players
+tracked across time; a cross-section of current values is survivorship-biased, because backs
+who fall off leave the valued pool entirely, so the ones still in it are those who didn't.
+Doing it properly means snapshotting the market periodically - the first persistent state this
+project would own, and a deliberate decision rather than a casual one.
+
 ## Leverage: what a team could become (`team_state.leverage`)
 
 The window model answers *what should this team do with the roster it has*. It had nothing
