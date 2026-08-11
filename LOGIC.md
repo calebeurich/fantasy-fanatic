@@ -1756,6 +1756,23 @@ deliberately avoiding.
   has a state between available and out, and adding one means joining injury designations to
   weekly production - which is also the join that would let severity be measured rather than
   assumed.
+- **The QB age curve may be wrong at both ends, per a domain expert.** `AGE_CURVE["QB"]` is
+  (26, 34), pulled to 31 for a tagged `rushing_qb`. A sports-modelling data scientist argued
+  that a pure pocket passer can hold value to nearly 40 while a rushing QB slows sharply
+  closer to 30 - so the real spread between the two roles is much wider than 34-vs-31, and
+  the pocket end is too pessimistic. This has teeth: it inverts a live sell recommendation.
+  The tool ranked a 31.8-year-old pocket passer as the top sell (highest now-weighting) where
+  he would sell the 28-year-old rushing QB, on the grounds that the market has not priced the
+  rushing decline. Both are defensible and they answer different questions - "who is the
+  market overpaying for now" versus "whose dynasty price erodes fastest" - and only the first
+  is modelled. Not changed on one opinion, but it is the best-argued challenge to a curve
+  constant so far and worth calibrating against real production-by-age data.
+- **Deliberate positional strategy is read as a flaw.** The same manager stacks WR and TE on
+  purpose - cheaper than QB, and value-insulated compared to RB - and stays light at RB
+  knowingly, because RB value decays fastest. The tool reports his RB room as a `critical`
+  need. `replacement_thresholds` already documents that a rebuilder's needs should be read as
+  "what a contending version of this roster would lack", but nothing in the output says so,
+  so a deliberate construction reads as a hole.
 - **A rebuild's timeline isn't checked against the age of its own assets.** The window model
   says rebuild or contend; it never says *how long*. A roster whose best pieces are two
   28-year-old quarterbacks - one of them a rushing QB, whose curve declines at 31 rather than
@@ -2099,6 +2116,46 @@ fringe body who spent one year hurt count as much as a decade-long starter.
 Deliberately shallow: this says *whether* a player was available, never the severity, type,
 or recency of what kept him out, and it forecasts nothing. Weighting depth by injury type and
 expected duration is logged under future work rather than half-built here.
+
+## Leverage: what a team could become (`team_state.leverage`)
+
+The window model answers *what should this team do with the roster it has*. It had nothing
+to say about **how much rope a team has to change that roster**, and collapsing both into
+one label produced a badly wrong read.
+
+The case came from a sports-modelling data scientist describing his own team, in a league
+neither development roster resembles. His roster ranked **9th of 12 in starting production
+and 2nd of 12 in total tradeable value** (every player plus every pick). The tool labelled
+him `also-ran` / `Rebuild`, which a reader hears as "bad". His own summary was that he
+doesn't expect to win, but if the season opens well he has the assets to convert into a
+contender - an option with real value, priced at zero by the model.
+
+| team | production rank | asset rank | reading |
+|---|---|---|---|
+| dkwnsepw | 12 | **1** | convertible |
+| jwall567 | 9 | **2** | convertible |
+| ryann28 | **1** | 8 | mortgaged |
+
+The mirror falls out of the same comparison and is just as real: a team 1st in production and
+8th in assets is winning now on borrowed time with nothing left to reload from.
+
+**Not a fifth window.** `window` says what to do with the current roster; `leverage` says how
+much capacity there is to change it. One number cannot carry both, and making leverage a
+window would force it to - the same reasoning that kept `Contend` singular for a team with
+two live paths. Additive, so nothing downstream that reads `window` changes.
+
+**Tertiles, not a tuned gap** - top third on one axis and not the other, matching how
+contention and trajectory are already cut. Teams whose two ranks agree get nothing, which is
+most of them: 2 to 4 flags per 12-team league across three real leagues.
+
+**Picks are priced flat here, deliberately.** `owned_picks` can price a pick by the window of
+the team it originated from, and the window is what this measure helps describe - letting
+that in would make the label feed its own input.
+
+Independent validation across the other two leagues: it flagged the owner's own teams as
+`mortgaged` in both, matching his unprompted "I'm already all in at this point", and flagged
+a rival as `convertible` that he had separately described as able to push now but more
+efficiently next season.
 
 ## Rebuilding rosters, and five things only a stranger's league exposed
 

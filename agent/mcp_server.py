@@ -60,7 +60,17 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
     (rank, % of the league's best lineup, ascending/declining shares). Use that wording -
     do NOT describe these as records, wins, or points scored; no games have been played.
     `starter_value` is dynasty value and answers a different question ("what is this
-    roster worth"); `starting_production` is what decides the window."""
+    roster worth"); `starting_production` is what decides the window.
+
+    `leverage` and `leverage_note`, when present, describe what a team could BECOME rather
+    than what it is, by comparing `asset_rank` (every player plus every pick it owns) against
+    `contention_rank` (what it starts). "convertible" = a weak lineup sitting on a top-third
+    war chest; that team is not simply bad, it has an unspent option and is usually right to
+    hold and see how the season opens before committing. "mortgaged" = a strong lineup with
+    little behind it; this season is close to the whole return and reloading will be hard.
+    Raise this whenever asked whether a team is good, or what it should do - a `Rebuild`
+    label on a convertible team badly understates it. Most teams get neither, which means
+    their two ranks agree."""
     teams = team_state.classify_league(league_id)
     if owner_name:
         teams = [t for t in teams if owner_name.lower() in t["owner"].lower()]

@@ -349,6 +349,26 @@ def test_depth_is_measured_by_refilling_the_lineup_not_by_counting():
         thin, players, "cand", thin_starters, slots, flex), "nothing behind the starter"
 
 
+def test_leverage_separates_what_a_team_is_from_what_it_could_become():
+    """The state the window model could not express, found by reading a stranger's league.
+    A roster ranked 9th of 12 in starting production and 2nd in total tradeable value was
+    labelled `also-ran` - which reads as "bad", when the true statement is "bad right now,
+    holding the second-largest war chest in the league". Its owner's own summary: he doesn't
+    expect to win, but if the season opens well he has the assets to convert.
+
+    The mirror is equally real and comes from the same comparison - a team 1st in production
+    and 8th in assets is winning now with nothing left to reload from. Teams whose two ranks
+    agree get nothing, which is most of them."""
+    assert team_state.leverage(contention_rank=9, asset_rank=2, num_teams=12) == "convertible"
+    assert team_state.leverage(contention_rank=1, asset_rank=8, num_teams=12) == "mortgaged"
+    assert team_state.leverage(contention_rank=2, asset_rank=3, num_teams=12) is None, \
+        "top third on both axes is just a good team"
+    assert team_state.leverage(contention_rank=9, asset_rank=10, num_teams=12) is None, \
+        "bottom on both is just a bad team"
+    assert team_state.leverage(contention_rank=4, asset_rank=1, num_teams=4) is None, \
+        "in a tiny league 'top third' is one team and the comparison means nothing"
+
+
 def test_stranded_production_is_capacity_not_quality():
     """The miss that a live rebuilding roster exposed: four startable QBs in superflex, two
     QB-capable slots, and the QB3 producing 4,880 sat on the bench while a receiver producing

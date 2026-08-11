@@ -42,15 +42,20 @@ Smoke test: python -m analysis.team_state <league_id>
 
 import sys
 
-from sources import sleeper
+from sources import sleeper, fantasycalc
 from . import trade_activity
 from .team_values import (age_bucket, get_players_with_roles, rank_map,
+                          owned_picks, pick_capital,
                           split_starters_bench, tertile)
 
 CORNERSTONE_PERCENTILE = 0.10  # top 10% of the format's value pool
 
 # Tertile names per axis. Both are relative to this league, which is the only frame in
 # which either question means anything - "can I compete" is always against these 11 teams.
+# Below this, "top third" is one or two teams and the comparison stops meaning anything -
+# same reason roster_needs refuses to assess quality in a tiny league.
+MIN_TEAMS_FOR_LEVERAGE = 6
+
 CONTENTION_TIER = {"top": "contender", "middle": "fringe", "bottom": "also-ran"}
 TRAJECTORY_TIER = {"top": "rising", "middle": "steady", "bottom": "falling"}
 
@@ -233,6 +238,57 @@ def window_note(window: str, contention_rank: int, num_teams: int, pct_of_best: 
             f"behind them.")
 
 
+LEVERAGE_NOTE = {
+    "convertible": (
+        "CONVERTIBLE. This lineup is not competitive, but the roster behind it is - it "
+        "ranks {asset_rank} of {num_teams} in total tradeable value (players plus picks) "
+        "against {contention_rank} of {num_teams} in what it actually starts. That gap is "
+        "an option, not an oversight: a team here can buy its way into contention faster "
+        "than its lineup suggests, so the right move is usually to hold and see how the "
+        "season opens rather than commit now. Do NOT read this as a bad team - read it as "
+        "a team that has not yet spent what it has."
+    ),
+    "mortgaged": (
+        "MORTGAGED. This lineup is competitive and there is little behind it - it ranks "
+        "{contention_rank} of {num_teams} in what it starts against {asset_rank} of "
+        "{num_teams} in total tradeable value (players plus picks). Whatever this season "
+        "produces is close to the whole return; there is not much left to reload with, so "
+        "a deadline addition costs more than it looks and losing a starter is harder to "
+        "cover."
+    ),
+}
+
+
+def leverage(contention_rank: int, asset_rank: int, num_teams: int) -> str | None:
+    """Whether a team's convertible assets and its starting lineup tell different stories.
+
+    **The state the window model could not express.** A real rebuilding roster ranked 9th of
+    12 in starting production and **2nd** in total tradeable value - it was labelled
+    `also-ran`, which reads as "bad", when the true statement was "bad right now, holding
+    the second-largest war chest in the league". Its owner's own description was that he
+    doesn't expect to win, but if the season opens well he has the assets to convert. That
+    is an option with real value and the model priced it at zero.
+
+    Both directions come from one comparison, and the mirror is just as real: the same league
+    had a team 1st in production and 8th in assets, i.e. winning now on borrowed time with
+    nothing to reload from.
+
+    Tertiles rather than a tuned gap, matching how contention and trajectory are already
+    read - top third on one axis and not the other. This is deliberately *not* a fifth
+    window: `window` answers what a team should do with the roster it has, and this answers
+    how much rope it has to change that roster. Making it a window would force one number to
+    carry both."""
+    if num_teams < MIN_TEAMS_FOR_LEVERAGE:
+        return None
+    assets_top = tertile(asset_rank, num_teams) == "top"
+    production_top = tertile(contention_rank, num_teams) == "top"
+    if assets_top and not production_top:
+        return "convertible"
+    if production_top and not assets_top:
+        return "mortgaged"
+    return None
+
+
 def classify_league(league_id: str) -> list[dict]:
     """Full team-window report for every roster in the league, ranked by starter value.
     Reused by anything downstream that needs to know each team's strategic posture
@@ -263,16 +319,31 @@ def classify_league(league_id: str) -> list[dict]:
         if p["round"] == 1 and int(p["season"]) == next_season and p["owner_id"] != p["roster_id"]
     }
 
+    # Everything this team could put on the table: every player it owns plus every pick.
+    # Priced WITHOUT `strategy_by_roster`, deliberately - that argument prices a pick by the
+    # window of the team it originated from, and the window is what this measure is about to
+    # help describe. Letting it in would make the label feed its own input.
+    pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.fmt["num_teams"],
+                                              ctx.fmt["ppr"], ctx.fmt["is_dynasty"])
+    capital = pick_capital(owned_picks(league_id, int(league["season"]),
+                                       league["settings"]["draft_rounds"],
+                                       [r["roster_id"] for r in rosters], pick_values))
+
     rows = []
     for roster in rosters:
         starter_ids = ctx.starters_for(roster)
         starter_value, _ = split_starters_bench(roster, players, starter_ids)
         result = classify(roster, players, threshold, starter_ids)
+        roster_value = sum(players[pid]["value"] or 0
+                           for pid in (roster["players"] or []) if pid in players)
         rows.append({
             "owner": owner_names.get(roster["owner_id"], "Unknown"),
             "owner_id": roster["owner_id"],
             "roster_id": roster["roster_id"],
             "starter_value": starter_value,
+            "roster_value": roster_value,
+            "pick_capital": capital.get(roster["roster_id"], 0),
+            "asset_value": roster_value + capital.get(roster["roster_id"], 0),
             "owns_next_first": roster["roster_id"] not in lost_own_first,
             "no_trade_history": no_trade_history,
             **result,
@@ -283,6 +354,7 @@ def classify_league(league_id: str) -> list[dict]:
     # what decides the window, because it prices future seasons.
     num_teams = len(rows)
     contention_rank = rank_map({r["owner_id"]: r["starting_production"] for r in rows})
+    asset_rank = rank_map({r["owner_id"]: r["asset_value"] for r in rows})
     trajectory_rank = rank_map({r["owner_id"]: r["trajectory_score"] for r in rows})
     best_production = max(r["starting_production"] for r in rows) or 1
 
@@ -302,6 +374,15 @@ def classify_league(league_id: str) -> list[dict]:
         row["window_note"] = window_note(window, c_rank, num_teams, row["pct_of_best"],
                                          row["ascending_pct"], row["declining_pct"])
         row["next_first_note"] = next_first_note(row["owns_next_first"], window)
+
+        # What a team could *become*, alongside what it currently is. Additive, and not a
+        # fifth window - see `leverage`.
+        row["asset_rank"] = asset_rank[row["owner_id"]]
+        row["leverage"] = leverage(c_rank, row["asset_rank"], num_teams)
+        row["leverage_note"] = (
+            LEVERAGE_NOTE[row["leverage"]].format(
+                asset_rank=row["asset_rank"], contention_rank=c_rank, num_teams=num_teams)
+            if row["leverage"] else None)
 
     rows.sort(key=lambda r: r["contention_rank"])
     return rows
