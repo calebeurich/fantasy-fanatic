@@ -112,7 +112,13 @@ PERSUASION_NOTE = (
 # what distinguishes that path is solely the window mismatch.
 NOW_PREMIUM_PERCENTILE = 0.9
 
-DEFAULT_MAX_PER_POSITION = 3  # a parameter, not a hard limit - "give me more" means call again with a higher number
+# A parameter, not a hard limit - "give me more" means call again with a higher number.
+# 5, not 3: on a real critical RB need, three slots went to two players on a team flagged
+# NEVER TRADES plus one live option, and the two genuinely gettable names - an active
+# trader's back and the cheap production-priced fix - fell off the end. Raising the default
+# is the blunt version; scaling it by `roster_needs.NEED_PRIORITY` is the precise one, and
+# wasn't worth the machinery for one number.
+DEFAULT_MAX_PER_POSITION = 5
 
 # How much of a lineup player's *current* production a replacement must retain before
 # swapping them is worth considering. 90% is deliberately strict: this suggests giving up
