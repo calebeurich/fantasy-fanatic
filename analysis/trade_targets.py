@@ -1131,7 +1131,9 @@ def _needs_summary(needs: dict) -> str:
     return ", ".join(f"{pos} ({e['level']}, {e['rank']}/{e['of']})" for pos, e in needs.items()) or "none"
 
 
-def _print_push(push: dict) -> None:
+def _print_push(push: dict, extras: dict) -> None:
+    """`extras` is the top-level result, which is where `depth_adds` lives - for Ascend,
+    `push` is only the pushing half and doesn't carry it."""
     for pos, entry in push["needs"].items():
         print(f"  need at {pos}: {entry['note']}")
     if push["my_offers"]:
@@ -1146,24 +1148,28 @@ def _print_push(push: dict) -> None:
         picks = ", ".join(f"{p['pick']} ({p['value']})" for p in push["picks_to_trade_away"][:4])
         print(f"picks to pay with (currency for buying production, not production itself): {picks}")
     print()
+    # Cheapest and most gettable first, escalating to the long shots. The old order led with
+    # "harder asks" - teams that aren't selling - and buried the nominal-price depth below two
+    # targets stamped NEVER TRADES. Read top-down, it recommended the least likely moves first.
+    _print_depth(extras)
     if not push["targets"]:
         print("no obvious targets found (no needs, or no Rebuilding team has a sell candidate there)")
         return
-    if push.get("persuasion_targets"):
-        print()
-        print("harder asks (aging production on teams that are NOT selling yet):")
-        for t in push["persuasion_targets"]:
-            print(f"  {t['name']} ({t['position']}, {t['production_per_cost']}x production "
-                  f"per unit of cost - dyn {t['value']:,} / redraft {t['redraft_value']:,}) "
-                  f"from {t['from_owner']}")
-            print(f"      why they might listen: {t['why_they_might_listen']}")
-        print()
     print("buy targets (from Rebuilding teams, at a position you need):")
     for t in push["targets"]:
         trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "NEVER TRADES - unlikely"
         price_note = BUY_PRICE_NOTE[team_state.VALUE_BASIS[t["bucket"]]]
         print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}) from {t['from_owner']} "
               f"- need: {t['need_level']} - {trade_note}")
+    if push.get("persuasion_targets"):
+        print()
+        print("harder asks (aging production on teams that are NOT selling yet - each of these "
+              "is asking a team to change direction, not take a fair offer):")
+        for t in push["persuasion_targets"]:
+            print(f"  {t['name']} ({t['position']}, {t['production_per_cost']}x production "
+                  f"per unit of cost - dyn {t['value']:,} / redraft {t['redraft_value']:,}) "
+                  f"from {t['from_owner']}")
+            print(f"      why they might listen: {t['why_they_might_listen']}")
 
 
 def _print_report(result: dict) -> None:
@@ -1173,20 +1179,19 @@ def _print_report(result: dict) -> None:
         tank_note = "" if me["owns_next_first"] else " (doesn't own next 1st, so tanking for a pick wouldn't help)"
         print(f"{me['owner']}: Rebuilding{tank_note} - playing for future value, not starting-lineup needs")
         _print_pivot(me, result)
+        _print_depth(result)
     elif result["mode"] == "ascend":
         print(f"{me['owner']}: Ascend - can push now or arrive cheaper next season")
         print(f"  {me['window_note']}")
         print(f"\n  {result['timing_note']}")
         print(f"\n-- if pushing (needs: {_needs_summary(result['push']['needs'])}) --")
-        _print_push(result["push"])
+        _print_push(result["push"], result)
         print("\n-- if pivoting --")
         _print_pivot(me, result["pivot"])
     else:
         print(f"{me['owner']}: {me['window']}, needs: {_needs_summary(result['needs'])}")
         print(f"  {me['window_note']}")
-        _print_push(result)
-
-    _print_depth(result)
+        _print_push(result, result)
 
 
 def _print_depth(result: dict) -> None:
