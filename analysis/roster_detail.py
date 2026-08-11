@@ -66,3 +66,63 @@ def main(league_id: str, owner_name: str) -> None:
 
 if __name__ == "__main__":
     main(sys.argv[1], sys.argv[2])
+
+
+def optimal_lineup(league_id: str, owner_name: str, without: list[str] | None = None) -> dict:
+    """This team's best legal lineup, and what it becomes with `without` players removed.
+
+    Exists because filling FLEX and SUPER_FLEX is a small deterministic optimisation that a
+    language model will confidently approximate. Asked "what if my RB2 goes down", the
+    honest answer involves a cascade - the FLEX slides back into RB2 and something else
+    fills the FLEX - and the something else is often not what a manager assumes. On a real
+    roster the vacated FLEX went to a *tight end* (627) rather than the obvious backup WR
+    (259), because FLEX accepts RB/WR/TE and the bench TE simply produced more.
+
+    `without` takes player names (substring, case-insensitive) so a question can be phrased
+    the way it's asked - "if Jonathan Taylor gets hurt" - rather than in player ids.
+    """
+    from .league import context
+    from . import roster_needs
+
+    ctx = context(league_id)
+    roster = ctx.roster_for(owner_name)
+    dropped, keep = [], list(roster["players"] or [])
+    for query in without or []:
+        match = next((p for p in keep if query.lower() in ctx.players.get(p, {}).get("name", "").lower()), None)
+        if match is None:
+            raise ValueError(f"no player matching '{query}' on this roster")
+        keep.remove(match)
+        dropped.append(ctx.players[match]["name"])
+
+    def build(player_ids):
+        filled = roster_needs.fill_lineup({**roster, "players": player_ids}, ctx.players,
+                                          ctx.lineup_dedicated, ctx.lineup_flex)
+        rows = [{"slot": slot, "name": ctx.players[pid]["name"],
+                 "position": ctx.players[pid]["position"],
+                 "redraft_value": ctx.players[pid].get("redraft_value") or 0} for slot, pid in filled]
+        return rows, sum(r["redraft_value"] for r in rows)
+
+    before_rows, before_total = build(roster["players"] or [])
+    if not dropped:
+        return {"owner": ctx.owner_names.get(roster["owner_id"]), "lineup": before_rows,
+                "total_production": before_total}
+
+    after_rows, after_total = build(keep)
+    before_names = {r["name"] for r in before_rows}
+    after_names = {r["name"] for r in after_rows}
+    moved = [r for r in after_rows
+             if r["name"] in before_names
+             and r["slot"] != next(b["slot"] for b in before_rows if b["name"] == r["name"])]
+    return {
+        "owner": ctx.owner_names.get(roster["owner_id"]),
+        "without": dropped,
+        "lineup": after_rows,
+        "total_production": after_total,
+        "production_lost": before_total - after_total,
+        "promoted": [r for r in after_rows if r["name"] not in before_names],
+        "moved_slots": moved,
+        "note": (f"Removing {', '.join(dropped)} costs {before_total - after_total:,} of "
+                 f"current production. This is the league's real slot rules applied "
+                 f"exactly - flex and superflex slots refill from every eligible position, "
+                 f"so the replacement is often not the same position as the player lost."),
+    }

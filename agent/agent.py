@@ -60,6 +60,7 @@ TOOL_NAMES = [
     "get_mutual_swaps",
     "get_waiver_upgrades",
     "get_roster_detail",
+    "get_optimal_lineup",
 ]
 # Fully-qualified MCP tool names - the only tools this agent can ever call. Setting
 # `tools` to this explicit list (not just `allowed_tools`) is what actually excludes
@@ -105,9 +106,8 @@ up a core piece, not as a replacement for get_trade_targets.
 hasn't had any trades yet, so the window labels are less \
 reliable this early - that kind of team identity normally comes from trade activity, \
 which hasn't happened here yet.
-10. If check_league_format itself errors (not "unsupported" - an actual tool error, \
-e.g. league not found), stop for that league_id entirely and tell the user the \
-league_id looks wrong - don't retry with a different tool for the same broken ID.
+10. Never work out a starting lineup yourself. Filling FLEX and SUPER_FLEX slots is a deterministic optimisation with one right answer, and reasoning about it in prose gets it subtly wrong - a real case had the vacated FLEX going to a tight end rather than the obvious backup WR, because FLEX accepts RB/WR/TE. Any question about what a team would start, who replaces an injured player, or what an injury costs must call get_optimal_lineup (pass `without` for the injury case) and report what it returns.
+11. If check_league_format itself errors (not "unsupported" - an actual tool error, e.g. league not found), stop for that league_id entirely and tell the user the league_id looks wrong - don't retry with a different tool for the same broken ID.
 """
 
 # Hard guardrails enforced by the SDK itself, not just requested in the prompt.

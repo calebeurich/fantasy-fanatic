@@ -1701,9 +1701,55 @@ worst in the league for QB, WR and RB exposure - the lineup is fine, and one inj
 that. Absent rather than zero when no lineup is supplied, since 0 would read as "perfectly
 deep".
 
-The finding that motivated it is worth keeping: that team's worst exposure by far is
-**QB (6,030 lost, 2nd worst of 12)** in a superflex league, not the WR depth its manager
-was thinking about adding. One QB injury costs more than its WR3 and TE1 combined.
+**Flex slots are honoured, which was a real bug in the first version.** It looked up the
+next player *at the same position*, so a QB lost from a SUPER_FLEX was priced against the
+team's QB3 - when in fact the slot backfills from any position. The drop is now computed by
+removing the weakest starter at the position and **refilling the lineup optimally**, which
+handles SUPER_FLEX and FLEX for free. Correcting it moved real numbers (one team's RB
+exposure 1,043 -> 900, TE 417 -> 232).
+
+**It is the magnitude if it happens, not an expected loss**, and that distinction changed
+the conclusion on the roster that motivated the feature. Its marginal losses are
+Herbert 6,602 / Hurts 6,030 / McCaffrey 6,026 / Taylor 6,001 - QB is *not* uniquely
+exposed, the whole top of the roster is, because the bench is uniformly barren. Combined
+with QBs being injured less often than RBs, and with a superflex slot that any position can
+fill, **two good QBs plus a cheap third is a sound build rather than a hole** - the initial
+read of "QB is the disaster here" was wrong, and came from comparing position groups
+instead of marginal risk.
+
+*Backlogged*: position-specific injury rates, which would turn magnitude into expected
+loss and is the missing half. nflverse publishes weekly injury reports, so unlike the PPR
+gap there is a real source to calibrate against rather than a guess.
+
+## Optimal lineup as a tool (`roster_detail.optimal_lineup`, `roster_needs.fill_lineup`)
+
+Filling FLEX and SUPER_FLEX is a small deterministic optimisation with exactly one right
+answer, and asking a language model to do it in prose is precisely the kind of thing it
+will confidently get subtly wrong. The code already existed (`projected_starters`); what
+was missing was any way for the agent to *reach* it, so "what if my RB2 gets hurt" was
+being reasoned through instead of computed.
+
+`fill_lineup` is `projected_starters` keeping **which slot** each player occupies, and
+`optimal_lineup(league_id, owner, without=[names])` exposes it as `get_optimal_lineup`.
+Slot assignments matter because the visible effect of an injury is players *moving*, not
+one name vanishing. On a real roster, losing the RB2:
+
+```
+   RB    Christian McCaffrey   6,653      RB    Christian McCaffrey  6,653
+   RB    Jonathan Taylor       6,628  ->  RB    TreVeyon Henderson   2,330   <- moved from FLEX
+   FLEX  TreVeyon Henderson    2,330      FLEX  D'Andre Swift        1,527
+   FLEX  D'Andre Swift         1,527      FLEX  Dallas Goedert         627   <- promoted
+```
+
+The manager's own expectation was that a WR would fill the vacated FLEX. It goes to a
+**tight end** (627) instead of the backup WR (259), because FLEX accepts RB/WR/TE and the
+bench TE simply produced more. That is the whole argument for the tool: the cascade is
+mechanical, cheap to compute exactly, and easy to get wrong by hand.
+
+System-prompt rule 10 forbids working a lineup out by hand and routes every "what would I
+start / who replaces X / what does this injury cost" question here. Same pattern as the
+trade-chip grounding check: where a deterministic answer exists, compute it rather than
+instructing the model to be careful.
 
 ## Efficiency swaps: which windows, and what they are blind to
 

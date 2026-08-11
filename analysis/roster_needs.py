@@ -138,29 +138,45 @@ def _starting_group(roster: dict, players: dict[str, dict], slots: dict[str, int
     return {pos: sorted(vals, reverse=True)[:slots[pos]] for pos, vals in by_pos.items()}
 
 
-def _injury_drop(roster: dict, players: dict[str, dict], pos: str,
-                 starters: set[str]) -> float | None:
-    """Production lost if this team's *last* starter at `pos` goes down: the gap between
-    the weakest player it currently starts there and the best replacement on its bench.
+def _injury_drop(roster: dict, players: dict[str, dict], pos: str, starters: set[str],
+                 dedicated: dict[str, int], flex: list[tuple[str, ...]]) -> float | None:
+    """Production this lineup loses if its *weakest* starter at `pos` goes down - computed
+    by removing them and **refilling the lineup optimally**, not by looking up the next
+    player at the same position.
 
-    The marginal spot is the right one to price. If a team starts four RBs and its RB1 is
-    hurt, everyone shuffles up and what actually enters the lineup is the best bench RB -
-    so the loss is (worst starter - best bench), not (best starter - best bench).
+    The refill matters because flex slots exist. A QB lost from a SUPER_FLEX is replaced by
+    the best remaining player of *any* position, not by the team's QB3 - so a superflex
+    team with two good QBs and a cheap third is not as exposed as a same-position reading
+    claims, which is exactly how the format is meant to be built. Same for FLEX: an injured
+    RB3 can be covered by a WR.
 
-    Returns None when nothing is started at the position, which is a *need*, not exposure -
-    a different problem, already measured."""
-    lineup = [players[p].get("redraft_value") or 0 for p in starters
-              if p in players and players[p]["position"] == pos]
-    if not lineup:
+    The marginal starter is the right one to price. If a team starts four RBs and its RB1
+    is hurt, everyone shuffles up and what actually enters the lineup is the best bench
+    option - so the loss is the value of the *last* lineup spot, not of the star.
+
+    **This is the magnitude if it happens, not an expected loss.** Injury rates differ by
+    position - QBs go down less often than RBs - and nothing here models that, so a large
+    QB number and an equal RB number are not equally worrying. See LOGIC.md.
+
+    Returns None when nothing is started at the position, which is a *need*, not exposure.
+    """
+    mine = [p for p in starters if p in players and players[p]["position"] == pos]
+    if not mine:
         return None
-    bench = [players[p].get("redraft_value") or 0 for p in (roster["players"] or [])
-             if p in players and players[p]["position"] == pos and p not in starters]
-    return min(lineup) - max(bench, default=0)
+    weakest = min(mine, key=lambda p: players[p].get("redraft_value") or 0)
+
+    def produced(ids):
+        return sum(players[p].get("redraft_value") or 0 for p in ids if p in players)
+
+    without = {**roster, "players": [p for p in (roster["players"] or []) if p != weakest]}
+    refilled = projected_starters(without, players, dedicated, flex)
+    return produced(starters) - produced(refilled)
 
 
 def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[str, int],
                      thresholds: dict[str, float],
-                     starters: dict[str, set[str]] | None = None) -> dict[str, dict[str, dict]]:
+                     starters: dict[str, set[str]] | None = None,
+                     lineup: tuple[dict, list] | None = None) -> dict[str, dict[str, dict]]:
     """Every roster's standing at every position, keyed owner_id -> position.
 
     **Why this replaced a bare count.** The old rule was purely "how many players clear
@@ -226,8 +242,8 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
         median = statistics.median(totals.values()) if totals else 0
 
         # Exposure is ranked worst-first: the biggest drop is rank 1, the most exposed.
-        drops = {oid: _injury_drop(by_owner[oid], players, pos, starters[oid])
-                 for oid in groups} if starters else {}
+        drops = ({oid: _injury_drop(by_owner[oid], players, pos, starters[oid], *lineup)
+                  for oid in groups} if starters and lineup else {})
         drop_rank = rank_map({o: d for o, d in drops.items() if d is not None})
 
         quality_known = num_teams >= MIN_TEAMS_FOR_QUALITY
@@ -271,8 +287,10 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                 entry["note"] += (
                     f" Depth: losing the last {pos} in this lineup costs {round(drop):,} of "
                     f"production before a replacement starts, {entry['exposure_rank']} of "
-                    f"{len(drop_rank)} in the league - {entry['exposure']} exposure. That is "
-                    f"a separate question from the need above and is not one.")
+                    f"{len(drop_rank)} in the league - {entry['exposure']} exposure. This is "
+                    f"the magnitude IF it happens, not an expected loss: injury rates differ "
+                    f"by position and are not modelled, so an equal number at QB and at RB is "
+                    f"not equally worrying. Separate from the need above, and not one.")
     return out
 
 
@@ -393,18 +411,39 @@ def projected_starters(roster: dict, players: dict[str, dict], slots: dict[str, 
     and treated the third RB as spare parts. Dedicated slots fill first, then flex, most
     restrictive first so a SUPER_FLEX doesn't take a player only a narrower FLEX could use.
     """
+    return {pid for _, pid in fill_lineup(roster, players, slots, flex)}
+
+
+# Reverse of FLEX_ELIGIBILITY, so a filled flex slot can say which kind it was.
+_FLEX_NAME = {positions: name for name, positions in FLEX_ELIGIBILITY.items()}
+
+
+def fill_lineup(roster: dict, players: dict[str, dict], slots: dict[str, int],
+                flex: list[tuple[str, ...]] | None = None) -> list[tuple[str, str]]:
+    """The lineup as `[(slot_label, player_id)]` - the same fill `projected_starters`
+    returns, but keeping *which slot* each player occupies.
+
+    That detail is the whole answer to "what happens if X goes down", because the visible
+    effect is players moving between slots, not just one name disappearing. On a real
+    roster, losing the RB2 slides the FLEX back into RB2 and pulls a *tight end* into the
+    vacated FLEX - which is not what the manager expected (he assumed a WR) and is
+    correct, since FLEX takes RB/WR/TE and the bench TE outproduced the bench WR.
+
+    Exposed as a tool precisely so the model never has to work this out itself. Filling
+    flex slots is a small optimisation problem with a deterministic answer, and asking an
+    LLM to do it in prose is the kind of thing it will confidently get subtly wrong."""
     by_pos: dict[str, list[tuple[float, str]]] = {pos: [] for pos in POSITIONS}
     for pid in roster["players"] or []:
         info = players.get(pid)
         if info and info["position"] in by_pos:
             by_pos[info["position"]].append((info.get("redraft_value") or 0, pid))
 
-    starters: set[str] = set()
+    filled: list[tuple[str, str]] = []
     remaining: dict[str, list[tuple[float, str]]] = {}
     for pos, entries in by_pos.items():
         entries.sort(reverse=True)
         take = slots.get(pos, 0)
-        starters.update(pid for _, pid in entries[:take])
+        filled += [(pos, pid) for _, pid in entries[:take]]
         remaining[pos] = entries[take:]
 
     # Then flex, most restrictive slot first - otherwise a SUPER_FLEX (any position)
@@ -414,10 +453,10 @@ def projected_starters(roster: dict, players: dict[str, dict], slots: dict[str, 
         if not pool:
             continue
         _, pid = max(pool)
-        starters.add(pid)
+        filled.append((_FLEX_NAME.get(tuple(eligible), "FLEX"), pid))
         for pos in eligible:
             remaining[pos] = [(v, p) for v, p in remaining.get(pos, []) if p != pid]
-    return starters
+    return filled
 
 
 def league_thresholds(league_id: str) -> dict[str, float]:
@@ -434,7 +473,7 @@ def league_assessment(league_id: str) -> dict[str, dict[str, dict]]:
     from .league import context
     ctx = context(league_id)
     return assess_positions(ctx.rosters, ctx.players, ctx.needs_slots, ctx.start_thresholds,
-                            ctx.starters)
+                            ctx.starters, (ctx.lineup_dedicated, ctx.lineup_flex))
 
 
 def league_needs(league_id: str) -> dict[str, dict]:

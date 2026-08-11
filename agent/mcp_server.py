@@ -89,7 +89,14 @@ def get_roster_needs(league_id: str) -> dict:
     (high/typical/low against the league). **Exposure is not a need** - a team whose
     starting lineup is entirely fine can still be one injury from disaster, and those are
     different problems with different fixes. Raise it when asked about depth, injuries or
-    roster risk; do not report it as a hole in the lineup."""
+    roster risk; do not report it as a hole in the lineup.
+
+    Two things exposure is NOT. It is the magnitude *if* an injury happens, not an expected
+    loss - injury rates differ by position (QBs go down less often than RBs) and nothing
+    here models that, so an equal number at QB and RB is not equally worrying. And it
+    already accounts for flex slots: in superflex a lost QB is backfilled by the best
+    remaining player of any position, so two good QBs plus a cheap third is a sound build
+    rather than a gap to fix."""
     return roster_needs.league_needs(league_id)
 
 
@@ -146,6 +153,25 @@ def get_waiver_upgrades(league_id: str, owner_name: str = None) -> dict:
     budget remaining per team. Pass owner_name to filter to one team; omit for the
     whole league."""
     return waiver_wire.league_upgrades(league_id, owner_name)
+
+
+@mcp.tool()
+def get_optimal_lineup(league_id: str, owner_name: str, without: list[str] = None) -> dict:
+    """This team's best legal lineup, and what it becomes if `without` players are removed
+    (player names, e.g. ["Jonathan Taylor"]).
+
+    **Use this instead of working a lineup out yourself.** Filling FLEX and SUPER_FLEX
+    slots is a deterministic optimisation with exactly one right answer, and reasoning
+    about it in prose gets it subtly wrong. Any question of the form "what if X gets
+    hurt", "what would I start", "who replaces Y", or "how much does losing Z cost"
+    should call this rather than being reasoned through.
+
+    Returns each starter with the slot they occupy, "production_lost", "promoted" (who
+    enters the lineup) and "moved_slots" (who shifts slot). The cascade is the point: on a
+    real roster, losing the RB2 slid the FLEX back into RB2 and pulled a TIGHT END into
+    the vacated FLEX - not the backup WR the manager assumed - because FLEX accepts
+    RB/WR/TE and the bench TE simply produced more."""
+    return roster_detail.optimal_lineup(league_id, owner_name, without)
 
 
 @mcp.tool()

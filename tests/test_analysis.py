@@ -838,7 +838,8 @@ def test_injury_exposure_is_measured_but_is_not_a_need():
         "d":       [("WR", 870), ("WR", 780), ("WR", 300)],
     })
     starters = {r["owner_id"]: set(r["players"][:2]) for r in rosters}
-    out = roster_needs.assess_positions(rosters, players, slots, thresholds, starters)
+    out = roster_needs.assess_positions(rosters, players, slots, thresholds, starters,
+                                        ({"QB": 0, "RB": 0, "WR": 2, "TE": 0}, []))
 
     assert out["brittle"]["WR"]["level"] == "ok", "the starting lineup is not the problem"
     assert out["brittle"]["WR"]["drop_if_injured"] == 780, "800 starter -> 20 replacement"
@@ -858,8 +859,30 @@ def test_injury_drop_prices_the_marginal_lineup_spot():
                "c": {"name": "Last", "position": "RB", "value": 1527, "redraft_value": 1527},
                "d": {"name": "Bench", "position": "RB", "value": 484, "redraft_value": 484}}
     roster = {"owner_id": "me", "players": list(players)}
-    drop = roster_needs._injury_drop(roster, players, "RB", starters={"a", "b", "c"})
+    drop = roster_needs._injury_drop(roster, players, "RB", {"a", "b", "c"},
+                                     {"QB": 0, "RB": 3, "WR": 0, "TE": 0}, [])
     assert drop == 1527 - 484
+
+
+def test_injury_drop_accounts_for_flex_slots_backfilling_from_any_position():
+    """A QB lost from a SUPER_FLEX is replaced by the best remaining player of ANY
+    position, not by the team's QB3. A same-position reading overstates how exposed a
+    superflex team with two good QBs and a cheap third is - which is how the format is
+    meant to be built, not a weakness."""
+    players = {
+        "qb1": {"name": "QB1", "position": "QB", "value": 7000, "redraft_value": 7000},
+        "qb2": {"name": "QB2", "position": "QB", "value": 6000, "redraft_value": 6000},
+        "qb3": {"name": "Cheap", "position": "QB", "value": 300, "redraft_value": 300},
+        "wr1": {"name": "WR1", "position": "WR", "value": 5000, "redraft_value": 5000},
+        "wr2": {"name": "GoodBench", "position": "WR", "value": 4000, "redraft_value": 4000},
+    }
+    roster = {"owner_id": "me", "players": list(players)}
+    dedicated, flex = {"QB": 1, "RB": 0, "WR": 1, "TE": 0}, [("QB", "RB", "WR", "TE")]
+    starters = roster_needs.projected_starters(roster, players, dedicated, flex)
+    assert starters == {"qb1", "qb2", "wr1"}, "QB2 fills the superflex"
+
+    drop = roster_needs._injury_drop(roster, players, "QB", starters, dedicated, flex)
+    assert drop == 6000 - 4000, "the WR backfills the superflex, not the 300 QB3"
 
 
 def test_injury_exposure_is_absent_rather_than_guessed_without_a_lineup():
@@ -892,3 +915,42 @@ def test_efficiency_swaps_are_allowed_at_a_weak_need_but_not_a_count_need():
 
     assert len(swaps_for("weak")) == 1, "capital toward the upgrade, production unchanged"
     assert swaps_for("critical") == [], "an empty slot must not be filled by spending depth"
+
+
+def test_lineup_fill_reports_which_slot_each_player_occupies():
+    """Slot assignments are the point of fill_lineup over projected_starters: the visible
+    effect of an injury is players *moving* between slots, and a set of names can't show
+    that."""
+    positions = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "FLEX", "SUPER_FLEX"]
+    dedicated, flex = roster_needs.lineup_slots(positions)
+    players = _players([("QB", 7000), ("QB", 6000), ("RB", 5000), ("RB", 4000),
+                        ("RB", 3000), ("WR", 2000), ("WR", 1900), ("WR", 1800), ("TE", 1000)])
+    roster = {"owner_id": "me", "players": list(players)}
+
+    filled = dict((pid, slot) for slot, pid in
+                  roster_needs.fill_lineup(roster, players, dedicated, flex))
+    assert filled["0"] == "QB" and filled["1"] == "SUPER_FLEX", "QB2 takes the superflex"
+    assert filled["2"] == "RB" and filled["3"] == "RB"
+    assert filled["4"] == "FLEX", "the third RB starts, at FLEX"
+    assert set(filled) == set(roster_needs.projected_starters(roster, players, dedicated, flex))
+
+
+def test_losing_a_starter_cascades_through_flex_from_any_eligible_position():
+    """The case a manager gets wrong by hand. Lose the RB2 and the FLEX slides back into
+    RB2, leaving a FLEX to fill - and it fills from RB/WR/TE, so a bench TE outproducing
+    a bench WR takes it. On a real roster this promoted a tight end (627) where the
+    manager expected the backup WR (259)."""
+    positions = ["RB", "RB", "FLEX"]
+    dedicated, flex = roster_needs.lineup_slots(positions)
+    players = _players([("RB", 5000), ("RB", 4000), ("RB", 3000), ("TE", 627), ("WR", 259)])
+    roster = {"owner_id": "me", "players": list(players)}
+
+    before = roster_needs.projected_starters(roster, players, dedicated, flex)
+    assert before == {"0", "1", "2"}, "three RBs: two at RB, one at FLEX"
+
+    thinned = {**roster, "players": [p for p in roster["players"] if p != "1"]}
+    after = dict((pid, slot) for slot, pid in
+                 roster_needs.fill_lineup(thinned, players, dedicated, flex))
+    assert after["2"] == "RB", "the FLEX back slides up into the vacated RB slot"
+    assert "3" in after and after["3"] == "FLEX", "the bench TE fills FLEX, not the WR"
+    assert "4" not in after
