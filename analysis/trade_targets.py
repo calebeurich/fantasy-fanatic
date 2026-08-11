@@ -683,10 +683,20 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         # targets by dynasty value contradicts the line above it, which puts declining
         # players first *because* current production is the point; dynasty value then
         # reorders them by the future years that team isn't buying.
+        # Production first, age second. "Declining" used to be the *hard first key* for a
+        # pushing team, on the reasoning that declining players are production-priced while
+        # prime ones carry an upside premium. That reasoning is about **price per unit of
+        # production**, and implementing it as an absolute ordering meant any declining player
+        # outranked every prime one however little he produced: a real Push team with a WR
+        # need was shown Jauan Jennings at 70 redraft above Chris Olave at 3,439 - a 49x gap -
+        # and the default cap of three then hid Olave entirely.
+        #
+        # A buyer wants production; among equal production he should prefer the cheaper,
+        # shorter asset. So age drops to a tiebreak beneath the thing actually being bought.
         prefer_production = me["window"] == "Push"
         pos_targets.sort(key=lambda t: (
-            0 if (prefer_production and t["bucket"] == "declining") else 1,
             -(t.get("redraft_value") or 0) if prefer_production else -t["value"],
+            0 if (prefer_production and t["bucket"] == "declining") else 1,
             -t["from_owner_trades"],
         ))
         targets += pos_targets[:max_per_position]
@@ -874,6 +884,24 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     # back is one injury away from being a real asset and costs a late pick to hold.
     depth = _depth_adds(my_roster, ctx, states, thresholds, my_starters,
                         set())
+    def _wanted_by(position: str) -> list[dict]:
+        """Which other teams are short at this position, worst shortage first.
+
+        The mirror of `_counterparty_fit`, and the other half of the same missing join.
+        `stranded` correctly said "the whole value of this player is what he fetches" and
+        then left the reader to work out who would give anything for him - while
+        `league_needs` had the answer sitting in the next tool result. On a live roster the
+        stranded quarterback produced more than that team's entire starting RB room, and the
+        one owner with a *critical* QB need also held the running back it wanted. Nothing
+        connected the two."""
+        wanting = []
+        for other in _others(states, me, lambda w: True):
+            need = needs_by_owner_id.get(other["owner_id"], {}).get(position)
+            if need:
+                wanting.append({"owner": other["owner"], "window": other["window"],
+                                "need_level": need["level"], "rank": need.get("rank")})
+        return sorted(wanting, key=lambda w: roster_needs.NEED_PRIORITY[w["need_level"]])
+
     stranded_ids = roster_needs.stranded_starters(my_roster, ctx.players, my_starters)
     by_name = {e["name"]: e for e in me["sellable"] + me["tradeable_surplus"]}
     stranded = []
@@ -882,10 +910,19 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         entry = by_name.get(info["name"], {"name": info["name"], "position": info["position"],
                                            "value": info["value"],
                                            "redraft_value": info.get("redraft_value")})
+        wanted = _wanted_by(info["position"])
         stranded.append({**entry, "blocked_by": info["position"],
+                         "wanted_by": wanted,
                          "note": (f"Produces {info.get('redraft_value') or 0:,} this season - more than "
                                   f"the weakest player in your lineup - but cannot be started: "
-                                  f"this roster has no slot left for another {info['position']}.")})
+                                  f"this roster has no slot left for another {info['position']}."
+                                  + (f" {len(wanted)} team(s) are short at {info['position']}: "
+                                     + ", ".join(f"{w['owner']} ({w['need_level']})" for w in wanted[:3])
+                                     + " - start there."
+                                     if wanted else
+                                     f" No team in this league currently needs a "
+                                     f"{info['position']}, so he will be hard to move at "
+                                     f"anything like his value."))})
 
     def with_extras(result: dict) -> dict:
         if depth:

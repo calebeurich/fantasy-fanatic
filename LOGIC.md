@@ -2434,6 +2434,51 @@ instruction every time. **If two facts have to be combined to make a recommendat
 actionable, the combining belongs in the tool.** The prompt's job is to report what the tool
 found, not to rediscover it.
 
+## Auditing the advice, not the arithmetic (`analysis/audit.py`)
+
+84 unit tests never caught a single real bug in this project. That is not a failure of the
+tests - they check that functions compute what they were written to compute, and they do.
+Every real bug was a **wrong recommendation produced by correct arithmetic**: a buy list
+burying the second-best available back beneath one producing a quarter as much, a tier whose
+bar no tight end could clear in any league, a feature returning empty for 36 consecutive
+teams, a suggestion that a manager acquire two players he already owned. Correct functions,
+indefensible output.
+
+`audit.py` checks the output instead, against **real leagues**, and every check is derived
+from a bug that actually shipped. That is the entry requirement: no speculative invariants,
+because an audit nobody trusts gets muted.
+
+| check | the bug it comes from |
+|---|---|
+| never recommends your own players | a rebuilder searching rebuilders included itself |
+| best available is surfaced | trade activity outranked value, hiding a 1,883-redraft back |
+| no tier is structurally unreachable | an absolute 1.0 bar sat above the entire TE pool |
+| claims match the data | a player 0.3 years from his cliff sold as "still there in two" |
+| every window gets what applies | depth and stranded ran only in the buy branch |
+| coverage | a block empty across every team in every league is a dead feature |
+
+**It had to be calibrated before it was worth anything.** The first run reported 12 problems,
+and the first six were false: it compared against every player on a rebuilding roster, so it
+"failed" on Jahmyr Gibbs, Josh Allen and Ja'Marr Chase - all cornerstones, which `_buy_path`
+deliberately never searches because no rebuilding team sells its elite young core. An audit
+calibrated against a pool the code was never meant to reach reports noise. Pointed at the
+actual candidate pool, 12 problems became 3.
+
+**And the 3 were one real bug, found on its first honest run.** For a `Push` team, "is
+declining" was the *hard first sort key* - so every declining player outranked every prime
+one regardless of production. A live team with a WR need was shown **Jauan Jennings at 70
+redraft above Chris Olave at 3,439**, a 49x gap, with the default cap of three then hiding
+Olave, Garrett Wilson and Jaylen Waddle entirely.
+
+The reasoning behind declining-first was about **price per unit of production**, which is a
+real effect and belongs in `production_per_cost` - not in an absolute ordering. Age now breaks
+ties *beneath* the thing being bought, and at equal production the declining player still wins
+because he is the cheaper asset. One change, and all three audit failures cleared.
+
+Not part of `pytest`: it needs the network, and `tests/` is free and offline by design. The
+two layers answer different questions and both are needed - the unit tests would have caught
+none of this, and the audit would catch none of the boundary conditions they guard.
+
 ## Leverage: what a team could become (`team_state.leverage`)
 
 The window model answers *what should this team do with the roster it has*. It had nothing

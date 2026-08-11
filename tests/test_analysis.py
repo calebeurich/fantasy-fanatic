@@ -1007,6 +1007,24 @@ def test_persuasion_includes_a_falling_contender_that_has_not_won():
     assert "not currently a seller" in out[0]["cost_note"], "the ask must carry its price"
 
 
+def test_a_pushing_team_ranks_buy_targets_on_production_not_on_age():
+    """"Declining" used to be the hard first sort key for a pushing team, on the reasoning
+    that declining players are production-priced while prime ones carry an upside premium.
+    That reasoning is about price *per unit of production*, and as an absolute ordering it
+    meant any declining player outranked every prime one however little he produced - a real
+    Push team was shown a 70-redraft receiver above a 3,439-redraft one, and the default cap
+    of three then hid the better player entirely.
+
+    Age still breaks ties, because at equal production the shorter asset is cheaper."""
+    order = lambda entries: sorted(entries, key=lambda t: (
+        -(t.get("redraft_value") or 0), 0 if t["bucket"] == "declining" else 1))
+    fringe_old = {"name": "FringeOld", "bucket": "declining", "redraft_value": 70}
+    good_prime = {"name": "GoodPrime", "bucket": "prime", "redraft_value": 3439}
+    same_prime = {"name": "SamePrime", "bucket": "prime", "redraft_value": 70}
+    assert [e["name"] for e in order([fringe_old, good_prime])] == ["GoodPrime", "FringeOld"]
+    assert [e["name"] for e in order([same_prime, fringe_old])] == ["FringeOld", "SamePrime"],         "at equal production the declining player is the cheaper buy"
+
+
 def test_persuasion_says_what_the_other_owner_would_actually_want():
     """Ranking on production-per-cost alone put a 1.54x back at the top, held by the one team
     in the league with **no needs at all**, above a 1.37x back whose owner had a critical need
