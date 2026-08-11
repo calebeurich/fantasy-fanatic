@@ -32,8 +32,8 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
                          "age": None, "bucket": "n/a", "usage_role": None, "contract": None,
                          "years_to_decline": None,
                          "lineup_role": lineup_role,
-            "miss_rate": (miss_rates or {}).get(player_id, {}).get("miss_rate"),
-            "weeks_suspended": (miss_rates or {}).get(player_id, {}).get("weeks_suspended"), "miss_rate": None})
+                         "miss_rate": (miss_rates or {}).get(player_id, {}).get("miss_rate"),
+                         "weeks_suspended": (miss_rates or {}).get(player_id, {}).get("weeks_suspended")})
             continue
         rows.append({
             "name": info["name"],
