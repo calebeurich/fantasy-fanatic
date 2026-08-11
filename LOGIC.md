@@ -1783,6 +1783,36 @@ deliberately avoiding.
   has a state between available and out, and adding one means joining injury designations to
   weekly production - which is also the join that would let severity be measured rather than
   assumed.
+- **Dynasty values are the market's own age curve, and we should probably calibrate against
+  them.** `AGE_CURVE` is documented as "dynasty community heuristics, not a model" while the
+  values we already pull encode thousands of traders' view of exactly the same question. Share
+  of players at each age carrying cornerstone value, measured on the live pool:
+
+  | age | QB | RB | WR | TE |
+  |---|---|---|---|---|
+  | 26-27 | 21% | 8% | 15% | 7% |
+  | 27-28 | 18% | 5% | **17%** | **0%** |
+  | 28-29 | 36% | 0% | **0%** | - |
+  | 31-32 | **0%** | - | 0% | 0% |
+
+  WR shows a clean cliff at **28** against our 29, and TE looks plainly wrong - the market
+  stops paying at ~27 where our curve says **30**.
+
+  Three reasons this is not yet actionable. Cells hold 5-55 players, mostly 10-20, so one or
+  two names move a column (RB "recovering" at 29-31 is two backs). It measures a *different*
+  quantity: cornerstone value is decline **times remaining years**, so a 33-year-old elite QB
+  reads 0% because the market won't pay for years he lacks, not because he has declined -
+  which is why this shows QB ending at 31 while the passing-EPA work says 38, with no
+  contradiction. And it is survivorship-biased, since players who fall off leave the pool.
+
+  A real version needs a larger pool than the ~400 FantasyCalc values, and ideally the same
+  players tracked across seasons. Worth doing - it would replace four hand-set constants with
+  a measurement, which is this project's stated preference everywhere else.
+- **The market disagrees with our rushing-QB discount on its most valuable player.** Josh Allen
+  is 10,415 dynasty at ~29.5 with 7.1 carries a game. Our curve puts him on the rushing
+  schedule (decline at 31, so 1.5 years of runway); the market has explicitly declined to
+  discount him. One of the two is wrong about the single most valuable asset in the pool, and
+  the tag is the thing making the stronger claim.
 - **The pocket/rushing split may still be too coarse.** An elite QB who both throws and runs
   (top passing EPA *and* 7+ carries a game) is forced onto the rushing curve by the
   mutual-exclusion rule, which may badly underrate the passing half of his value. Resolving it
