@@ -12,7 +12,7 @@ import sys
 
 from sources import sleeper
 from . import team_state, roster_needs
-from .team_values import NUM_QBS, age_bucket, get_players_with_roles
+from .team_values import age_bucket, get_players_with_roles
 
 POSITIONS = ["QB", "RB", "WR", "TE"]
 
@@ -84,12 +84,9 @@ def league_upgrades(league_id: str, owner_query: str = None) -> dict:
     needs_by_owner_id = roster_needs.league_needs(league_id)
     budgets = get_waiver_budgets(league_id)
 
-    rosters = sleeper.get_rosters(league_id)
-    owner_names = {u["user_id"]: u["display_name"] for u in sleeper.get_users(league_id)}
-
     teams = []
-    for roster in rosters:
-        owner = owner_names.get(roster["owner_id"], "Unknown")
+    for roster in ctx.rosters:
+        owner = ctx.owner_names.get(roster["owner_id"], "Unknown")
         if owner_query and owner_query.lower() not in owner.lower():
             continue
         needs = needs_by_owner_id.get(roster["owner_id"], {})

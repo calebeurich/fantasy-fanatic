@@ -80,9 +80,27 @@ def describe_format(league: dict) -> dict:
         "is_dynasty": league["settings"]["type"] == DYNASTY_TYPE,
         "num_teams": league["settings"]["num_teams"],
         "is_superflex": "SUPER_FLEX" in positions,
+        "num_qbs": starting_qbs(positions),
         "ppr": scoring.get("rec", 0),
         "is_te_premium": scoring.get("bonus_rec_te", 0) > 0,
     }
+
+
+def starting_qbs(roster_positions: list[str]) -> int:
+    """How many QBs a team in this league actually starts - FantasyCalc's `numQbs`.
+
+    This used to be `2 if is_superflex else 1`, which is wrong for a **true 2QB league**:
+    two literal QB slots and no SUPER_FLEX gives `is_superflex == False`, so it fetched
+    1QB values and underpriced every QB in the one format where QBs are scarcest. The
+    superflex flag answers "can a non-QB fill the second slot", which is a different
+    question from "how many QBs start" - only the second one prices the market.
+
+    Clamped to 2 because FantasyCalc publishes 1QB and superflex/2QB values and nothing
+    beyond; a 2QB+SUPER_FLEX league gets the closest published market rather than a
+    request for a price that doesn't exist. `roster_needs.dedicated_slots` is *not*
+    clamped - that one is counting real roster slots, where a third QB genuinely is
+    required."""
+    return min(2, roster_positions.count("QB") + roster_positions.count("SUPER_FLEX"))
 
 
 if __name__ == "__main__":

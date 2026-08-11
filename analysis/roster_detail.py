@@ -8,17 +8,11 @@ from sources import contracts
 from .team_values import age_bucket
 
 
-def find_roster(owner_name: str, rosters: list[dict], owner_names: dict[str, str]) -> dict:
-    query = owner_name.lower()
-    for roster in rosters:
-        name = owner_names.get(roster["owner_id"], "")
-        if query in name.lower():
-            return roster
-    raise ValueError(f"no owner matching '{owner_name}' - options: {list(owner_names.values())}")
-
-
-def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, dict]) -> list[dict]:
-    starter_ids = {pid for pid in (roster["starters"] or []) if pid != "0"}
+def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, dict],
+               starter_ids: set[str]) -> list[dict]:
+    """`starter_ids` is the value-derived lineup, not Sleeper's current-week snapshot -
+    this is the roster view a user actually reads, so a preseason snapshot listing one QB
+    in a superflex league labelled a real starter as bench right on the screen."""
     rows = []
     for player_id in roster["players"] or []:
         info = players.get(player_id)
@@ -51,9 +45,9 @@ def get_roster_rows(league_id: str, owner_name: str) -> dict:
     contract_data = contracts.get_contracts()
     rosters, owner_names = ctx.rosters, ctx.owner_names
 
-    roster = find_roster(owner_name, rosters, owner_names)
+    roster = ctx.roster_for(owner_name)
     owner = owner_names[roster["owner_id"]]
-    rows = build_rows(roster, players, contract_data)
+    rows = build_rows(roster, players, contract_data, ctx.starters_for(roster))
     return {"owner": owner, "league_name": league["name"], "rows": rows}
 
 

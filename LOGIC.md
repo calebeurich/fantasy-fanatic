@@ -414,6 +414,71 @@ It also lands on the right intuition for depth - late-pick-shaped, real but not 
 deal is built around. Approximate by nature, since future classes are priced as flat
 round averages.
 
+## One definition of "who starts" (`LeagueContext.starters`)
+
+Sleeper's `roster["starters"]` is a snapshot of whatever the current week's lineup happens
+to be, which is meaningless in the preseason. This was **known**, documented at length on
+`projected_starters`, and fixed - on exactly one code path. Three others kept reading the
+snapshot:
+
+| reader | what it fed |
+|---|---|
+| `team_values.split_starters_bench` | `starter_value` -> the league-wide rank -> `is_thin`/`is_loaded` -> `effective_strategy` |
+| `team_state.classify` | the age-mix buckets that set Win-Now / Middling / Rebuilding, and every entry's `is_starter` |
+| `roster_detail.build_rows` | the starter/bench label a user reads on screen |
+
+So the single most load-bearing label in the project was derived from data the project
+itself documents as unreliable. Measured on the real league the effect is mostly small -
+rank order moves by one place - but **not nil**: rjl22's snapshot listed 1 QB and 5 RBs in
+a superflex league, and his classification changed once the lineup was derived properly.
+BenSimonds had only 8 of 10 slots set at all.
+
+`LeagueContext.starters` (owner_id -> set of player_ids) is now the one answer, computed
+once per league. **Nothing reads the snapshot.**
+
+**Ids, not names.** `projected_starters` used to return names, so every consumer was
+handed a `projected` set and did string comparison - a `projected` argument threaded
+through five functions, plus `league_projected_starters` to build it. With ids,
+`_usable_by_position` and `team_state.classify` stamp `is_starter` on entries as they
+build them and callers just read the field. That deleted the whole apparatus: the
+argument, the helper, and `_my_offer_pool`'s `is_lineup` shim. **Fixing a flag at its
+source beat threading the correction through the callers** - the general form of the
+recurring bug in this file.
+
+## Duplication removed alongside it
+
+- **`pick_capital` was a second copy of `owned_picks`'s traded-pick resolution**,
+  differing only in summing flat round values rather than returning the picks. Two
+  implementations of "who owns which future picks" meant two draft-capital numbers could
+  disagree, and once `owned_picks` learned to price by the originating team's window, they
+  did. `pick_capital` is now a one-line sum over `owned_picks`.
+- **Owner lookup by substring existed in six places.** `LeagueContext.roster_for` had been
+  added for exactly this and had **zero callers**. Now `roster_for` (rosters) and
+  `pick_owner` (already-computed per-team rows, which is what the trade paths hold) share
+  one `_match`, so the rule and its error message can't drift.
+- **`sleeper.starting_qbs` replaces `NUM_QBS = {True: 2, False: 1}`.** The old form was
+  keyed on `is_superflex`, which answers "can a non-QB fill the second slot" - a different
+  question from "how many QBs start", and the one that prices the market. A true 2QB
+  league (two literal QB slots, no SUPER_FLEX) therefore fetched 1QB values. Practically
+  theoretical, since superflex has replaced 2QB in real leagues; kept because it's the
+  same amount of code and removes a second place that computed how many QBs a team
+  starts. Clamped to 2 for FantasyCalc, which publishes nothing beyond;
+  `dedicated_slots` is deliberately unclamped since it counts real roster slots.
+- **`replacement_thresholds` no longer defaults its `metric`.** It defaulted to `"value"`
+  while `_usable_by_position` defaulted to `"redraft_value"` - two functions that must
+  agree, shipping opposite defaults, in the file whose central documented bug is that
+  exact conflation. Callers now state which question they're asking.
+- **`_usable_by_position` sorted on a different metric than it filtered on** (redraft in,
+  dynasty out), so `find_surplus` could call a better current producer spare while keeping
+  a pricier prospect.
+
+**Replacement level is a win-now lens**, worth stating because it bounds all of the above:
+"is there a startable player here" is only the operative question for a team trying to
+field its best lineup this season. A rebuilding team isn't shopping above replacement level
+at all - it wants ascending value and picks, which is why `find_targets` routes it to the
+pivot path. Read a rebuilder's positional needs as "what a contending version of this
+roster would be short of", not a to-do list.
+
 ## Positional needs (`roster_needs.py`)
 
 **Needs are measured on current production, trade relevance on dynasty value** - the same
@@ -704,7 +769,25 @@ slots covered and only improves if the incoming player beats the current worst s
 otherwise the swap list offers a fringe backup as the cure for a bottom-third room, which
 is churn dressed up as a fit. Live case before the filter: rjl22, weak at QB and TE, was
 offered Cam Ward and Isaiah Likely. After it, he correctly has no mutual swaps at all -
-his needs are upgrade-shaped and nobody's *bench* upgrades him.
+his needs are upgrade-shaped and nobody's *bench* upgrades him. (Likely is the precise
+case: 634 redraft against rjl22's worst TE starter at 660, so strictly a downgrade.)
+
+**Both sides must also be within `MIN_SWAP_BALANCE` (0.6) on value.** Both being spare
+startable depth doesn't make a trade proposable - the cartesian match happily offered a
+genuine RB3 for a fringe backup QB, and nobody accepts that, so surfacing it is noise.
+This is a sanity bound, not the fairness calculator this project deliberately doesn't
+build: the returned `balance` block carries both totals and says in words that this is a
+*shape that could work*, not a priced offer.
+
+**Note on what this returns today.** Across the real league it now finds **zero** swaps,
+and that's the correct answer rather than a broken path: excluding actual starters leaves
+only four teams with any spare startable depth at all, one player each, and the single
+plausible pairing fails the upgrade test on the merits. In a 12-team superflex league with
+ten starting slots across four positions, genuine startable surplus is genuinely rare -
+which was always true and was previously hidden by counting starters as spares. Because an
+empty result is indistinguishable from a broken one, the swap path is covered by unit
+tests that construct a league where a swap *does* fire, one where the balance check
+rejects it, and one where the upgrade bar does.
 
 Validated against real data before any agent wiring (free, since it's pure Python):
 spot-checked `league_surplus` output against a real league (e.g. a known "loaded"

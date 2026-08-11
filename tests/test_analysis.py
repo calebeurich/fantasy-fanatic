@@ -230,23 +230,26 @@ def test_a_position_cannot_be_both_a_need_and_a_surplus():
 # ------------------------------------------------------------- team window classification
 
 def _roster(starter_specs):
+    """Roster plus the set of starter ids. Nothing reads Sleeper's `starters` snapshot
+    any more - `classify` takes the value-derived lineup explicitly, so these fixtures
+    hand it over rather than embedding it in the roster dict."""
     players = _players(starter_specs)
     ids = list(players)
-    return {"players": ids, "starters": ids}, players
+    return {"owner_id": "me", "players": ids}, players, set(ids)
 
 
 def test_window_classification_follows_the_age_mix():
     """Win-Now when value skews declining, Rebuilding when it skews ascending.
     Thresholds (-10 / +30) are organic breakpoints from a real league's distribution."""
-    old_roster, old_players = _roster([("RB", 1000), ("RB", 1000)])
+    old_roster, old_players, old_starters = _roster([("RB", 1000), ("RB", 1000)])
     for info in old_players.values():
         info["age"] = 30  # RB declines at 27
-    assert team_state.classify(old_roster, old_players, threshold=10_000)["state"] == "Win-Now"
+    assert team_state.classify(old_roster, old_players, 10_000, old_starters)["state"] == "Win-Now"
 
-    young_roster, young_players = _roster([("WR", 1000), ("WR", 1000)])
+    young_roster, young_players, young_starters = _roster([("WR", 1000), ("WR", 1000)])
     for info in young_players.values():
         info["age"] = 22  # WR ascends below 25
-    assert team_state.classify(young_roster, young_players, threshold=10_000)["state"] == "Rebuilding"
+    assert team_state.classify(young_roster, young_players, 10_000, young_starters)["state"] == "Rebuilding"
 
 
 def test_offer_pool_excludes_starters_but_keeps_equivalent_bench_players():
@@ -302,10 +305,10 @@ def test_age_mix_ships_with_an_explanation_not_a_bare_number():
     expected win total", "underperforming by 25 points" - none of which exist, least of
     all in a preseason with no games played. An unlabeled number in a tool result is an
     invitation to make one up, so the label must ship with the value."""
-    roster, players = _roster([("RB", 1000), ("RB", 1000)])
+    roster, players, starters = _roster([("RB", 1000), ("RB", 1000)])
     for info in players.values():
         info["age"] = 30
-    result = team_state.classify(roster, players, threshold=10_000)
+    result = team_state.classify(roster, players, 10_000, starters)
 
     assert "diff" not in result, "bare unlabelled 'diff' must not come back"
     assert result["age_mix_score"] < 0
@@ -326,8 +329,8 @@ def test_projected_starters_ignores_the_live_snapshot():
     roster = {"players": list(players), "starters": ["0"]}
 
     projected = roster_needs.projected_starters(roster, players, slots)
-    assert "P0" in projected and "P1" in projected, "top 2 QBs are the lineup"
-    assert "P2" not in projected and "P3" not in projected, "QB3/QB4 are genuinely spare"
+    assert {"0", "1"} <= projected, "top 2 QBs are the lineup"
+    assert not ({"2", "3"} & projected), "QB3/QB4 are genuinely spare"
 
 
 def test_projected_starters_rank_by_current_production_not_dynasty_value():
@@ -343,7 +346,7 @@ def test_projected_starters_rank_by_current_production_not_dynasty_value():
     roster = {"players": list(players), "starters": []}
 
     projected = roster_needs.projected_starters(roster, players, slots)
-    assert projected == {"P0", "P2"}, "redraft ranking starts McCaffrey over the rookie"
+    assert projected == {"0", "2"}, "redraft ranking starts McCaffrey over the rookie"
 
 
 def test_flex_slots_let_three_good_backs_all_start():
@@ -363,8 +366,8 @@ def test_flex_slots_let_three_good_backs_all_start():
     roster = {"players": list(players), "starters": []}
 
     starters = roster_needs.projected_starters(roster, players, dedicated, flex)
-    assert {"P0", "P1", "P2"} <= starters, "all three backs start - two at RB, one at FLEX"
-    assert "P4" in starters, "the second QB fills SUPER_FLEX"
+    assert {"0", "1", "2"} <= starters, "all three backs start - two at RB, one at FLEX"
+    assert "4" in starters, "the second QB fills SUPER_FLEX"
 
 
 def test_flex_fills_most_restrictive_slot_first():
@@ -378,7 +381,7 @@ def test_flex_fills_most_restrictive_slot_first():
     players["1"]["redraft_value"] = 100
     roster = {"players": list(players), "starters": []}
 
-    assert roster_needs.projected_starters(roster, players, dedicated, flex) == {"P0", "P1"}
+    assert roster_needs.projected_starters(roster, players, dedicated, flex) == {"0", "1"}
 
 
 def test_projected_starters_sorts_missing_redraft_prices_last():
@@ -391,7 +394,7 @@ def test_projected_starters_sorts_missing_redraft_prices_last():
     players["1"]["redraft_value"] = 2500   # real current producer
     roster = {"players": list(players), "starters": []}
 
-    assert roster_needs.projected_starters(roster, players, slots) == {"P1"}
+    assert roster_needs.projected_starters(roster, players, slots) == {"1"}
 
 
 def test_win_now_buyer_sees_production_priced_targets_first():
@@ -412,7 +415,7 @@ def test_win_now_buyer_sees_production_priced_targets_first():
     }
     need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12}
     out = trade_targets._buy_path(me, [seller], {"me": {"WR": need}}, thresholds,
-                                  trade_counts={}, max_per_position=5, projected=set())
+                                  trade_counts={}, max_per_position=5)
     assert [t["name"] for t in out["targets"]][0] == "AgingGuy", \
         "declining (production-priced) should outrank higher-value prime for a Win-Now buyer"
 
@@ -434,7 +437,7 @@ def test_offers_are_tiered_by_value_over_replacement_not_raw_value():
           "tradeable_surplus": [
               {"name": "Filler", "position": "RB", "value": 947, "bucket": "ascending", "is_starter": False},
           ]}
-    offers = trade_targets._my_offer_pool(me, thresholds, needs={}, projected=set())
+    offers = trade_targets._my_offer_pool(me, thresholds, needs={})
     by_name = {e["name"]: e for e in offers}
     assert by_name["Real"]["tier"].startswith("core piece")
     assert by_name["Filler"]["tier"].startswith("depth")
@@ -448,10 +451,10 @@ def test_efficiency_swap_finds_cheaper_equivalent_production():
     (3,288 dynasty / 2,744 redraft) against QB3 (2,735 / 2,704): 99% of the production
     for 553 less in trade value."""
     entries = [
-        {"name": "QB2", "position": "QB", "value": 3288, "redraft_value": 2744},
-        {"name": "QB3", "position": "QB", "value": 2735, "redraft_value": 2704},
+        {"name": "QB2", "position": "QB", "value": 3288, "redraft_value": 2744, "is_starter": True},
+        {"name": "QB3", "position": "QB", "value": 2735, "redraft_value": 2704, "is_starter": False},
     ]
-    swaps = trade_targets.find_efficiency_swaps(entries, projected={"QB2"})
+    swaps = trade_targets.find_efficiency_swaps(entries)
     assert len(swaps) == 1
     assert swaps[0]["sell"] == "QB2" and swaps[0]["start_instead"] == "QB3"
     assert swaps[0]["production_retained_pct"] == 99
@@ -475,7 +478,7 @@ def test_efficiency_swap_target_reaches_the_offer_pool():
         "tradeable_surplus": [],
     }
     out = trade_targets._buy_path(me, [], {"me": {}}, thresholds, trade_counts={},
-                                  max_per_position=3, projected={"QB2"})
+                                  max_per_position=3)
     names = [e["name"] for e in out["my_offers"]]
     assert "QB2" in names, "the swap's sell target must be offerable"
     entry = next(e for e in out["my_offers"] if e["name"] == "QB2")
@@ -486,10 +489,10 @@ def test_efficiency_swap_ignores_a_real_production_downgrade():
     """The point is arbitrage, not selling the team. A replacement that loses real
     current production shouldn't be suggested however much value it frees."""
     entries = [
-        {"name": "Stud", "position": "RB", "value": 5000, "redraft_value": 5000},
-        {"name": "Scrub", "position": "RB", "value": 800, "redraft_value": 1500},  # 30% of production
+        {"name": "Stud", "position": "RB", "value": 5000, "redraft_value": 5000, "is_starter": True},
+        {"name": "Scrub", "position": "RB", "value": 800, "redraft_value": 1500, "is_starter": False},
     ]
-    assert trade_targets.find_efficiency_swaps(entries, projected={"Stud"}) == []
+    assert trade_targets.find_efficiency_swaps(entries) == []
 
 
 def test_efficiency_swap_skips_players_with_no_redraft_price():
@@ -497,10 +500,10 @@ def test_efficiency_swap_skips_players_with_no_redraft_price():
     carries ~200 redraft players against ~400 dynasty. Missing must mean skipped, not
     treated as zero production."""
     entries = [
-        {"name": "Starter", "position": "WR", "value": 4000, "redraft_value": 3000},
-        {"name": "Prospect", "position": "WR", "value": 900, "redraft_value": None},
+        {"name": "Starter", "position": "WR", "value": 4000, "redraft_value": 3000, "is_starter": True},
+        {"name": "Prospect", "position": "WR", "value": 900, "redraft_value": None, "is_starter": False},
     ]
-    assert trade_targets.find_efficiency_swaps(entries, projected={"Starter"}) == []
+    assert trade_targets.find_efficiency_swaps(entries) == []
 
 
 def test_pick_slot_follows_the_original_team_not_the_holder(monkeypatch):
@@ -584,3 +587,73 @@ def test_offer_pool_never_includes_a_position_the_team_needs():
     thresholds = {"WR": 100}
     assert trade_targets._my_offer_pool(me, thresholds, needs={}) != []
     assert trade_targets._my_offer_pool(me, thresholds, needs={"WR": "critical"}) == []
+
+
+# ------------------------------------------------------------------- mutual swaps
+
+def _swap_league(monkeypatch, needs, surplus):
+    """A two-team Win-Now league with the given needs/surplus, so find_mutual_swaps can be
+    exercised without network. Both teams are swap-eligible; the strategy gate and the
+    owner lookup are covered elsewhere."""
+    states = [{"owner_id": "me", "owner": "Me", "roster_id": 1, "effective_strategy": "Win-Now"},
+              {"owner_id": "you", "owner": "You", "roster_id": 2, "effective_strategy": "Win-Now"}]
+    monkeypatch.setattr(team_state, "classify_league", lambda _: states)
+    monkeypatch.setattr(roster_needs, "league_needs", lambda _: needs)
+    monkeypatch.setattr(roster_needs, "league_surplus", lambda _: surplus)
+    monkeypatch.setattr(trade_targets, "context",
+                        lambda _: type("Ctx", (), {"pick_owner": lambda s, q, rows: rows[0]})())
+    return states
+
+
+def _need(level, weakest=0):
+    return {"level": level, "weakest_starter": weakest, "note": "", "rank": 6, "of": 12}
+
+
+def _spare(name, pos, value, redraft):
+    return {"name": name, "position": pos, "value": value, "redraft_value": redraft,
+            "is_starter": False}
+
+
+def test_mutual_swap_matches_each_side_spare_depth_to_the_other_side_need(monkeypatch):
+    """The shape this exists for: I'm short at TE with spare QB depth, you're the mirror.
+    Neither of us touches a starter and both lineups improve."""
+    _swap_league(monkeypatch,
+                 needs={"me": {"TE": _need("critical")}, "you": {"QB": _need("critical")}},
+                 surplus={"me": {"QB": [_spare("MyQB3", "QB", 2000, 1900)]},
+                          "you": {"TE": [_spare("TheirTE2", "TE", 1900, 1800)]}})
+    swaps = trade_targets.find_mutual_swaps("L", "Me")["swaps"]
+
+    assert len(swaps) == 1
+    assert [e["name"] for e in swaps[0]["you_receive"]] == ["TheirTE2"]
+    assert [e["name"] for e in swaps[0]["you_send"]] == ["MyQB3"]
+    assert swaps[0]["balance"]["you_receive_value"] == 1900
+
+
+def test_mutual_swap_rejects_a_lopsided_package(monkeypatch):
+    """Both sides being spare depth doesn't make the trade proposable. Before this, the
+    cartesian match happily offered a genuine RB3 for a fringe backup QB - nobody accepts
+    that, so surfacing it is noise."""
+    _swap_league(monkeypatch,
+                 needs={"me": {"TE": _need("critical")}, "you": {"QB": _need("critical")}},
+                 surplus={"me": {"QB": [_spare("MyStud", "QB", 5000, 4800)]},
+                          "you": {"TE": [_spare("TheirScrub", "TE", 700, 650)]}})
+    assert trade_targets.find_mutual_swaps("L", "Me")["swaps"] == []
+
+
+def test_mutual_swap_will_not_fix_a_weak_position_with_a_worse_player(monkeypatch):
+    """A `weak` position has its slots covered and wants an upgrade, so incoming depth has
+    to actually beat the current worst starter. Live case: rjl22 (weak at TE, worst
+    starter 660 redraft) was offered Isaiah Likely at 634 - strictly a downgrade."""
+    weak_te = _need("weak", weakest=660)
+    _swap_league(monkeypatch,
+                 needs={"me": {"TE": weak_te}, "you": {"QB": _need("critical")}},
+                 surplus={"me": {"QB": [_spare("MyQB3", "QB", 2000, 1900)]},
+                          "you": {"TE": [_spare("Likely", "TE", 2076, 634)]}})
+    assert trade_targets.find_mutual_swaps("L", "Me")["swaps"] == []
+
+    # ...but the same swap is on if the incoming TE actually is an upgrade.
+    _swap_league(monkeypatch,
+                 needs={"me": {"TE": weak_te}, "you": {"QB": _need("critical")}},
+                 surplus={"me": {"QB": [_spare("MyQB3", "QB", 2000, 1900)]},
+                          "you": {"TE": [_spare("RealUpgrade", "TE", 2076, 1800)]}})
+    assert len(trade_targets.find_mutual_swaps("L", "Me")["swaps"]) == 1

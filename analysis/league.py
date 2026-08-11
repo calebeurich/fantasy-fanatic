@@ -23,6 +23,14 @@ similar-looking slot and threshold concepts is which.
 - `trade_thresholds` (dynasty): is this a real trade chip? A value question.
   Conflating these made a team with three startable WRs read as critically short - see
   LOGIC.md's "Positional needs".
+
+**One starter concept, deliberately only one.** `starters` is the single answer to "who
+is in this team's lineup", derived from value and the league's own slots. Sleeper's
+`roster["starters"]` is a snapshot of whatever the current week's lineup happens to be,
+which is meaningless in the preseason - in this league it listed one QB for a superflex
+team and eight starters for a ten-slot lineup. That was known and fixed on one code path
+while three others kept reading the snapshot, including the one computing the starter
+value the whole league is ranked by. Now nothing reads it.
 """
 
 from dataclasses import dataclass, field
@@ -31,7 +39,7 @@ from sources import sleeper
 from sources.cache import ttl_cache, LEAGUE_CONFIG_TTL
 
 from . import roster_needs
-from .team_values import NUM_QBS, get_players_with_roles
+from .team_values import get_players_with_roles
 
 
 @dataclass
@@ -47,36 +55,52 @@ class LeagueContext:
     lineup_flex: list
     start_thresholds: dict
     trade_thresholds: dict
+    starters: dict          # owner_id -> set of player_ids actually in the lineup
 
     @property
     def num_teams(self) -> int:
         return self.fmt["num_teams"]
 
+    def starters_for(self, roster: dict) -> set[str]:
+        return self.starters.get(roster["owner_id"], set())
+
     def roster_for(self, owner_query: str) -> dict:
         """Rosters are looked up by owner substring everywhere in this project, so the
         matching rule (and its error message listing the real options) lives here rather
         than being re-implemented per module."""
+        return self.rosters[self._match(owner_query, [
+            self.owner_names.get(r["owner_id"], "") for r in self.rosters])]
+
+    def pick_owner(self, owner_query: str, rows: list[dict], key: str = "owner") -> dict:
+        """The same substring match against an already-computed list of per-team rows
+        (e.g. `team_state.classify_league` output), which is what the trade paths hold
+        rather than raw rosters. Shares `_match` so the rule and the error message can't
+        drift from `roster_for`'s - they were separately hand-rolled in four places."""
+        return rows[self._match(owner_query, [row[key] for row in rows])]
+
+    def _match(self, owner_query: str, names: list[str]) -> int:
         query = owner_query.lower()
-        for roster in self.rosters:
-            if query in self.owner_names.get(roster["owner_id"], "").lower():
-                return roster
-        raise ValueError(f"no owner matching '{owner_query}' - options: {list(self.owner_names.values())}")
+        for i, name in enumerate(names):
+            if query in name.lower():
+                return i
+        raise ValueError(f"no owner matching '{owner_query}' - options: {names}")
 
 
 @ttl_cache(LEAGUE_CONFIG_TTL)
 def context(league_id: str) -> LeagueContext:
     league = sleeper.get_league(league_id)
     fmt = sleeper.describe_format(league)
-    players = get_players_with_roles(NUM_QBS[fmt["is_superflex"]], fmt["num_teams"],
+    players = get_players_with_roles(fmt["num_qbs"], fmt["num_teams"],
                                      fmt["ppr"], fmt["is_dynasty"])
-    needs_slots = roster_needs.dedicated_slots(league["roster_positions"], fmt["is_superflex"])
+    needs_slots = roster_needs.dedicated_slots(league["roster_positions"])
     lineup_dedicated, lineup_flex = roster_needs.lineup_slots(league["roster_positions"])
+    rosters = sleeper.get_rosters(league_id)
     return LeagueContext(
         league_id=league_id,
         league=league,
         fmt=fmt,
         players=players,
-        rosters=sleeper.get_rosters(league_id),
+        rosters=rosters,
         owner_names={u["user_id"]: u["display_name"] for u in sleeper.get_users(league_id)},
         needs_slots=needs_slots,
         lineup_dedicated=lineup_dedicated,
@@ -85,4 +109,9 @@ def context(league_id: str) -> LeagueContext:
             players, needs_slots, fmt["num_teams"], metric="redraft_value"),
         trade_thresholds=roster_needs.replacement_thresholds(
             players, needs_slots, fmt["num_teams"], metric="value"),
+        # lineup_* rather than needs_slots: the real lineup has FLEX slots and a
+        # SUPER_FLEX that takes any position, where needs_slots folds SUPER_FLEX into a
+        # second QB.
+        starters={r["owner_id"]: roster_needs.projected_starters(
+            r, players, lineup_dedicated, lineup_flex) for r in rosters},
     )

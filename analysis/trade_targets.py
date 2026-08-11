@@ -14,7 +14,7 @@ from sources import fantasycalc
 
 from . import team_state, roster_needs, trade_activity
 from .league import context
-from .team_values import NUM_QBS, owned_picks, pick_equivalent
+from .team_values import owned_picks, pick_equivalent
 
 # Same VALUE_BASIS classification (team_state.py) drives both sides of a trade, just
 # phrased for who's on which side of it.
@@ -45,8 +45,7 @@ def _with_trade_note(entry: dict, other: dict, trade_counts: dict[str, int]) -> 
     return {**entry, "from_owner": other["owner"], "from_owner_trades": trade_counts.get(other["owner_id"], 0)}
 
 
-def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, str],
-                   projected: set[str] | None = None,
+def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict],
                    pick_values: dict[str, int] | None = None) -> list[dict]:
     """What you could realistically offer: bench value that isn't elite enough to be a
     cornerstone but also isn't part of your actual lineup (e.g. a 3rd QB in a 2-QB-max
@@ -54,20 +53,15 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, str]
     one, since that's not surplus, that's your team. Also never a position you
     yourself have a need at - trading away a WR while WR is your own critical need
     just moves the shortage, it doesn't fix anything. Cheapest give-up cost first."""
-    # `projected` (value-derived, from roster_needs.projected_starters) is preferred over
-    # each entry's `is_starter`, which comes from Sleeper's current-week snapshot and is
-    # meaningless before Week 1. With the snapshot alone, a superflex team's QB2 was
-    # being offered away as surplus because the preseason lineup listed only one QB.
-    def is_lineup(entry: dict) -> bool:
-        return entry["name"] in projected if projected is not None else entry["is_starter"]
-
-    bench_sellable = [e for e in me["sellable"]
-                       if not is_lineup(e) and e["position"] not in needs
-                       and team_state.clears_relevance_floor(e, thresholds)]
-    surplus = [e for e in me["tradeable_surplus"]
-               if not is_lineup(e) and e["position"] not in needs
-               and team_state.clears_relevance_floor(e, thresholds)]
-    offers = bench_sellable + surplus
+    # `is_starter` is the value-derived lineup (LeagueContext.starters), so this is just
+    # a field read now. It used to be Sleeper's current-week snapshot, which is
+    # meaningless before Week 1 - a superflex team's QB2 was offered away as surplus
+    # because the preseason lineup listed only one QB - and the fix was a `projected` set
+    # of names threaded through five functions. Fixing the flag at its source deleted all
+    # of that.
+    offers = [e for e in me["sellable"] + me["tradeable_surplus"]
+              if not e["is_starter"] and e["position"] not in needs
+              and team_state.clears_relevance_floor(e, thresholds)]
 
     # Trade value is not linear in raw value, and presenting it as if it were produced a
     # bad recommendation: a real offer list led with Christian McCaffrey (+1,783 over
@@ -93,7 +87,7 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, str]
     return offers
 
 
-def find_efficiency_swaps(roster_entries: list[dict], projected: set[str]) -> list[dict]:
+def find_efficiency_swaps(roster_entries: list[dict]) -> list[dict]:
     """Win-now arbitrage *within* a position: a lineup player whose bench alternative
     produces nearly as much this season for meaningfully less dynasty value. Sell the
     expensive one, start the cheap one, pocket the difference.
@@ -117,8 +111,8 @@ def find_efficiency_swaps(roster_entries: list[dict], projected: set[str]) -> li
 
     swaps = []
     for pos, entries in by_pos.items():
-        lineup = [e for e in entries if e["name"] in projected]
-        bench = [e for e in entries if e["name"] not in projected]
+        lineup = [e for e in entries if e["is_starter"]]
+        bench = [e for e in entries if not e["is_starter"]]
         for starter in lineup:
             for alt in bench:
                 retained = alt["redraft_value"] / starter["redraft_value"]
@@ -145,7 +139,6 @@ def find_efficiency_swaps(roster_entries: list[dict], projected: set[str]) -> li
 
 def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds: dict[str, float],
               trade_counts: dict[str, int], max_per_position: int,
-              projected: set[str] | None = None,
               pick_values: dict[str, int] | None = None,
               my_picks: list[dict] | None = None) -> dict:
     """The push case: fill needs with sellable value from Rebuilding teams."""
@@ -195,7 +188,7 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         targets += pos_targets[:max_per_position]
 
     result = {"needs": my_needs, "targets": targets,
-              "my_offers": _my_offer_pool(me, thresholds, my_needs, projected, pick_values)}
+              "my_offers": _my_offer_pool(me, thresholds, my_needs, pick_values)}
 
     # Picks are *currency*, not production. A first doesn't help you win - it becomes a
     # rookie at the next offseason's draft, and a rookie is another upside asset, which is
@@ -208,8 +201,8 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         result["picks_to_trade_away"] = my_picks
     # Only meaningful for a team actually trying to win now - a rebuilding team wants
     # the future premium it would be selling.
-    if me["effective_strategy"] == "Win-Now" and projected:
-        swaps = find_efficiency_swaps(me["sellable"] + me["tradeable_surplus"], projected)
+    if me["effective_strategy"] == "Win-Now":
+        swaps = find_efficiency_swaps(me["sellable"] + me["tradeable_surplus"])
         # Never at a position you're already short at. The swap frees dynasty value by
         # selling a starter and promoting his backup - fine where you have spare bodies,
         # circular where you don't, since the capital it raises is capital you'd have to
@@ -295,8 +288,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     ctx = context(league_id)
     thresholds = ctx.trade_thresholds
     trade_counts = trade_activity.get_trade_counts(league_id)
-    projected_by_owner = roster_needs.league_projected_starters(league_id)
-    pick_values = fantasycalc.get_pick_values(NUM_QBS[ctx.fmt["is_superflex"]], ctx.num_teams,
+    pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.num_teams,
                                               ctx.fmt["ppr"], ctx.fmt["is_dynasty"])
     # Keyed on effective_strategy (the corrected label - see team_state's thin/loaded
     # overrides), so a "Rebuilding" team that's actually loaded doesn't get its pick
@@ -307,15 +299,12 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
                                  [r["roster_id"] for r in ctx.rosters], pick_values,
                                  strategy_by_roster)
 
-    me = next((r for r in states if owner_query.lower() in r["owner"].lower()), None)
-    if me is None:
-        raise ValueError(f"no owner matching '{owner_query}' - options: {[r['owner'] for r in states]}")
+    me = ctx.pick_owner(owner_query, states)
 
     # A rebuilding team (especially one tanking for a pick) isn't trying to fill
     # starting-lineup needs with proven vets - it wants to sell what age value it has
     # left and stockpile youth/picks instead. Buy-target-by-need only makes sense for
     # a team actually trying to win now.
-    projected = projected_by_owner.get(me["owner_id"], set())
     my_picks = picks_by_owner.get(me["roster_id"], [])
 
     if me["effective_strategy"] == "Rebuilding":
@@ -329,15 +318,31 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         # one that's clearly out should pivot even mid-season) - logged in LOGIC.md.
         return {"me": me, "mode": "middling",
                 "push": _buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
-                                  max_per_position, projected, pick_values, my_picks),
+                                  max_per_position, pick_values, my_picks),
                 "pivot": _pivot_path(me, states, thresholds, trade_counts, picks_by_owner)}
 
     return {"me": me, "mode": "buy",
             **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
-                        max_per_position, projected, pick_values, my_picks)}
+                        max_per_position, pick_values, my_picks)}
 
 
 SWAP_ELIGIBLE_STRATEGIES = ("Win-Now", "Middling")
+
+
+# How lopsided the two sides of a mutual swap may be before it stops being a realistic
+# proposal. Both sides are startable-quality depth by construction, so this is a sanity
+# bound, not a fairness calculator (that's a separate, harder problem - see the module
+# docstring). 0.6 means the lighter side must be worth at least 60% of the heavier one:
+# loose enough that a genuine need premium still goes through, tight enough that nobody
+# gets shown "your RB3 for their QB5".
+MIN_SWAP_BALANCE = 0.6
+
+
+def _swap_is_balanced(receive: list[dict], send: list[dict]) -> bool:
+    got, gave = sum(e["value"] for e in receive), sum(e["value"] for e in send)
+    if not got or not gave:
+        return False
+    return min(got, gave) / max(got, gave) >= MIN_SWAP_BALANCE
 
 
 def _fills(entries: list[dict], need: dict | None) -> list[dict]:
@@ -360,13 +365,12 @@ def find_mutual_swaps(league_id: str, owner_query: str) -> dict:
     match a Win-Now/Middling team against a Rebuilding team's sell candidates - they
     never consider two competing teams trading with each other, which misses a common
     and realistic trade shape a pure rebuild-vs-contend model can't produce."""
+    ctx = context(league_id)
     states = team_state.classify_league(league_id)
     needs_by_owner = roster_needs.league_needs(league_id)
     surplus_by_owner = roster_needs.league_surplus(league_id)
 
-    me = next((r for r in states if owner_query.lower() in r["owner"].lower()), None)
-    if me is None:
-        raise ValueError(f"no owner matching '{owner_query}' - options: {[r['owner'] for r in states]}")
+    me = ctx.pick_owner(owner_query, states)
 
     if me["effective_strategy"] not in SWAP_ELIGIBLE_STRATEGIES:
         # A Rebuilding team isn't trying to fix a starting lineup right now - it's
@@ -394,14 +398,22 @@ def find_mutual_swaps(league_id: str, owner_query: str) -> dict:
                 continue
             for their_need_pos, my_surplus_entries in my_surplus.items():
                 outgoing = _fills(my_surplus_entries, other_needs.get(their_need_pos))
-                if outgoing:
+                if outgoing and _swap_is_balanced(incoming, outgoing):
                     swaps.append({
                         "with_owner": other["owner"],
                         "fills_your_need_at": need_pos,
                         "you_receive": incoming,
                         "fills_their_need_at": their_need_pos,
                         "you_send": outgoing,
+                        "balance": {
+                            "you_receive_value": sum(e["value"] for e in incoming),
+                            "you_send_value": sum(e["value"] for e in outgoing),
+                            "note": "Both sides are spare startable depth of comparable "
+                                    "value - this is a shape that could work, not a "
+                                    "priced offer. Check it against the market before sending.",
+                        },
                     })
+    swaps.sort(key=lambda s: -(s["balance"]["you_receive_value"] + s["balance"]["you_send_value"]))
     return {"me": me, "swaps": swaps}
 
 
@@ -495,8 +507,10 @@ def _print_swaps(swaps: list[dict]) -> None:
     for s in swaps:
         receive = ", ".join(e["name"] for e in s["you_receive"])
         send = ", ".join(e["name"] for e in s["you_send"])
-        print(f"  with {s['with_owner']}: you get {receive} ({s['fills_your_need_at']} need) "
-              f"for {send} ({s['fills_their_need_at']} need for them)")
+        b = s["balance"]
+        print(f"  with {s['with_owner']}: you get {receive} ({s['fills_your_need_at']} need, "
+              f"{b['you_receive_value']}) for {send} ({s['fills_their_need_at']} need for "
+              f"them, {b['you_send_value']})")
 
 
 def main(league_id: str, owner_query: str = None, max_per_position: int = DEFAULT_MAX_PER_POSITION) -> None:

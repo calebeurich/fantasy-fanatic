@@ -61,8 +61,11 @@ def clears_relevance_floor(entry: dict, thresholds: dict[str, float]) -> bool:
     return entry["value"] >= thresholds[entry["position"]] * fraction
 
 
-def classify(roster: dict, players: dict[str, dict], threshold: float) -> dict:
-    starter_ids = [pid for pid in (roster["starters"] or []) if pid != "0"]
+def classify(roster: dict, players: dict[str, dict], threshold: float,
+             starter_ids: set[str]) -> dict:
+    """`starter_ids` is the value-derived lineup (`LeagueContext.starters`), not Sleeper's
+    current-week snapshot. Both the age-mix buckets below - which set Win-Now / Middling /
+    Rebuilding outright - and every entry's `is_starter` flag are computed from it."""
     all_ids = roster["players"] or []
 
     buckets = {"ascending": 0, "prime": 0, "declining": 0, "unknown": 0}
@@ -173,8 +176,9 @@ def classify_league(league_id: str) -> list[dict]:
 
     rows = []
     for roster in rosters:
-        starter_value, _ = split_starters_bench(roster, players)
-        result = classify(roster, players, threshold)
+        starter_ids = ctx.starters_for(roster)
+        starter_value, _ = split_starters_bench(roster, players, starter_ids)
+        result = classify(roster, players, threshold, starter_ids)
         rows.append({
             "owner": owner_names.get(roster["owner_id"], "Unknown"),
             "owner_id": roster["owner_id"],

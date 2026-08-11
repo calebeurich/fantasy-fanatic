@@ -4,8 +4,6 @@ import sys
 
 from sources import sleeper, fantasycalc, contracts, player_roles
 
-NUM_QBS = {True: 2, False: 1}  # superflex counts as a 2nd "QB" slot for value purposes
-
 # (ascending_below, declining_at_or_above), by position. Dynasty community heuristics,
 # not a model: RBs decline earliest, QBs/TEs age gracefully.
 AGE_CURVE = {
@@ -173,7 +171,10 @@ def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list
                 tier = STRATEGY_TO_PICK_TIER.get((strategy_by_roster or {}).get(rid))
                 tiered_value = pick_values.get(f"{name} ({tier})") if tier else None
 
-                owned.setdefault(current_owner, []).append({
+                # Indexed, not setdefault: every owner is a roster in this league, so an
+                # id that isn't already a key means the traded-pick feed disagrees with
+                # the roster list and should surface, not silently create a phantom team.
+                owned[current_owner].append({
                     "pick": name if not tiered_value else f"{name} ({tier})",
                     "value": tiered_value or flat_value,
                     "round": round_num,
@@ -206,55 +207,55 @@ def pick_equivalent(value: float, pick_values: dict[str, int]) -> str | None:
     return name
 
 
-def split_starters_bench(roster: dict, players: dict[str, dict]) -> tuple[int, int]:
-    starter_ids = {pid for pid in (roster["starters"] or []) if pid != "0"}
+def split_starters_bench(roster: dict, players: dict[str, dict],
+                         starter_ids: set[str]) -> tuple[int, int]:
+    """Dynasty value of the lineup vs the bench.
+
+    `starter_ids` comes from `LeagueContext.starters` (value-derived), never from
+    Sleeper's `roster["starters"]`. This function used to read that snapshot, and its
+    output is what ranks the entire league (`team_state.starter_value_rank`), which in
+    turn drives `is_thin`/`is_loaded` and therefore `effective_strategy` - the label every
+    downstream decision branches on. The snapshot is whatever the current week's lineup
+    happens to be: in a real superflex league it listed one QB, and for one team only 8
+    of 10 slots were set at all."""
     all_ids = roster["players"] or []
     starter_value = sum(players[pid]["value"] for pid in starter_ids if pid in players)
     bench_value = sum(players[pid]["value"] for pid in all_ids if pid in players and pid not in starter_ids)
     return starter_value, bench_value
 
 
-def pick_capital(league_id: str, season: int, draft_rounds: int, roster_ids: list[int],
-                  pick_values: dict[str, int]) -> dict[int, int]:
-    """Total future pick value per roster_id, current owner after trades."""
-    traded = sleeper.get_traded_picks(league_id)
-    traded_map = {(int(t["season"]), t["round"], t["roster_id"]): t["owner_id"] for t in traded}
+def pick_capital(owned: dict[int, list[dict]]) -> dict[int, int]:
+    """Total future pick value per roster_id, from `owned_picks`.
 
-    totals = {rid: 0 for rid in roster_ids}
-    for year_offset in range(1, FUTURE_DRAFT_YEARS + 1):
-        pick_season = season + year_offset
-        for round_num in range(1, draft_rounds + 1):
-            value = pick_values.get(f"{pick_season} {ordinal(round_num)}", 0)
-            for rid in roster_ids:
-                current_owner = traded_map.get((pick_season, round_num, rid), rid)
-                totals[current_owner] += value
-    return totals
+    This used to be a second full copy of the traded-pick resolution loop, differing from
+    `owned_picks` only in summing flat round values instead of returning the picks
+    themselves. Two implementations of "who owns which future picks" meant two numbers for
+    draft capital could disagree - and once `owned_picks` learned to price by the
+    originating team's window, they did. Summing the same list is the one answer."""
+    return {rid: sum(p["value"] for p in picks) for rid, picks in owned.items()}
 
 
 def main(league_id: str) -> None:
-    league = sleeper.get_league(league_id)
-    fmt = sleeper.describe_format(league)
-    num_qbs = NUM_QBS[fmt["is_superflex"]]
+    from .league import context
+    ctx = context(league_id)
+    league, fmt, players = ctx.league, ctx.fmt, ctx.players
 
-    players = get_players_with_roles(num_qbs, fmt["num_teams"], fmt["ppr"], fmt["is_dynasty"])
-    pick_values = fantasycalc.get_pick_values(num_qbs, fmt["num_teams"], fmt["ppr"], fmt["is_dynasty"])
+    pick_values = fantasycalc.get_pick_values(fmt["num_qbs"], fmt["num_teams"],
+                                              fmt["ppr"], fmt["is_dynasty"])
     contract_data = contracts.get_contracts()
+    owner_names = ctx.owner_names
 
-    rosters = sleeper.get_rosters(league_id)
-    users = sleeper.get_users(league_id)
-    owner_names = {user["user_id"]: user["display_name"] for user in users}
-
-    pick_totals = pick_capital(
+    pick_totals = pick_capital(owned_picks(
         league_id, int(league["season"]), league["settings"]["draft_rounds"],
-        [r["roster_id"] for r in rosters], pick_values,
-    )
+        [r["roster_id"] for r in ctx.rosters], pick_values,
+    ))
 
     standings = []
-    for roster in rosters:
+    for roster in ctx.rosters:
         owner = owner_names.get(roster["owner_id"], "Unknown")
         player_ids = roster["players"] or []
-        starter_value, bench_value = split_starters_bench(roster, players)
-        pick_value = pick_totals[roster["roster_id"]]
+        starter_value, bench_value = split_starters_bench(roster, players, ctx.starters_for(roster))
+        pick_value = pick_totals.get(roster["roster_id"], 0)
         breakdown = team_breakdown(player_ids, players)
         outliers = find_outliers(player_ids, players, contract_data)
         total = starter_value + bench_value + pick_value

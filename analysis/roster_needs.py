@@ -19,9 +19,13 @@ from sources import sleeper
 POSITIONS = ["QB", "RB", "WR", "TE"]
 
 
-def dedicated_slots(roster_positions: list[str], is_superflex: bool) -> dict[str, int]:
+def dedicated_slots(roster_positions: list[str]) -> dict[str, int]:
+    """How many of each position a team must own to fill its lineup. SUPER_FLEX is folded
+    into QB - it's the position that realistically fills it - and counted, not treated as
+    a boolean, so a league with two of them needs two extra QBs. Unlike
+    `sleeper.starting_qbs` this is deliberately unclamped: it counts real roster slots."""
     return {
-        "QB": roster_positions.count("QB") + (1 if is_superflex else 0),
+        "QB": roster_positions.count("QB") + roster_positions.count("SUPER_FLEX"),
         "RB": roster_positions.count("RB"),
         "WR": roster_positions.count("WR"),
         "TE": roster_positions.count("TE"),
@@ -29,13 +33,25 @@ def dedicated_slots(roster_positions: list[str], is_superflex: bool) -> dict[str
 
 
 def replacement_thresholds(players: dict[str, dict], slots: dict[str, int], num_teams: int,
-                           metric: str = "value") -> dict[str, float]:
+                           metric: str) -> dict[str, float]:
     """Replacement level per position: the Nth-best player, N = every starting slot in
     the league at that position.
 
-    **`metric` matters, because two different questions use this.** "Can I field a
-    lineup?" is about *current production* (`redraft_value`); "is this a real trade
-    chip?" is about *dynasty value*. Using dynasty value for the first was badly wrong:
+    **Replacement level is a win-now lens.** "Is there a startable player here" is only
+    the operative question for a team trying to field the best lineup it can this season.
+    A rebuilding team isn't shopping above replacement level at all - it's accumulating
+    ascending value and picks, and `find_targets` routes it to the pivot path for exactly
+    that reason. Read a rebuilder's positional needs as "what a contending version of this
+    roster would be short of", not a to-do list.
+
+    **`metric` is required, deliberately.** It used to default to `"value"` here while
+    `_usable_by_position` defaulted to `"redraft_value"` - two functions that have to
+    agree, shipping opposite defaults, in a file whose central documented bug is exactly
+    that conflation. Callers now have to say which question they're asking.
+
+    "Can I field a lineup?" is about *current production* (`redraft_value`); "is this a
+    real trade chip?" is about *dynasty value*. Using dynasty value for the first was
+    badly wrong:
     it asks whether a player beats the 36th-most-*valuable* WR, a pool full of young
     prospects priced on upside, rather than the 36th-best current producer. Measured on
     a real league the gap is 2.5x at WR (2,126 vs 855) and 3.2x at TE (2,013 vs 630),
@@ -54,7 +70,7 @@ def replacement_thresholds(players: dict[str, dict], slots: dict[str, int], num_
 
 
 def _usable_by_position(roster: dict, players: dict[str, dict], thresholds: dict[str, float],
-                        metric: str = "redraft_value") -> dict[str, list[dict]]:
+                        metric: str, starters: set[str] | None = None) -> dict[str, list[dict]]:
     """Every rostered player at each position that clears this league's replacement
     level, best to worst. The one shared walk `assess_positions` and `find_surplus` both
     read from, so "usable" means exactly the same thing in a need (too few of them) as it
@@ -71,7 +87,8 @@ def _usable_by_position(roster: dict, players: dict[str, dict], thresholds: dict
         if info and info["position"] in by_pos and (info.get(metric) or 0) >= thresholds[info["position"]]:
             by_pos[info["position"]].append({"name": info["name"], "position": info["position"],
                                              "value": info["value"],
-                                             "redraft_value": info.get("redraft_value")})
+                                             "redraft_value": info.get("redraft_value"),
+                                             "is_starter": pid in (starters or set())})
     for entries in by_pos.values():
         entries.sort(key=lambda e: -(e.get(metric) or 0))
     return by_pos
@@ -157,7 +174,8 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
     invented for it.
     """
     groups = {r["owner_id"]: _starting_group(r, players, slots) for r in rosters}
-    usable = {r["owner_id"]: _usable_by_position(r, players, thresholds) for r in rosters}
+    usable = {r["owner_id"]: _usable_by_position(r, players, thresholds, "redraft_value")
+              for r in rosters}
 
     num_teams = len(rosters)
     top_third = num_teams / 3
@@ -237,7 +255,7 @@ def needs_only(assessed: dict[str, dict]) -> dict[str, dict]:
 
 
 def find_surplus(roster: dict, players: dict[str, dict], slots: dict[str, int],
-                 thresholds: dict[str, float], projected: set[str] | None = None) -> dict:
+                 thresholds: dict[str, float], starters: set[str] | None = None) -> dict:
     """The mirror of a need: positions where a team has MORE usable players than its
     starting slots require, and which players specifically are the spare ones. Only
     players beyond the required starter count count as surplus - the top `slots[pos]`
@@ -245,16 +263,13 @@ def find_surplus(roster: dict, players: dict[str, dict], slots: dict[str, int],
     win-now-to-win-now swap real: a team's true extra depth at a position it doesn't
     need, not just any valuable player on the roster.
 
-    **`projected` removes anyone who actually starts.** `slots` here is `needs_slots`,
-    which folds SUPER_FLEX into a QB and ignores FLEX entirely - so in a league running
-    RB 2 / FLEX 2, a team's third RB sits outside `slots["RB"]` and was being offered as
-    spare depth while starting every week. A real case: rjl22's RB3 (Ashton Jeanty, a
-    genuine asset) was offered in a mutual swap for a fringe QB on exactly this basis.
-    Same snapshot-vs-projected distinction `_my_offer_pool` already respects; this path
-    never got it."""
-    usable = _usable_by_position(roster, players, thresholds)
-    spare = {pos: [e for e in usable[pos][slots[pos]:]
-                   if projected is None or e["name"] not in projected]
+    **Anyone who actually starts is removed.** `slots` here is `needs_slots`, which folds
+    SUPER_FLEX into a QB and ignores FLEX entirely - so in a league running RB 2 / FLEX 2,
+    a team's third RB sits outside `slots["RB"]` and was being offered as spare depth
+    while starting every week. A real case: rjl22's RB3 (Ashton Jeanty, a genuine asset)
+    was offered in a mutual swap for a fringe QB on exactly this basis."""
+    usable = _usable_by_position(roster, players, thresholds, "redraft_value", starters)
+    spare = {pos: [e for e in usable[pos][slots[pos]:] if not e["is_starter"]]
              for pos in POSITIONS if len(usable[pos]) > slots[pos]}
     return {pos: entries for pos, entries in spare.items() if entries}
 
@@ -286,8 +301,16 @@ def lineup_slots(roster_positions: list[str]) -> tuple[dict[str, int], list[tupl
 
 def projected_starters(roster: dict, players: dict[str, dict], slots: dict[str, int],
                        flex: list[tuple[str, ...]] | None = None) -> set[str]:
-    """Names of the players a team would actually start, derived from value and the
-    league's own slot counts.
+    """**Player ids** of the players a team would actually start, derived from value and
+    the league's own slot counts. The single definition of "starter" in this project -
+    `LeagueContext.starters` calls it once per roster and everything else reads that.
+
+    Ids rather than names: names were used originally because the entries this is matched
+    against carry names, but that meant every consumer had to be handed the set and do a
+    string comparison, and two players can share a name. With ids, `_usable_by_position`
+    and `team_state.classify` can stamp `is_starter` on entries as they build them, and
+    the callers just read that field - which deleted the `projected` argument that had
+    been threaded through five functions.
 
     Deliberately *not* Sleeper's `starters` field. That reflects whatever the current
     week's lineup happens to be, which is meaningless before Week 1 - in a real
@@ -319,43 +342,27 @@ def projected_starters(roster: dict, players: dict[str, dict], slots: dict[str, 
     for pid in roster["players"] or []:
         info = players.get(pid)
         if info and info["position"] in by_pos:
-            by_pos[info["position"]].append((info.get("redraft_value") or 0, info["name"]))
+            by_pos[info["position"]].append((info.get("redraft_value") or 0, pid))
 
     starters: set[str] = set()
     remaining: dict[str, list[tuple[float, str]]] = {}
     for pos, entries in by_pos.items():
         entries.sort(reverse=True)
         take = slots.get(pos, 0)
-        starters.update(name for _, name in entries[:take])
+        starters.update(pid for _, pid in entries[:take])
         remaining[pos] = entries[take:]
 
     # Then flex, most restrictive slot first - otherwise a SUPER_FLEX (any position)
     # can take a player that a narrower FLEX (RB/WR/TE only) was the sole home for.
     for eligible in sorted(flex or [], key=len):
-        pool = [(v, n) for pos in eligible for v, n in remaining.get(pos, [])]
+        pool = [(v, p) for pos in eligible for v, p in remaining.get(pos, [])]
         if not pool:
             continue
-        value, name = max(pool)
-        starters.add(name)
+        _, pid = max(pool)
+        starters.add(pid)
         for pos in eligible:
-            remaining[pos] = [(v, n) for v, n in remaining.get(pos, []) if n != name]
+            remaining[pos] = [(v, p) for v, p in remaining.get(pos, []) if p != pid]
     return starters
-
-
-
-
-def league_projected_starters(league_id: str) -> dict[str, set[str]]:
-    """Projected starting lineup per roster, keyed by owner_id - the value-derived
-    version of "who's actually in the lineup", used by trade_targets so it never
-    offers away a real starter on the strength of a stale preseason snapshot."""
-    from .league import context
-    ctx = context(league_id)
-    # lineup_* rather than needs_slots: the real lineup has FLEX slots and a SUPER_FLEX
-    # that takes any position, where needs_slots folds SUPER_FLEX into a second QB.
-    return {
-        r["owner_id"]: projected_starters(r, ctx.players, ctx.lineup_dedicated, ctx.lineup_flex)
-        for r in ctx.rosters
-    }
 
 
 def league_thresholds(league_id: str) -> dict[str, float]:
@@ -386,10 +393,9 @@ def league_surplus(league_id: str) -> dict[str, dict]:
     spare depth against another's need."""
     from .league import context
     ctx = context(league_id)
-    projected = league_projected_starters(league_id)
     return {
         r["owner_id"]: find_surplus(r, ctx.players, ctx.needs_slots, ctx.start_thresholds,
-                                    projected.get(r["owner_id"]))
+                                    ctx.starters_for(r))
         for r in ctx.rosters
     }
 
