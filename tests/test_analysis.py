@@ -727,3 +727,97 @@ def test_te_premium_scales_only_tight_ends(monkeypatch):
     assert out["1"]["value"] == round(1000 * fantasycalc.TEP_MULTIPLIER["tep"])
     assert out["2"]["value"] == 1000, "non-TE values must not move"
     fantasycalc.get_players.cache_clear()
+
+
+# ------------------------------------------------------------- persuasion targets
+
+def _holder(owner, window, trajectory, players, asc=20, dec=30):
+    return {"owner_id": owner, "owner": owner, "roster_id": 1, "window": window,
+            "trajectory": trajectory, "ascending_pct": asc, "declining_pct": dec,
+            "sellable": players, "tradeable_surplus": []}
+
+
+def _aging(name, value, redraft, pos="RB"):
+    return {"name": name, "position": pos, "value": value, "redraft_value": redraft,
+            "bucket": "declining", "is_starter": True}
+
+
+def _prior(finish, champion=False, made_playoffs=True, continuity=1.0):
+    return {"season": "2025", "finish": finish, "wins": 10, "losses": 4,
+            "points_for": 2000.0, "champion": champion, "made_playoffs": made_playoffs,
+            "continuity": continuity, "describes_this_team": continuity >= 0.6,
+            "note": f"2025: finished {finish}."}
+
+
+ME = {"owner_id": "me", "owner": "Me", "window": "Push"}
+NEED_RB = {"RB": {"level": "critical", "weakest_starter": 0, "note": "", "rank": 10, "of": 12}}
+
+
+def test_persuasion_excludes_a_reigning_champion_with_the_same_roster():
+    """The clearest "no" available: a manager who just won with this exact core has every
+    reason to run it back. Real case - a contender holding McCaffrey at the second-best
+    production-per-cost ratio in the league, who would not move him at any sane price.
+    Listing him would put an unattainable name at the top of the list."""
+    champ = _holder("champ", "Contend", "steady", [_aging("Stud", 4000, 6000)])
+    out = trade_targets._persuasion_targets(
+        ME, [champ], NEED_RB, {"RB": 100}, {}, {"champ": _prior(1, champion=True)})
+    assert out == []
+
+
+def test_persuasion_includes_a_falling_contender_that_has_not_won():
+    """The mirror: same window, same kind of asset, but the roster is aging out and the
+    core has not delivered. That team has a real reason to listen."""
+    falling = _holder("kk", "Push", "falling", [_aging("Aging", 4000, 6000)])
+    out = trade_targets._persuasion_targets(
+        ME, [falling], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)})
+    assert [t["name"] for t in out] == ["Aging"]
+    why = out[0]["why_they_might_listen"]
+    assert "falling" in why and "hasn't delivered" in why
+    assert "not currently a seller" in out[0]["cost_note"], "the ask must carry its price"
+
+
+def test_persuasion_ranks_by_production_per_cost_not_by_value():
+    """The trap this exists to avoid. Ranking by dynasty value puts the *more valuable*
+    player first, which is backwards for a win-now buyer: the cheaper name delivers more
+    current production per unit paid, because the market discounts him for seasons a
+    pushing team isn't buying. Modelled on the real pair - Barkley 3,746/5,081 (1.36x)
+    against Taylor 5,240/6,649 (1.27x)."""
+    holder = _holder("kk", "Push", "falling",
+                     [_aging("Taylor", 5240, 6649), _aging("Barkley", 3746, 5081)])
+    out = trade_targets._persuasion_targets(
+        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)})
+    assert [t["name"] for t in out] == ["Barkley", "Taylor"], "cheaper but better ratio leads"
+    assert out[0]["production_per_cost"] > out[1]["production_per_cost"]
+
+
+def test_persuasion_skips_players_who_are_not_age_discounted():
+    """Asking a non-seller only makes sense for production the market prices *down* for
+    seasons you aren't buying. Below 1.0x you'd pay a future premium to a team that
+    doesn't want to sell - the worst of both."""
+    holder = _holder("kk", "Push", "falling",
+                     [_aging("Premium", 4000, 2800), _aging("Discounted", 3000, 4000)])
+    out = trade_targets._persuasion_targets(
+        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)})
+    assert [t["name"] for t in out] == ["Discounted"]
+
+
+def test_persuasion_ignores_last_season_when_the_roster_turned_over():
+    """The champion veto is gated on continuity, because a result describes a *roster*.
+    A manager who won and then tore it down is not running anything back, so the veto
+    must not fire - a falling trajectory should still make them a candidate."""
+    champ = _holder("champ", "Push", "falling", [_aging("Stud", 3000, 4500)])
+    intact = trade_targets._persuasion_targets(
+        ME, [champ], NEED_RB, {"RB": 100}, {}, {"champ": _prior(1, champion=True, continuity=1.0)})
+    turned_over = trade_targets._persuasion_targets(
+        ME, [champ], NEED_RB, {"RB": 100}, {}, {"champ": _prior(1, champion=True, continuity=0.2)})
+    assert [t["name"] for t in intact] == ["Stud"], "falling beats the veto even for a champion"
+    assert [t["name"] for t in turned_over] == ["Stud"]
+
+
+def test_persuasion_never_searches_teams_that_are_already_sellers():
+    """Rebuild teams are what the normal buy path covers. Including them here would
+    double-list the same player under a framing that says it's a hard ask."""
+    seller = _holder("reb", "Rebuild", "falling", [_aging("Cheap", 3000, 4500)])
+    out = trade_targets._persuasion_targets(
+        ME, [seller], NEED_RB, {"RB": 100}, {}, {"reb": _prior(12, made_playoffs=False)})
+    assert out == []

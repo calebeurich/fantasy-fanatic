@@ -103,6 +103,15 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     anchor an offer. "efficiency_swaps", when present, are value decisions rather than
     lineup upgrades: the two players produce near-identically this season.
 
+    "persuasion_targets", when present, are a DIFFERENT KIND of suggestion and must be
+    presented as such: aging production held by teams that are NOT currently sellers.
+    Each carries "why_they_might_listen" (a falling roster, a core that hasn't won) and
+    "cost_note". Never describe these as available or as fits - acquiring one means
+    persuading that manager to change direction, which prices above market. They are
+    ranked by "production_per_cost" (current production per unit of trade value), so the
+    top entry is often NOT the most valuable player - that is deliberate and worth saying,
+    because the cheaper name delivers more of what a contending team is buying.
+
     max_per_position caps results per position - call again with a higher number if
     asked for more, rather than assuming this is the full list."""
     return trade_targets.find_targets(league_id, owner_name, max_per_position)

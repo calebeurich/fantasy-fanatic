@@ -1678,85 +1678,83 @@ it actually fails would be its own form of the scope creep this project keeps
 deliberately avoiding.
 
 ## Known limitations / future work
-- **NEXT UP: aging production is only visible on teams already labelled `Rebuild`.**
-  `_buy_path` only searches sellers, so the best available fits at a need position can be
-  invisible. Measured on the real league: a `Push` team needing RB was offered Rachaad
-  White (449 redraft) and Tony Pollard (697), while Jonathan Taylor (**6,649**, on a
-  `Push` team that is the most steeply *falling* contender in the league) and Christian
-  McCaffrey (**6,585**, on a `Contend` team) never appeared. A 15x gap in current
-  production, hidden by a binary seller/non-seller split.
+## Persuasion targets (`trade_targets._persuasion_targets`, `analysis/prior_season.py`)
 
-  **Two traps found while scoping it, both worth fixing in the same change:**
+`_buy_path` only searches `Rebuild` teams, so the best available production at a need
+position could be structurally invisible. On the real league a `Push` team needing RB was
+offered Rachaad White (449 redraft) and Tony Pollard (697), while Jonathan Taylor (6,649)
+and Saquon Barkley (5,081) sat on a contender that is the most steeply falling team in the
+league. A 15x gap in current production, hidden by a binary seller/non-seller split.
 
-  1. *Do not source it from `win_now_core`.* That list is gated on the cornerstone
-     threshold (4,289 here), so it holds Jonathan Taylor (5,240) and silently drops Saquon
-     Barkley (3,746) - who is on the same roster and is the better target. `sellable` plus
-     the relevance floor is the correct source.
-  2. *Do not rank it by dynasty value.* The buy path sorts targets by raw value
-     descending, which is backwards for a win-now buyer. Ranked instead by **current
-     production per unit of trade cost** (`redraft_value / value`), the same RB pool
-     reorders completely:
+The fix is a separate, clearly-labelled tier - not a wider seller pool, because those
+teams genuinely aren't selling. Three choices, each of which was a trap found while
+scoping it:
 
-     | player | held by | window | dynasty | redraft | prod/cost |
-     |---|---|---|---|---|---|
-     | Derrick Henry | shivvv | Contend | 2,978 | 4,603 | **1.55x** |
-     | Christian McCaffrey | rjl22 | Contend | 4,437 | 6,585 | 1.48x |
-     | **Saquon Barkley** | kierankieran | Push | 3,746 | 5,081 | **1.36x** |
-     | Jonathan Taylor | kierankieran | Push | 5,240 | 6,649 | 1.27x |
-     | Chase Brown | spugz13 | Rebuild | 4,054 | 4,311 | 1.06x |
-     | Breece Hall | spugz13 | Rebuild | 3,787 | 3,381 | 0.89x |
+**1. Sourced from `sellable`, not `win_now_core`.** The latter is gated on the cornerstone
+threshold (4,289 here), so it holds Taylor (5,240) and drops Barkley (3,746) - the same
+roster's *better* target. The output would have looked entirely reasonable while missing
+the best name available.
 
-     Barkley beats Taylor on the ratio *and* costs less outright, because at 29.5 the
-     market discounts him for seasons a pushing team is not buying. That discount is the
-     whole point - it is the same arbitrage `find_efficiency_swaps` already exploits
-     *within* a roster, never yet applied to acquisitions. Note the top two ratios sit on
-     teams that will not sell, which is exactly why the persuasion tier needs the
-     seller-plausibility ranking rather than just a better sort.
+**2. Ranked by current production per unit of trade cost** (`redraft_value / value`), not
+by value. The normal buy path sorts by dynasty value descending, which is backwards for a
+win-now buyer:
 
-  The fix is not to widen the seller pool - those teams genuinely aren't selling. It's a
-  **separate, clearly-labelled tier**: aging production held by teams that aren't sellers
-  *yet* but have a plausible reason to become one (a falling trajectory, an aging core
-  they can't win with). The framing has to carry the cost honestly - acquiring it means
-  persuading that manager to change direction, which is a commitment on their part, so it
-  prices above market and is a conversation rather than a fit. Surfaced as an option, not
-  a gimme. Ranking should probably favour the *most* falling non-sellers, since they have
-  the most reason to listen.
-- **Last season's results are available right now and completely unused.**
-  `sleeper.get_season_chain` already walks `previous_league_id`, and the prior league is
-  `status: complete` with final `wins`/`losses`/`fpts` on every roster, plus a
-  `winners_bracket` endpoint giving the actual champion. The *current* record is useless
-  in the preseason (everyone is 0-0), which is why record was written off entirely - but
-  the previous season is finished and sitting there.
+| player | held by | dynasty | redraft | prod/cost |
+|---|---|---|---|---|
+| Derrick Henry | shivvv (Contend) | 2,978 | 4,603 | 1.55x |
+| Christian McCaffrey | rjl22 (Contend) | 4,437 | 6,585 | 1.48x |
+| **Saquon Barkley** | kierankieran (Push) | 3,746 | 5,081 | **1.36x** |
+| Jonathan Taylor | kierankieran (Push) | 5,240 | 6,649 | 1.27x |
 
-  It's the missing signal for the persuasion tier above, and it separates the exact two
-  teams that motivated it. Both are contenders holding an elite aging RB:
+Barkley beats Taylor on the ratio *and* costs 1,494 less outright, because at 29.5 the
+market discounts him for seasons a pushing team isn't buying. That discount is the entire
+point - the same arbitrage `find_efficiency_swaps` exploits *within* a roster, applied to
+acquisitions. `MIN_PRODUCTION_PER_COST = 1.0` drops anything not actually discounted:
+below 1.0 you'd pay a future premium to a team that doesn't want to sell, the worst of
+both. An empty list is the honest answer when nobody's aging production is on sale to you.
 
-  | | 2025 finish | points for | 2026 trajectory | plausible seller? |
-  |---|---|---|---|---|
-  | rjl22 | **won the title** (10-4) | **2,260 - most in the league** | steady (-3) | no - just won, running it back |
-  | kierankieran | 9th (5-9) | 1,864 | falling (-11) | yes - aging core that has not won |
+**3. Implausible sellers are excluded, not ranked last.** The two best ratios in the league
+sit on a reigning champion and the league's best team. Listing them would put unattainable
+names at the top and make the feature worse than nothing.
 
-  Trajectory alone splits them, but weakly (-3 vs -11, and both are "contenders"). Prior
-  results split them decisively, and match how the managers actually behave: the reigning
-  champion is not moving McCaffrey at any sensible price, while a 5-9 team with a
-  declining core has real reason to listen about Jonathan Taylor.
+### What makes a non-seller plausible (`_seller_case`)
 
-  *Caveat before building on it*: a champion's commitment is a behavioural inference, not
-  a roster fact. It belongs in the persuasion tier's ranking and framing, and must not
-  touch the window classification itself.
+A falling trajectory (aging out is the one thing that turns a contender into a seller), or
+a core that missed the playoffs with the roster it still has. Vetoed by one condition: a
+**reigning champion returning the same roster**, which has just proved the core works.
 
-  **Gate it on roster continuity, which must be measured rather than assumed.** Last
-  season's result says nothing about this season's team if the roster turned over. Matched
-  by `owner_id` across the season chain, this league retains 83-100% of each team's current
-  starting production from last year's roster, and the two teams in question both return
-  **10 of 10 starters at 100% of production** - so the signal genuinely transfers here.
+That veto is the only place last season is allowed to *stop* a suggestion; everywhere else
+it only adds a reason. And it is deliberately overridden by a falling trajectory - a
+champion whose roster is now aging out is a real candidate again.
 
-  That will not hold generally: continuity is near-total specifically because this is a
-  dynasty league in the preseason *before* the rookie draft. Mid-season, post-draft, or in
-  a league with heavy trade volume it would be materially lower, and in a redraft league it
-  is zero by construction. So the continuity fraction is a required gate on using prior
-  results at all, not a footnote - and it is cheap, since `get_season_chain` and
-  `get_rosters` are already here.
+### Last season's results (`prior_season.py`)
+
+The current record is useless in the preseason (everyone is 0-0), which is why record was
+written off entirely - but the *previous* season is finished and sitting there:
+`get_season_chain` walks `previous_league_id`, the prior league carries final
+`wins`/`losses`/`fpts`, and `winners_bracket` names the champion.
+
+Nothing in the current-season data separates the two contenders holding elite aging RBs
+convincingly - trajectory splits them only -3 to -11. Last season splits them decisively:
+
+| | 2025 | points for | trajectory | verdict |
+|---|---|---|---|---|
+| rjl22 | **won the title** (10-4) | **2,260 - most in the league** | steady | vetoed |
+| kierankieran | 9th (5-9) | 1,864 | falling | surfaced |
+
+**Gated on measured roster continuity**, because a result describes a *roster*. Matched by
+`owner_id` across the season chain and measured on current starting production, this league
+retains 83-100%, and both teams above return 10 of 10 starters at 100%. That will not hold
+generally - continuity is near-total because this is a dynasty preseason before the rookie
+draft, and is zero by construction in redraft - so `MIN_CONTINUITY` is a required gate even
+though it currently never fires. Its exact value (0.6) is an uncalibrated judgment call:
+there is no observed case near the boundary.
+
+**Deliberately kept out of the window classification.** "This manager just won and will run
+it back" is a behavioural inference about a person, not a fact about a roster. It belongs
+in how a suggestion is ranked and framed, never in whether a team is a contender - that is
+measured, and stays measured.
+
 - **Choosing a lane should account for how many others have chosen it.** Contending is
   worth more when almost nobody else is contending, and rebuilding is worth more when you
   own your pick and last place is uncontested. Both are supply effects the current model

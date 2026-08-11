@@ -12,7 +12,7 @@ import sys
 
 from sources import fantasycalc
 
-from . import team_state, roster_needs, trade_activity
+from . import team_state, roster_needs, trade_activity, prior_season
 from .league import context
 from .team_values import owned_picks, pick_equivalent
 
@@ -43,6 +43,23 @@ ASCEND_TIMING_NOTE = (
     "when a need is count-shaped rather than quality-shaped - an empty starting slot costs "
     "points every week and no amount of patience fills it."
 )
+
+PERSUASION_NOTE = (
+    "These are held by teams that are NOT currently sellers, so none of them is available "
+    "the way a rebuilding team's pieces are. Each carries why that owner might listen and "
+    "what it costs to ask. Ranked by current production per unit of trade value, which is "
+    "the right order for a team buying for this season - the cheapest name here is often "
+    "better than the most valuable one, because the market discounts age the buyer isn't "
+    "paying for."
+)
+
+# A persuasion target has to be *age-discounted*, which is the entire rationale for
+# asking a non-seller: you want production the market prices down for seasons you aren't
+# buying. Below 1.0 the player costs more in dynasty value than he delivers in current
+# production - you'd be paying a future premium to a team that doesn't want to sell, which
+# is the worst of both. An empty list is the honest answer when nobody's aging production
+# is being discounted for you.
+MIN_PRODUCTION_PER_COST = 1.0
 
 DEFAULT_MAX_PER_POSITION = 3  # a parameter, not a hard limit - "give me more" means call again with a higher number
 
@@ -152,10 +169,99 @@ def find_efficiency_swaps(roster_entries: list[dict]) -> list[dict]:
     return swaps
 
 
+def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds: dict[str, float],
+                        trade_counts: dict[str, int], prior: dict[str, dict]) -> list[dict]:
+    """Aging production held by teams that **aren't sellers yet** but could be talked into
+    it - the tier `_buy_path` structurally cannot see, because it only searches `Rebuild`
+    teams.
+
+    That blind spot is large. A real Push team needing RB was offered Rachaad White (449
+    redraft) and Tony Pollard (697), while Jonathan Taylor (6,649) and Saquon Barkley
+    (5,081) sat on a contender that is the most steeply falling team in the league. A 15x
+    gap in current production, hidden by a binary seller/non-seller split.
+
+    Three deliberate choices, each of which was a trap when scoping this:
+
+    1. **Sourced from `sellable`, not `win_now_core`.** The latter is gated on the
+       cornerstone threshold (4,289 in that league), so it holds Taylor (5,240) and drops
+       Barkley (3,746) - the same roster's *better* target. The output would have looked
+       perfectly reasonable while missing the best name available.
+    2. **Ranked by current production per unit of trade cost**, not by value. The normal
+       buy path sorts by dynasty value descending, which is backwards for a win-now buyer:
+       it puts Taylor (1.27x) above Barkley (1.36x) when Barkley delivers more production
+       per unit paid *and* costs 1,494 less outright. At 29.5 the market discounts Barkley
+       for seasons a pushing team isn't buying, and that discount is the entire point -
+       the same arbitrage `find_efficiency_swaps` exploits within a roster, applied to
+       acquisitions.
+    3. **Implausible sellers are excluded, not ranked last.** The two best ratios in that
+       league (Derrick Henry 1.55x, Christian McCaffrey 1.48x) sit on a reigning champion
+       and the league's best team. Listing them would put unattainable names at the top and
+       make the feature worse than no feature.
+    """
+    plausible = []
+    for other in states:
+        if other["owner_id"] == me["owner_id"] or other["window"] == "Rebuild":
+            continue  # Rebuild teams are already sellers - the normal buy path has them.
+        why = _seller_case(other, prior.get(other["owner_id"]))
+        if why is None:
+            continue
+        for player in other["sellable"]:
+            pos, need = player["position"], my_needs.get(player["position"])
+            if need is None or not player.get("redraft_value"):
+                continue
+            if not team_state.clears_relevance_floor(player, thresholds):
+                continue
+            if need["level"] == "weak" and player["redraft_value"] <= need["weakest_starter"]:
+                continue
+            if player["redraft_value"] / player["value"] < MIN_PRODUCTION_PER_COST:
+                continue
+            plausible.append({
+                "position": pos,
+                "need_level": need["level"],
+                **_with_trade_note(player, other, trade_counts),
+                "production_per_cost": round(player["redraft_value"] / player["value"], 2),
+                "why_they_might_listen": why,
+                "cost_note": (
+                    f"{other['owner']} is not currently a seller, so this is a conversation "
+                    f"rather than a fit: acquiring {player['name']} means persuading them to "
+                    f"change direction, which is a commitment on their part and prices above "
+                    f"market. Treat it as an option worth opening, not a deal that's there."
+                ),
+            })
+    plausible.sort(key=lambda t: -t["production_per_cost"])
+    return plausible
+
+
+def _seller_case(other: dict, prior: dict | None) -> str | None:
+    """Why this non-selling team might listen, or None if it plainly wouldn't.
+
+    A reigning champion returning the same roster is the clearest "no" available - it has
+    just proved the core works and has every reason to run it back. That veto is the only
+    place last season's result is allowed to *stop* a suggestion; everything else it does
+    is add a reason. `describes_this_team` gates all of it, since a result means nothing
+    if the roster turned over (see prior_season.MIN_CONTINUITY)."""
+    same_team = bool(prior and prior["describes_this_team"])
+    if same_team and prior["champion"] and other["trajectory"] != "falling":
+        return None
+    if other["trajectory"] == "falling":
+        base = (f"Their roster is falling - {other['declining_pct']}% of their current "
+                f"production comes from declining players, against {other['ascending_pct']}% "
+                f"ascending. Aging out is the one thing that turns a contender into a seller.")
+        if same_team and not prior["made_playoffs"]:
+            return (f"{base} And it hasn't delivered: {prior['note']}")
+        return base
+    if same_team and not prior["made_playoffs"]:
+        return (f"This core hasn't won with them. {prior['note']} A team that missed with "
+                f"the same roster it still has is more open to changing course than the "
+                f"standings alone suggest.")
+    return None
+
+
 def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds: dict[str, float],
               trade_counts: dict[str, int], max_per_position: int,
               pick_values: dict[str, int] | None = None,
-              my_picks: list[dict] | None = None) -> dict:
+              my_picks: list[dict] | None = None,
+              prior: dict[str, dict] | None = None) -> dict:
     """The push case: fill needs with sellable value from Rebuilding teams."""
     my_needs = needs_by_owner_id.get(me["owner_id"], {})
     # Worst-shaped need first (roster_needs.NEED_PRIORITY): a position you can't field at
@@ -207,6 +313,12 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
 
     result = {"needs": my_needs, "targets": targets,
               "my_offers": _my_offer_pool(me, thresholds, my_needs, pick_values)}
+
+    # Sellers-only search misses the best available production - see _persuasion_targets.
+    stretch = _persuasion_targets(me, states, my_needs, thresholds, trade_counts, prior or {})
+    if stretch:
+        result["persuasion_targets"] = stretch[:max_per_position * 2]
+        result["persuasion_note"] = PERSUASION_NOTE
 
     # Picks are *currency*, not production. A first doesn't help you win - it becomes a
     # rookie at the next offseason's draft, and a rookie is another upside asset, which is
@@ -308,6 +420,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     ctx = context(league_id)
     thresholds = ctx.trade_thresholds
     trade_counts = trade_activity.get_trade_counts(league_id)
+    prior = prior_season.results(league_id)
     pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.num_teams,
                                               ctx.fmt["ppr"], ctx.fmt["is_dynasty"])
     # Keyed on the window, which is where a pick's slot actually comes from: how good the
@@ -337,12 +450,12 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         # one that's clearly out should pivot even mid-season) - logged in LOGIC.md.
         return {"me": me, "mode": "ascend", "timing_note": ASCEND_TIMING_NOTE,
                 "push": _buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
-                                  max_per_position, pick_values, my_picks),
+                                  max_per_position, pick_values, my_picks, prior),
                 "pivot": _pivot_path(me, states, thresholds, trade_counts, picks_by_owner)}
 
     return {"me": me, "mode": "buy",
             **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
-                        max_per_position, pick_values, my_picks)}
+                        max_per_position, pick_values, my_picks, prior)}
 
 
 SWAP_ELIGIBLE_WINDOWS = ("Push", "Contend", "Ascend")
@@ -489,6 +602,15 @@ def _print_push(push: dict) -> None:
     if not push["targets"]:
         print("no obvious targets found (no needs, or no Rebuilding team has a sell candidate there)")
         return
+    if push.get("persuasion_targets"):
+        print()
+        print("harder asks (aging production on teams that are NOT selling yet):")
+        for t in push["persuasion_targets"]:
+            print(f"  {t['name']} ({t['position']}, {t['production_per_cost']}x production "
+                  f"per unit of cost - dyn {t['value']:,} / redraft {t['redraft_value']:,}) "
+                  f"from {t['from_owner']}")
+            print(f"      why they might listen: {t['why_they_might_listen']}")
+        print()
     print("buy targets (from Rebuilding teams, at a position you need):")
     for t in push["targets"]:
         trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "NEVER TRADES - unlikely"

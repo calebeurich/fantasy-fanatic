@@ -62,6 +62,16 @@ def get_transactions(league_id: str, week: int) -> list[dict]:
     return resp.json()
 
 
+@ttl_cache(LEAGUE_CONFIG_TTL)
+def get_winners_bracket(league_id: str) -> list[dict]:
+    """The playoff bracket. Each match carries `w`/`l` (winning/losing roster_id) and, for
+    placement games, `p` - the place being played for. `p == 1` is the championship, so
+    its `w` is the champion. Only meaningful for a completed season."""
+    resp = requests.get(f"{BASE}/league/{league_id}/winners_bracket")
+    resp.raise_for_status()
+    return resp.json()
+
+
 def get_season_chain(league_id: str) -> list[str]:
     """This league's own league_id plus every prior season's, oldest dynasty history
     included, most recent first."""
