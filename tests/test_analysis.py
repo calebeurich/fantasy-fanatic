@@ -749,6 +749,10 @@ def _prior(finish, champion=False, made_playoffs=True, continuity=1.0):
             "note": f"2025: finished {finish}."}
 
 
+# The real p90 of redraft/dynasty per position, measured on both live leagues. The
+# spread is the point: an absolute bar that looks strict for RB is unreachable for TE.
+BARS = {"QB": 1.31, "RB": 1.05, "WR": 0.89, "TE": 0.81}
+
 ME = {"owner_id": "me", "owner": "Me", "window": "Push"}
 NEED_RB = {"RB": {"level": "critical", "weakest_starter": 0, "note": "", "rank": 10, "of": 12}}
 
@@ -764,7 +768,7 @@ def test_persuasion_excludes_an_aging_contender_whose_own_window_is_now():
     holder = _holder("aging", "Contend", "steady", [_aging("Stud", 4000, 6000)],
                      asc=21, dec=23)
     out = trade_targets._persuasion_targets(
-        ME, [holder], NEED_RB, {"RB": 100}, {}, {"aging": _prior(1, champion=True)})
+        ME, [holder], NEED_RB, {"RB": 100}, {}, {"aging": _prior(1, champion=True)}, BARS)
     assert out == []
 
 
@@ -779,25 +783,39 @@ def test_persuasion_surfaces_a_cliff_player_when_the_owners_window_outlasts_him(
     holder = _holder("young", "Contend", "steady", [_aging("Stud", 4000, 6000)],
                      asc=26, dec=16)
     out = trade_targets._persuasion_targets(
-        ME, [holder], NEED_RB, {"RB": 100}, {}, {"young": _prior(3)})
+        ME, [holder], NEED_RB, {"RB": 100}, {}, {"young": _prior(3)}, BARS)
     assert [t["name"] for t in out] == ["Stud"]
     why = out[0]["why_they_might_listen"]
     assert "don't line up" in why and "26%" in why, "must name the mismatch, not the age"
     assert "not currently a seller" in out[0]["cost_note"], "the ask must carry its price"
 
 
-def test_persuasion_cliff_needs_a_starter_the_market_still_pays_for():
-    """Two guards against "every old player is available", on a roster the tilt approves.
-    A declining player on the *bench* is a bad asset, not a conversation - his owner already
-    stopped relying on him. And age alone would surface a 36.9-year-old TE priced at 0.83x:
-    old *and* no longer producing enough for any contender to want."""
+def test_persuasion_cliff_ignores_a_declining_player_on_the_bench():
+    """A declining player his owner has already benched is a bad asset, not a conversation -
+    there is nothing to talk him out of. Same player, same tilt, only the lineup role
+    differs."""
     benched = _aging("Benched", 4000, 6000) | {"is_starter": False}
-    faded = _aging("Faded", 1810, 1504, pos="TE")  # 0.83x - the real Kelce line
-    holder = _holder("young", "Contend", "steady", [benched, faded], asc=26, dec=16)
+    holder = _holder("young", "Contend", "steady", [benched], asc=26, dec=16)
     out = trade_targets._persuasion_targets(
-        ME, [holder], {**NEED_RB, "TE": NEED_RB["RB"]}, {"RB": 100, "TE": 100}, {},
-        {"young": _prior(3)})
+        ME, [holder], NEED_RB, {"RB": 100}, {}, {"young": _prior(3)}, BARS)
     assert out == []
+
+
+def test_persuasion_bar_is_relative_to_the_players_own_position():
+    """The bug this replaced, stated as a test. Dynasty and redraft are unnormalized scales
+    whose relationship differs sharply by position: measured p90s are RB 1.05 but TE 0.81,
+    and the *entire* TE pool tops out at 1.01. The old absolute 1.0 bar therefore excluded
+    every tight end in every league while looking like an ordinary strictness setting.
+
+    Real pair, identical ratio, opposite verdicts: a 36.9-year-old TE at 0.83 is top-decile
+    now-weighted for a TE, while an RB at the same 0.83 is unremarkable."""
+    te = _aging("Kelce", 1810, 1504, pos="TE")   # 0.83 - clears the 0.81 TE bar
+    rb = _aging("Jacobs", 2770, 2300)            # 0.83 - misses the 1.05 RB bar
+    needs = {"RB": NEED_RB["RB"], "TE": NEED_RB["RB"]}
+    holder = _holder("kk", "Push", "falling", [te, rb])
+    out = trade_targets._persuasion_targets(
+        ME, [holder], needs, {"RB": 100, "TE": 100}, {}, {"kk": _prior(9, made_playoffs=False)}, BARS)
+    assert [t["name"] for t in out] == ["Kelce"]
 
 
 def test_persuasion_includes_a_falling_contender_that_has_not_won():
@@ -805,7 +823,7 @@ def test_persuasion_includes_a_falling_contender_that_has_not_won():
     core has not delivered. That team has a real reason to listen."""
     falling = _holder("kk", "Push", "falling", [_aging("Aging", 4000, 6000)])
     out = trade_targets._persuasion_targets(
-        ME, [falling], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)})
+        ME, [falling], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)}, BARS)
     assert [t["name"] for t in out] == ["Aging"]
     why = out[0]["why_they_might_listen"]
     assert "falling" in why and "hasn't delivered" in why
@@ -821,7 +839,7 @@ def test_persuasion_ranks_by_production_per_cost_not_by_value():
     holder = _holder("kk", "Push", "falling",
                      [_aging("Taylor", 5240, 6649), _aging("Barkley", 3746, 5081)])
     out = trade_targets._persuasion_targets(
-        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)})
+        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)}, BARS)
     assert [t["name"] for t in out] == ["Barkley", "Taylor"], "cheaper but better ratio leads"
     assert out[0]["production_per_cost"] > out[1]["production_per_cost"]
 
@@ -833,7 +851,7 @@ def test_persuasion_skips_players_who_are_not_age_discounted():
     holder = _holder("kk", "Push", "falling",
                      [_aging("Premium", 4000, 2800), _aging("Discounted", 3000, 4000)])
     out = trade_targets._persuasion_targets(
-        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)})
+        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)}, BARS)
     assert [t["name"] for t in out] == ["Discounted"]
 
 
@@ -844,9 +862,9 @@ def test_persuasion_ignores_last_season_when_the_roster_turned_over():
     without changing whether the player surfaces at all."""
     holder = _holder("kk", "Push", "falling", [_aging("Stud", 3000, 4500)])
     intact = trade_targets._persuasion_targets(
-        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False, continuity=1.0)})
+        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False, continuity=1.0)}, BARS)
     turned_over = trade_targets._persuasion_targets(
-        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False, continuity=0.2)})
+        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False, continuity=0.2)}, BARS)
     assert [t["name"] for t in intact] == ["Stud"] == [t["name"] for t in turned_over]
     assert "hasn't delivered" in intact[0]["why_they_might_listen"]
     assert "hasn't delivered" not in turned_over[0]["why_they_might_listen"], \
@@ -858,7 +876,7 @@ def test_persuasion_never_searches_teams_that_are_already_sellers():
     double-list the same player under a framing that says it's a hard ask."""
     seller = _holder("reb", "Rebuild", "falling", [_aging("Cheap", 3000, 4500)])
     out = trade_targets._persuasion_targets(
-        ME, [seller], NEED_RB, {"RB": 100}, {}, {"reb": _prior(12, made_playoffs=False)})
+        ME, [seller], NEED_RB, {"RB": 100}, {}, {"reb": _prior(12, made_playoffs=False)}, BARS)
     assert out == []
 
 

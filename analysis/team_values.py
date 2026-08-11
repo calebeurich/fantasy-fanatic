@@ -76,6 +76,43 @@ def rank_map(scores: dict, high_is_first: bool = True) -> dict:
     return {key: i for i, key in enumerate(order, start=1)}
 
 
+def now_premium_bar(players: dict[str, dict], percentile: float = 0.9) -> dict[str, float]:
+    """Per position, the `redraft_value / value` cutoff at `percentile` of that position's
+    pool - i.e. how now-weighted a player's price has to be to be extreme *for his position*.
+
+    **This must be per-position; an absolute cutoff is a bug.** Dynasty and redraft are two
+    unnormalized scales whose relationship differs sharply by position. Measured across the
+    whole pool of one real league:
+
+    | pos | p10 | median | p90 | max |
+    |-----|-----|--------|-----|-----|
+    | QB  | 0.26| 0.97   | 1.31| 1.60|
+    | RB  | 0.07| 0.49   | 1.05| 1.54|
+    | TE  | 0.03| 0.25   | 0.81| 1.01|
+    | WR  | 0.03| 0.37   | 0.89| 1.07|
+
+    A single 1.25 bar is not "strict for TEs" - it is *unreachable* for TEs and WRs, whose
+    entire pools top out at 1.01 and 1.07. It silently restricts any rule using it to QBs
+    and RBs. `find_efficiency_swaps` documents making this exact mistake once already and
+    solved it by comparing pairwise within a position; this is the same fix for a rule that
+    has only one player to look at, so it needs the position's distribution instead of a
+    partner. Ranked against his own position, a 36.9-year-old TE at 0.83 raw is the second
+    most now-weighted declining starter in the league, not a rounding error below the bar.
+
+    A percentile, not a tuned constant, so it recalibrates with the market and with format -
+    the same reasoning behind the league tertiles in `team_state`. It cannot by itself say
+    "nobody qualifies", since ~10% of each position always clears it; that is deliberate.
+    This measures *shape* only. Whether a player is worth having at all is an absolute
+    question already answered upstream by `team_state.clears_relevance_floor`."""
+    bars = {}
+    for player in players.values():
+        if player.get("redraft_value") and player.get("value"):
+            bars.setdefault(player["position"], []).append(
+                player["redraft_value"] / player["value"])
+    return {pos: sorted(ratios)[int(percentile * (len(ratios) - 1))]
+            for pos, ratios in bars.items()}
+
+
 def team_breakdown(player_ids: list[str], players: dict[str, dict]) -> dict:
     totals = {"ascending": 0, "prime": 0, "declining": 0, "unknown": 0}
     for player_id in player_ids:

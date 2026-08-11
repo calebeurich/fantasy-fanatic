@@ -14,7 +14,7 @@ from sources import fantasycalc
 
 from . import team_state, roster_needs, trade_activity, prior_season
 from .league import context
-from .team_values import owned_picks, pick_equivalent
+from .team_values import owned_picks, pick_equivalent, now_premium_bar
 
 # Same VALUE_BASIS classification (team_state.py) drives both sides of a trade, just
 # phrased for who's on which side of it.
@@ -65,22 +65,26 @@ PERSUASION_NOTE = (
     "paying for."
 )
 
-# A persuasion target has to be *age-discounted*, which is the entire rationale for
-# asking a non-seller: you want production the market prices down for seasons you aren't
-# buying. Below 1.0 the player costs more in dynasty value than he delivers in current
-# production - you'd be paying a future premium to a team that doesn't want to sell, which
-# is the worst of both. An empty list is the honest answer when nobody's aging production
-# is being discounted for you.
-MIN_PRODUCTION_PER_COST = 1.0
-
-# The same ratio, at the bar where it stops being "discounted" and becomes "the market has
-# written off this player's future entirely" - which is a reason to talk to an owner whose
-# team looks fine in aggregate. Measured, not guessed: across both real dynasty leagues the
-# declining starters run 1.60, 1.54, 1.47, 1.35, 1.27, then drop to 1.05, 1.00, 0.97, 0.86.
-# 1.25 sits in that gap. Because the ratio is FantasyCalc redraft over dynasty, it is a
-# property of the *player*, not of a league - the same names sort identically in both
-# leagues, so this bar behaves the same everywhere rather than being fitted to one roster.
-CLIFF_PRODUCTION_PER_COST = 1.25
+# A persuasion target has to be *age-discounted*, which is the entire rationale for asking
+# a non-seller: you want production the market prices down for seasons you aren't buying.
+# The bar is a percentile of `redraft_value / value` **within the player's own position**
+# (team_values.now_premium_bar), not an absolute number: top-decile now-weighting for his
+# position, i.e. the market is pricing him for this season and writing off the rest.
+#
+# This was an absolute 1.0 ("below this he costs more in dynasty value than he delivers in
+# current production"), which quietly treated two unnormalized scales as comparable. 1.0 is
+# not neutral: it sits near the 90th percentile for RB and *above the entire TE pool*, whose
+# maximum is 1.01. The tier was closed to tight ends and nearly closed to receivers, in
+# every league, for reasons no reader could have seen. team_values.py records the same
+# mistake being made once before with a raw dynasty/redraft ratio; treat an absolute
+# threshold on these two scales as a bug on sight.
+#
+# One bar, not two. A separate looser floor for team-level reasons was tried and dropped:
+# at the median it admitted players who are merely typical (a WR at 0.43 against a 0.37
+# position median), which is not "age-discounted" in any sense a manager would recognise.
+# `_cliff_case` needs no bar of its own - every candidate has already cleared this one, so
+# what distinguishes that path is solely the window mismatch.
+NOW_PREMIUM_PERCENTILE = 0.9
 
 DEFAULT_MAX_PER_POSITION = 3  # a parameter, not a hard limit - "give me more" means call again with a higher number
 
@@ -191,7 +195,8 @@ def find_efficiency_swaps(roster_entries: list[dict]) -> list[dict]:
 
 
 def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds: dict[str, float],
-                        trade_counts: dict[str, int], prior: dict[str, dict]) -> list[dict]:
+                        trade_counts: dict[str, int], prior: dict[str, dict],
+                        premium_bars: dict[str, float]) -> list[dict]:
     """Aging production held by teams that **aren't sellers yet** but could be talked into
     it - the tier `_buy_path` structurally cannot see, because it only searches `Rebuild`
     teams.
@@ -233,7 +238,7 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
             if need["level"] == "weak" and player["redraft_value"] <= need["weakest_starter"]:
                 continue
             ratio = player["redraft_value"] / player["value"]
-            if ratio < MIN_PRODUCTION_PER_COST:
+            if ratio < premium_bars.get(pos, float("inf")):
                 continue
             # The team's reason if it has one, otherwise a mismatch between the owner's
             # window and this player's. A team-level trajectory is an average, and an
@@ -301,11 +306,15 @@ def _cliff_case(player: dict, other: dict, ratio: float) -> str | None:
     - **Declining and starting.** A declining player on the bench is just a bad asset, not
       a conversation - his owner has already stopped relying on him, so there's nothing to
       talk him out of.
-    - **The market, not the birthday.** Age alone would surface a 36.9-year-old TE priced
-      at 0.83x: old *and* no longer producing enough for a contender to want. He isn't a
-      buy for anybody, and offering him as one would be this tier's first wrong answer.
-      `CLIFF_PRODUCTION_PER_COST` catches only players still producing while priced as
-      though they aren't.
+    - **Now-weighted for his own position** (`team_values.now_premium_bar`). The first
+      version of this used an absolute 1.25 on the raw ratio, which was a bug rather than a
+      strict setting: TE and WR pools top out at 1.01 and 1.07, so no TE or WR could ever
+      clear it in any league. Ranked within position instead, a 36.9-year-old TE at 0.83
+      raw is the second most now-weighted declining starter in the league.
+
+    Note this bar is about *shape*, not quality - it says the market prices him for now
+    rather than later, not that he's any good. "Too far gone to want" is an absolute
+    question, and `clears_relevance_floor` has already answered it above.
 
     Two things this deliberately does NOT do. It doesn't check whether the owner has a
     replacement behind him - that's `find_efficiency_swaps`, which answers "should they do
@@ -315,8 +324,6 @@ def _cliff_case(player: dict, other: dict, ratio: float) -> str | None:
     and a title says less about whether an owner should sell than the shape of their roster
     does. A champion tilting ascending is a team that can afford to sell, trophy or not."""
     if not (player["bucket"] == "declining" and player["is_starter"]):
-        return None
-    if ratio < CLIFF_PRODUCTION_PER_COST:
         return None
     if other["ascending_pct"] <= other["declining_pct"]:
         return None
@@ -333,7 +340,8 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
               trade_counts: dict[str, int], max_per_position: int,
               pick_values: dict[str, int] | None = None,
               my_picks: list[dict] | None = None,
-              prior: dict[str, dict] | None = None) -> dict:
+              prior: dict[str, dict] | None = None,
+              premium_bars: dict[str, float] | None = None) -> dict:
     """The push case: fill needs with sellable value from Rebuilding teams."""
     my_needs = needs_by_owner_id.get(me["owner_id"], {})
     # Worst-shaped need first (roster_needs.NEED_PRIORITY): a position you can't field at
@@ -387,7 +395,8 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
               "my_offers": _my_offer_pool(me, thresholds, my_needs, pick_values)}
 
     # Sellers-only search misses the best available production - see _persuasion_targets.
-    stretch = _persuasion_targets(me, states, my_needs, thresholds, trade_counts, prior or {})
+    stretch = _persuasion_targets(me, states, my_needs, thresholds, trade_counts, prior or {},
+                                  premium_bars or {})
     if stretch:
         result["persuasion_targets"] = stretch[:max_per_position * 2]
         result["persuasion_note"] = PERSUASION_NOTE
@@ -508,6 +517,9 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     needs_by_owner_id = roster_needs.league_needs(league_id)
     ctx = context(league_id)
     thresholds = ctx.trade_thresholds
+    # Per-position, because dynasty and redraft are unnormalized scales whose relationship
+    # differs by position - see team_values.now_premium_bar for why an absolute bar is a bug.
+    premium_bars = now_premium_bar(ctx.players, NOW_PREMIUM_PERCENTILE)
     trade_counts = trade_activity.get_trade_counts(league_id)
     prior = prior_season.results(league_id)
     pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.num_teams,
@@ -539,12 +551,14 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         # one that's clearly out should pivot even mid-season) - logged in LOGIC.md.
         return {"me": me, "mode": "ascend", "timing_note": ASCEND_TIMING_NOTE,
                 "push": _buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
-                                  max_per_position, pick_values, my_picks, prior),
+                                  max_per_position, pick_values, my_picks, prior,
+                                  premium_bars),
                 "pivot": _pivot_path(me, states, thresholds, trade_counts, picks_by_owner)}
 
     return {"me": me, "mode": "buy",
             **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
-                        max_per_position, pick_values, my_picks, prior)}
+                        max_per_position, pick_values, my_picks, prior,
+                        premium_bars)}
 
 
 SWAP_ELIGIBLE_WINDOWS = ("Push", "Contend", "Ascend")

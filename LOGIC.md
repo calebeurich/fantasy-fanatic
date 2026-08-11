@@ -1835,9 +1835,11 @@ win-now buyer:
 Barkley beats Taylor on the ratio *and* costs 1,494 less outright, because at 29.5 the
 market discounts him for seasons a pushing team isn't buying. That discount is the entire
 point - the same arbitrage `find_efficiency_swaps` exploits *within* a roster, applied to
-acquisitions. `MIN_PRODUCTION_PER_COST = 1.0` drops anything not actually discounted:
-below 1.0 you'd pay a future premium to a team that doesn't want to sell, the worst of
-both. An empty list is the honest answer when nobody's aging production is on sale to you.
+acquisitions. Anything not actually discounted is dropped - otherwise you'd be paying a
+future premium to a team that doesn't even want to sell, the worst of both. "Discounted"
+has to be judged **within the player's own position** (see `now_premium_bar` below); the
+absolute bar this originally used was wrong in a way that took a live spot-check to catch.
+An empty list is the honest answer when nobody's aging production is on sale to you.
 
 **3. Implausible sellers are excluded, not ranked last.** Listing a name nobody can get
 puts it at the top of a list sorted by ratio and makes the feature worse than nothing. What
@@ -1871,24 +1873,58 @@ second contends now and is aging into it - that player is aligned with its windo
 keeping him is correct. `ascending_pct > declining_pct` is the entire discriminator, with
 no constant to calibrate.
 
-Three conditions guard it:
+Two conditions guard it: the window tilt above, and **declining and starting** - a
+declining player on the *bench* is just a bad asset, since his owner already stopped
+relying on him and there's nothing to talk him out of. The now-weighting bar below is not a
+third condition; every candidate has already cleared it upstream.
 
-- **Declining and starting.** A declining player on the *bench* is just a bad asset. His
-  owner already stopped relying on him, so there's nothing to talk him out of.
-- **`CLIFF_PRODUCTION_PER_COST = 1.25`**, not an age. Age alone surfaces a 36.9-year-old TE
-  priced at 0.83x - old *and* no longer producing enough for any contender to want, which
-  would have been this tier's first plainly wrong answer. Measured, not guessed: declining
-  starters across both real dynasty leagues run 1.60, 1.54, 1.47, 1.35, 1.27, then drop to
-  1.05, 1.00, 0.97, 0.86. 1.25 sits in that gap. Because the ratio is FantasyCalc redraft
-  over dynasty it is a property of the *player*, so the same names sort identically in both
-  leagues and the bar isn't fitted to one roster. It is still a market number and will
-  drift; a league-relative percentile was rejected because with ~24 declining starters it
-  would always surface *someone*, manufacturing a suggestion when the honest answer is none.
-- **The window tilt above.**
+### The bar has to be per-position, and wasn't (`team_values.now_premium_bar`)
 
-Across both 12-team leagues this adds exactly **one** name. That is the intended volume -
-the tier is for the rare case a team-level read structurally cannot see, not a second
-opinion on every roster.
+The first version of the cliff rule used an absolute `1.25` on `redraft_value / value`,
+picked from a gap in the observed numbers. That was a bug wearing a threshold's clothes,
+and the same bug the persuasion tier already had. Measured over a whole league pool:
+
+| pos | n | p10 | median | p90 | **max** |
+|---|---|---|---|---|---|
+| QB | 39 | 0.26 | 0.97 | 1.31 | 1.60 |
+| RB | 56 | 0.07 | 0.49 | 1.05 | 1.54 |
+| TE | 30 | 0.03 | 0.25 | 0.81 | **1.01** |
+| WR | 75 | 0.03 | 0.37 | 0.89 | **1.07** |
+
+Dynasty and redraft are two unnormalized scales whose relationship differs sharply by
+position. An absolute bar is therefore not "strict" - it is *unreachable* for some
+positions. 1.25 could never be cleared by a TE or WR in any league. Worse, the pre-existing
+`MIN_PRODUCTION_PER_COST = 1.0` had the same defect and had been silently closing the
+entire persuasion tier to tight ends, and nearly closing it to receivers, since it was
+written - justified in the code by "below 1.0 he costs more in dynasty value than he
+delivers in current production", which reads as neutral and is nothing of the kind.
+
+**This is the third recorded instance of the same mistake.** `find_efficiency_swaps`
+documents it (fixed by comparing pairwise within a position) and `get_players_with_roles`
+documents it (fixed by not exposing a ratio at all). Treat an absolute threshold on these
+two scales as a bug on sight.
+
+Both bars are now `NOW_PREMIUM_PERCENTILE = 0.9` of the ratio **within the player's own
+position** - top-decile now-weighting. A percentile, not a tuned constant, so it
+recalibrates with the market and with league format, the same reasoning behind the tertiles
+in `team_state`. Ranked this way, a 36.9-year-old TE at 0.83 raw is the second most
+now-weighted declining starter in the league rather than a rounding error below the bar,
+which matches how the league's managers actually see him.
+
+**One bar, not two.** A separate looser floor for the team-level path was tried at the
+median and dropped: it admitted players who are merely typical (a WR at 0.43 against a 0.37
+median), which is not "age-discounted" in any sense a manager would recognise. So the cliff
+path needs no bar of its own, and what distinguishes it is solely the window mismatch.
+
+The bar measures *shape*, not quality - it says the market prices a player for now rather
+than later, not that he's any good. Whether he's worth having at all is an absolute
+question, and `clears_relevance_floor` already answers it upstream. A percentile cannot by
+itself return "nobody qualifies", since ~10% of each position always clears it; the honest
+empty answer comes from the other conditions, which is where it belongs.
+
+Across both 12-team leagues the cliff path adds **two** names, each to the teams with a
+real need at that position. That is the intended volume - the tier is for the rare case a
+team-level read structurally cannot see, not a second opinion on every roster.
 
 **The reigning-champion veto was removed by this change.** It existed to stop exactly the
 aging-contender case the tilt now rejects on its merits, and it was already redundant on
