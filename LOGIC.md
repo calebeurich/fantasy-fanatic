@@ -2340,6 +2340,54 @@ A two-point gap deciding whether three players are recommended at all is not a b
 tertile - it is what a league-relative measure does near a boundary - but it is the reason the
 sentence has to quote the rank rather than claim a roster is falling.
 
+### Seller-ness belongs to the pair, not the team (`_sells_him`)
+
+`_buy_path` searched teams where `window == "Rebuild"`, which made "is this owner selling?" a
+fact about the roster. It isn't. **A Middling team that is rising is selling its aging pieces and
+nothing else** - it is accumulating the seasons those players will not be there for. That is not
+a new heuristic; it is the `rising` flavor already computed, read per player instead of per team.
+
+What the team-level test hid, on one roster:
+
+| player | held by | production | prod/cost | was | now |
+|---|---|---|---|---|---|
+| James Cook | kbmckenna (Middling/**rising**, 47% asc / 0% dec) | 6,027 | 1.21x | invisible, then a "harder ask" | **top buy target**, +5,389 over the weakest RB started |
+| Travis Etienne | bigbuttboi (Middling/**rising**, 55% / 8%) | 2,186 | 0.84x | "harder ask" | 2nd buy target, +1,548 |
+| RJ Harvey | bergenjay (Middling, rising) | 865 | 0.43x | "harder ask" | 4th buy target, +227 |
+
+The best win-now RB reachable by a team whose critical need is RB was unreachable because his
+owner's *label* was Middling.
+
+**The clock is what keeps it honest.** Without the runway test this would offer up the very young
+core a rising team is accumulating - so a rising Middling owner sells only players inside
+`MIN_MEANINGFUL_RUNWAY` of their own cutoff. `_persuasion_targets` skips the same pairs, since
+that tier is for owners who have to be talked into it and these no longer do; without that they
+appeared as a target and a harder ask at once, which
+`check_one_player_is_not_described_two_ways` now catches.
+
+The buy heading changed with the code - it said "from Rebuilding teams", which had become false -
+and each entry names why that owner is selling *him*: `[rebuilding]` or
+`[rising, so selling age not youth]`.
+
+### `prime` is only the sign of a runway (`team_state.value_basis`)
+
+`age_bucket` and `years_to_decline` are the same computation - age against one cutoff - and the
+bucket is merely its sign. `age_bucket`'s own docstring says it "throws away the distance to the
+boundary", and reading the sign alone priced **DK Metcalf, 0.3 years from his cliff**, as `prime`
+-> `mixed` -> *"moderate - some future value baked in too"*, while Dallas Goedert one year further
+along read *"low - value is mostly already-realized production"*. Nothing about those two prices
+differs in kind.
+
+`value_basis(entry)` returns `production` for anyone inside `MIN_MEANINGFUL_RUNWAY` of his cutoff -
+the project-wide definition of being on a clock, which `classify`'s own sell list already uses -
+and falls back to the bucket above it. Metcalf and Jalen Nailor (1.5) moved to production-priced;
+Malik Washington (3.4), Tyler Shough (7.1) and Lamar Jackson (4.4) correctly did not.
+
+It deliberately does not touch `MIN_RELEVANCE_FRACTION`, where `production` and `mixed` are both
+0.5 - so this changes what the two pricing labels *say* and nothing about who clears the floor.
+That is the fourth place `bucket` was standing in for a runway, after `classify`, `_pivot_path`
+and `_cliff_case`.
+
 ### Hard breakpoints on continuous measures
 
 A recurring shape rather than three separate bugs. A threshold gets used as a *gate*, so two

@@ -78,6 +78,28 @@ VALUE_BASIS = {"declining": "production", "prime": "mixed", "ascending": "upside
 MIN_RELEVANCE_FRACTION = {"production": 0.5, "mixed": 0.5, "upside": 0.25}
 
 
+def value_basis(entry: dict) -> str:
+    """Is this player's price about production already delivered, or about seasons still to come?
+
+    **`bucket` is only the SIGN of `years_to_decline`** - both come from the same age against the
+    same cutoff, and `age_bucket`'s own docstring says it "throws away the distance to the
+    boundary". Reading the sign alone priced DK Metcalf, **0.3 years** from his cliff, as
+    `prime` -> `mixed` -> "moderate - some future value baked in too", while Dallas Goedert one
+    year further on read "low - value is mostly already-realized production". Nothing about
+    those two prices differs in kind.
+
+    A player inside `MIN_MEANINGFUL_RUNWAY` of his cutoff is on a clock - that is the
+    project-wide definition, and `classify`'s own sell list already draws it there - so his value
+    is production. Above it, the bucket answers as before.
+
+    Deliberately does NOT touch `MIN_RELEVANCE_FRACTION`, where `production` and `mixed` are both
+    0.5, so this changes what the two pricing labels say and nothing about who clears the floor."""
+    runway = entry.get("years_to_decline")
+    if runway is not None and runway < MIN_MEANINGFUL_RUNWAY:
+        return "production"
+    return VALUE_BASIS[entry["bucket"]]
+
+
 def window_for(contention: str, trajectory: str) -> str:
     """The two axes collapsed into what the team should actually do.
 

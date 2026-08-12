@@ -1315,6 +1315,28 @@ def test_persuasion_bar_is_relative_to_the_players_own_position():
         "the same 0.83 is unremarkable for an RB, and the sentence must not claim otherwise")
 
 
+def test_a_rising_middling_team_sells_its_age_and_not_its_youth():
+    """Seller-ness is a property of the (owner, player) pair, and treating it as a team fact hid
+    the best target on the board: James Cook, 6,027 of production at 1.21x production per unit of
+    cost, sat behind a `window == "Rebuild"` test because kbmckenna is Middling - while being 0.1
+    years from his cutoff on a roster 47% ascending against 0% declining.
+
+    The clock is what keeps it honest. Without it this would offer up the very young core a
+    rising team is accumulating."""
+    rising = {"owner_id": "kb", "owner": "kb", "window": "Middling", "trajectory": "rising"}
+    aging = {"name": "Cook", "years_to_decline": 0.1}
+    young = {"name": "Kid", "years_to_decline": 5.0}
+    assert trade_targets._sells_him(rising, aging), "his window is not the one they're building for"
+    assert not trade_targets._sells_him(rising, young), "the young core is emphatically not for sale"
+
+    steady = {**rising, "trajectory": "steady"}
+    assert not trade_targets._sells_him(steady, aging), (
+        "only a RISING middling team is accumulating seasons this player won't be there for")
+
+    rebuilding = {"owner_id": "r", "owner": "r", "window": "Rebuild", "trajectory": "steady"}
+    assert trade_targets._sells_him(rebuilding, young), "a rebuilder is selling everything"
+
+
 def test_a_persuasion_target_has_to_beat_who_you_already_start():
     """The weakest-starter floor used to apply only to `weak` needs, on the theory that at a
     critical one any body helps. Bodies are what `depth_adds` is for, at a nominal price and no

@@ -210,6 +210,36 @@ def NOT_SELLER(window: str) -> bool:
     return window != "Rebuild"
 
 
+def MIGHT_SELL(window: str) -> bool:
+    """Teams the buy path is allowed to look at - see `_sells_him` for which of their players."""
+    return window in ("Rebuild", "Middling")
+
+
+def _sells_him(other: dict, player: dict) -> bool:
+    """Is this owner a seller **of this player**? Seller-ness is a property of the pair, not of
+    the team, and treating it as a team fact hid the best target on the board.
+
+    A `Rebuild` team is selling everything. A **Middling team that is rising** is selling its
+    aging pieces and nothing else - it is accumulating the seasons those players will not be
+    there for. That is not a new heuristic, it is the `rising` flavor already computed, read
+    per player instead of per roster.
+
+    Live: James Cook, 6,027 of production at 1.21x production per unit of cost - the best
+    win-now RB reachable by a team whose critical need is RB - sat behind a `window == "Rebuild"`
+    test because kbmckenna is Middling. He is 0.1 years from his cutoff on a roster 47%
+    ascending against 0% declining. Travis Etienne is the same shape on bigbuttboi at 55%
+    against 8%. Both read as "harder asks" needing persuasion, when the owner's own direction
+    is the argument for the trade.
+
+    The clock is what keeps this honest: a rising team's young core is emphatically NOT for
+    sale, and without the runway test this would offer Cook's owner up for his own ascending
+    players."""
+    if other["window"] == "Rebuild":
+        return True
+    return (other["window"] == "Middling" and other.get("trajectory") == "rising"
+            and (player.get("years_to_decline") or 0) < MIN_MEANINGFUL_RUNWAY)
+
+
 def STILL_COMPETING(window: str) -> bool:
     """Teams trying to field a winning lineup this season."""
     return window in SWAP_ELIGIBLE_WINDOWS
@@ -895,6 +925,11 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
                 continue
             if not team_state.clears_relevance_floor(player, thresholds):
                 continue
+            # A rising Middling team's aging pieces are the buy path's job now (`_sells_him`),
+            # and this tier is for players whose owner has to be talked into it. Without this
+            # they appear twice, once as a target and once as a harder ask.
+            if _sells_him(other, player):
+                continue
             # **The floor applies at every need level, not just `weak`.** Asking an owner to
             # change direction for a player who would not crack your lineup is not a trade, and
             # this tier's own note promises "aging production the market discounts age on". A
@@ -1278,9 +1313,11 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         # and a player without a redraft price shouldn't be excluded for lacking one.
         upgrade_bar = need["weakest_starter"] if need["level"] == "weak" else None
         pos_targets = []
-        for other in _others(states, me, IS_SELLER):
+        for other in _others(states, me, MIGHT_SELL):
             for player in other["sellable"]:
                 if player["position"] != pos or not team_state.clears_relevance_floor(player, thresholds):
+                    continue
+                if not _sells_him(other, player):
                     continue
                 if upgrade_bar is not None and (player.get("redraft_value") or 0) <= upgrade_bar:
                     continue
@@ -1299,6 +1336,10 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
                 pos_targets.append({"position": pos, "need_level": need["level"],
                                      "need_note": need["note"],
                                      "over_weakest_starter": over_weakest,
+                                     # Why this owner is a seller of HIM, since the two answers
+                                     # are different asks - see `_sells_him`.
+                                     "sells_because": ("rebuilding" if other["window"] == "Rebuild"
+                                                       else "rising, so selling age not youth"),
                                      "production_per_cost": round(ratio, 2) if ratio else None,
                                      **_buy_friction(player, other, best_chip,
                                                      trade_counts.get(other["owner_id"], 0),
@@ -1669,7 +1710,7 @@ def _print_push(push: dict, extras: dict) -> None:
     if push["my_offers"]:
         print("you could offer (cleanest first - anything with friction is listed last, with why):")
         for e in push["my_offers"]:
-            cost = OFFER_GIVE_UP_COST[team_state.VALUE_BASIS[e["bucket"]]]
+            cost = OFFER_GIVE_UP_COST[team_state.value_basis(e)]
             flavors = (" [" + ", ".join(f["flavor"] for f in e["friction"]) + "]"
                        if e["friction"] else "")
             print(f"  {e['name']} ({e['position']}, value={e['value']}, "
@@ -1691,10 +1732,11 @@ def _print_push(push: dict, extras: dict) -> None:
     _print_value_upgrades(extras)
     _print_depth(extras)
     if push["targets"]:
-        print("BUY TARGETS - ring these first (from Rebuilding teams, at a position you need):")
+        print("BUY TARGETS - ring these first (from owners who are selling THIS player, at a "
+              "position you need):")
         for t in push["targets"]:
             trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "no trades yet"
-            price_note = BUY_PRICE_NOTE[team_state.VALUE_BASIS[t["bucket"]]]
+            price_note = BUY_PRICE_NOTE[team_state.value_basis(t)]
             ow = t.get("over_weakest_starter")
             beats = "" if ow is None else f", {ow:+,} vs your weakest {t['position']} starter"
             # A body at a count-shaped need still fills an empty slot, so these are not dropped -
@@ -1702,14 +1744,15 @@ def _print_push(push: dict, extras: dict) -> None:
             # of claim this project keeps having to walk back. Label, don't hide.
             kind = " [DEPTH - does not beat who you start there]" if (ow is not None and ow <= 0) else ""
             print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}{beats}) from "
-                  f"{t['from_owner']} - need: {t['need_level']} - {trade_note}{kind}")
+                  f"{t['from_owner']} [{t['sells_because']}] - need: {t['need_level']} - "
+                  f"{trade_note}{kind}")
     else:
         print("no reachable targets found (no needs, no Rebuilding team is selling there, or "
               "everything available is a long shot below)")
     if push.get("long_shots"):
         print("\nlong shots (real fits, but something is in the way - see why on each):")
         for t in push["long_shots"]:
-            price_note = BUY_PRICE_NOTE[team_state.VALUE_BASIS[t["bucket"]]]
+            price_note = BUY_PRICE_NOTE[team_state.value_basis(t)]
             beats = ("" if t.get("over_weakest_starter") is None else
                      f", {t['over_weakest_starter']:+,} vs your weakest {t['position']} starter")
             print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}{beats}) from "
