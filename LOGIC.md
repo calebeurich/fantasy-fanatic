@@ -2942,19 +2942,14 @@ respected. Counting bodies cannot distinguish the two WR rooms above; a real ref
 
 ### Better holdings than what you start (`find_value_upgrades`)
 
-Someone on another roster who is a better thing to own than one of my starters: he costs
-**less** in dynasty value, and he produces **more** this season - or so nearly as much that
-the value released is the real gain. Two `kind`s, and they must be described differently:
+Which single holding beats one of my starters at his own position, for **less** dynasty value?
+Candidates come from every roster in the league **including my own bench**, because "who is a
+better thing to own" does not care where he currently sits - that changes only the action, and a
+man already mine needs no trade at all. Three `kind`s, described in the table under "Three
+kinds" below; costing less in dynasty value is required by all of them, which is what stops
+this collapsing into "go get someone better" - the buy path's question.
 
-| `kind` | test | what to say |
-|---|---|---|
-| `upgrade` | strictly more production, strictly less value | raises the lineup AND frees capital; the replaced starter drops to depth |
-| `value_decision` | ≥ `MIN_PRODUCTION_RETAINED` of the production, ≥ `MIN_VALUE_FREED` back | lineup unchanged; the gain is purely the value released. Worth doing at a good price, never worth chasing |
-
-Costing less in dynasty value is required for both. That is what stops this collapsing into
-"go get someone better", which is the buy path's question.
-
-#### This absorbed `find_efficiency_swaps`, which was structurally dead
+#### This absorbed `find_efficiency_swaps`, which was mostly unreachable
 
 That function asked the same question *within* one roster - a starter against my own bench -
 and was deleted after the coverage audit reported it empty. The measurement, before deleting:
@@ -2975,33 +2970,60 @@ written and the market moved out from under it - the drift this document keeps r
 into rather than typed in.
 
 Asked against eleven other rosters instead of one bench, the identical question finds hundreds.
-Eleven rosters is simply a big enough pool. So the concept was kept and the search space
-replaced, rather than the bar tuned.
+Eleven rosters is simply a big enough pool.
 
-**Which forced the 90% bar to be re-derived.** `MIN_PRODUCTION_RETAINED` was 0.90 and its
-comment claimed the production given up would be "close to noise". A relative bar is not
-close to noise once the scale is large: at 0.90 the widened rule admitted **Josh Allen → Lamar
-Jackson at −994 production**, a real lineup downgrade dressed as arbitrage. Swept across three
-leagues:
+**But the search space was only half the problem, and the measurement said so.** Across full
+rosters (not `sellable + tradeable_surplus`, which excluded cornerstones) there are 673
+same-position starter/bench pairs in three leagues and exactly **two** qualify - and both sat
+on windows the Push/Contend gate excluded. So the one live case the function existed for was
+unreachable twice over:
 
-| bar | value decisions found | largest production given up |
+> `BradTheInhaler` [Middling] starts a tight end producing **353** while **T.J. Hockenson**
+> produces **331** on his own bench for **1,293 less** dynasty value.
+
+That is the shape the owner described wanting - *"we WOULD want to promote a backup like
+Darnold to Stroud and sell Stroud for more value if it was going to retain most of our starting
+production"* - so the bench is now a candidate source inside `find_value_upgrades` rather than a
+separate function. Where a player sits does not change whether he is a better thing to own; it
+changes only the action, and a man already yours needs no trade at all.
+
+**Own-bench returns are never truncated.** `RETURNS_PER_MOVE` capped the shortlist by production
+gained, and a bench conversion ranks last on that axis *by construction* - which silently
+deleted the Hockenson finding behind four better external returns. The free option cannot be
+what the cap removes, so own-bench entries are listed first regardless of how small the
+production line looks.
+
+#### Three kinds, because -994 and -47 are not the same decision
+
+`MIN_PRODUCTION_RETAINED` was 0.90 with a comment claiming the production given up would be
+"close to noise". A relative bar is not close to noise once the scale is large: at 0.90 the
+band admitted **Josh Allen → Lamar Jackson at −994 production**. Swept across three leagues:
+
+| bar | entries in the band | largest production given up |
 |---|---|---|
 | 0.90 | 76 | −994 |
 | 0.95 | 36 | −409 |
 | 0.97 | 19 | −200 |
-| **0.98** | **16** | **−118** |
+| 0.98 | 16 | −118 |
 
-0.98 is what the comment always claimed. It keeps every case the rule exists for -
-Smith-Njigba → St. Brown retains 98.5% and releases **1,440** - and the worst loss anywhere
-becomes noise in fact rather than in aspiration.
+Tightening to 0.98 was the first answer and it was too clever by half, because the Allen trade
+is *real*: giving up 994 of quarterback production to free 3,159 in dynasty value is a
+defensible play for a team with no clock. What was wrong was not the bar but calling one thing
+by another's name. So both bars stay and the label carries the distinction:
+
+| `kind` | retained | what it is |
+|---|---|---|
+| `upgrade` | > 100% | strictly better on both axes. Nothing to tune |
+| `value_decision` | ≥ `NOISE_RETAINED` (0.98) | lineup effectively unchanged; the gain is the value released |
+| `conversion` | ≥ `MIN_PRODUCTION_RETAINED` (0.90) | real production given up for real value. **Suppressed for `Push`** - a closing window needs the points |
+
+Below 0.90 the loss stops being a conversion and is simply a worse team. Live counts: 310
+upgrades, 48 conversions, 16 value decisions. The rule that fires rarely is the one whose bar
+is right - if the two narrow bands started producing volume, they would be wrong again.
 
 **Same-position pairs only**, because the redraft and dynasty scales are not normalized to
 each other (McCaffrey runs 4,345 dynasty against 6,505 redraft while a mid-tier back runs 2x
 the other way) and only a same-position comparison cancels that out.
-
-**The near-equal band is the smaller half on purpose**: 16 value decisions against 310 strict
-upgrades. A rule that fires rarely and correctly is the intended shape - if it started
-producing volume, the bar would be wrong again.
 
 **One line per upgradeable starter, not a ranked list with a cap.** The finding is
 two-dimensional - production gained *and* value freed - and ranking on either axis hides

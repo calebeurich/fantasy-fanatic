@@ -361,33 +361,70 @@ def test_value_upgrade_requires_beating_a_starter_on_both_axes():
     assert moves[0]["returns"][0]["value_freed"] == 1073
 
 
-def test_near_equal_production_qualifies_as_a_value_decision_not_an_upgrade():
-    """The band inherited from the deleted `find_efficiency_swaps`: keep essentially all the
-    production, free real value. Asked within one roster it never fired once in three leagues
-    because a bench player who retains the production is priced the same; asked across eleven
-    other rosters it finds the case the rule exists for. It must not be called an upgrade -
-    the lineup goes slightly DOWN and the whole gain is the value released."""
+def test_the_three_kinds_are_labelled_by_how_much_production_survives():
+    """-994 and -47 are not the same decision and must not share a word. Above 98% the lineup
+    is effectively unchanged (`value_decision`); down to 90% real production is being sold for
+    real value (`conversion`); below that it is just a worse team and nothing is returned. All
+    three sit on the same fixture so the only thing separating them is the production."""
     ctx, me, states = _upgrade_fixture()
-    ctx.players["nearly"] = {"name": "Nearly", "position": "TE",
-                             "value": 3000, "redraft_value": 1790}  # 98.8% of 1811, frees 515
-    ctx.rosters[1]["players"].append("nearly")
+    # mine: 3515 dynasty / 1811 redraft
+    ctx.players["noise"] = {"name": "Noise", "position": "TE", "value": 3000,
+                            "redraft_value": 1790}   # 98.8%, frees 515
+    ctx.players["convert"] = {"name": "Convert", "position": "TE", "value": 2500,
+                              "redraft_value": 1700}  # 93.9%, frees 1015
+    for pid in ("noise", "convert"):
+        ctx.rosters[1]["players"].append(pid)
     moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, {})
     by_name = {u["name"]: u for u in moves[0]["returns"]}
+
     assert by_name["Cheaper"]["kind"] == "upgrade"
-    entry = by_name["Nearly"]
-    assert entry["kind"] == "value_decision"
-    assert entry["production_gained"] == -21 and entry["value_freed"] == 515
-    assert "value decision" in entry["note"] and "not a lineup upgrade" in entry["note"]
+    assert by_name["Noise"]["kind"] == "value_decision"
+    assert "not a lineup upgrade" in by_name["Noise"]["note"]
+    assert by_name["Convert"]["kind"] == "conversion"
+    assert "GIVES UP" in by_name["Convert"]["note"], "a conversion must state the loss"
+    assert "Worse" not in by_name, "28% of the production is not a conversion at any price"
 
 
-def test_a_real_production_downgrade_is_never_a_value_decision():
-    """`Worse` frees 2,615 - far more than anything else on the board - and produces 28% of
-    the starter. Freeing value is not the goal on its own, so no amount of it buys a lineup
-    this much weaker. The 98% bar is what enforces that: at 90% this admitted a quarterback
-    swap giving up 994 of production, which is a downgrade dressed as arbitrage."""
+def test_a_pushing_team_is_never_offered_a_conversion():
+    """A closing window needs the points, so trading production away for capital is the one
+    thing it must not be told to do. The same roster contending sees it, which is what makes
+    this a window rule rather than a threshold."""
     ctx, me, states = _upgrade_fixture()
-    moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, {})
-    assert "Worse" not in [u["name"] for u in moves[0]["returns"]]
+    ctx.players["convert"] = {"name": "Convert", "position": "TE", "value": 2500,
+                              "redraft_value": 1700}
+    ctx.rosters[1]["players"].append("convert")
+
+    contending = trade_targets.find_value_upgrades(
+        me, ctx, states, {"mine"}, {"them": 3}, {}, "Contend")
+    assert "Convert" in [u["name"] for u in contending[0]["returns"]]
+
+    pushing = trade_targets.find_value_upgrades(
+        me, ctx, states, {"mine"}, {"them": 3}, {}, "Push")
+    assert "Convert" not in [u["name"] for u in pushing[0]["returns"]]
+
+
+def test_a_better_holding_already_on_my_own_bench_leads_and_is_never_capped():
+    """Real case the old within-roster function was built for and could not reach:
+    BradTheInhaler starts a TE producing 353 while T.J. Hockenson produces 331 on his bench for
+    1,293 less dynasty value. It needs no trade at all - promote him, sell the starter - yet it
+    ranks LAST on production gained by construction, so `RETURNS_PER_MOVE` deleted it behind
+    four better external returns. The free move cannot be the one the cap removes."""
+    ctx, me, states = _upgrade_fixture()
+    ctx.players["mybench"] = {"name": "MyBench", "position": "TE",
+                              "value": 2222, "redraft_value": 1700}  # 93.9%, frees 1293
+    me["players"].append("mybench")
+    for i in range(trade_targets.RETURNS_PER_MOVE + 2):  # crowd the shortlist
+        pid = f"ext{i}"
+        ctx.players[pid] = {"name": f"Ext{i}", "position": "TE",
+                            "value": 2400 + i, "redraft_value": 2200 + i}
+        ctx.rosters[1]["players"].append(pid)
+
+    returns = trade_targets.find_value_upgrades(
+        me, ctx, states, {"mine"}, {"them": 3}, {}, "Contend")[0]["returns"]
+    assert returns[0]["name"] == "MyBench", "the no-trade option leads"
+    assert returns[0]["already_mine"] and returns[0]["from_owner"] == "your own bench"
+    assert len(returns) == trade_targets.RETURNS_PER_MOVE + 1, (
+        "it is additive to the shortlist, not competing for a slot in it")
 
 
 def test_a_near_equal_swap_that_frees_almost_nothing_is_churn():

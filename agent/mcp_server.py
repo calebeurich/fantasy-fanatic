@@ -188,15 +188,22 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     should usually lead the answer for a team trying to win now. Each names a current starter
     and several players who are a better thing to own than he is, every one of them costing
     LESS in dynasty value. Each return carries "kind", and it changes what you should say:
-    "upgrade" produces MORE this season as well, so it raises the lineup and frees trade
-    capital at once and the replaced starter drops to depth; "value_decision" produces very
-    slightly LESS (at least 98% of it), so the lineup is unchanged and the gain is purely the
-    value released - present those as worth doing at a good price and never worth chasing, and
-    never describe one as raising the lineup. There is one entry per upgradeable starter, so
-    the list is a map of where this lineup can be beaten. Do NOT price a package around them
-    or add the pieces up - value is not additive across players, and "this holding beats that
-    one" is the entire claim. Say the age: these are cheaper precisely because they are older,
-    which is the trade-off the asking team has to weigh against its own timeline.
+      upgrade        - produces MORE this season too. Raises the lineup and frees trade capital
+                       at once; the replaced starter drops to depth.
+      value_decision - produces very slightly LESS (at least 98% of it). The lineup is
+                       unchanged and the gain is purely the value released: worth doing at a
+                       good price, never worth chasing. Never call this raising the lineup.
+      conversion     - produces MEANINGFULLY less (down to 90%). This GIVES UP production to
+                       free value. State the loss in the same breath as the gain. It only
+                       appears for teams with no clock; never present it as free.
+    A return carrying "already_mine" is on the asking team's OWN BENCH: no trade is required at
+    all, just promote him and sell the starter above him. Lead with that one when it exists,
+    even though its production line looks worst - it is the only move here that costs nothing
+    to arrange. There is one entry per upgradeable starter, so the list is a map of where this
+    lineup can be beaten. Do NOT price a package around them or add the pieces up - value is
+    not additive across players, and "this holding beats that one" is the entire claim. Say the
+    age: these are cheaper precisely because they are older, which is the trade-off the asking
+    team has to weigh against its own timeline.
 
     "persuasion_targets", when present, are a DIFFERENT KIND of suggestion and must be
     presented as such: aging production held by teams that are NOT currently sellers.
