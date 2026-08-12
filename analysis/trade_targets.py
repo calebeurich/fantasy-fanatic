@@ -1468,6 +1468,7 @@ def _print_push(push: dict, extras: dict) -> None:
     `push` is only the pushing half and doesn't carry it."""
     for pos, entry in push["needs"].items():
         print(f"  need at {pos}: {entry['note']}")
+    _print_stranded(extras)
     if push["my_offers"]:
         print("you could offer (cleanest first - anything with friction is listed last, with why):")
         for e in push["my_offers"]:
@@ -1495,10 +1496,14 @@ def _print_push(push: dict, extras: dict) -> None:
         for t in push["targets"]:
             trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "no trades yet"
             price_note = BUY_PRICE_NOTE[team_state.VALUE_BASIS[t["bucket"]]]
-            beats = ("" if t.get("over_weakest_starter") is None else
-                     f", {t['over_weakest_starter']:+,} vs your weakest {t['position']} starter")
+            ow = t.get("over_weakest_starter")
+            beats = "" if ow is None else f", {ow:+,} vs your weakest {t['position']} starter"
+            # A body at a count-shaped need still fills an empty slot, so these are not dropped -
+            # but calling someone who produces LESS than the man he'd replace a fix is the kind
+            # of claim this project keeps having to walk back. Label, don't hide.
+            kind = " [DEPTH - does not beat who you start there]" if (ow is not None and ow <= 0) else ""
             print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}{beats}) from "
-                  f"{t['from_owner']} - need: {t['need_level']} - {trade_note}")
+                  f"{t['from_owner']} - need: {t['need_level']} - {trade_note}{kind}")
     else:
         print("no reachable targets found (no needs, no Rebuilding team is selling there, or "
               "everything available is a long shot below)")
@@ -1581,6 +1586,21 @@ def _print_value_upgrades(result: dict) -> None:
             if u.get("their_reason"):
                 print(f"           why they'd move him: {u['their_reason']}")
     print(f"  {result['value_upgrade_note']}")
+
+
+def _print_stranded(result: dict) -> None:
+    """Computed for every window since it was written, attached to the result, and printed by
+    nothing - the same defect `depth_adds` had. Its own note says to LEAD with these, so it
+    prints above the offer list rather than below it."""
+    if not result.get("stranded"):
+        return
+    print("STRANDED - the most valuable thing you own that you cannot use:")
+    for e in result["stranded"]:
+        wants = ", ".join(f"{w['owner']}[{w['window']}]" for w in (e.get("wanted_by") or [])[:3])
+        print(f"  {e['name']} ({e['position']}, {e['redraft_value'] or 0:,} this season, "
+              f"{e['value']:,} dynasty) - no slot left for another {e['blocked_by']}"
+              + (f"; wanted by {wants}" if wants else ""))
+    print(f"  {result['stranded_note']}")
 
 
 def _print_depth(result: dict) -> None:
