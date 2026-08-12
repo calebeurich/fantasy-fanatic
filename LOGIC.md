@@ -239,6 +239,35 @@ Three steps, cheapest first, none built:
   picture instead of a summary, and where the document and the agent cannot drift apart.
   Needs chunking that survives this file's length, which is the actual design work.
 
+### Backlog: what the first real agent runs left open
+
+Three live runs against a friend's league, at ~$0.04 each. Two failures were fixed at the
+data level and hold; two were addressed in prose and did not.
+
+**Fixed, and the fix stuck** - because it went into the data:
+- The lineup format now ships with every roster (`get_team_state`'s `lineup`), after a run
+  called `check_league_format`, got superflex, and wrote "a league that only starts one" a
+  few hundred tokens later.
+- The grounding check no longer fires on *"don't* trade X" - it was spending a retry
+  contradicting correct advice, about a third of the answer's budget.
+
+**Still open, and both were addressed in prose rather than data, which is why:**
+- **Runway does not survive an open-ended question.** Asked "which QB should he trade", the
+  agent reasons from `years_to_decline` correctly. Asked "what should he do", it opens with
+  "Ship Jared Goff" - the older man with *more* runway - and never weighs Hurts. The tool
+  description says to sort on runway; that only bites when the question is pointed. The fix
+  is to surface runway inside the sell block itself, ranked, rather than describing it.
+- **Package math survives the system prompt.** Principle D forbids totalling two sides of a
+  trade, and a run still proposed "ship Flowers + Downs, get Burden + Fannin + a 1st". Needs
+  something structural, the way `find_value_upgrades` is structurally one-player-to-one-player
+  and therefore cannot drift into pricing.
+
+Also cosmetic and unfixed: dollar signs on unitless values, and a player misgendered.
+
+**The pattern is the finding.** Fixes that live in the data hold; fixes that live in a prompt
+leak. Every durable correction this project has made went into a field, a note attached to a
+field, or a deterministic Python check - never into an instruction alone.
+
 ## Age curve (`team_values.AGE_CURVE`, `age_bucket`)
 
 Per-position aging breakpoints (ascending / prime / declining), because a flat
@@ -356,20 +385,49 @@ thing this project won't trade away.
 | **Middling** | patience is free | rising | `MIDDLING_TIMING_NOTE_RISING` |
 | | patience buys information | steady or falling | `MIDDLING_TIMING_NOTE` |
 | **Rebuilding** | nothing left to sell | `dec_pct == 0` | `REBUILD_NOTHING_DECLINING` |
-| | *working vs stalled* | — | **not built** |
+| | *ascending / stalled / convertible* | — | **not built** (see below) |
 
 Contending is the one core state whose flavors are separate labels, because the two
 genuinely want opposite actions - `Push` buys production and spends picks, `Contend` does
 nothing at a premium. Middling and Rebuilding flavors want the *same* actions for different
 reasons, so they change the wording and nothing else.
 
-**The unbuilt one, recorded rather than guessed at.** A rebuild that is working and one that
-is stalled currently read identically. In XFL 2, BartolosHeroes (40% ascending, 3% declining)
-gets the same note as spugz13 (9% / 12%) - the first is young and getting better on its own,
-the second is going nowhere in either direction, and the difference is the whole question for
-a rebuilder. The existing `REBUILD_NOTHING_DECLINING` flavor doesn't cover it: that one asks
-"do you have inventory to sell", which is a different question and correctly leaves
-BartolosHeroes on the generic note, since he really does have four sell candidates.
+#### The unbuilt rebuild flavors — three of them, and one is already computed
+
+Every rebuilding team currently reads identically, and there are **three genuinely different
+situations** underneath the one label. This is the next piece of work.
+
+**1. Ascending — the rebuild is working.** Young, rising, nothing declining. It needs
+patience and nothing else. *XFL 2: BartolosHeroes (40% ascending / 3% declining),
+BenSimonds (48/0).*
+
+**2. Stalled — just bad.** Flat or falling with nothing arriving, and no asset base to
+convert. This is the only one that is genuinely stuck, and it is the one that most needs to
+be told so. *XFL 2: spugz13 (9/12), jqsimonds22 (17/20).*
+
+**3. Convertible — a weak lineup on a strong asset base.** Not bad, *unspent*. The right
+counsel is close to the Middling one: hold, see how the season opens, and be ready to convert
+into a push if it starts well - because the assets to do it are already owned.
+
+**The third already exists and is not wired into the rebuild advice.** `leverage` /
+`asset_rank` / `leverage_note` compute exactly this, comparing every player *plus every pick*
+a team owns against what it actually starts. On a live roster: jwall567 in God Bless The Plug
+is **3rd of 12 in total tradeable value against 9th in what he starts**, flagged
+`convertible`, with a note that says the gap "is an option, not an oversight." He is not a
+poor rebuilder; he is an unspent one, and that is the single most important fact about his
+roster.
+
+Worth recording how that was found. Asked what jwall should do, the **agent led with the
+leverage note and got it right**, while the human reading the same tools called it wrong
+twice - having read `starter_value` (the starting lineup's dynasty value, 10th) and treated
+it as the war chest. The field existed for exactly that read; only one of the two readers
+used it.
+
+So the work is not to invent a third flavor but to **join one that already exists to the
+window that should be using it** - and to add the ascending/stalled split, which nothing
+computes yet. The existing `REBUILD_NOTHING_DECLINING` flavor does not cover any of this: it
+asks "do you have inventory to sell", a different question, and correctly leaves
+BartolosHeroes on the generic note since he really does have four sell candidates.
 
 ### The four windows
 
