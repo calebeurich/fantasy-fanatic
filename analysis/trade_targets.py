@@ -306,10 +306,10 @@ def _why_they_would_move_him(player: dict, other: dict, prior: dict | None,
     ratio = ((player.get("redraft_value") or 0) / player["value"]) if player.get("value") else 0
     # The bar decides one clause inside the case, not whether the case exists - see `_cliff_case`.
     # Used as a gate it made the existence of any reason at all turn on the fourth decimal place.
-    cliff = _cliff_case(player, other, ratio,
-                        discounted=ratio >= (premium_bars or {}).get(player["position"],
-                                                                     float("inf")))
-    case = _seller_case(other, (prior or {}).get(other["owner_id"])) or cliff
+    team_case = _seller_case(other, (prior or {}).get(other["owner_id"]))
+    case = _cliff_case(player, other, ratio, team_case=team_case,
+                       discounted=ratio >= (premium_bars or {}).get(player["position"],
+                                                                    float("inf"))) or team_case
     serves_their_plan = [_friction(
         "needs_a_pivot", f"{other['owner']} has no hole you can fill, so this asks him to "
                          f"change direction rather than take a fair offer - a wait-and-see, "
@@ -935,8 +935,9 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
             # roster, produces 2,221 - a +1,578 upgrade on the asking team's RB2 and more than
             # double its best listed target - was unreachable at ratio 0.85 against a 1.05 bar,
             # while his own teammate Achane qualified at exactly 1.05 off the same team case.
-            why = team_why or _cliff_case(
-                player, other, ratio, discounted=ratio >= premium_bars.get(pos, float("inf")))
+            why = _cliff_case(player, other, ratio, team_case=team_why,
+                              discounted=ratio >= premium_bars.get(pos,
+                                                                   float("inf"))) or team_why
             if why is None:
                 continue
             fit = _counterparty_fit(other, (needs_by_owner_id or {}).get(other["owner_id"], {}),
@@ -1159,7 +1160,8 @@ def _seller_case(other: dict, prior: dict | None) -> str | None:
     return None
 
 
-def _cliff_case(player: dict, other: dict, ratio: float, discounted: bool = True) -> str | None:
+def _cliff_case(player: dict, other: dict, ratio: float, discounted: bool = True,
+                team_case: str | None = None) -> str | None:
     """Why an owner whose team looks fine might still move one aging starter: **their
     window and the player's don't line up**. Not "he's old" - old is only half of it.
 
@@ -1213,8 +1215,18 @@ def _cliff_case(player: dict, other: dict, ratio: float, discounted: bool = True
                 f"though his remaining years are gone." if discounted else
                 f" He is not discounted for it ({ratio:.2f}x his own trade value), so this is "
                 f"about whose window he fits rather than a price to harvest.")
-    return (f"Nothing about {other['owner']}'s team says seller, but their window and "
-            f"{player['name']}'s don't line up: {other['ascending_pct']}% of their "
+    # The two arguments used to be `team_why or cliff`, so a team-level reason silenced the
+    # player-level one entirely - and the player-level one is the more actionable of the two,
+    # being about the man you are ringing about rather than a roster average. Travis Etienne's
+    # entry read "this core hasn't won with them" while the far better argument went unsaid:
+    # bigbuttboi is 55% ascending against 8% declining and Etienne is 27 with a negative runway.
+    # The opener has to move with it, because "nothing about their team says seller" is false
+    # once `_seller_case` has just said something about their team.
+    opener = (f"{team_case} Separately, their window and {player['name']}'s don't line up"
+              if team_case else
+              f"Nothing about {other['owner']}'s team says seller, but their window and "
+              f"{player['name']}'s don't line up")
+    return (f"{opener}: {other['ascending_pct']}% of their "
             f"production is ascending against {other['declining_pct']}% declining, so "
             f"they're built for seasons he won't be part of.{discount} Keeping him may well "
             f"tip this season for them, which is exactly why it's a real decision for them "
