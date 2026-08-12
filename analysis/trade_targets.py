@@ -971,13 +971,10 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     # a team actually trying to win now.
     my_picks = picks_by_owner.get(me["roster_id"], [])
 
-    # Computed once, before the window dispatch, because every one of these applies in every
-    # window and the previous placement (inside the buy branch only) meant a Rebuild team got
-    # neither. That team had the worst RB room in its league and six qualifying cheap bodies
-    # available - and cheap bodies are arguably worth MORE to a rebuilder, since a moonshot
-    # back is one injury away from being a real asset and costs a late pick to hold.
-    depth = _depth_adds(my_roster, ctx, states, me["window"] != "Rebuild", my_starters,
-                        set())
+    # Depth applies in every window - it used to be computed inside the buy branch only, so a
+    # Rebuild team got none of it, and cheap bodies are arguably worth MORE to a rebuilder
+    # since a moonshot back is one injury from being a real asset. It is built in
+    # `with_extras` rather than here, because it has to know what the buy path surfaced.
     def _wanted_by(position: str) -> list[dict]:
         """Which other teams are short at this position, worst shortage first.
 
@@ -1019,6 +1016,17 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
                                      f"anything like his value."))})
 
     def with_extras(result: dict) -> dict:
+        # Computed here, not earlier, so the buy path's actual output can be excluded. The
+        # two lists are documented as partitioning the space and stopped doing it once they
+        # started testing different metrics - depth against replacement-level *production*,
+        # the buy path against the *dynasty* relevance floor. Tony Pollard and Jaylen Warren
+        # cleared one and failed the other, so they came back in both lists at once: named as
+        # live targets at a critical need, and simultaneously as bodies "never worth a real
+        # asset". `already` existed for this and was being handed an empty set.
+        surfaced = {t["name"] for t in result.get("targets") or []}
+        surfaced |= {t["name"] for t in (result.get("push") or {}).get("targets") or []}
+        depth = _depth_adds(my_roster, ctx, states, me["window"] != "Rebuild",
+                            my_starters, surfaced)
         if depth:
             result["depth_adds"] = depth
             result["depth_note"] = (DEPTH_NOTE_REBUILD if me["window"] == "Rebuild"
