@@ -225,7 +225,23 @@ def find_outliers(player_ids: list[str], players: dict[str, dict], contract_data
 def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty: bool,
                            tep_tier: str = "none") -> dict[str, dict]:
     players = fantasycalc.get_players(num_qbs, num_teams, ppr, is_dynasty, tep_tier)
-    for player_id, role in player_roles.get_roles().items():
+    # nflverse ships from a GitHub release host, and a 503 there took down every command in
+    # this project - `python -m analysis.team_state`, the audit, the agent, all of it. A usage
+    # role is an OVERRIDE on the age curve and absent means "no adjustment", which most players
+    # already are, so the tool can run without one.
+    #
+    # It must not run QUIETLY without one. The runway gap between a pocket passer (6.2 years at
+    # 31.8) and a running quarterback (4.0 at 28.0) is precisely what decided a real
+    # recommendation here, and falling back to position defaults would change that advice
+    # invisibly. So: degrade, and say so on stderr.
+    try:
+        roles = player_roles.get_roles()
+    except Exception as e:
+        print(f"WARNING: usage roles unavailable ({type(e).__name__}) - age curves fall back to "
+              f"position defaults this run, so runway is less accurate for quarterbacks and "
+              f"pass-catching backs. Advice that turns on WHO to sell may differ.", file=sys.stderr)
+        roles = {}
+    for player_id, role in roles.items():
         if player_id in players:
             players[player_id]["usage_role"] = role
 
