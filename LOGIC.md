@@ -306,6 +306,38 @@ value would double-count the very effect being measured: ascending players are *
 the growth in question, so weighting by it inflates every young roster's ascending share
 and reports the market's opinion back as though it were a roster fact.
 
+### Three core states, with flavors
+
+**The v1 core is three states: contending, middling, rebuilding.** In dynasty a team is
+winning now or rebuilding, and the honest answer for anyone in between is "both directions
+are open, and waiting on how the season starts is allowed." Everything below is a *flavor*
+of one of those three - a different reason to be in the state, which changes what the team
+is told without changing what it is. Flavors are deliberately notes rather than labels: a
+fourth and fifth label would make the model harder to hold in your head, which is the one
+thing this project won't trade away.
+
+| core | flavor | separated by | how it ships |
+|---|---|---|---|
+| **Contending** | `Push` - there is a clock | trajectory falling | its own label |
+| | `Contend` - no clock | steady or rising | its own label |
+| **Middling** | patience is free | rising | `MIDDLING_TIMING_NOTE_RISING` |
+| | patience buys information | steady or falling | `MIDDLING_TIMING_NOTE` |
+| **Rebuilding** | nothing left to sell | `dec_pct == 0` | `REBUILD_NOTHING_DECLINING` |
+| | *working vs stalled* | — | **not built** |
+
+Contending is the one core state whose flavors are separate labels, because the two
+genuinely want opposite actions - `Push` buys production and spends picks, `Contend` does
+nothing at a premium. Middling and Rebuilding flavors want the *same* actions for different
+reasons, so they change the wording and nothing else.
+
+**The unbuilt one, recorded rather than guessed at.** A rebuild that is working and one that
+is stalled currently read identically. In XFL 2, BartolosHeroes (40% ascending, 3% declining)
+gets the same note as spugz13 (9% / 12%) - the first is young and getting better on its own,
+the second is going nowhere in either direction, and the difference is the whole question for
+a rebuilder. The existing `REBUILD_NOTHING_DECLINING` flavor doesn't cover it: that one asks
+"do you have inventory to sell", which is a different question and correctly leaves
+BartolosHeroes on the generic note, since he really does have four sell candidates.
+
 ### The four windows
 
 - **`Push`** - contender whose roster is falling. The window is open and closing on its
