@@ -107,6 +107,17 @@ SELL_CLOCK_OPTIONAL = (
     "direction before the price decays, not an instruction to sell now"
 )
 
+PICKS_NOTE = (
+    "ASK FOR PICKS, NOT JUST PLAYERS - and this is the block to work from first. A pick is the "
+    "cleanest thing a rebuild can hold: it has no age, so it is not on any clock and cannot "
+    "decline while you wait; it occupies no roster spot; and it is worth strictly less to a "
+    "contender than to you, which is the only kind of asset both sides can rationally want to "
+    "move in the same direction. That last point is why these are cheaper to ask for than the "
+    "players below - a contender giving up a future 1st is giving up something it has already "
+    "decided not to use, where giving up a young player costs it a piece it may still want. "
+    "Prefer picks when the price of a player would mean taking on someone else's timeline."
+)
+
 ACQUIRE_NOTE = (
     "YOUNG VALUE SURPLUS TO ITS OWNER'S PLAN, which is the one thing every name here has in "
     "common - so it is said once rather than repeated under each. A contender's ascending pieces "
@@ -1593,6 +1604,7 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
         pick_targets.sort(key=lambda t: (-t["value"], -t["from_owner_trades"]))
         if pick_targets:
             result["picks_to_acquire"] = pick_targets[:8]
+            result["picks_note"] = PICKS_NOTE
     return result
 
 
@@ -1813,14 +1825,20 @@ def _print_pivot(me: dict, pivot: dict) -> None:
     cornerstones = [e for e in pivot["sell_candidates"] + pivot["situational"] if e.get("friction")]
     if cornerstones:
         print(f"  {cornerstones[0]['friction'][0]['why']}")
-    if not pivot["acquire_targets"]:
-        print("no obvious acquire targets found")
-        return
+    # **Picks print BEFORE the empty-players guard, not after it.** This used to `return` on an
+    # empty `acquire_targets`, which took the picks block down with it - so a rebuilding team with
+    # no reachable young players was told "no obvious acquire targets found" and never told to ask
+    # for picks, which is the cleaner currency and the thing it should want most.
     if pivot.get("picks_to_acquire"):
         print("picks to ask about (worth less to a contender than to you):")
-        for t in pivot["picks_to_acquire"][:5]:
+        for t in pivot["picks_to_acquire"][:8]:
             trade_note = f"{t['from_owner_trades']} trade(s)" if t["from_owner_trades"] else "NEVER TRADES"
             print(f"  {t['pick']} (value={t['value']}) from {t['from_owner']} - {trade_note}")
+        print(f"  {pivot['picks_note']}")
+    if not pivot["acquire_targets"]:
+        print("no reachable young players found - which makes the picks above the whole plan, "
+              "not a consolation")
+        return
     print("acquire targets (cleanest first, capped per position):")
     for t in pivot["acquire_targets"]:
         trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "NEVER TRADES - unlikely"

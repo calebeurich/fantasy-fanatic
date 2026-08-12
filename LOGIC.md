@@ -2377,6 +2377,27 @@ It also guarded the wrong pair - Hurts against *Herbert*, while asserting someth
 against *Goff*. Both pairs are now checked before an API call is spent, and the message names the
 likely cause rather than reporting "fixture drift" and leaving the reader to find it.
 
+### Picks are the rebuild's first currency, and the printer hid them (`PICKS_NOTE`)
+
+Caleb settled the open design question by rejecting it: `acquire_targets` being roster-agnostic is
+**correct**, because a rebuilding team has no lineup to shape - *"you dont need a roster if youre
+rebuilding, and eventually youll just become middling if youre doing it correctly."* So identical
+output across three rebuilding teams is the honest answer, not a bug. What was missing is the other
+half: *"just have to make sure it says get picks as well."*
+
+Two fixes. `PICKS_NOTE` states why a pick is the cleanest thing a rebuild can hold - no age so no
+clock, no roster spot, and worth strictly less to a contender than to you, which is the only shape
+of asset both sides can rationally want to move the same way. That last point is also why picks are
+*cheaper to ask for* than young players: a contender's future 1st is something it has already
+decided not to use, where its young player is a piece it may still want.
+
+And a real bug found while wiring it: `_print_pivot` returned on an empty `acquire_targets`
+**before** reaching the picks block, so a rebuilding team with no reachable young players was told
+"no obvious acquire targets found" and never told to ask for picks at all - the cheaper currency,
+withheld from the team that needed it most. Picks now print first, and the empty-players line reads
+"which makes the picks above the whole plan, not a consolation". The printed list also went from 5
+to the 8 that were always computed.
+
 ### The rebuild path finally got the buy path's treatment (`_pivot_path`)
 
 Everything built for the buy side this session had to be built again here, which is what "the
