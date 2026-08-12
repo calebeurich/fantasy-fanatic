@@ -1241,92 +1241,6 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
 
 
 
-# How lopsided the two sides of a mutual swap may be before it stops being a realistic
-# proposal. Both sides are startable-quality depth by construction, so this is a sanity
-# bound, not a fairness calculator (that's a separate, harder problem - see the module
-# docstring). 0.6 means the lighter side must be worth at least 60% of the heavier one:
-# loose enough that a genuine need premium still goes through, tight enough that nobody
-# gets shown "your RB3 for their QB5".
-MIN_SWAP_BALANCE = 0.6
-
-
-def _swap_is_balanced(receive: list[dict], send: list[dict]) -> bool:
-    got, gave = sum(e["value"] for e in receive), sum(e["value"] for e in send)
-    if not got or not gave:
-        return False
-    return min(got, gave) / max(got, gave) >= MIN_SWAP_BALANCE
-
-
-def _fills(entries: list[dict], need: dict | None) -> list[dict]:
-    """The subset of `entries` that actually addresses `need` - empty if it doesn't, or
-    if there's no need there at all. A count-shaped need (critical/top-heavy) has an open
-    slot, so any usable body fills it; a `weak` one is already covered and only improves
-    if the incoming player beats the current worst starter."""
-    if not need:
-        return []
-    if need["level"] != "weak":
-        return entries
-    return [e for e in entries if (e.get("redraft_value") or 0) > need["weakest_starter"]]
-
-
-def find_mutual_swaps(league_id: str, owner_query: str) -> dict:
-    """Two-way trades between teams both still trying to win: each side has a
-    positional surplus (real spare depth, from roster_needs.league_surplus) that
-    happens to be the other side's need, so both teams fix a hole without touching
-    their own starters or their long-term core. The buy/pivot paths above only ever
-    match a Win-Now/Middling team against a Rebuilding team's sell candidates - they
-    never consider two competing teams trading with each other, which misses a common
-    and realistic trade shape a pure rebuild-vs-contend model can't produce."""
-    ctx = context(league_id)
-    states = team_state.classify_league(league_id)
-    needs_by_owner = roster_needs.league_needs(league_id)
-    surplus_by_owner = roster_needs.league_surplus(league_id)
-
-    me = ctx.pick_owner(owner_query, states)
-
-    if me["window"] not in SWAP_ELIGIBLE_WINDOWS:
-        # A Rebuilding team isn't trying to fix a starting lineup right now - it's
-        # selling current value for youth, which is the pivot path above, not this.
-        return {"me": me, "swaps": []}
-
-    my_needs = needs_by_owner.get(me["owner_id"], {})
-    my_surplus = surplus_by_owner.get(me["owner_id"], {})
-
-    swaps = []
-    for other in _others(states, me, STILL_COMPETING):
-        other_needs = needs_by_owner.get(other["owner_id"], {})
-        other_surplus = surplus_by_owner.get(other["owner_id"], {})
-        for need_pos, other_surplus_entries in other_surplus.items():
-            if need_pos not in my_needs:
-                continue
-            # Their spare depth only fixes a `weak` position if it actually beats what's
-            # already starting there - a weak group has the slots filled and wants an
-            # upgrade. Without this the swap list offered a fringe backup as the cure for
-            # a bottom-third room, which is churn dressed up as a fit.
-            incoming = _fills(other_surplus_entries, my_needs[need_pos])
-            if not incoming:
-                continue
-            for their_need_pos, my_surplus_entries in my_surplus.items():
-                outgoing = _fills(my_surplus_entries, other_needs.get(their_need_pos))
-                if outgoing and _swap_is_balanced(incoming, outgoing):
-                    swaps.append({
-                        "with_owner": other["owner"],
-                        "fills_your_need_at": need_pos,
-                        "you_receive": incoming,
-                        "fills_their_need_at": their_need_pos,
-                        "you_send": outgoing,
-                        "balance": {
-                            "you_receive_value": sum(e["value"] for e in incoming),
-                            "you_send_value": sum(e["value"] for e in outgoing),
-                            "note": "Both sides are spare startable depth of comparable "
-                                    "value - this is a shape that could work, not a "
-                                    "priced offer. Check it against the market before sending.",
-                        },
-                    })
-    swaps.sort(key=lambda s: -(s["balance"]["you_receive_value"] + s["balance"]["you_send_value"]))
-    return {"me": me, "swaps": swaps}
-
-
 def offerable_names(result: dict) -> set[str]:
     """Every player name this team could reasonably be told to trade away, across
     whichever path(s) find_targets returned for its mode. Single source of truth for
@@ -1483,32 +1397,10 @@ def _print_depth(result: dict) -> None:
     print(f"  {result['depth_note']}")
 
 
-def _print_swaps(swaps: list[dict]) -> None:
-    if not swaps:
-        print("no mutual swap fits found")
-        return
-    print("mutual swaps (both sides fix a different need, no core piece touched):")
-    # The CLI printed the two totals bare, with none of the framing the MCP tool
-    # description and LOGIC.md both carry - so they read as a priced offer, which is the
-    # one thing this project deliberately doesn't compute.
-    print("  totals are a comparable-value sanity check - a shape that could work, not a "
-          "priced offer. Value does not add up across players.")
-    for s in swaps:
-        receive = ", ".join(e["name"] for e in s["you_receive"])
-        send = ", ".join(e["name"] for e in s["you_send"])
-        b = s["balance"]
-        print(f"  with {s['with_owner']}: you get {receive} ({s['fills_your_need_at']} need, "
-              f"{b['you_receive_value']}) for {send} ({s['fills_their_need_at']} need for "
-              f"them, {b['you_send_value']})")
-
-
 def main(league_id: str, owner_query: str = None, max_per_position: int = DEFAULT_MAX_PER_POSITION) -> None:
     if owner_query:
         result = find_targets(league_id, owner_query, max_per_position)
         _print_report(result)
-        if result["mode"] in ("buy", "middling"):
-            print()
-            _print_swaps(find_mutual_swaps(league_id, owner_query)["swaps"])
         return
 
     # No owner given - run the whole league in one pass so it's easy to eyeball every

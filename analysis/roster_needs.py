@@ -82,9 +82,9 @@ def _usable_by_position(roster: dict, players: dict[str, dict], thresholds: dict
     and the rest as spare could keep a pricier prospect over a better current producer. Two
     metrics inside one ordering is the conflation `replacement_thresholds` documents at length.
 
-    It used to be shared with `find_surplus` so that "usable" meant one thing in both. That
-    stopped being true when surplus moved off replacement level entirely - see `find_surplus`
-    for why a leaguewide top-N bar cannot answer "is he spare to *me*".""" 
+    It used to be shared with a `find_surplus` that answered "is he spare to *me*"; that was
+    deleted with the mutual-swap engine it fed - see LOGIC.md on why bundling spare depth is a
+    question this project has no tool to price.""" 
     by_pos = {pos: [] for pos in POSITIONS}
     for pid in roster["players"] or []:
         info = players.get(pid)
@@ -476,71 +476,6 @@ def needs_only(assessed: dict[str, dict]) -> dict[str, dict]:
     return {pos: entry for pos, entry in assessed.items() if entry["level"] != "ok"}
 
 
-def find_surplus(roster: dict, players: dict[str, dict], thresholds: dict[str, float],
-                 starters: set[str] | None = None) -> dict:
-    """Players a team can trade without touching its lineup: **anyone not in the projected
-    starting eleven who still has real trade value**. Spare is measured against this team's
-    own lineup, not against a leaguewide bar.
-
-    **The old definition was zero-sum, and that is why nothing ever qualified.** It took
-    players above `replacement_thresholds` and beyond `slots[pos]` - but replacement level is
-    *defined* as the Nth-best player leaguewide where N is every starting slot at that
-    position, so above-replacement supply equals demand by construction. Measured on two real
-    leagues, exactly:
-
-        QB slots 24, rostered above the bar 24.  RB 24/24.  WR 36/36.  TE 12/12.
-
-    Surplus under that rule could only exist where one team held more than its share, matched
-    one-for-one by another team's deficit. Total surplus across a league was therefore ~0,
-    only 3 of 12 teams had any, and `find_mutual_swaps` - which needs *two* teams to have
-    surplus the other needs - returned nothing in 36 consecutive team-reads across three
-    leagues. It was not a tuning problem; the quantity could barely exist.
-
-    Deep flex made it worse. With three FLEX and a SUPER_FLEX, ten starters absorb almost
-    everyone above replacement, so "usable but not starting" is nearly empty by construction.
-
-    The lineup-relative version is not zero-sum: whether *my* bench player is spare to *me*
-    has nothing to do with how the rest of the league is stocked. The quality question -
-    does he actually help the team receiving him - is asked separately by `_fills` against
-    that team's need, which is where it belongs.
-
-    **The value bar is `clears_relevance_floor`, not a raw replacement threshold**, and that
-    correction came from the same observation. Both `start_thresholds` and `trade_thresholds`
-    are Nth-best-leaguewide bars, so swapping one for the other keeps the zero-sum property in
-    the *value* test even after the slot arithmetic is gone. On a real roster only 2 of 18
-    receivers cleared the raw dynasty bar - a 3,039-value receiver missed by 242, and a young
-    one at 1,620 whose owner rates him a future starter was nowhere near.
-
-    That is the deeper point: **replacement level is a win-now idea**. A player below it is
-    not replaceable to a team that will be good in two years, he is a starter who hasn't
-    arrived. `clears_relevance_floor` already encodes this by scaling the bar with the
-    player's bucket - ascending value clears at 25% of replacement, realised production at
-    50% - which is why the offer pool has always used it. Using it here makes the two
-    genuinely one concept rather than two that happen to agree.
-
-    The `slots` argument is gone. It encoded the zero-sum arithmetic and nothing reads it now;
-    keeping it "for signature compatibility" would have left a parameter that lies about what
-    the function considers."""
-    from . import team_state  # lazy: team_state never imports this module, so no cycle
-    spare: dict[str, list[dict]] = {}
-    for player_id in roster["players"] or []:
-        info = players.get(player_id)
-        if not info or info["position"] not in POSITIONS:
-            continue
-        if player_id in (starters or set()):
-            continue  # in the lineup - not spare, whatever the arithmetic says
-        entry = {"name": info["name"], "position": info["position"], "value": info["value"],
-                 "redraft_value": info.get("redraft_value"), "is_starter": False,
-                 "bucket": age_bucket(info["position"], info.get("age"),
-                                      info.get("usage_role"))}
-        if not team_state.clears_relevance_floor(entry, thresholds):
-            continue
-        spare.setdefault(info["position"], []).append(entry)
-    for entries in spare.values():
-        entries.sort(key=lambda e: -e["value"])
-    return spare
-
-
 # Which positions each flex-type slot can be filled with. Sleeper names these in
 # `roster_positions` alongside the dedicated ones.
 FLEX_ELIGIBILITY = {
@@ -689,26 +624,6 @@ def league_needs(league_id: str) -> dict[str, dict]:
                 entry["note"] += f" {REBUILD_LENS}"
         out[owner_id] = needs
     return out
-
-
-def league_surplus(league_id: str) -> dict[str, dict]:
-    """Spare players for every roster, keyed by owner_id then position, used by
-    `trade_targets.find_mutual_swaps` to match one team's spare against another's need.
-
-    **No longer the mirror of `league_needs`, and the two are not symmetric.** A need is
-    measured against the league (is this group bottom-third, are there enough startable
-    bodies); spare is measured against this roster's own lineup. They were mirrors while both
-    ran off replacement level, and that symmetry is exactly what made surplus zero-sum and
-    unusable - see `find_surplus`. A team can now legitimately show both a need and spare
-    depth at the same position: the need says the starting group ranks badly, the spare says
-    a bench player there is still worth something to somebody. Both are true."""
-    from .league import context
-    ctx = context(league_id)
-    return {
-        r["owner_id"]: find_surplus(r, ctx.players, ctx.trade_thresholds,
-                                    ctx.starters_for(r))
-        for r in ctx.rosters
-    }
 
 
 def main(league_id: str) -> None:

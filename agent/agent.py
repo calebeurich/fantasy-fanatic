@@ -57,7 +57,6 @@ TOOL_NAMES = [
     "get_team_state",
     "get_roster_needs",
     "get_trade_targets",
-    "get_mutual_swaps",
     "get_waiver_upgrades",
     "get_roster_detail",
     "get_optimal_lineup",
@@ -109,7 +108,7 @@ claim, or any other change - you can only analyze and suggest.
 name, value, or team name that didn't come from a tool result.
 6. When suggesting what a team could offer in a trade, the ONLY players you may name \
 are ones literally present in that team's "my_offers"/"sell_candidates"/"situational" \
-list from get_trade_targets, or "you_send" from get_mutual_swaps - no other player, \
+list from get_trade_targets - no other player, \
 ever, even a declining starter who seems replaceable to you. Those lists already \
 account for the team's own needs and starter status; if a player isn't on one of \
 them, there is a specific reason, and second-guessing it produces suggestions that \
@@ -120,11 +119,13 @@ if it doesn't, don't suggest them.
 nothing else. If asked for anything unrelated (general chat, other topics, writing, \
 coding, math, etc.), briefly decline and redirect to what you can actually help \
 with - don't answer the off-topic request just because you technically know how.
-8. get_trade_targets finds one-way fits against rebuilding teams' sell candidates. \
-get_mutual_swaps finds two-way trades between this team and one other team still \
-trying to win, where each side's positional surplus is the other's need - use it when \
-asked about trading with a specific other team, or how to fix a need without giving \
-up a core piece, not as a replacement for get_trade_targets.
+8. Never build or price a multi-player package. No tool here values a bundle, and \
+dynasty value is NOT additive across players - two 3,000s are not a 6,000, and \
+implying otherwise is the most misleading thing you could do. Compare one player \
+against one player, or say what a single piece is worth relative to replacement, and \
+leave assembling the actual deal to the human. If asked "what would it take", say \
+which of their pieces is the right centrepiece and that the rest is a negotiation you \
+cannot price.
 9. If a team's data includes "no_trade_history": true, mention that this league \
 hasn't had any trades yet, so the window labels are less \
 reliable this early - that kind of team identity normally comes from trade activity, \
@@ -221,9 +222,6 @@ def _offerable_from_call(call: dict) -> set[str] | None:
         return None
     if call["name"] == f"mcp__{SERVER_KEY}__get_trade_targets":
         return trade_targets.offerable_names(trade_targets.find_targets(league_id, owner_name))
-    if call["name"] == f"mcp__{SERVER_KEY}__get_mutual_swaps":
-        swaps = trade_targets.find_mutual_swaps(league_id, owner_name)["swaps"]
-        return {e["name"] for swap in swaps for e in swap["you_send"]}
     return None
 
 
@@ -393,9 +391,9 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
                 names = ", ".join(f'"{n}"' for n in violations)
                 correction = (
                     f"You named {names} as trade-away candidates, but none of them are in this "
-                    "team's real offer list from get_trade_targets or get_mutual_swaps. Redo your "
-                    "answer using only players that actually appear in one of those tools' offer/"
-                    "sell-candidate/you_send lists - check every name against that list first."
+                    "team's real offer list from get_trade_targets. Redo your answer using only "
+                    "players that actually appear in that tool's offer or sell-candidate lists - "
+                    "check every name against that list first."
                 )
                 turn = await _run_turn(client, correction, verbose)
                 all_tool_calls += turn["tool_calls"]

@@ -60,12 +60,6 @@ async def main():
             print("get_trade_targets: mode =", via_mcp["mode"])
 
             via_mcp = _content(await session.call_tool(
-                "get_mutual_swaps", {"league_id": DYNASTY_LEAGUE, "owner_name": "dezdroppedit27"}))
-            direct = trade_targets.find_mutual_swaps(DYNASTY_LEAGUE, "dezdroppedit27")
-            assert via_mcp["swaps"] == direct["swaps"], f"mismatch: {via_mcp['swaps']} vs {direct['swaps']}"
-            print(f"get_mutual_swaps: {len(via_mcp['swaps'])} swap(s), matches direct call")
-
-            via_mcp = _content(await session.call_tool(
                 "get_waiver_upgrades", {"league_id": DYNASTY_LEAGUE, "owner_name": "dezdroppedit27"}))
             print("get_waiver_upgrades: available_count =", via_mcp["available_count"])
 

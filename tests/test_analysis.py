@@ -205,44 +205,6 @@ def test_quality_is_not_asserted_when_the_league_is_too_small_to_measure_it():
     assert roster_needs.assess_positions(rosters, players, slots, thresholds)["solo"]["WR"]["level"] == "critical"
 
 
-def test_surplus_is_measured_against_your_own_lineup_not_a_leaguewide_bar():
-    """Spare means "my lineup doesn't miss him, and someone would want him", and neither half
-    may depend on how the rest of the league is stocked.
-
-    The old rule was zero-sum twice over. It counted players above `replacement_thresholds`
-    and beyond `slots[pos]` - but replacement level is *defined* as the Nth-best leaguewide
-    where N is every starting slot at that position, so supply above the bar equals demand by
-    construction. Measured on two real leagues it was exact: QB 24 slots / 24 above the bar,
-    RB 24/24, WR 36/36, TE 12/12. Only 3 of 12 teams had any surplus and mutual swaps returned
-    nothing across 36 consecutive team-reads.
-
-    Swapping the redraft bar for the dynasty one does NOT fix that - both are Nth-best
-    leaguewide. On a real roster only 2 of 18 receivers cleared the raw dynasty bar. The bar
-    has to scale with what kind of value the player carries, which is what
-    `clears_relevance_floor` does and why the offer pool always used it: **replacement level
-    is a win-now idea**, and a young player below it isn't replaceable to a team that will be
-    good in two years - he's a starter who hasn't arrived yet."""
-    thresholds = {"QB": 1000, "RB": 1000, "WR": 1000, "TE": 1000}
-    players = {
-        "s1": {"name": "Starter1", "position": "WR", "value": 900, "redraft_value": 900, "age": 26},
-        "s2": {"name": "Starter2", "position": "WR", "value": 800, "redraft_value": 800, "age": 26},
-        "prime_ok": {"name": "PrimeOk", "position": "WR", "value": 600, "redraft_value": 600, "age": 26},
-        "prime_no": {"name": "PrimeNo", "position": "WR", "value": 400, "redraft_value": 400, "age": 26},
-        "rising": {"name": "Rising", "position": "WR", "value": 300, "redraft_value": 20, "age": 23},
-    }
-    roster = {"players": list(players), "starters": []}
-    starters = {"s1", "s2"}
-
-    names = [e["name"] for e in roster_needs.find_surplus(
-        roster, players, thresholds, starters)["WR"]]
-    assert "Starter1" not in names and "Starter2" not in names, "in the lineup is not spare"
-    assert "PrimeOk" in names, "prime clears at 50% of replacement"
-    assert "PrimeNo" not in names, "400 is below that 500 bar"
-    assert "Rising" in names, (
-        "ascending clears at 25%, so a 300-value 23-year-old with almost no current "
-        "production is still a real asset - this is the case a flat bar threw away")
-
-
 def test_needs_are_measured_on_current_production_not_dynasty_value():
     """"Can I field a lineup" is a current-production question, so the bar is the Nth-best
     *producer*, not the Nth-most-*valuable* player - a pool stuffed with young prospects
@@ -265,27 +227,6 @@ def test_needs_are_measured_on_current_production_not_dynasty_value():
     assert assessed["prospect"]["WR"]["startable"] == 0
     assert assessed["prospect"]["WR"]["level"] == "critical"
 
-
-def test_a_position_cannot_be_both_a_need_and_a_surplus():
-    """A count shortage and spare depth are mutually exclusive by construction. A `weak`
-    position can legitimately have surplus, though - that's the consolidation case, where
-    the spare bodies are exactly what you'd package for one better starter."""
-    slots = {"QB": 1, "RB": 2, "WR": 2, "TE": 1}
-    thresholds = {p: 100 for p in slots}
-    rosters, players = _league({
-        "a": [("QB", 500), ("RB", 500), ("RB", 400), ("WR", 500), ("WR", 450), ("TE", 500)],
-        "b": [("QB", 520), ("RB", 510), ("RB", 410), ("WR", 510), ("WR", 460), ("TE", 510)],
-        "c": [("QB", 480), ("RB", 490), ("RB", 390), ("WR", 490), ("WR", 440), ("TE", 490)],
-        "d": [("QB", 470), ("RB", 480), ("RB", 380), ("WR", 480), ("WR", 430), ("TE", 480)],
-    })
-    needs = roster_needs.needs_only(
-        roster_needs.assess_positions(rosters, players, slots, thresholds)["a"])
-    surplus = roster_needs.find_surplus(rosters[0], players, thresholds)
-    count_needs = {pos for pos, e in needs.items() if e["level"] in ("critical", "top-heavy")}
-    assert not (count_needs & set(surplus))
-
-
-# ------------------------------------------------------------- team window classification
 
 def _roster(starter_specs):
     """Roster plus the set of starter ids. Nothing reads Sleeper's `starters` snapshot
@@ -1004,76 +945,6 @@ def test_offer_pool_never_includes_a_position_the_team_needs():
     thresholds = {"WR": 100}
     assert trade_targets._my_offer_pool(me, thresholds, needs={}) != []
     assert trade_targets._my_offer_pool(me, thresholds, needs={"WR": "critical"}) == []
-
-
-# ------------------------------------------------------------------- mutual swaps
-
-def _swap_league(monkeypatch, needs, surplus):
-    """A two-team Win-Now league with the given needs/surplus, so find_mutual_swaps can be
-    exercised without network. Both teams are swap-eligible; the strategy gate and the
-    owner lookup are covered elsewhere."""
-    states = [{"owner_id": "me", "owner": "Me", "roster_id": 1, "window": "Push"},
-              {"owner_id": "you", "owner": "You", "roster_id": 2, "window": "Push"}]
-    monkeypatch.setattr(team_state, "classify_league", lambda _: states)
-    monkeypatch.setattr(roster_needs, "league_needs", lambda _: needs)
-    monkeypatch.setattr(roster_needs, "league_surplus", lambda _: surplus)
-    monkeypatch.setattr(trade_targets, "context",
-                        lambda _: type("Ctx", (), {"pick_owner": lambda s, q, rows: rows[0]})())
-    return states
-
-
-def _need(level, weakest=0):
-    return {"level": level, "weakest_starter": weakest, "note": "", "rank": 6, "of": 12}
-
-
-def _spare(name, pos, value, redraft):
-    return {"name": name, "position": pos, "value": value, "redraft_value": redraft,
-            "is_starter": False}
-
-
-def test_mutual_swap_matches_each_side_spare_depth_to_the_other_side_need(monkeypatch):
-    """The shape this exists for: I'm short at TE with spare QB depth, you're the mirror.
-    Neither of us touches a starter and both lineups improve."""
-    _swap_league(monkeypatch,
-                 needs={"me": {"TE": _need("critical")}, "you": {"QB": _need("critical")}},
-                 surplus={"me": {"QB": [_spare("MyQB3", "QB", 2000, 1900)]},
-                          "you": {"TE": [_spare("TheirTE2", "TE", 1900, 1800)]}})
-    swaps = trade_targets.find_mutual_swaps("L", "Me")["swaps"]
-
-    assert len(swaps) == 1
-    assert [e["name"] for e in swaps[0]["you_receive"]] == ["TheirTE2"]
-    assert [e["name"] for e in swaps[0]["you_send"]] == ["MyQB3"]
-    assert swaps[0]["balance"]["you_receive_value"] == 1900
-
-
-def test_mutual_swap_rejects_a_lopsided_package(monkeypatch):
-    """Both sides being spare depth doesn't make the trade proposable. Before this, the
-    cartesian match happily offered a genuine RB3 for a fringe backup QB - nobody accepts
-    that, so surfacing it is noise."""
-    _swap_league(monkeypatch,
-                 needs={"me": {"TE": _need("critical")}, "you": {"QB": _need("critical")}},
-                 surplus={"me": {"QB": [_spare("MyStud", "QB", 5000, 4800)]},
-                          "you": {"TE": [_spare("TheirScrub", "TE", 700, 650)]}})
-    assert trade_targets.find_mutual_swaps("L", "Me")["swaps"] == []
-
-
-def test_mutual_swap_will_not_fix_a_weak_position_with_a_worse_player(monkeypatch):
-    """A `weak` position has its slots covered and wants an upgrade, so incoming depth has
-    to actually beat the current worst starter. Live case: rjl22 (weak at TE, worst
-    starter 660 redraft) was offered Isaiah Likely at 634 - strictly a downgrade."""
-    weak_te = _need("weak", weakest=660)
-    _swap_league(monkeypatch,
-                 needs={"me": {"TE": weak_te}, "you": {"QB": _need("critical")}},
-                 surplus={"me": {"QB": [_spare("MyQB3", "QB", 2000, 1900)]},
-                          "you": {"TE": [_spare("Likely", "TE", 2076, 634)]}})
-    assert trade_targets.find_mutual_swaps("L", "Me")["swaps"] == []
-
-    # ...but the same swap is on if the incoming TE actually is an upgrade.
-    _swap_league(monkeypatch,
-                 needs={"me": {"TE": weak_te}, "you": {"QB": _need("critical")}},
-                 surplus={"me": {"QB": [_spare("MyQB3", "QB", 2000, 1900)]},
-                          "you": {"TE": [_spare("RealUpgrade", "TE", 2076, 1800)]}})
-    assert len(trade_targets.find_mutual_swaps("L", "Me")["swaps"]) == 1
 
 
 # ------------------------------------------------------------------- league format

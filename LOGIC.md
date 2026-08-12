@@ -773,8 +773,8 @@ recurring bug in this file.
   agree, shipping opposite defaults, in the file whose central documented bug is that
   exact conflation. Callers now state which question they're asking.
 - **`_usable_by_position` sorted on a different metric than it filtered on** (redraft in,
-  dynasty out), so `find_surplus` could call a better current producer spare while keeping
-  a pricier prospect.
+  dynasty out), so a caller taking the top N as "the starters" could keep a pricier
+  prospect over a better current producer.
 
 **Replacement level is a win-now lens**, worth stating because it bounds all of the above:
 "is there a startable player here" is only the operative question for a team trying to
@@ -877,35 +877,15 @@ the league as an argument anyway or quietly degrade to a 1-of-1 ranking. A funct
 silently answers a different question than the one asked is how the count-only rule
 survived this long.
 
-**Surplus - the mirror of need** (`find_surplus`/`league_surplus`): a position where a
-team has *more* usable players than its starting slots require, and specifically which
-players are the spare ones (everyone beyond the top `slots[pos]`, by value, **minus
-anyone who actually starts**). Added
-alongside `find_needs` as a shared refactor (`_usable_by_position` now does the one
-"which players clear replacement level here" walk both functions read from, and
-`_league_setup` collapses what had been three separate copies of the same league/
-format/threshold fetch across `league_thresholds`/`league_needs` into one) - a second
-copy of that setup was about to be added for `league_surplus` anyway, and CLAUDE.md's
-rule against letting a concept re-diverge across a file applies just as much to
-boilerplate as it does to business logic.
-
-The `projected` exclusion was a real bug, not a precaution. `slots` here is `needs_slots`,
-which folds SUPER_FLEX into a QB and **ignores FLEX entirely** - so in a league running
-RB 2 / FLEX 2, a team's third RB falls outside `slots["RB"]` and was offered as spare
-depth while starting every week. Live case: rjl22's RB3 (Ashton Jeanty, a genuine asset)
-was offered in a mutual swap for a fringe backup QB on exactly that basis. This is the
-same snapshot-vs-projected distinction `_my_offer_pool` already respected - the fix had
-been applied on one path and not the other, which is the recurring failure mode in this
-file.
-
-This uses the same replacement-level threshold as the need assessment - a **stricter**, single
-uniform bar than `team_state.clears_relevance_floor`'s age-bucket-adjusted floor used
-everywhere else in `trade_targets.py`. That's intentional, not an inconsistency: a
-mutual swap (see below) is supposed to trade genuinely startable-quality depth for
-genuinely startable-quality depth on both sides, not just "anything with some sellable
-value" - the looser floor is right for a one-way sale to a team that just needs *some*
-reinforcement, but too permissive for what should be a real, comparable two-way
-upgrade.
+**Surplus** (`find_surplus`/`league_surplus`) was deleted with the mutual-swap engine it
+existed to feed - see "Deleted: mutual win-now swaps" above for why, and for the
+supply-equals-demand measurement that should have retired it sooner. Two findings from it
+survive elsewhere because they were never really about surplus: the projected-starters
+exclusion (a league running RB 2 / FLEX 2 puts a third RB outside `needs_slots["RB"]`, so
+rjl22's Ashton Jeanty was once offered as spare depth while starting every week - the same
+snapshot-vs-projected distinction `_my_offer_pool` already respected), and the point that
+**replacement level is a win-now idea**, which `clears_relevance_floor` encodes by scaling the
+bar to the kind of value a player carries.
 
 ## Trade activity (`trade_activity.py`)
 
@@ -1122,75 +1102,47 @@ have yet) - deferred rather than faked.
   offseason before the rookie draft, the real slot is often knowable exactly, which would
   beat any window-based estimate.
 
-## Mutual win-now swaps (`trade_targets.find_mutual_swaps`)
+## Deleted: mutual win-now swaps (`find_mutual_swaps`, `get_mutual_swaps`)
 
-Everything above only ever matches a Win-Now/Middling team against a *Rebuilding*
-team's sell candidates - a one-directional "buy from a seller" model. That misses a
-common, realistic shape: two teams that are both still trying to win, with different
-positional needs, trading current-value pieces so both improve at once (I need RB and
-have spare WR depth, you need WR and have spare RB depth). A pure rebuild-vs-contend
-model structurally can't produce this, since it never considers two non-Rebuilding
-teams as trade partners for each other at all.
+This matched two teams both still trying to win, each holding spare depth the other was
+short at, and proposed a two-way trade. It was removed outright - along with
+`roster_needs.find_surplus` and `league_surplus`, which existed only to feed it, and the
+`get_mutual_swaps` MCP tool - because **it was package math, and this project has no tool
+that can price a package.**
 
-`find_mutual_swaps(league_id, owner_query)` matches this team's needs
-(`roster_needs.league_needs`) against every other Win-Now/Middling team's surplus
-(`roster_needs.league_surplus`), and vice versa, restricted to `SWAP_ELIGIBLE_
-STRATEGIES = ("Win-Now", "Middling")` on both sides - a Rebuilding team isn't trying to
-fix a starting lineup right now (that's the pivot path, a different question). A
-Rebuilding requester gets `{"swaps": []}` rather than an error, since "no eligible
-swaps because you're rebuilding" is a real, expected answer, not a failure. Every
-match is an independent `(need_pos, their_need_pos)` pairing, not a single best-fit
-recommendation - if a team has multiple needs matchable against another's multiple
-surplus positions, all valid pairings are returned and left for the model/user to
-combine sensibly, rather than the code guessing which one pairing is "the" trade.
+Every other block here compares one player against one player, deliberately. Mutual swaps
+could not: a fit is inherently *these bodies* for *those bodies*, so the output summed each
+side's dynasty value and printed the two totals. A `MIN_SWAP_BALANCE` of 0.6 then declared
+the sides "comparable". Both steps assume value is additive across players, which is the one
+thing this document states most often that it is not - and no caveat printed underneath
+undoes an arithmetic claim printed above it. What it produced on a live roster:
 
-**Both sides are filtered by whether they actually fix the need** (`_fills`), which the
-count-vs-quality split made necessary. Spare depth fills an *empty slot* fine, so a
-`critical`/`top-heavy` need takes any usable body. A `weak` position already has its
-slots covered and only improves if the incoming player beats the current worst starter -
-otherwise the swap list offers a fringe backup as the cure for a bottom-third room, which
-is churn dressed up as a fit. Live case before the filter: rjl22, weak at QB and TE, was
-offered Cam Ward and Isaiah Likely. After it, he correctly has no mutual swaps at all -
-his needs are upgrade-shaped and nobody's *bench* upgrades him. (Likely is the precise
-case: 634 redraft against rjl22's worst TE starter at 660, so strictly a downgrade.)
+> with kierankieran: you get Corum, Mason, Sampson, Allen, James (5,809)
+> for Metcalf, Nailor, Washington (4,331)
 
-**Both sides must also be within `MIN_SWAP_BALANCE` (0.6) on value.** Both being spare
-startable depth doesn't make a trade proposable - the cartesian match happily offered a
-genuine RB3 for a fringe backup QB, and nobody accepts that, so surfacing it is noise.
-This is a sanity bound, not the fairness calculator this project deliberately doesn't
-build: the returned `balance` block carries both totals and says in words that this is a
-*shape that could work*, not a priced offer.
+Five sub-replacement backs for three receivers, totalled, offered to a team whose own report
+called its RB room *"a real hole - needs both bodies and quality"*. Five bodies that each
+fail the startable bar do not fix that, and the totals implied a fairness the tool could not
+assess. The owner's verdict was the deciding one: *"Package math bad. No package math. You do
+not have the tools to figure out packages."*
 
-**Note on what this returns today.** Across the real league it now finds **zero** swaps,
-and that's the correct answer rather than a broken path: excluding actual starters leaves
-only four teams with any spare startable depth at all, one player each, and the single
-plausible pairing fails the upgrade test on the merits. In a 12-team superflex league with
-ten starting slots across four positions, genuine startable surplus is genuinely rare -
-which was always true and was previously hidden by counting starters as spares. Because an
-empty result is indistinguishable from a broken one, the swap path is covered by unit
-tests that construct a league where a swap *does* fire, one where the balance check
-rejects it, and one where the upgrade bar does.
+**The measurement that should have retired it earlier.** `find_surplus` was built on
+replacement level, and above-replacement supply equals demand by construction - across two
+real leagues, exactly: QB 24 slots / 24 rostered above the bar, RB 24/24, WR 36/36, TE 12/12.
+So surplus could only exist where one team held more than its share, matched one-for-one by
+another team's deficit; league-wide surplus was ~0, only 3 of 12 teams had any, and
+`find_mutual_swaps` returned nothing for **36 consecutive team-reads across three leagues**.
+Rebasing surplus off replacement level made it non-empty, which kept the feature alive for
+another few weeks - fixing the emptiness rather than asking whether the question was one this
+tool could answer.
 
-Validated against real data before any agent wiring (free, since it's pure Python):
-spot-checked `league_surplus` output against a real league (e.g. a known "loaded"
-Rebuilding-by-label team correctly showed real RB surplus - Breece Hall, Travis
-Etienne - matching what `is_loaded` had already flagged as not-really-sellable value),
-then confirmed `find_mutual_swaps` produced sensible two-way fits (a team with a
-critical WR need and spare RB depth matched against teams with the opposite profile).
-Also verified via the real MCP protocol test (`test_mcp_server.py`) that the wrapped
-tool's output matches the direct Python call exactly - not just "does it start."
-
-**Grounding check extended, not duplicated.** Rule 6 (only name real offerable
-players) now covers `get_mutual_swaps`' `you_send` list too, not just
-`get_trade_targets`' offer lists. This required care in `agent.py`'s
-`_banned_trade_names`: when both tools get called for the same owner in the same
-turn, their offerable sets must be **unioned before** subtracting from the roster, not
-subtracted separately and then unioned - the latter would wrongly flag a player as
-banned just because one of the two tools' output didn't happen to include them, even
-though the other did. Live-tested: asked about a swap, the model correctly used real
-`you_send`/`you_receive` names from the tool result, and the one grounding retry that
-did fire was a known false positive (see "Eval harness" below), not a real violation
-slipping through.
+**What replaced it: nothing, on purpose.** "How do I improve without giving up my best guys"
+is answered by `find_value_upgrades` (one holding beats another, including from your own
+bench) and by `depth_adds` (cheap bodies below replacement). Assembling an actual multi-player
+deal is left to the human, and `agent.py` rule 8 now says so explicitly rather than pointing
+at a tool: never build or price a bundle, compare one player against one player, and if asked
+"what would it take", name the right centrepiece and say the rest is a negotiation you cannot
+price.
 
 ## Validated foundations
 
@@ -1959,10 +1911,6 @@ deliberately avoiding.
   players rostered against 120 starting slots, so **two thirds of every roster is bench**.
   A flat fraction is being asked to describe all of that.
 
-  This got more load-bearing today, not less: moving `find_surplus` onto the relevance floor
-  took surplus from ~4 entries per league to ~100, so the constant now drives a much larger
-  number than when it was chosen.
-
   **It cannot be calibrated from what we have** - all three leagues are the same shape, so
   there is no variation to fit against. Same problem `format_support` handles by flagging
   shallow leagues as degraded rather than pretending to know. Needs either more league formats
@@ -2585,67 +2533,6 @@ tracked across time; a cross-section of current values is survivorship-biased, b
 who fall off leave the valued pool entirely, so the ones still in it are those who didn't.
 Doing it properly means snapshotting the market periodically - the first persistent state this
 project would own, and a deliberate decision rather than a casual one.
-
-## Why there was never any surplus (`find_surplus`)
-
-`find_mutual_swaps` returned nothing for **36 consecutive team-reads across three leagues**.
-Not a tuning problem - the quantity it depended on could barely exist.
-
-Surplus was defined as players above `replacement_thresholds` and beyond `slots[pos]`. But
-replacement level is *defined* as the Nth-best player leaguewide where N is every starting
-slot at that position, so above-replacement supply equals demand **by construction**. Measured,
-and it is exact:
-
-| | QB | RB | WR | TE |
-|---|---|---|---|---|
-| starting slots leaguewide | 24 | 24 | 36 | 12 |
-| rostered players above the bar | **24** | **24** | **36** | **12** |
-
-So surplus could only ever be one team's hoard against another team's deficit, summing to
-zero across the league. Only 3 of 12 teams had any. A *mutual* swap needs two teams to each
-hold surplus the other is short at - a double coincidence on a near-zero quantity.
-
-Deep flex made it worse: with three FLEX and a SUPER_FLEX, ten starters absorb almost
-everyone above replacement, so "usable but not starting" is nearly empty before the slot
-arithmetic even runs.
-
-**Spare is now measured against the team's own lineup**: not in the projected starters, and
-worth something in a trade.
-
-Both halves had to change, and the second was caught only because the first wasn't enough.
-Swapping the redraft bar for the dynasty one still left a top-24-leaguewide test - the same
-zero-sum shape in the *value* check. On a real roster **only 2 of 18 receivers** cleared the
-raw dynasty bar; a 3,039-value receiver missed by 242, and a 1,620-value young one his owner
-rates a future starter was nowhere near.
-
-The manager's framing is the correction: **replacement level is a win-now idea.** A player
-below it isn't replaceable to a team that will be good in two years - he is a starter who
-hasn't arrived. `clears_relevance_floor` already encodes exactly that, scaling the bar by what
-kind of value the player carries (ascending clears at 25% of replacement, realised production
-at 50%), which is why `_my_offer_pool` has always used it. Using it here makes the two
-genuinely one concept instead of two that happened to agree.
-
-| | teams with surplus | mutual swaps |
-|---|---|---|
-| original (redraft bar + slot arithmetic) | 3/12 | **0 across all three leagues** |
-| lineup-relative + raw dynasty bar | 7/12, 4/12 | 4 |
-| lineup-relative + relevance floor | **12/12** | **10 / 0 / 6** |
-
-The quality question - does he actually help the receiving team - was always asked separately
-by `_fills`, which is why a permissive candidate bar is safe here. `slots` is kept for
-signature compatibility and deliberately unused; it encoded the zero-sum arithmetic.
-
-**Three definitions of spare value now rest on one predicate** - not in the lineup -
-specialising only where they must: `find_surplus` keys by position for matching against
-another team's need, `stranded_starters` picks out the subset that beats the weakest starter
-(capacity-blocked, lead with these), and `_my_offer_pool` adds tiering and the covered-starter
-case. The shared predicate is what stops them contradicting each other.
-
-**A known limit, surfaced by the fix.** Both remaining zero-swap leagues are legitimate, but
-one shape is structurally unreachable: a team with *no needs* can never appear in a mutual
-swap even holding exactly the piece another team wants. Two live examples. Mutuality is the
-feature's premise, so this is a boundary rather than a bug - but a one-way "they hold what you
-need and want value back" path would catch it.
 
 ## What the market source already gives us and we never read
 
@@ -3281,8 +3168,10 @@ measured, and stays measured.
   building another generate-then-verify guardrail for every prompt rule regardless of
   its actual failure rate is exactly the kind of scope creep to avoid. Worth revisiting
   if it starts failing more often, not before.
-- ~~**Mutual win-now-to-win-now swaps.**~~ Resolved - see "Mutual win-now swaps" above
-  (`trade_targets.find_mutual_swaps`, `get_mutual_swaps` tool).
+- ~~**Mutual win-now-to-win-now swaps.**~~ Built, then deleted - see "Deleted: mutual
+  win-now swaps" above. It was package math, which this project has no way to price, and the
+  right answer to the underlying question turned out to be `find_value_upgrades` comparing one
+  holding against one holding.
 - ~~**Fresh/undifferentiated leagues read as noisy Win-Now/Rebuilding labels.**~~
   Resolved - see the "No trade history" flag under "Team window classification" above.
 - ~~**No conversation memory - the agent is single-turn.**~~ Resolved - see

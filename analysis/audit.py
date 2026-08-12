@@ -165,14 +165,14 @@ CHECKS = [
 ]
 
 # Blocks whose emptiness across *every* team in *every* league means the feature is dead
-# rather than honestly quiet. Live: mutual swaps returned nothing for 36 consecutive
-# team-reads because the quantity it depended on was zero-sum by construction.
-# `value_upgrades` is here because it was shipped computed and unprinted, and the coverage
-# check is the thing that would have caught it - a block nobody counts is a block nobody
-# notices is empty. It also earned its keep: `efficiency_swaps` sat here reporting DEAD until
-# that turned out to be structural, and the block was deleted rather than tuned.
+# rather than honestly quiet. This check has now retired two features rather than tuned them:
+# `efficiency_swaps` sat here reporting DEAD until that turned out to be structural, and
+# mutual swaps returned nothing for 36 consecutive team-reads before being deleted outright
+# for a different reason (it was package math this project cannot price). `value_upgrades` is
+# here because it shipped computed and unprinted - a block nobody counts is a block nobody
+# notices is empty.
 COVERAGE_BLOCKS = ("targets", "persuasion_targets", "stranded", "depth_adds",
-                   "my_offers", "acquire_targets", "swaps", "value_upgrades")
+                   "my_offers", "acquire_targets", "value_upgrades")
 
 
 def audit(league_ids: list[str]) -> int:
@@ -182,13 +182,12 @@ def audit(league_ids: list[str]) -> int:
     for league_id in league_ids:
         ctx = context(league_id)
         name = ctx.league.get("name")
-        results, swaps = {}, {}
+        results = {}
         for roster in ctx.rosters:
             owner = ctx.owner_names.get(roster["owner_id"])
             if not owner:
                 continue
             results[owner] = trade_targets.find_targets(league_id, owner)
-            swaps[owner] = trade_targets.find_mutual_swaps(league_id, owner)["swaps"]
 
         print(f"\n=== {name} ({len(results)} teams)")
         for check in CHECKS:
@@ -200,10 +199,7 @@ def audit(league_ids: list[str]) -> int:
                 print(f"             - {problem}")
 
         for block in COVERAGE_BLOCKS:
-            if block == "swaps":
-                coverage[block] += sum(len(v) for v in swaps.values())
-            else:
-                coverage[block] += sum(len(_entries(r, block)) for r in results.values())
+            coverage[block] += sum(len(_entries(r, block)) for r in results.values())
 
     print("\n=== coverage (a block empty across every team in every league is a dead feature)")
     for block, count in coverage.items():
