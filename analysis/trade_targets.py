@@ -1216,6 +1216,13 @@ def _print_push(push: dict, extras: dict) -> None:
     if push.get("picks_to_trade_away"):
         picks = ", ".join(f"{p['pick']} ({p['value']})" for p in push["picks_to_trade_away"][:4])
         print(f"picks to pay with (currency for buying production, not production itself): {picks}")
+    if push.get("efficiency_swaps"):
+        print("\nsame production, less tied up (a value decision, not a lineup upgrade):")
+        for s in push["efficiency_swaps"]:
+            print(f"  sell {s['sell']} ({s['position']}), start {s['start_instead']} instead "
+                  f"- keeps {s['production_retained_pct']}% of the production, frees "
+                  f"{s['dynasty_value_freed']:,} in dynasty value")
+        print(f"  {push['efficiency_swap_framing']}")
     print()
     # Cheapest and most gettable first, escalating to the long shots. The old order led with
     # "harder asks" - teams that aren't selling - and buried the nominal-price depth below two
