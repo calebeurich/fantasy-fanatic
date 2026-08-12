@@ -353,16 +353,17 @@ def test_value_upgrade_requires_beating_a_starter_on_both_axes():
     """More production AND less dynasty value. A player who is better but pricier is a
     normal buy target, not this - the whole point is that it costs nothing to prefer him."""
     ctx, me, states = _upgrade_fixture()
-    found = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3})
-    assert [u["name"] for u in found] == ["Cheaper"], "Lateral is pricier, Worse produces less"
-    assert found[0]["upgrades_over"] == "Pricey"
-    assert found[0]["production_gained"] == 233
-    assert found[0]["value_freed"] == 1073
+    moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, {})
+    assert [m["move_off"] for m in moves] == ["Pricey"]
+    assert [u["name"] for u in moves[0]["returns"]] == ["Cheaper"], (
+        "Lateral is pricier, Worse produces less")
+    assert moves[0]["returns"][0]["production_gained"] == 233
+    assert moves[0]["returns"][0]["value_freed"] == 1073
 
 
-def test_value_upgrades_keep_the_best_per_starter_rather_than_a_capped_ranking():
-    """Ranking on production alone and capping dropped a real swap whose gain was mostly
-    value freed. One line per upgradeable starter keeps both kinds of winner."""
+def test_value_upgrades_are_organised_around_the_player_being_moved():
+    """A flat ranked list reads as a one-for-one swap and hides moves whose gain is mostly
+    value freed. Every upgradeable starter gets an entry, ordered by its best return."""
     ctx, me, states = _upgrade_fixture()
     ctx.players["mine2"] = {"name": "Pricey2", "position": "RB",
                             "value": 3488, "redraft_value": 2319}
@@ -370,10 +371,20 @@ def test_value_upgrades_keep_the_best_per_starter_rather_than_a_capped_ranking()
                          "value": 2982, "redraft_value": 4581}
     me["players"].append("mine2")
     ctx.rosters[1]["players"].append("rb")
-    found = trade_targets.find_value_upgrades(me, ctx, states, {"mine", "mine2"}, {"them": 3})
-    assert {u["upgrades_over"] for u in found} == {"Pricey", "Pricey2"}, (
-        "every upgradeable starter is represented, not just the biggest production gain")
-    assert found[0]["name"] == "OldBack", "still ordered by production gained"
+    moves = trade_targets.find_value_upgrades(
+        me, ctx, states, {"mine", "mine2"}, {"them": 3}, {})
+    assert [m["move_off"] for m in moves] == ["Pricey2", "Pricey"], (
+        "both starters represented, ordered by their best available gain")
+
+
+def test_value_upgrade_names_who_would_want_the_player_being_moved():
+    """The join that turns a fact into a phone call - a move is only actionable if somebody
+    is short at that position."""
+    ctx, me, states = _upgrade_fixture()
+    needs = {"them": {"TE": {"level": "critical", "rank": 12}}}
+    moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, needs)
+    assert [w["owner"] for w in moves[0]["wanted_by"]] == ["them"]
+    assert moves[0]["wanted_by"][0]["need_level"] == "critical"
 
 
 def test_middle_of_the_league_is_a_window_not_a_leftover():

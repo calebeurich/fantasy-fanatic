@@ -293,8 +293,30 @@ VALUE_UPGRADE_NOTE = (
 )
 
 
+RETURNS_PER_MOVE = 4  # a shortlist of who to ask about, not the league
+
+
+def wanted_by(position: str, me_roster: dict, states: list[dict],
+              needs_by_owner_id: dict) -> list[dict]:
+    """Which other teams are short at this position, worst shortage first.
+
+    Lifted to module level so `find_value_upgrades` and `find_targets`' stranded block share
+    one definition. `stranded` correctly said "the whole value of this player is what he
+    fetches" and then left the reader to work out who would give anything for him, while
+    `league_needs` had the answer in the next tool result."""
+    wanting = []
+    for other in states:
+        if other["owner_id"] == me_roster["owner_id"]:
+            continue
+        need = needs_by_owner_id.get(other["owner_id"], {}).get(position)
+        if need:
+            wanting.append({"owner": other["owner"], "window": other["window"],
+                            "need_level": need["level"], "rank": need.get("rank")})
+    return sorted(wanting, key=lambda w: roster_needs.NEED_PRIORITY[w["need_level"]])
+
+
 def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: set[str],
-                        trade_counts: dict[str, int]) -> list[dict]:
+                        trade_counts: dict[str, int], needs_by_owner_id: dict) -> list[dict]:
     """The same arbitrage as `find_efficiency_swaps`, sourced from other rosters instead of
     my own bench: someone who produces MORE this season than one of my starters while
     costing LESS in dynasty value.
@@ -316,13 +338,18 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
     A candidate is matched against the *weakest* starter he dominates, since that is the slot
     he would actually take and the one that makes the lineup gain largest.
 
-    **One line per starter, rather than a ranked list with a cap.** This is a two-dimensional
-    finding - production gained and dynasty value freed - and ranking on either one hides
-    winners on the other. Sorted by production and capped at six, it dropped the exact swap
-    this roster's owner had already identified himself: a tight end worth +233 of production
-    but the largest value release on the board at 1,073. Keeping the best alternative for each
-    upgradeable starter answers the question actually being asked - *which of my starters can
-    I do better than, and by whom* - and needs no cap, since it is bounded by the lineup."""
+    **Organised around the player being moved, not the player being acquired.** A flat list of
+    strictly-better names reads as a straight one-for-one swap, and that is not how a trade
+    happens: *"I'm not trading LaPorta for Kittle alone, so I need more context to work with."*
+    Each entry is a **move** - the upside-priced starter, several win-now returns that beat
+    him, and which teams are short at his position and would therefore want him. That last
+    join is the difference between a fact and a phone call.
+
+    Returns are ranked within a move rather than capped across all of them. This is a
+    two-dimensional finding - production gained and dynasty value freed - and one global
+    ranking on either axis hides winners on the other: sorted by production and capped at six,
+    it dropped the exact swap this roster's owner had already named, a tight end worth +233 of
+    production but the largest value release on the board at 1,073."""
     mine_by_pos = {}
     for pid in my_starters:
         info = ctx.players.get(pid)
@@ -359,12 +386,27 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
                          f"dynasty value - strictly the better holding for a team trying to "
                          f"win now. {replaced['name']} becomes depth rather than a starter."),
             }, other, trade_counts))
-    best_per_starter = {}
+    by_starter = {}
     for u in upgrades:
-        held = best_per_starter.get(u["upgrades_over"])
-        if held is None or u["production_gained"] > held["production_gained"]:
-            best_per_starter[u["upgrades_over"]] = u
-    return sorted(best_per_starter.values(), key=lambda u: -u["production_gained"])
+        by_starter.setdefault(u["upgrades_over"], []).append(u)
+
+    moves = []
+    for pid in my_starters:
+        mine = ctx.players.get(pid)
+        if not mine or mine["name"] not in by_starter:
+            continue
+        returns = sorted(by_starter[mine["name"]],
+                         key=lambda u: -u["production_gained"])[:RETURNS_PER_MOVE]
+        produced = mine.get("redraft_value") or 0
+        moves.append({
+            "move_off": mine["name"], "position": mine["position"],
+            "value": mine["value"], "redraft_value": produced,
+            "now_share": round(produced / mine["value"], 2) if mine["value"] else None,
+            "wanted_by": wanted_by(mine["position"], me_roster, states, needs_by_owner_id),
+            "returns": returns,
+            "best_gain": returns[0]["production_gained"],
+        })
+    return sorted(moves, key=lambda m: -m["best_gain"])
 
 
 def find_efficiency_swaps(roster_entries: list[dict]) -> list[dict]:
@@ -1061,24 +1103,6 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     # Rebuild team got none of it, and cheap bodies are arguably worth MORE to a rebuilder
     # since a moonshot back is one injury from being a real asset. It is built in
     # `with_extras` rather than here, because it has to know what the buy path surfaced.
-    def _wanted_by(position: str) -> list[dict]:
-        """Which other teams are short at this position, worst shortage first.
-
-        The mirror of `_counterparty_fit`, and the other half of the same missing join.
-        `stranded` correctly said "the whole value of this player is what he fetches" and
-        then left the reader to work out who would give anything for him - while
-        `league_needs` had the answer sitting in the next tool result. On a live roster the
-        stranded quarterback produced more than that team's entire starting RB room, and the
-        one owner with a *critical* QB need also held the running back it wanted. Nothing
-        connected the two."""
-        wanting = []
-        for other in _others(states, me, lambda w: True):
-            need = needs_by_owner_id.get(other["owner_id"], {}).get(position)
-            if need:
-                wanting.append({"owner": other["owner"], "window": other["window"],
-                                "need_level": need["level"], "rank": need.get("rank")})
-        return sorted(wanting, key=lambda w: roster_needs.NEED_PRIORITY[w["need_level"]])
-
     stranded_ids = roster_needs.stranded_starters(my_roster, ctx.players, my_starters)
     by_name = {e["name"]: e for e in me["sellable"] + me["tradeable_surplus"]}
     stranded = []
@@ -1087,7 +1111,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         entry = by_name.get(info["name"], {"name": info["name"], "position": info["position"],
                                            "value": info["value"],
                                            "redraft_value": info.get("redraft_value")})
-        wanted = _wanted_by(info["position"])
+        wanted = wanted_by(info["position"], my_roster, states, needs_by_owner_id)
         stranded.append({**entry, "blocked_by": info["position"],
                          "wanted_by": wanted,
                          "note": (f"Produces {info.get('redraft_value') or 0:,} this season - more than "
@@ -1115,7 +1139,8 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         # someone who is. Every other window can buy production, including Middling, whose
         # whole push half is about whether to.
         if me["window"] != "Rebuild":
-            upgrades = find_value_upgrades(my_roster, ctx, states, my_starters, trade_counts)
+            upgrades = find_value_upgrades(my_roster, ctx, states, my_starters, trade_counts,
+                                           needs_by_owner_id)
             if upgrades:
                 result["value_upgrades"] = upgrades
                 result["value_upgrade_note"] = VALUE_UPGRADE_NOTE
@@ -1368,13 +1393,24 @@ def _print_report(result: dict) -> None:
 def _print_value_upgrades(result: dict) -> None:
     if not result.get("value_upgrades"):
         return
-    print("\nstrictly better holdings (more production this season, less dynasty value):")
-    for u in result["value_upgrades"]:
-        trades = (f"{u['from_owner_trades']} trade(s) made" if u["from_owner_trades"]
-                  else "NEVER TRADES - unlikely")
-        print(f"  {u['name']} ({u['position']}, {u['redraft_value']:,} this season) from "
-              f"{u['from_owner']} - over {u['upgrades_over']}: {u['production_gained']:+,} "
-              f"production, {u['value_freed']:,} dynasty freed - {trades}")
+    print("\nmoves that raise the lineup and free value at the same time:")
+    for m in result["value_upgrades"]:
+        # "only 0.52 of his price is now" is the point for an upside-priced starter and
+        # nonsense above 1.0, where the market is already paying for the present.
+        pricing = (f"upside-priced, only {m['now_share']} of his dynasty price is production now"
+                   if (m["now_share"] or 0) < 1 else
+                   f"already now-priced at {m['now_share']}, so this is a straight upgrade")
+        print(f"  move off {m['move_off']} ({m['position']}, {m['value']:,} dynasty / "
+              f"{m['redraft_value']:,} this season - {pricing}):")
+        wants = ", ".join(f"{w['owner']} ({w['need_level']}, {w['window']})"
+                          for w in m["wanted_by"][:4]) or "nobody is short at this position"
+        print(f"      who wants that profile: {wants}")
+        for u in m["returns"]:
+            trades = (f"{u['from_owner_trades']} trade(s)" if u["from_owner_trades"]
+                      else "NEVER TRADES")
+            print(f"      <- {u['name']} ({u['redraft_value']:,} this season, "
+                  f"{u['production_gained']:+,} production, {u['value_freed']:,} dynasty "
+                  f"freed) from {u['from_owner']} - {trades}")
     print(f"  {result['value_upgrade_note']}")
 
 

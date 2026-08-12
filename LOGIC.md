@@ -206,6 +206,39 @@ rules to actually override or caveat the relevant downstream logic (the tanking 
 specifically, likely others not yet identified). Not designed yet - flagged as a real,
 recurring category of gap to expect more of as this tool sees other real leagues.
 
+## Backlog: this document is invisible to the agent
+
+**The stated end goal is a chatbot that explains its recommendations, and the reasoning it
+would explain from lives in a file it cannot read.** Reasoning currently reaches the
+assistant through exactly two surfaces:
+
+1. **Note strings inside tool output** - `window_note`, `depth_note`, `value_upgrade_note`,
+   `why_they_might_listen`. These work well and are why so much prose is embedded next to
+   the data rather than kept here. They only carry reasoning attached to a specific field.
+2. **MCP tool descriptions** (`agent/mcp_server.py`) - always in context, so they carry the
+   "how to read this block" instructions.
+
+LOGIC.md itself - every *why* behind every constant, every rejected alternative, every live
+case that forced a change - reaches the agent through neither. A concrete miss: asked about
+a Push team 76% of the best lineup against a leader at 100% who is *also* rising, the right
+read is "you cannot out-wait him, so push harder or don't push at all." Every number needed
+is in `get_team_state`'s league rows. Nothing tells the agent to make the comparison, and
+`window_note` describes a team in isolation.
+
+Three steps, cheapest first, none built:
+
+- **A comparative field on the team row** - the gap to the league's best lineup and whether
+  that team is rising - so the read above becomes data with a note attached rather than an
+  inference the agent may or may not make. Same pattern as everything else here.
+- **Doctrine in the system prompt** *(done - `agent/agent.py`)*. Five principles that are not
+  about any single field: pick an end of the spectrum, don't confuse the two currencies, age
+  is a distance, value is not additive, and a trade needs a plausible counterparty. These
+  are the ideas the tools encode and no single tool result states.
+- **LOGIC.md as an MCP resource** the agent can query - "why is this a Push team", "why isn't
+  contract length in the age curve". This is the version where the assistant wields the whole
+  picture instead of a summary, and where the document and the agent cannot drift apart.
+  Needs chunking that survives this file's length, which is the actual design work.
+
 ## Age curve (`team_values.AGE_CURVE`, `age_bucket`)
 
 Per-position aging breakpoints (ascending / prime / declining), because a flat
