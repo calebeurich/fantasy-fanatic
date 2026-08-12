@@ -434,11 +434,21 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                     "upper bound rather than a measurement - redraft coverage runs out well "
                     "before dynasty rosters do."
                     if unpriced.get(owner_id) else "")
+                # Low exposure at a position you cannot field is a SYMPTOM, not comfort. It
+                # measures the drop from the last starter to his replacement, so when the last
+                # starter is already below replacement level the drop is small *because the
+                # slot is already lost*. Read straight, "low exposure" on a critical need
+                # reassured a manager about the hole the same paragraph had just described.
+                consolation = (
+                    " Low only because the last starter here is already so weak that replacing "
+                    "him costs little - that is the hole above restated, not comfort about it."
+                    if entry["exposure"] == "low"
+                    and entry["level"] in ("critical", "top-heavy") else "")
                 entry["note"] += (
                     f" Depth: losing the last {pos} in this lineup costs {round(drop):,} of "
                     f"production before a replacement starts, {entry['exposure_rank']} of "
-                    f"{len(drop_rank)} in the league - {entry['exposure']} exposure. This is "
-                    f"the magnitude IF it happens, not an expected loss.{likelihood}"
+                    f"{len(drop_rank)} in the league - {entry['exposure']} exposure.{consolation}"
+                    f" This is the magnitude IF it happens, not an expected loss.{likelihood}"
                     f"{caveat} Separate from the need above, and not one.")
     return out
 
