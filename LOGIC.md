@@ -305,6 +305,69 @@ the war chest is real. Both exist; the flavor reads neither. Until then `stalled
 under-reported at the very bottom of the league, which is the least harmful direction for it to
 be wrong but is still wrong.
 
+### Backlog: the dynasty/redraft measure, and three alternatives already tested
+
+The relationship between dynasty and redraft price is read in five places, and one absolute
+threshold survives: `now_share` in `find_value_upgrades`, which calls a player "upside-priced"
+below **1.0**. Measured medians of redraft/dynasty are 0.36 (QB), 0.05 (RB), 0.00 (WR), 0.00
+(TE) - half the dynasty pool has no redraft price at all - so 1.0 is nowhere near neutral and
+the label fires **111 times against 32**. Live on the team being spot-checked: Kenny Gainwell,
+a 26-year-old backup at dynasty #37 / redraft #33 among RBs, is called *"upside-priced, only
+0.39 of his dynasty price is production now"*. There is no upside to sell; he is just marginal.
+Rashee Rice at 0.75 is the same error. It is a **label** defect - no selection logic reads
+`now_share` - so it misdescribes rather than misrecommends, which is why the audit never caught
+it.
+
+**The fix is positional rank gap**, not a percentile of the ratio: rank within position on each
+scale, and compare. Tested against ten players whose answer we know, it gets all ten right where
+the ratio gets six wrong, in both directions:
+
+| player | ratio says | rank says | right |
+|---|---|---|---|
+| Harold Fannin (TE, dyn #6 / red #10) | upside 0.29 | upside | both |
+| Travis Kelce (36yo, dyn #17 / red #9) | upside 0.85 | **now** | rank |
+| Tony Pollard (dyn #41 / red #32) | upside 0.48 | **now** | rank |
+| Smith-Njigba (WR2 on both boards) | upside 0.88 | **aligned** | rank |
+| Lamar Jackson (QB3 dyn / QB2 red) | now 1.30 | **aligned** | rank |
+
+And the **median gap is 0% at every position**, which the ratio never managed - so zero is
+genuinely neutral and no per-position bar is needed. That is the real prize: `now_premium_bar`,
+`NOW_PREMIUM_PERCENTILE` and `check_no_tier_is_structurally_unreachable` all exist to defuse the
+ratio's distortion, and can go once nothing absolute is left to guard. Known limit: a band on the
+gap is still a constant, and because a rank move is 3.4% of a 29-man TE pool against 1.3% of a
+75-man WR pool, ±10% catches 20% of QBs and 55% of TEs. Smaller than the ratio's distortion, not
+zero.
+
+#### Three alternatives tested and rejected - do not re-derive these
+
+- **Replacement multiples** (value / replacement level on each scale, then compare). Worse than
+  either. The two replacement levels are each defined in their own currency at the Nth slot, and
+  the ratio between the denominators varies by position, so dividing reintroduces the
+  distortion. Medians went back to 1.00 / 0.76 / 0.83 / 0.88, and it called Fannin "aligned" and
+  Egbuka "now" - both backwards.
+- **Sleeper `search_rank`** as an ADP-like points-order signal. It exists on the players payload
+  and is **format-agnostic**, which makes it unusable here: median rank move against a superflex
+  trade-value ordering is **QB +43**, RB −14, WR −7, TE +2. It does not know two QBs start, so it
+  would systematically under-rank the scarcest asset in the format. FantasyCalc already takes
+  `numQbs`, so our values are format-correct and `search_rank` is not.
+- **Positional scarcity inflating a TE-heavy lineup.** Hypothesis was that an elite TE carries
+  trade value out of proportion to the points he scores, over-rating his owner. Tested three
+  ways on `kierankieran` (Brock Bowers, 18% of his lineup): gross value ranks him 3rd, value over
+  replacement 3rd, per-position multiples **2nd** - normalizing moves him *up*, because Bowers is
+  9.6x a TE replacement level of 728. `search_rank` moves TEs +2, i.e. no premium at all. The
+  scarcity premium in this league is at **QB**, and kieran is 18% QB - among the lowest in the
+  league - while the team questioning his rank is 40%.
+
+#### And the axis is misnamed
+
+`starting_production` is the **sum of redraft trade values** of the projected starters, not
+points. Trade value prices what it costs to secure an edge at a slot, which is why an elite TE
+and an elite WR land near each other despite scoring differently. Every window note says
+"current starting production ranks 4 of 12", which asserts points about a number that is market
+value. The measurement is defensible - it is the best available and it is format-correct - but
+the name is not, and it is the most load-bearing axis in the project. Rename to starting redraft
+value, or say "lineup market value" in the notes.
+
 ### Backlog: what the first real agent runs left open
 
 Three live runs against a friend's league, at ~$0.04 each. Two failures were fixed at the
