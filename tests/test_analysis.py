@@ -361,6 +361,58 @@ def test_value_upgrade_requires_beating_a_starter_on_both_axes():
     assert moves[0]["returns"][0]["value_freed"] == 1073
 
 
+def test_near_equal_production_qualifies_as_a_value_decision_not_an_upgrade():
+    """The band inherited from the deleted `find_efficiency_swaps`: keep essentially all the
+    production, free real value. Asked within one roster it never fired once in three leagues
+    because a bench player who retains the production is priced the same; asked across eleven
+    other rosters it finds the case the rule exists for. It must not be called an upgrade -
+    the lineup goes slightly DOWN and the whole gain is the value released."""
+    ctx, me, states = _upgrade_fixture()
+    ctx.players["nearly"] = {"name": "Nearly", "position": "TE",
+                             "value": 3000, "redraft_value": 1790}  # 98.8% of 1811, frees 515
+    ctx.rosters[1]["players"].append("nearly")
+    moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, {})
+    by_name = {u["name"]: u for u in moves[0]["returns"]}
+    assert by_name["Cheaper"]["kind"] == "upgrade"
+    entry = by_name["Nearly"]
+    assert entry["kind"] == "value_decision"
+    assert entry["production_gained"] == -21 and entry["value_freed"] == 515
+    assert "value decision" in entry["note"] and "not a lineup upgrade" in entry["note"]
+
+
+def test_a_real_production_downgrade_is_never_a_value_decision():
+    """`Worse` frees 2,615 - far more than anything else on the board - and produces 28% of
+    the starter. Freeing value is not the goal on its own, so no amount of it buys a lineup
+    this much weaker. The 98% bar is what enforces that: at 90% this admitted a quarterback
+    swap giving up 994 of production, which is a downgrade dressed as arbitrage."""
+    ctx, me, states = _upgrade_fixture()
+    moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, {})
+    assert "Worse" not in [u["name"] for u in moves[0]["returns"]]
+
+
+def test_a_near_equal_swap_that_frees_almost_nothing_is_churn():
+    """Retaining the production is necessary but not sufficient - if barely any value comes
+    back there is no reason to make the trade at all."""
+    ctx, me, states = _upgrade_fixture()
+    ctx.players["churn"] = {"name": "Churn", "position": "TE",
+                            "value": 3400, "redraft_value": 1800}  # 99.4%, frees only 115
+    ctx.rosters[1]["players"].append("churn")
+    moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, {})
+    assert "Churn" not in [u["name"] for u in moves[0]["returns"]]
+
+
+def test_value_upgrades_skip_players_with_no_redraft_price():
+    """Deep dynasty-only assets (rookies, prospects) have no redraft market - FantasyCalc
+    carries ~200 redraft players against ~400 dynasty. Missing must mean skipped, not read as
+    zero production, which the near-equal band would otherwise let in from the wrong side."""
+    ctx, me, states = _upgrade_fixture()
+    ctx.players["prospect"] = {"name": "Prospect", "position": "TE",
+                               "value": 900, "redraft_value": None}
+    ctx.rosters[1]["players"].append("prospect")
+    moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, {})
+    assert "Prospect" not in [u["name"] for u in moves[0]["returns"]]
+
+
 def test_value_upgrades_are_organised_around_the_player_being_moved():
     """A flat ranked list reads as a one-for-one swap and hides moves whose gain is mostly
     value freed. Every upgradeable starter gets an entry, ordered by its best return."""
@@ -794,67 +846,6 @@ def test_offers_are_tiered_by_value_over_replacement_not_raw_value():
     assert by_name["Filler"]["tier"].startswith("depth")
     assert by_name["Real"]["value_over_replacement"] > 0 > by_name["Filler"]["value_over_replacement"]
     assert offers[0]["name"] == "Real", "core pieces must lead the list"
-
-
-def test_efficiency_swap_finds_cheaper_equivalent_production():
-    """Win-now arbitrage: a bench player producing nearly as much *this season* for
-    meaningfully less dynasty value. Modelled on the real case - a superflex QB2
-    (3,288 dynasty / 2,744 redraft) against QB3 (2,735 / 2,704): 99% of the production
-    for 553 less in trade value."""
-    entries = [
-        {"name": "QB2", "position": "QB", "value": 3288, "redraft_value": 2744, "is_starter": True},
-        {"name": "QB3", "position": "QB", "value": 2735, "redraft_value": 2704, "is_starter": False},
-    ]
-    swaps = trade_targets.find_efficiency_swaps(entries)
-    assert len(swaps) == 1
-    assert swaps[0]["sell"] == "QB2" and swaps[0]["start_instead"] == "QB3"
-    assert swaps[0]["production_retained_pct"] == 99
-    assert swaps[0]["dynasty_value_freed"] == 553
-
-
-def test_efficiency_swap_target_reaches_the_offer_pool():
-    """These contradicted each other: the swap named a player to sell while the offer
-    list excluded him for being a starter, so the most efficient chip on the roster
-    never appeared among the things to offer. A swap target is offerable by definition -
-    that's the finding - so it must join the pool, carrying its reasoning."""
-    thresholds = {"QB": 2131}
-    me = {
-        "owner_id": "me", "window": "Push",
-        "sellable": [
-            {"name": "QB2", "position": "QB", "value": 2728, "redraft_value": 2744,
-             "bucket": "prime", "is_starter": True},
-            {"name": "QB3", "position": "QB", "value": 2189, "redraft_value": 2704,
-             "bucket": "prime", "is_starter": False},
-        ],
-        "tradeable_surplus": [],
-    }
-    out = trade_targets._buy_path(me, [], {"me": {}}, thresholds, trade_counts={},
-                                  max_per_position=3)
-    names = [e["name"] for e in out["my_offers"]]
-    assert "QB2" in names, "the swap's sell target must be offerable"
-    entry = next(e for e in out["my_offers"] if e["name"] == "QB2")
-    assert entry.get("swap_note"), "and must carry why it's safe to move"
-
-
-def test_efficiency_swap_ignores_a_real_production_downgrade():
-    """The point is arbitrage, not selling the team. A replacement that loses real
-    current production shouldn't be suggested however much value it frees."""
-    entries = [
-        {"name": "Stud", "position": "RB", "value": 5000, "redraft_value": 5000, "is_starter": True},
-        {"name": "Scrub", "position": "RB", "value": 800, "redraft_value": 1500, "is_starter": False},
-    ]
-    assert trade_targets.find_efficiency_swaps(entries) == []
-
-
-def test_efficiency_swap_skips_players_with_no_redraft_price():
-    """Deep dynasty-only assets (rookies, prospects) have no redraft market - FantasyCalc
-    carries ~200 redraft players against ~400 dynasty. Missing must mean skipped, not
-    treated as zero production."""
-    entries = [
-        {"name": "Starter", "position": "WR", "value": 4000, "redraft_value": 3000, "is_starter": True},
-        {"name": "Prospect", "position": "WR", "value": 900, "redraft_value": None, "is_starter": False},
-    ]
-    assert trade_targets.find_efficiency_swaps(entries) == []
 
 
 def test_pick_slot_follows_the_original_team_not_the_holder(monkeypatch):
@@ -1354,28 +1345,6 @@ def test_injury_exposure_is_absent_rather_than_guessed_without_a_lineup():
     rosters, players = _league({f"t{i}": [("WR", 900), ("WR", 800)] for i in range(4)})
     entry = roster_needs.assess_positions(rosters, players, slots, thresholds)["t0"]["WR"]
     assert entry["drop_if_injured"] is None and entry["exposure"] is None
-
-
-def test_efficiency_swaps_are_allowed_at_a_weak_need_but_not_a_count_need():
-    """A `weak` position has its slots covered and wants a better starter - which is what
-    the freed value buys, at flat production since the swap retains >=90% by construction.
-    A count-shaped need has an empty slot, where promoting the backup spends the last body
-    you had. A blanket rule silenced the only two swaps in a real league."""
-    me = {"owner_id": "me", "owner": "Me", "window": "Contend",
-          "sellable": [
-              {"name": "Pricey", "position": "QB", "value": 3288, "redraft_value": 2744,
-               "bucket": "prime", "is_starter": True},
-              {"name": "Cheap", "position": "QB", "value": 2735, "redraft_value": 2704,
-               "bucket": "prime", "is_starter": False}],
-          "tradeable_surplus": []}
-    thresholds = {"QB": 100}
-
-    def swaps_for(level):
-        need = {"QB": {"level": level, "weakest_starter": 0, "note": "", "rank": 9, "of": 12}}
-        return trade_targets._buy_path(me, [], {"me": need}, thresholds, {}, 3).get("efficiency_swaps", [])
-
-    assert len(swaps_for("weak")) == 1, "capital toward the upgrade, production unchanged"
-    assert swaps_for("critical") == [], "an empty slot must not be filled by spending depth"
 
 
 def test_lineup_fill_reports_which_slot_each_player_occupies():

@@ -167,12 +167,12 @@ CHECKS = [
 # Blocks whose emptiness across *every* team in *every* league means the feature is dead
 # rather than honestly quiet. Live: mutual swaps returned nothing for 36 consecutive
 # team-reads because the quantity it depended on was zero-sum by construction.
-# `efficiency_swaps` and `value_upgrades` are here because both were shipped computed and
-# unprinted, and the coverage check is the thing that would have caught it - a block nobody
-# counts is a block nobody notices is empty.
+# `value_upgrades` is here because it was shipped computed and unprinted, and the coverage
+# check is the thing that would have caught it - a block nobody counts is a block nobody
+# notices is empty. It also earned its keep: `efficiency_swaps` sat here reporting DEAD until
+# that turned out to be structural, and the block was deleted rather than tuned.
 COVERAGE_BLOCKS = ("targets", "persuasion_targets", "stranded", "depth_adds",
-                   "my_offers", "acquire_targets", "swaps", "efficiency_swaps",
-                   "value_upgrades")
+                   "my_offers", "acquire_targets", "swaps", "value_upgrades")
 
 
 def audit(league_ids: list[str]) -> int:

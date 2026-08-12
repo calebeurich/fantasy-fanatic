@@ -113,7 +113,7 @@ player present in both pulls (excluding sub-500 values, where integer rounding d
 
 Josh Allen and the QB40 move by the same 1.883. Two consequences worth holding onto:
 *within*-position comparisons are format-independent (the scalar cancels, so
-`find_efficiency_swaps` comparing two QBs is unaffected), while *cross*-position
+`find_value_upgrades` comparing two QBs is unaffected), while *cross*-position
 comparisons rest entirely on those four numbers. **Not modelled by the source: superflex
 QB scarcity is not steepened.** The real cliff in a superflex league is around QB12-QB13,
 where the last startable QB2s go - a flat scalar cannot express that, so the marginal QB2
@@ -472,8 +472,9 @@ records over and over. The name "Middling" is not new; it is what the pre-two-ax
 called this tier, and comments in `trade_targets.py` never stopped using it.
 
 Downstream routing follows the window rather than a parallel vocabulary: `prefer_production`
-and `find_efficiency_swaps` are **Push-only** (converting future premium into capital only
-makes sense when the future you're selling is further out than your window), sellers are
+is **Push-only** (converting future premium into capital only makes sense when the future
+you're selling is further out than your window), `find_value_upgrades` runs for every window
+except `Rebuild`, sellers are
 `Rebuild` teams, and `WINDOW_TO_PICK_TIER` prices picks by where the originating team
 finishes.
 
@@ -615,7 +616,7 @@ so they propagate everywhere rather than needing a prompt rule):
   no reason to prefer aging players.
 
 **Dynasty value vs. current production** (`redraft_value`, `future_premium`,
-`find_efficiency_swaps`): FantasyCalc's API takes an `isDynasty` flag, and this project
+`find_value_upgrades`): FantasyCalc's API takes an `isDynasty` flag, and this project
 had only ever asked for `true`. Flipping it returns redraft values - the same market
 pricing *this season's production alone*. Free, already available, previously unused.
 
@@ -640,7 +641,7 @@ production-oriented veterans like Chuba Hubbard, who is early-prime and should b
 roughly production-priced. That is the `diff` mistake repeated: an unlabelled ratio
 invites a wrong reading. `future_premium` was removed entirely rather than relabelled;
 `redraft_value` stays because a price on a known scale is unambiguous.
-`find_efficiency_swaps` compares players **pairwise within a position** instead, where
+`find_value_upgrades` compares players **pairwise within a position** instead, where
 both values come from the same two scales and the skew cancels.
 
 **Trade value is not linear in raw value** (`value_over_replacement`, `tier`). A real
@@ -703,11 +704,10 @@ QB2 in SUPER_FLEX - ten players, matching the league's ten slots. Dedicated slot
 first, then flex most-restrictive-first, so a SUPER_FLEX doesn't take a player only a
 narrower FLEX could have used.
 
-*Framing note on near-equal swaps*: when `find_efficiency_swaps` reports 99-102%
-production retained, that is explicitly **not** "start A, bench B". Two players that
-close trade places week to week on matchups, and keeping both is legitimate depth rather
-than redundancy. The note says so - it's a value decision about which one to sell, not a
-lineup upgrade.
+*Framing note on near-equal swaps*: when `find_value_upgrades` returns a `value_decision`
+(98-100% production retained), that is explicitly **not** "start A, bench B". Two players
+that close trade places week to week on matchups, and either is a defensible starter. The
+note says so - it's a value decision about which one to own, not a lineup upgrade.
 
 **Pick equivalents** (`team_values.pick_equivalent`): FantasyCalc prices rookie picks on
 the same scale as players, and this project already fetched them for `pick_capital` -
@@ -2208,8 +2208,8 @@ win-now buyer:
 
 Barkley beats Taylor on the ratio *and* costs 1,494 less outright, because at 29.5 the
 market discounts him for seasons a pushing team isn't buying. That discount is the entire
-point - the same arbitrage `find_efficiency_swaps` exploits *within* a roster, applied to
-acquisitions. Anything not actually discounted is dropped - otherwise you'd be paying a
+point - the same arbitrage `find_value_upgrades` exploits, applied to ranking a buy list
+rather than to picking a single better holding. Anything not actually discounted is dropped - otherwise you'd be paying a
 future premium to a team that doesn't even want to sell, the worst of both. "Discounted"
 has to be judged **within the player's own position** (see `now_premium_bar` below); the
 absolute bar this originally used was wrong in a way that took a live spot-check to catch.
@@ -2273,7 +2273,7 @@ entire persuasion tier to tight ends, and nearly closing it to receivers, since 
 written - justified in the code by "below 1.0 he costs more in dynasty value than he
 delivers in current production", which reads as neutral and is nothing of the kind.
 
-**This is the third recorded instance of the same mistake.** `find_efficiency_swaps`
+**This is the third recorded instance of the same mistake.** `find_value_upgrades`
 documents it (fixed by comparing pairwise within a position) and `get_players_with_roles`
 documents it (fixed by not exposing a ratio at all). Treat an absolute threshold on these
 two scales as a bug on sight.
@@ -2308,8 +2308,8 @@ reason: a title says less about whether an owner should sell than the shape of t
 does, and a champion tilting ascending is a team that can afford to sell, trophy or not.
 
 This tier deliberately does **not** check whether the owner has a replacement behind the
-player. That question - *should* they do this - belongs to `find_efficiency_swaps`. This one
-only answers *is it worth asking*, and `cost_note` says an ask is all it is.
+player. That question - *should* they do this - is answered from their own side of the table.
+This one only answers *is it worth asking*, and `cost_note` says an ask is all it is.
 
 ## How often players actually miss games (`sources/injuries.py`)
 
@@ -2922,25 +2922,68 @@ current starter at the candidate's position - the marginal lineup spot, the same
 `_injury_drop` makes - adds the candidate, and refills optimally so flex eligibility is
 respected. Counting bodies cannot distinguish the two WR rooms above; a real refill can.
 
-### Strictly better holdings (`find_value_upgrades`)
+### Better holdings than what you start (`find_value_upgrades`)
 
-Someone on another roster who produces **more** this season than one of my starters **and**
-costs **less** in dynasty value. Acquiring him raises the lineup and frees trade capital at
-once, and the starter he replaces drops to depth - which is where a below-replacement starter
-belongs.
+Someone on another roster who is a better thing to own than one of my starters: he costs
+**less** in dynasty value, and he produces **more** this season - or so nearly as much that
+the value released is the real gain. Two `kind`s, and they must be described differently:
 
-**The external twin of `find_efficiency_swaps`.** That one compares a starter against my own
-*bench*, so it returns nothing for a roster whose bench produces nothing - exactly the roster
-that most needs the answer. On a live Push team it found zero swaps while that lineup started
-a receiver producing 925 and carried two upside-priced starters. Its owner named the move it
-couldn't see: *"I should definitely be looking for some way to trade those two guys and have
-more redraft value in my lineup than I do now... I want Robinson and Sutton to be the depth at
-a good price, not the starters."*
+| `kind` | test | what to say |
+|---|---|---|
+| `upgrade` | strictly more production, strictly less value | raises the lineup AND frees capital; the replaced starter drops to depth |
+| `value_decision` | ≥ `MIN_PRODUCTION_RETAINED` of the production, ≥ `MIN_VALUE_FREED` back | lineup unchanged; the gain is purely the value released. Worth doing at a good price, never worth chasing |
 
-**Strict dominance on both axes**, so there is no threshold to tune and no lateral move can
-qualify. Same-position pairs only, for the reason `find_efficiency_swaps` documents: the
-redraft and dynasty scales are not normalized to each other, and only a same-position
-comparison cancels that out.
+Costing less in dynasty value is required for both. That is what stops this collapsing into
+"go get someone better", which is the buy path's question.
+
+#### This absorbed `find_efficiency_swaps`, which was structurally dead
+
+That function asked the same question *within* one roster - a starter against my own bench -
+and was deleted after the coverage audit reported it empty. The measurement, before deleting:
+across 12 Push/Contend teams in three leagues, **~160 same-position starter/bench pairs and
+zero qualifying swaps**. The cause is not a threshold, it is the search space. Within a single
+position dynasty and redraft value are tightly correlated, so a bench player who retains the
+production is priced about the same and frees nothing. The best near-misses say it plainly:
+
+| pair | production retained | value freed |
+|---|---|---|
+| Mark Andrews → Jake Ferguson | 96% | **−343** (Ferguson costs *more*) |
+| Chuba Hubbard → Rico Dowdle | 91% | +171 (bar is 300) |
+| Kenny Gainwell → J.K. Dobbins | 92% | +59 |
+
+Its own docstring's flagship case had rotted the same way: C.J. Stroud against Sam Darnold,
+documented as "within 1.5% this season", now reads **84%** retained. The example was true when
+written and the market moved out from under it - the drift this document keeps recording, aged
+into rather than typed in.
+
+Asked against eleven other rosters instead of one bench, the identical question finds hundreds.
+Eleven rosters is simply a big enough pool. So the concept was kept and the search space
+replaced, rather than the bar tuned.
+
+**Which forced the 90% bar to be re-derived.** `MIN_PRODUCTION_RETAINED` was 0.90 and its
+comment claimed the production given up would be "close to noise". A relative bar is not
+close to noise once the scale is large: at 0.90 the widened rule admitted **Josh Allen → Lamar
+Jackson at −994 production**, a real lineup downgrade dressed as arbitrage. Swept across three
+leagues:
+
+| bar | value decisions found | largest production given up |
+|---|---|---|
+| 0.90 | 76 | −994 |
+| 0.95 | 36 | −409 |
+| 0.97 | 19 | −200 |
+| **0.98** | **16** | **−118** |
+
+0.98 is what the comment always claimed. It keeps every case the rule exists for -
+Smith-Njigba → St. Brown retains 98.5% and releases **1,440** - and the worst loss anywhere
+becomes noise in fact rather than in aspiration.
+
+**Same-position pairs only**, because the redraft and dynasty scales are not normalized to
+each other (McCaffrey runs 4,345 dynasty against 6,505 redraft while a mid-tier back runs 2x
+the other way) and only a same-position comparison cancels that out.
+
+**The near-equal band is the smaller half on purpose**: 16 value decisions against 310 strict
+upgrades. A rule that fires rarely and correctly is the intended shape - if it started
+producing volume, the bar would be wrong again.
 
 **One line per upgradeable starter, not a ranked list with a cap.** The finding is
 two-dimensional - production gained *and* value freed - and ranking on either axis hides

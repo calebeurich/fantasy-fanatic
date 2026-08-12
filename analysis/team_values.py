@@ -176,7 +176,7 @@ def now_premium_bar(players: dict[str, dict], percentile: float = 0.9) -> dict[s
 
     A single 1.25 bar is not "strict for TEs" - it is *unreachable* for TEs and WRs, whose
     entire pools top out at 1.01 and 1.07. It silently restricts any rule using it to QBs
-    and RBs. `find_efficiency_swaps` documents making this exact mistake once already and
+    and RBs. `find_value_upgrades` documents making this exact mistake once already and
     solved it by comparing pairwise within a position; this is the same fix for a rule that
     has only one player to look at, so it needs the position's distribution instead of a
     partner. Ranked against his own position, a 36.9-year-old TE at 0.83 raw is the second
@@ -246,7 +246,7 @@ def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty:
     # like "100% future premium" while actually sitting *below* typical - it flagged
     # production-oriented veterans as speculative assets. Raw redraft_value is
     # unambiguous (a price on a known scale, both pools topping out near 10,400);
-    # comparisons are made pairwise within a position by find_efficiency_swaps, where the
+    # comparisons are made pairwise within a position by find_value_upgrades, where the
     # skew cancels.
     #
     # Coverage is partial by nature of the source: redraft carries ~200 players against

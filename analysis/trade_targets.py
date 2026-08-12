@@ -61,18 +61,6 @@ MIDDLING_TIMING_NOTE = (
     "the season opens badly, while the aging production still prices well."
 )
 
-# The same mechanic means different things depending on whether there's a clock.
-SWAP_FRAMING = {
-    "Push": ("Your window is closing, so converting future premium into trade capital is "
-             "the point: the seasons you'd be selling are further out than the ones you're "
-             "playing for. Spend what this frees on production now."),
-    "Contend": ("You're good and not declining, so there's no clock forcing this - it's "
-                "profit-taking rather than a conversion. The lineup is unchanged either "
-                "way, so the only question is whether the freed value is worth more to you "
-                "than holding the pricier player. No urgency; take a good offer, don't "
-                "chase one."),
-}
-
 # A contender whose production is tilting ascending has two live plays, and the window
 # label alone hides that. It contends either way - which is exactly why `window` stays
 # "Contend" and this is additive: the choice is about *how* it contends, not whether. A
@@ -148,12 +136,16 @@ NOW_PREMIUM_PERCENTILE = 0.9
 # wasn't worth the machinery for one number.
 DEFAULT_MAX_PER_POSITION = 5
 
-# How much of a lineup player's *current* production a replacement must retain before
-# swapping them is worth considering. 90% is deliberately strict: this suggests giving up
-# real production for trade value, so the production loss has to be close to noise.
-MIN_PRODUCTION_RETAINED = 0.90
+# How much of a starter's *current* production a cheaper alternative must retain before
+# holding him instead is worth raising. The bar is relative, so it has to be tight: this was
+# 90% and the comment claimed the loss would be "close to noise", which 90% is not once the
+# scale is large. Measured across three leagues, 90% let through Josh Allen -> Lamar Jackson
+# at -994 production - a real lineup downgrade dressed as arbitrage - while 98% keeps the
+# cases the rule exists for (Smith-Njigba -> St. Brown, 98.5% of the production for 1,440
+# less tied up) and the worst loss anywhere is -118.
+MIN_PRODUCTION_RETAINED = 0.98
 
-# And how much dynasty value the swap has to free up to be worth mentioning at all -
+# And how much dynasty value has to come back for the trade to be worth mentioning at all -
 # below this it's churn, not arbitrage.
 MIN_VALUE_FREED = 300
 
@@ -293,10 +285,13 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict
 
 
 VALUE_UPGRADE_NOTE = (
-    "STRICTLY BETTER TO HOLD, not a priced offer. Each of these produces more this season "
-    "than one of your starters AND costs less in dynasty value, so acquiring him raises the "
-    "lineup and frees trade value at the same time - the player he replaces drops to depth, "
-    "which is where a below-replacement starter belongs. What it takes to get him is a "
+    "BETTER TO HOLD, not a priced offer. Every one of these costs LESS in dynasty value than "
+    "the starter named above him. Most also produce more this season, so acquiring him raises "
+    "the lineup and frees trade value at once - the player he replaces drops to depth, which "
+    "is where a below-replacement starter belongs. The ones marked `value decision` produce "
+    "very slightly less instead: the lineup is unchanged either way and what you are buying "
+    "is the value released, so they are worth doing at a good price and never worth chasing. "
+    "What it takes to get him is a "
     "separate question this tool does not answer: value is not additive across players, so "
     "there is no package price here, only the observation that one holding beats another. "
     "These are usually older, which is exactly why they are cheaper - check the age against "
@@ -366,28 +361,70 @@ def wanted_by(player: dict, me_roster: dict, states: list[dict],
                                           -w["reason_count"]))
 
 
+def _worth_holding_over(produced: float, costs: float, mine: dict) -> bool:
+    """Is this player a better thing to own than one of my starters at his position?
+
+    Costing less in dynasty value is required either way - that is the whole point, and it
+    is what keeps this from recommending you simply buy someone better. On top of that,
+    either he outproduces my starter this season (a plain upgrade), or he comes close enough
+    that the value released is the real gain: `MIN_PRODUCTION_RETAINED` of the production for
+    at least `MIN_VALUE_FREED` back. Both constants are the ones the deleted within-roster
+    version used, which is where the 90% bar was already reasoned about."""
+    if costs >= mine["value"]:
+        return False
+    mine_produced = mine.get("redraft_value") or 0
+    if produced > mine_produced:
+        return True
+    return (bool(mine_produced)
+            and produced >= mine_produced * MIN_PRODUCTION_RETAINED
+            and mine["value"] - costs >= MIN_VALUE_FREED)
+
+
+def _upgrade_note(name: str, produced: float, replaced: dict, gained: float, freed: float) -> str:
+    theirs = replaced.get("redraft_value") or 0
+    if gained > 0:
+        return (f"Produces {produced:,} this season against {replaced['name']}'s {theirs:,}, and "
+                f"costs {freed:,} less in dynasty value - strictly the better holding for a team "
+                f"trying to win now. {replaced['name']} becomes depth rather than a starter.")
+    return (f"Produces {produced:,} this season against {replaced['name']}'s {theirs:,} - "
+            f"{round(produced / theirs * 100)}% of it, so the lineup barely moves - while costing "
+            f"{freed:,} less in dynasty value. This is a value decision, not a lineup upgrade: "
+            f"at this margin neither is clearly the better start week to week, and what you are "
+            f"buying is the {freed:,} released, not the points.")
+
+
 def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: set[str],
                         trade_counts: dict[str, int], needs_by_owner_id: dict) -> list[dict]:
-    """The same arbitrage as `find_efficiency_swaps`, sourced from other rosters instead of
-    my own bench: someone who produces MORE this season than one of my starters while
-    costing LESS in dynasty value.
+    """Win-now arbitrage across the league: someone on another roster who is a better thing
+    to own than one of my starters, because he produces as much or more THIS SEASON while
+    costing LESS in dynasty value. Two `kind`s, and the second is the smaller half:
 
-    `find_efficiency_swaps` needs a bench alternative to compare against, so it returns
-    nothing for a roster whose bench produces nothing - which is exactly the roster that most
-    needs the answer. On a real Push team it found zero swaps while that lineup started a
-    receiver producing 925 and carried two upside-priced starters, and the owner named the
-    move it couldn't see: *"I should definitely be looking for some way to trade those two
-    guys and have more redraft value in my lineup than I do now."*
+    - `upgrade` - strictly more production for strictly less value. No threshold to tune and
+      no lateral move can qualify.
+    - `value_decision` - `MIN_PRODUCTION_RETAINED` of the production for at least
+      `MIN_VALUE_FREED` released. The lineup barely moves and what you are buying is the
+      value back, so the note says exactly that rather than calling it an upgrade.
 
-    **Strict dominance on both axes** - more production, less dynasty value - so there is no
-    threshold to tune and no lateral move can qualify. Comparisons stay one player against
-    one player at the same position, for the reason `find_efficiency_swaps` documents: the
-    two value scales are not normalized to each other, and only a same-position pair cancels
-    that out. It deliberately does not price a package - it says which single holding is
-    strictly better, and leaves what it takes to get him to a human.
+    Costing less in dynasty value is required for both, which is what stops this becoming
+    "go get someone better" - that question is the buy path's.
 
-    A candidate is matched against the *weakest* starter he dominates, since that is the slot
-    he would actually take and the one that makes the lineup gain largest.
+    **This replaced a within-roster version** (`find_efficiency_swaps`, deleted) that compared
+    a starter against my own *bench*. That returned nothing for a roster whose bench produces
+    nothing, which is exactly the roster that most needs the answer - and the deeper problem
+    was that within a single position dynasty and redraft value are tightly correlated, so a
+    bench player retaining the production is priced the same and frees nothing. Measured
+    before deleting it: across 12 Push/Contend teams in three leagues, ~160 same-position
+    starter/bench pairs and zero qualifying swaps, while the identical question asked against
+    eleven other rosters finds hundreds. Eleven rosters is simply a big enough pool.
+
+    Comparisons stay one player against one player at the same position: the two value scales
+    are not normalized to each other (McCaffrey runs 4,345 dynasty against 6,505 redraft while
+    a mid-tier back runs 2x the other way), and only a same-position pair cancels that out.
+    It deliberately does not price a package - it says which single holding beats which, and
+    leaves what it takes to get him to a human.
+
+    A candidate is matched against the *weakest* starter he beats, which is both the slot he
+    would actually take and the pairing with the largest gain.
 
     **Organised around the player being moved, not the player being acquired.** A flat list of
     strictly-better names reads as a straight one-for-one swap, and that is not how a trade
@@ -420,9 +457,11 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
                 continue
             produced = info.get("redraft_value") or 0
             beaten = [m for m in mine_by_pos.get(info["position"], [])
-                      if produced > (m.get("redraft_value") or 0) and info["value"] < m["value"]]
+                      if _worth_holding_over(produced, info["value"], m)]
             if not beaten:
                 continue
+            # The weakest starter beaten is both the slot he'd actually take and the pairing
+            # with the largest gain, so one `min` serves both.
             replaced = min(beaten, key=lambda m: m.get("redraft_value") or 0)
             gained = produced - (replaced.get("redraft_value") or 0)
             freed = replaced["value"] - info["value"]
@@ -432,10 +471,8 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
                 "is_starter": pid in their_starters,
                 "upgrades_over": replaced["name"],
                 "production_gained": gained, "value_freed": freed,
-                "note": (f"Produces {produced:,} this season against {replaced['name']}'s "
-                         f"{replaced.get('redraft_value') or 0:,}, and costs {freed:,} less in "
-                         f"dynasty value - strictly the better holding for a team trying to "
-                         f"win now. {replaced['name']} becomes depth rather than a starter."),
+                "kind": "upgrade" if gained > 0 else "value_decision",
+                "note": _upgrade_note(info["name"], produced, replaced, gained, freed),
             }, other, trade_counts))
     by_starter = {}
     for u in upgrades:
@@ -461,56 +498,6 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
             "best_gain": returns[0]["production_gained"],
         })
     return sorted(moves, key=lambda m: -m["best_gain"])
-
-
-def find_efficiency_swaps(roster_entries: list[dict]) -> list[dict]:
-    """Win-now arbitrage *within* a position: a lineup player whose bench alternative
-    produces nearly as much this season for meaningfully less dynasty value. Sell the
-    expensive one, start the cheap one, pocket the difference.
-
-    **Pairwise within a position on purpose.** The first attempt at this used an absolute
-    threshold on dynasty/redraft ratio and was wrong: the two value scales aren't
-    normalized to each other (a real example - McCaffrey is 4,345 dynasty against 6,505
-    redraft, while a mid-tier RB runs 2x the other way), so the raw ratio flagged
-    26-year-old veterans as "100% future potential". Comparing two players at the same
-    position, with values from the same two scales, cancels that distortion out.
-
-    Real case this exists for: a superflex roster's QB2 (C.J. Stroud, 3,288 dynasty /
-    2,744 redraft) and QB3 (Sam Darnold, 2,735 / 2,704) produce within 1.5% of each other
-    this season, but Stroud costs 553 more in trade value. Ranking by dynasty value alone
-    can never see that.
-    """
-    by_pos: dict[str, list[dict]] = {}
-    for e in roster_entries:
-        if e.get("redraft_value"):  # no redraft price = no current-production read
-            by_pos.setdefault(e["position"], []).append(e)
-
-    swaps = []
-    for pos, entries in by_pos.items():
-        lineup = [e for e in entries if e["is_starter"]]
-        bench = [e for e in entries if not e["is_starter"]]
-        for starter in lineup:
-            for alt in bench:
-                retained = alt["redraft_value"] / starter["redraft_value"]
-                freed = starter["value"] - alt["value"]
-                if retained >= MIN_PRODUCTION_RETAINED and freed >= MIN_VALUE_FREED:
-                    swaps.append({
-                        "position": pos,
-                        "sell": starter["name"],
-                        "start_instead": alt["name"],
-                        "production_retained_pct": round(retained * 100),
-                        "dynasty_value_freed": round(freed),
-                        "note": (
-                            f"{alt['name']} produces {round(retained * 100)}% of what "
-                            f"{starter['name']} does this season but costs {round(freed)} less "
-                            f"in dynasty value - selling {starter['name']} converts future "
-                            f"premium into trade capital without losing much now. At this "
-                            f"margin neither is clearly the better start week to week, so "
-                            f"this is a value decision, not a lineup upgrade"
-                        ),
-                    })
-    swaps.sort(key=lambda s: -s["dynasty_value_freed"])
-    return swaps
 
 
 def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict]) -> dict | None:
@@ -599,8 +586,8 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
        it puts Taylor (1.27x) above Barkley (1.36x) when Barkley delivers more production
        per unit paid *and* costs 1,494 less outright. At 29.5 the market discounts Barkley
        for seasons a pushing team isn't buying, and that discount is the entire point -
-       the same arbitrage `find_efficiency_swaps` exploits within a roster, applied to
-       acquisitions.
+       the same arbitrage `find_value_upgrades` exploits, applied to ranking rather than
+       to picking a single better holding.
     3. **Implausible sellers are excluded, not ranked last.** The two best ratios in that
        league (Derrick Henry 1.55x, Christian McCaffrey 1.48x) sit on a reigning champion
        and the league's best team. Listing them would put unattainable names at the top and
@@ -854,8 +841,8 @@ def _cliff_case(player: dict, other: dict, ratio: float) -> str | None:
     question, and `clears_relevance_floor` has already answered it above.
 
     Two things this deliberately does NOT do. It doesn't check whether the owner has a
-    replacement behind him - that's `find_efficiency_swaps`, which answers "should they do
-    this?", where this tier only answers "is this worth asking?", and `cost_note` already
+    replacement behind him - "should they do this?" is answered from their own side of the
+    table, where this tier only answers "is this worth asking?", and `cost_note` already
     says an ask is all it is. And it no longer special-cases a reigning champion: that veto
     existed to stop exactly the aging-contender case the tilt now rejects on its merits,
     and a title says less about whether an owner should sell than the shape of their roster
@@ -987,65 +974,6 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
     # into now" was wrong - the conversion only happens in a trade.
     if my_picks is not None:
         result["picks_to_trade_away"] = my_picks
-    # Only meaningful for a team actually trying to win now - a rebuilding team wants
-    # the future premium it would be selling.
-    # Push and Contend both, for different reasons - see SWAP_FRAMING. Not Middling or
-    # Rebuild: those want the future premium this converts away.
-    #
-    # Worth knowing what this does NOT catch. It requires a replacement already on the
-    # roster producing >=90%, so it finds "sell the premium, promote the backup" and is
-    # blind to "sell an aging starter you have no replacement for". A real Contend team
-    # starts a 33-year-old RB1 and a 37-year-old TE with nothing behind either; both are
-    # obvious sell-high candidates and neither can surface here. Logged in LOGIC.md as a
-    # separate age-cliff path rather than stretched to fit.
-    if me["window"] in ("Push", "Contend"):
-        swaps = find_efficiency_swaps(me["sellable"] + me["tradeable_surplus"])
-        # Suppressed only at *count-shaped* needs (critical / top-heavy), where there's an
-        # empty starting slot: promoting the backup fills it but spends the last body you
-        # had, so you end up no deeper and one asset lighter.
-        #
-        # Allowed at a `weak` need, which an earlier blanket rule got wrong. A weak
-        # position has its slots covered and wants a better starter - and that is exactly
-        # what this raises capital for, at flat production, since the swap retains >=90% by
-        # construction. Suppressing it there silenced the only two swaps in a real league:
-        # a Contend team weak at QB and TE could free 564 and 380 while its lineup barely
-        # moved, which is capital pointed straight at the upgrade it needs.
-        #
-        # The offer pool excludes need positions as a blanket rule, so a swap target at a
-        # `weak` need does re-enter `my_offers` below - carrying `swap_note`, which is the
-        # documented exception rather than a contradiction.
-        swaps = [s for s in swaps
-                 if my_needs.get(s["position"], {}).get("level") not in ("critical", "top-heavy")]
-        if swaps:
-            result["efficiency_swaps"] = swaps
-            result["efficiency_swap_framing"] = SWAP_FRAMING[me["window"]]
-
-            # These contradicted each other before: the swap named a player to sell while
-            # the offer list excluded him for being a starter, so the single most
-            # efficient chip on the roster never appeared among the things to offer. A
-            # swap target *is* offerable by definition - that's the whole finding - so it
-            # joins the pool, flagged with what it costs and what replaces him.
-            offered = {e["name"] for e in result["my_offers"]}
-            by_name = {e["name"]: e for e in me["sellable"] + me["tradeable_surplus"]}
-            for swap in swaps:
-                entry = by_name.get(swap["sell"])
-                if entry is None or swap["sell"] in offered:
-                    continue
-                result["my_offers"].append({
-                    **entry,
-                    "value_over_replacement": round(entry["value"] - thresholds[entry["position"]]),
-                    "tier": "core piece - startable, but replaceable at little cost this season",
-                    "pick_equivalent": pick_equivalent(entry["value"], pick_values) if pick_values else None,
-                    "swap_note": swap["note"],
-                    # Same field the offer pool attaches, so both routes into this list
-                    # answer "what does moving him cost my lineup" in the same units. The
-                    # swap's own >=90% guarantee is measured pairwise within a position;
-                    # this is measured against the whole refilled lineup, so they can differ
-                    # and the concrete number is the more useful one to state.
-                    **({"lineup_cost": round(covered[entry["name"]])}
-                       if covered and entry["name"] in covered else {}),
-                })
-            result["my_offers"].sort(key=lambda e: -e["value_over_replacement"])
     return result
 
 
@@ -1390,13 +1318,6 @@ def _print_push(push: dict, extras: dict) -> None:
     if push.get("picks_to_trade_away"):
         picks = ", ".join(f"{p['pick']} ({p['value']})" for p in push["picks_to_trade_away"][:4])
         print(f"picks to pay with (currency for buying production, not production itself): {picks}")
-    if push.get("efficiency_swaps"):
-        print("\nsame production, less tied up (a value decision, not a lineup upgrade):")
-        for s in push["efficiency_swaps"]:
-            print(f"  sell {s['sell']} ({s['position']}), start {s['start_instead']} instead "
-                  f"- keeps {s['production_retained_pct']}% of the production, frees "
-                  f"{s['dynasty_value_freed']:,} in dynasty value")
-        print(f"  {push['efficiency_swap_framing']}")
     print()
     # Cheapest and most gettable first, escalating to the long shots. The old order led with
     # "harder asks" - teams that aren't selling - and buried the nominal-price depth below two
@@ -1448,7 +1369,8 @@ def _print_report(result: dict) -> None:
 def _print_value_upgrades(result: dict) -> None:
     if not result.get("value_upgrades"):
         return
-    print("\nmoves that raise the lineup and free value at the same time:")
+    print("\nbetter things to own than what you start now (more or equal production, less "
+          "value tied up):")
     for m in result["value_upgrades"]:
         # "only 0.52 of his price is now" is the point for an upside-priced starter and
         # nonsense above 1.0, where the market is already paying for the present.
@@ -1467,9 +1389,10 @@ def _print_value_upgrades(result: dict) -> None:
         for u in m["returns"]:
             trades = (f"{u['from_owner_trades']} trade(s)" if u["from_owner_trades"]
                       else "NEVER TRADES")
+            kind = "" if u["kind"] == "upgrade" else " [value decision - lineup unchanged]"
             print(f"      <- {u['name']} ({u['redraft_value']:,} this season, "
                   f"{u['production_gained']:+,} production, {u['value_freed']:,} dynasty "
-                  f"freed) from {u['from_owner']} - {trades}")
+                  f"freed){kind} from {u['from_owner']} - {trades}")
     print(f"  {result['value_upgrade_note']}")
 
 

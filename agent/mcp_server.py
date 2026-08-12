@@ -175,21 +175,21 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     who is nonetheless offerable, and the number is how much current production the lineup
     loses if he goes, after refilling itself optimally. Say that number when you name him -
     it is a cost, not a reason to omit him, and for a Push team an ascending starter is
-    often the single biggest chip available precisely because his value is future. "efficiency_swaps", when present, are value decisions rather than
-    lineup upgrades: the two players produce near-identically this season, and
-    "efficiency_swap_framing" says why that matters for THIS team's window - a closing
-    window converts future premium into capital, a healthy contender is just taking
-    profit with no urgency.
+    often the single biggest chip available precisely because his value is future.
 
     "value_upgrades", when present, are the strongest single finding this tool produces and
-    should usually lead the answer for a team trying to win now. Each one produces MORE this
-    season than a named current starter AND costs LESS in dynasty value, so it raises the
-    lineup and frees trade capital at once, and the replaced starter drops to depth where a
-    below-replacement starter belongs. There is one per upgradeable starter, so the list is a
-    map of where this lineup can be beaten. Do NOT price a package around them or add the
-    pieces up - value is not additive across players, and "strictly better to hold" is the
-    entire claim. Say the age: these are cheaper precisely because they are older, which is
-    the trade-off the asking team has to weigh against its own timeline.
+    should usually lead the answer for a team trying to win now. Each names a current starter
+    and several players who are a better thing to own than he is, every one of them costing
+    LESS in dynasty value. Each return carries "kind", and it changes what you should say:
+    "upgrade" produces MORE this season as well, so it raises the lineup and frees trade
+    capital at once and the replaced starter drops to depth; "value_decision" produces very
+    slightly LESS (at least 98% of it), so the lineup is unchanged and the gain is purely the
+    value released - present those as worth doing at a good price and never worth chasing, and
+    never describe one as raising the lineup. There is one entry per upgradeable starter, so
+    the list is a map of where this lineup can be beaten. Do NOT price a package around them
+    or add the pieces up - value is not additive across players, and "this holding beats that
+    one" is the entire claim. Say the age: these are cheaper precisely because they are older,
+    which is the trade-off the asking team has to weigh against its own timeline.
 
     "persuasion_targets", when present, are a DIFFERENT KIND of suggestion and must be
     presented as such: aging production held by teams that are NOT currently sellers.
