@@ -2340,6 +2340,35 @@ A two-point gap deciding whether three players are recommended at all is not a b
 tertile - it is what a league-relative measure does near a boundary - but it is the reason the
 sentence has to quote the rank rather than claim a roster is falling.
 
+### Hard breakpoints on continuous measures
+
+A recurring shape rather than three separate bugs. A threshold gets used as a *gate*, so two
+values a rounding error apart are treated as categorically different - and the measures these
+gates sit on are continuous and approximate. **24% of this league's starters sit within one year
+of the 2.0 runway breakpoint**, and `years_to_decline` is itself age against a position cutoff,
+degrading to position defaults whenever nflverse is unreachable.
+
+The fix in every case is the same: **the threshold decides what the sentence claims, not whether
+the entry exists.** Established by `_cliff_case`'s `discounted` clause and then applied twice
+more.
+
+| gate | what it excluded | now |
+|---|---|---|
+| `_cliff_case` on `now_premium_bar` | DeVonta Smith, ratio **0.8790** against a WR bar of **0.8790** | the case stands on runway; the sentence says whether a discount exists |
+| `_holding_kind` on strictly-less value | Smith at **3,619** against Rice at **3,616**, for +535 of production | `VALUE_NOISE`, the same band as `NOISE_RETAINED` on the other axis |
+| `_counterparty_fit` on `MIN_RUNWAY_FOR_LATER` | CeeDee Lamb at **1.6**, DK Metcalf at **0.3** | runway ranks the pool; only past-his-cliff is dropped |
+
+`VALUE_NOISE` applies to the `upgrade` kind only. Where the released value is the entire point -
+`value_decision`, `conversion` - it has to actually be released, and `MIN_VALUE_FREED` says how
+much. A negative `value_freed` also needs prose: "costs -3 less in dynasty value" is not a
+sentence, so an upgrade inside the band reads "same dynasty price".
+
+For the runway pool, past his own cliff stays excluded, because there the claim would be *false*
+rather than weaker. Everything else is ranked by runway ahead of production - runway is what that
+branch is selling - and the "still there in two" promise is made only when the weakest piece in
+the offer can support it. Otherwise it states the shortfall: *"the nearest of them is 0.3 years
+from his own decline cutoff, so this is the weaker version of that trade."*
+
 ### Runway, not bucket - the third time (`_cliff_case`)
 
 `_cliff_case` gated on `bucket == "declining"`, the same test already corrected to a runway in
