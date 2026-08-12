@@ -1375,8 +1375,14 @@ def _print_push(push: dict, extras: dict) -> None:
         for e in push["my_offers"]:
             cost = OFFER_GIVE_UP_COST[team_state.VALUE_BASIS[e["bucket"]]]
             hard = " [CORNERSTONE - hardest ask here]" if e.get("ask_difficulty") else ""
+            # Computed since the covered-starter rule landed and never printed. Harmless while
+            # cornerstones were filtered out; now they head this list, and Lamar Jackson leads
+            # it at a cost of 6,119 production the reader could not see.
+            lost = (f", costs {e['lineup_cost']:,.0f} production out of your lineup"
+                    if e.get("lineup_cost") else "")
             print(f"  {e['name']} ({e['position']}, value={e['value']}, "
-                  f"{e['value_over_replacement']:+} vs replacement) - give-up cost: {cost}{hard}")
+                  f"{e['value_over_replacement']:+} vs replacement{lost}) - "
+                  f"give-up cost: {cost}{hard}")
     else:
         print("you could offer: no obvious surplus")
     if push.get("picks_to_trade_away"):
