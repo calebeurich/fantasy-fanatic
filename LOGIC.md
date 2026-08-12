@@ -988,7 +988,7 @@ have yet) - deferred rather than faked.
   `sellable` and was therefore literally unaskable anywhere downstream - while the actual
   owner, asked what he would move, names those players first. Being the foundation is a
   **price**, not a veto. Cornerstones now also enter `sellable`, `_my_offer_pool` lets them
-  past the protected-starter gate on the flag alone, and they carry `ask_difficulty`
+  past the protected-starter gate on the flag alone, and they carry `cornerstone` friction
   (`CORNERSTONE_ASK`) wherever they appear. That is deliberately the same job
   `from_owner_trades`/"NEVER TRADES" does for a counterparty, one notch softer: an owner who
   never trades may not answer at all, whereas a cornerstone's owner will answer and will want
@@ -2697,6 +2697,58 @@ now a one-against-one test instead: **does he cost more than your single biggest
 does, no one-for-one deal reaches him, and what it would actually take is a negotiation this
 tool does not price. Same reader question, no arithmetic the module cannot justify.
 
+### One friction vocabulary, both sides of the table
+
+Difficulty was being described three different ways for the same underlying idea:
+`from_owner_trades` printed "NEVER TRADES" on buy targets, `ask_difficulty` was a one-off
+string for a cornerstone on the sell side, `lineup_cost` was a bare number, and
+`persuasion_targets` carried the whole "they would have to change direction" case in its own
+block where nothing else could reach it. Four expressions of *how hard is this, and why*.
+
+There is now one: **`friction`, a list of `{flavor, why}`, on entries on both sides. Empty means
+easy.** Flavors rather than a difficulty score, for two reasons - they call for different
+responses, and they group, which is what makes "these are good but they're cornerstones" a
+sub-list rather than a re-read.
+
+| flavor | side | what it means |
+|---|---|---|
+| `cornerstone` | both | someone is building around him. On my side, the hardest ask I own; on theirs, expect a no rather than a price |
+| `costs_you_production` | sell | moving him drops my own lineup by a stated amount, after it refills |
+| `never_trades` | buy | that owner has never made a trade; the call may not be returned |
+| `beyond_your_best_chip` | buy | no one-for-one reaches him |
+| `needs_a_pivot` | buy | they are not a seller today, so this asks them to change direction - a wait-and-see |
+
+None of them is a price. That is the constraint that makes the vocabulary honest: every flavor
+is a fact about one player or one owner, never an arithmetic claim about a bundle.
+
+#### The missing half: why *their* player is available
+
+`value_upgrades` said who would want the player I would move and stopped there, so **a tight end
+held by a contender read exactly like one held by a seller**. The owner caught it on his own
+report: *"the fannin for kelce stuff - shiv is win now and could choose to move off the aging
+value but doesn't have to."*
+
+Every return now carries `their_reason`, and it is the same two arguments `_persuasion_targets`
+already makes - `_seller_case` and `_cliff_case` - reused rather than restated:
+
+```
+<- Sam LaPorta   (+895 production,   100 freed) from jqsimonds22
+     why they'd move him: jqsimonds22 is rebuilding - this is exactly the kind of
+     production they should be converting, so no persuasion needed.
+
+<- Travis Kelce  (+446 production, 1,905 freed) from shivvv
+     why they'd move him: Nothing about shivvv's team says seller, but their window and
+     Travis Kelce's don't line up: 26% of their production is ascending against 16%
+     declining... Keeping him may well tip this season for them, which is exactly why
+     it's a real decision for them rather than a giveaway.
+```
+
+The first is easy and carries no friction. The second carries `needs_a_pivot`, which is the
+distinction the reader wanted: same block, two very different phone calls. `_cliff_case` is
+gated on the same now-weighted bar the persuasion tier uses, because without it that argument
+asserts a player is "priced as though his remaining years are gone" about someone who may not be
+discounted at all - a claim the entry's own numbers would contradict.
+
 ### Likely and unlikely are different lists, not different ranks
 
 The buy list ranks on production for a `Push` team, which is right, and that put attainability
@@ -2718,7 +2770,7 @@ moves first"* - surviving in a second list, which is exactly the pattern CLAUDE.
 Sorting differently cannot fix it, because "who is best" and "who do I ring first" are two
 questions and one order cannot answer both. So `targets` now holds only what nothing
 structural is blocking, `long_shots` holds the rest, and the cap applies per half so a blocked
-target can never displace a reachable one. Three blockers, each named rather than scored,
+target can never displace a reachable one. Three friction flavors, each named rather than scored,
 because they call for different responses:
 
 | blocker | what it means |
@@ -2734,7 +2786,7 @@ buy list for all twelve teams - the same reasoning behind the existing `no_trade
 The owner's independent ranking of that same RB board was *"warren and pollard are the best
 targets for me, then the montgomery situation, maybe brown and hall but they aren't as
 efficient, and he doesn't trade, Gibbs is probably just impossible because he's a cornerstone
-and I can't afford that"* - which is the split, in order, including both of Gibbs's blockers.
+and I can't afford that"* - which is the split, in order, including both of Gibbs's friction reasons.
 
 `long_shots` is in `audit.py`'s `PLAYER_BLOCKS` as well as `COVERAGE_BLOCKS`: the split changes
 *placement*, not coverage, and `check_best_available_is_surfaced` asks whether the best

@@ -55,7 +55,7 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
     vs prime=situational), and tradeable surplus (young non-core depth). A cornerstone is
     ALSO a trade chip - never say a player is untouchable or unavailable because he is one.
     Being the foundation raises his price, it does not remove him from the table, and
-    `get_trade_targets` marks him `ask_difficulty` when it lists him. Pass
+    `get_trade_targets` marks him with `cornerstone` friction when it lists him. Pass
     owner_name for a question about one team (much smaller result, and this IS the
     authoritative classification - don't re-derive a team's window from
     get_roster_detail instead). Omit owner_name only when you actually need every
@@ -179,10 +179,22 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     loses if he goes, after refilling itself optimally. Say that number when you name him -
     it is a cost, not a reason to omit him, and for a Push team an ascending starter is
     often the single biggest chip available precisely because his value is future.
-    An entry carrying "ask_difficulty" is a CORNERSTONE, and it is on the list on purpose:
-    the field says what the ask costs, not that the ask is off. Name him with that caveat
-    attached - "the hardest ask on your roster, expect to pay over market or hear no" - and
-    never silently drop him or call him untradeable. He is usually the biggest chip there is.
+    **"friction" is one vocabulary used on BOTH sides of the table**, and an empty list means
+    easy. Each entry is {flavor, why}. On the sell side (my_offers) the flavors are
+    `cornerstone` (you are building around him - the hardest ask on your own roster, a price
+    and not a veto, so never silently drop him or call him untradeable; he is usually the
+    biggest chip there is) and `costs_you_production` (moving him drops your own lineup by a
+    stated amount, after it refills). On the buy side they are `cornerstone`, `never_trades`,
+    `beyond_your_best_chip` and `needs_a_pivot`. State the `why` whenever you name a player
+    that carries friction, and treat no-friction entries as the ones to lead with.
+
+    Every "value_upgrades" return also carries "their_reason": why the CURRENT owner would
+    part with him. This is the half of a trade that is easy to forget. A Rebuild owner is
+    already selling that kind of production, so no persuasion is needed. Anyone else has to be
+    argued into it, and then the entry carries `needs_a_pivot` friction and the reason says
+    what the argument is - their window and the player's not lining up, or their roster falling,
+    or in the weakest case that they have no reason to sell at all. NEVER present a player held
+    by a contender as though he were available from a seller; say which it is.
 
     "value_upgrades", when present, are the strongest single finding this tool produces and
     should usually lead the answer for a team trying to win now. Each names a current starter
@@ -228,7 +240,8 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
 
     "targets" and "long_shots" are two lists on purpose, and the order you present them in
     matters more than the values in them. "targets" is who to ring first: nothing structural
-    is in the way. Every "long_shots" entry carries "blockers" saying what IS in the way -
+    is in the way. Every "long_shots" entry carries "friction" - a list of {flavor, why} saying
+    what IS in the way -
     the owner has never traded, the player is a cornerstone on that roster, or he costs more
     than the asking team's biggest single chip. State the blocker whenever you name one, lead
     with "targets" even when a long shot is a bigger name, and never imply a long shot is

@@ -224,32 +224,82 @@ CORNERSTONE_ASK = ("cornerstone - the runway this roster is built around, so exp
                    "over market or be told no. Moveable, just the hardest ask here")
 
 
-def _reach(player: dict, other: dict, best_chip: dict | None, trades: int,
-           trades_are_informative: bool) -> dict:
-    """Why this target might not be gettable, in the reader's own terms. Three independent
-    reasons, all named rather than folded into a score, because they call for different
-    responses: an inactive owner may not answer at all, a cornerstone's owner will answer and
-    say no, and a player priced above your best single chip is a different conversation
-    entirely. Empty `blockers` means nothing structural is in the way.
+# ONE vocabulary for "how hard is this, and why", used on both sides of the table. An entry
+# with no friction is easy; each friction entry names a `flavor` and says `why` in the reader's
+# terms. Flavors rather than a difficulty score because they call for different responses - an
+# inactive owner may never answer, a cornerstone's owner answers and says no, and a player above
+# your best single chip is a different conversation entirely - and because they group: "these
+# are good but cornerstones" is a sub-list the reader asked for, and grouping needs a label.
+#
+# Deliberately none of these is a price. `beyond_your_best_chip` is a one-against-one
+# comparison, the only kind this project can make: it says no single piece covers him, not what
+# the deal would be.
+BUY_FRICTION = ("cornerstone", "beyond_your_best_chip", "never_trades", "needs_a_pivot")
+SELL_FRICTION = ("cornerstone", "costs_you_production")
 
-    Deliberately NOT a price. "Costs more than your biggest chip" is a one-against-one
-    comparison, which is the only kind this project can make - it does not say what the deal
-    would be, only that no single piece covers it."""
-    blockers = []
+
+def _friction(flavor: str, why: str) -> dict:
+    return {"flavor": flavor, "why": why}
+
+
+def _why_they_would_move_him(player: dict, other: dict, prior: dict | None,
+                             premium_bars: dict[str, float]) -> dict:
+    """Whether the OTHER owner has a reason to part with this player - the half that was
+    missing. `value_upgrades` said who would want the player I'd move and stopped there, so a
+    tight end held by a contender read exactly like one held by a seller.
+
+    Three answers, and only the first is easy. A `Rebuild` owner is already selling him. A
+    non-seller might still listen, and `_seller_case`/`_cliff_case` are the same two arguments
+    the persuasion tier makes - reused, not restated. Otherwise nothing about their side says
+    seller, which is the honest answer and belongs in the output: *"shiv is win now and could
+    choose to move off the aging value but doesn't have to."*"""
+    if other["window"] == "Rebuild":
+        return {"their_reason": (f"{other['owner']} is rebuilding - this is exactly the kind of "
+                                 f"production they should be converting, so no persuasion needed.")}
+    ratio = ((player.get("redraft_value") or 0) / player["value"]) if player.get("value") else 0
+    # Same now-weighted gate `_persuasion_targets` puts in front of `_cliff_case`. Without it
+    # that argument asserts he is "priced as though his remaining years are gone" about a player
+    # who may not be discounted at all - a claim the entry's own numbers would contradict.
+    cliff = (_cliff_case(player, other, ratio)
+             if ratio >= (premium_bars or {}).get(player["position"], float("inf")) else None)
+    case = _seller_case(other, (prior or {}).get(other["owner_id"])) or cliff
+    if case:
+        return {"their_reason": case,
+                "friction": [_friction("needs_a_pivot",
+                                       f"{other['owner']} is not a seller today, so this asks "
+                                       f"them to change direction rather than take a fair "
+                                       f"offer - a wait-and-see, not a call you make once")]}
+    return {"their_reason": (f"Nothing about {other['owner']}'s team says seller, and their "
+                             f"window does not argue for moving him either. They could do it "
+                             f"and have no reason to, so this needs them to want your side "
+                             f"more than they want him."),
+            "friction": [_friction("needs_a_pivot",
+                                   f"{other['owner']} has no reason to sell him at all - the "
+                                   f"least likely of these to happen")]}
+
+
+def _buy_friction(player: dict, other: dict, best_chip: dict | None, trades: int,
+                  trades_are_informative: bool) -> dict:
+    """What stands between this team and this target, or an empty list if nothing does."""
+    friction = []
     if player.get("is_cornerstone"):
-        blockers.append(f"a cornerstone for {other['owner']} - they are building around him, "
-                        f"so expect a no rather than a price")
+        friction.append(_friction("cornerstone",
+                                  f"a cornerstone for {other['owner']} - they are building "
+                                  f"around him, so expect a no rather than a price"))
     if best_chip and player["value"] > best_chip["value"]:
-        blockers.append(f"costs more than your biggest single chip ({best_chip['name']}, "
-                        f"{best_chip['value']:,}), so no one-for-one reaches him")
+        friction.append(_friction("beyond_your_best_chip",
+                                  f"costs more than your biggest single chip "
+                                  f"({best_chip['name']}, {best_chip['value']:,}), so no "
+                                  f"one-for-one reaches him"))
     # Only when somebody in this league HAS traded. In a league with no trade history at all,
-    # a zero says nothing about this owner - it describes the league - and treating it as a
-    # blocker would empty the buy list for all twelve teams. Same reasoning as the
+    # a zero says nothing about this owner - it describes the league - and treating it as
+    # friction would empty the buy list for all twelve teams. Same reasoning as the
     # `no_trade_history` flag `team_state` already carries.
     if trades_are_informative and not trades:
-        blockers.append(f"{other['owner']} has never made a trade, so the call may not "
-                        f"be returned at all")
-    return {"blockers": blockers}
+        friction.append(_friction("never_trades",
+                                  f"{other['owner']} has never made a trade, so the call may "
+                                  f"not be returned at all"))
+    return {"friction": friction}
 
 
 def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict],
@@ -318,8 +368,18 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict
     # note under "Known limitations"). It's discounted, not zero - a sweetener that
     # shouldn't anchor an offer, rather than a name to be embarrassed about including.
     for e in offers:
+        # The same friction vocabulary the buy side uses, read from my side of the table.
+        # `ask_difficulty` was a one-off string for the cornerstone case; the two reasons a
+        # sale is hard are that his owner (me) is building around him, or that the lineup
+        # actually loses production - and `lineup_cost` was already measuring the second.
+        friction = []
         if e.get("is_cornerstone"):
-            e["ask_difficulty"] = CORNERSTONE_ASK
+            friction.append(_friction("cornerstone", CORNERSTONE_ASK))
+        if e.get("lineup_cost"):
+            friction.append(_friction("costs_you_production",
+                                      f"moving him costs {e['lineup_cost']:,.0f} of production "
+                                      f"out of your own lineup, after it refills itself"))
+        e["friction"] = friction
         e["value_over_replacement"] = round(e["value"] - thresholds[e["position"]])
         e["tier"] = ("core piece - above replacement, scarce" if e["value_over_replacement"] > 0
                      else "depth - real but discounted, a sweetener not a centerpiece")
@@ -333,7 +393,7 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict
 
 
 LONG_SHOT_NOTE = (
-    "LONG SHOTS - real fits, but something structural is in the way, and `blockers` says what. "
+    "LONG SHOTS - real fits, but something structural is in the way, and `friction` says what. "
     "These are separated from the buy list rather than ranked below it because the reason is "
     "not price: an owner who has never traded may not answer, a cornerstone's owner will answer "
     "and say no, and a player costing more than your biggest single chip cannot be reached "
@@ -465,7 +525,8 @@ def _upgrade_note(kind: str, produced: float, replaced: dict, freed: float, mine
 
 def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: set[str],
                         trade_counts: dict[str, int], needs_by_owner_id: dict,
-                        window: str = "Contend") -> list[dict]:
+                        window: str = "Contend", prior: dict | None = None,
+                        premium_bars: dict[str, float] | None = None) -> list[dict]:
     """Which single holding beats one of my starters at his own position, for less dynasty
     value? Candidates come from every roster in the league INCLUDING my own bench, because
     "who is a better thing to own" does not care where he currently sits - only the action
@@ -556,6 +617,13 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
                 "production_gained": gained, "value_freed": freed,
                 "kind": kind, "already_mine": mine_side,
                 "note": _upgrade_note(kind, produced, replaced, freed, mine_side),
+                # A player already on my bench needs nobody's permission.
+                **({"their_reason": "already yours - no counterparty at all"} if mine_side else
+                   _why_they_would_move_him(
+                       {**info, "is_starter": pid in their_starters,
+                        "bucket": age_bucket(info["position"], info.get("age"),
+                                             info.get("usage_role"))},
+                       other, prior, premium_bars)),
             }
             # A counterparty's trade history is meaningless for a player already on my roster,
             # and `_with_trade_note` would stamp him "NEVER TRADES" off my own zero count.
@@ -1003,9 +1071,9 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
                 pos_targets.append({"position": pos, "need_level": need["level"],
                                      "need_note": need["note"],
                                      "production_per_cost": round(ratio, 2) if ratio else None,
-                                     **_reach(player, other, best_chip,
-                                              trade_counts.get(other["owner_id"], 0),
-                                              any(trade_counts.values())),
+                                     **_buy_friction(player, other, best_chip,
+                                                     trade_counts.get(other["owner_id"], 0),
+                                                     any(trade_counts.values())),
                                      **_with_trade_note(player, other, trade_counts)})
         # Window fit before raw value. A Win-Now buyer wants *current production*, and
         # this project's own pricing model says declining players are "production-priced"
@@ -1055,8 +1123,8 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         # different question from "who is best", so it gets its own list. Both halves keep the
         # production-first ordering above; the cap applies per half so a blocked target can
         # never displace a reachable one.
-        reachable = [t for t in pos_targets if not t["blockers"]]
-        blocked = [t for t in pos_targets if t["blockers"]]
+        reachable = [t for t in pos_targets if not t["friction"]]
+        blocked = [t for t in pos_targets if t["friction"]]
         targets += reachable[:max_per_position]
         long_shots += blocked[:max_per_position]
 
@@ -1237,7 +1305,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         # whole push half is about whether to.
         if me["window"] != "Rebuild":
             upgrades = find_value_upgrades(my_roster, ctx, states, my_starters, trade_counts,
-                                           needs_by_owner_id, me["window"])
+                                           needs_by_owner_id, me["window"], prior, premium_bars)
             if upgrades:
                 result["value_upgrades"] = upgrades
                 result["value_upgrade_note"] = VALUE_UPGRADE_NOTE
@@ -1339,15 +1407,13 @@ def _print_push(push: dict, extras: dict) -> None:
         print("you could offer (most value over replacement first):")
         for e in push["my_offers"]:
             cost = OFFER_GIVE_UP_COST[team_state.VALUE_BASIS[e["bucket"]]]
-            hard = " [CORNERSTONE - hardest ask here]" if e.get("ask_difficulty") else ""
-            # Computed since the covered-starter rule landed and never printed. Harmless while
-            # cornerstones were filtered out; now they head this list, and Lamar Jackson leads
-            # it at a cost of 6,119 production the reader could not see.
-            lost = (f", costs {e['lineup_cost']:,.0f} production out of your lineup"
-                    if e.get("lineup_cost") else "")
+            flavors = (" [" + ", ".join(f["flavor"] for f in e["friction"]) + "]"
+                       if e["friction"] else "")
             print(f"  {e['name']} ({e['position']}, value={e['value']}, "
-                  f"{e['value_over_replacement']:+} vs replacement{lost}) - "
-                  f"give-up cost: {cost}{hard}")
+                  f"{e['value_over_replacement']:+} vs replacement) - "
+                  f"give-up cost: {cost}{flavors}")
+            for f in e["friction"]:
+                print(f"      - {f['why']}")
     else:
         print("you could offer: no obvious surplus")
     if push.get("picks_to_trade_away"):
@@ -1375,8 +1441,8 @@ def _print_push(push: dict, extras: dict) -> None:
             price_note = BUY_PRICE_NOTE[team_state.VALUE_BASIS[t["bucket"]]]
             print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}) from "
                   f"{t['from_owner']} - need: {t['need_level']}")
-            for b in t["blockers"]:
-                print(f"      - {b}")
+            for f in t["friction"]:
+                print(f"      - [{f['flavor']}] {f['why']}")
         print(f"  {push['long_shot_note']}")
     if push.get("persuasion_targets"):
         print()
@@ -1440,6 +1506,11 @@ def _print_value_upgrades(result: dict) -> None:
             print(f"      <- {u['name']} ({u['redraft_value']:,} this season, "
                   f"{u['production_gained']:+,} production, {u['value_freed']:,} dynasty "
                   f"freed){UPGRADE_KIND_TAG[u['kind']]} from {u['from_owner']} - {trades}")
+            # Half the trade was missing: who wants MY guy was printed, why THEIRS would be
+            # available was computed nowhere. A tight end held by a contender read exactly
+            # like one held by a seller.
+            if u.get("their_reason"):
+                print(f"           why they'd move him: {u['their_reason']}")
     print(f"  {result['value_upgrade_note']}")
 
 

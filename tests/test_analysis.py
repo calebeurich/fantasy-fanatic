@@ -285,8 +285,13 @@ def _upgrade_fixture():
     rosters = [{"owner_id": "me", "players": ["mine"]},
                {"owner_id": "them", "players": ["better", "lateral", "worse"]}]
     ctx = _Ctx(players, rosters, {"me": {"mine"}, "them": {"better", "lateral"}})
-    states = [{"owner_id": "me", "owner": "me", "window": "Push"},
-              {"owner_id": "them", "owner": "them", "window": "Middling"}]
+    # The trajectory fields are what `_seller_case`/`_cliff_case` read to say whether the OTHER
+    # owner has a reason to part with the player. Real `classify_league` rows always carry them,
+    # so the fixture does too - a stub missing them let the counterparty half go untested.
+    states = [{"owner_id": "me", "owner": "me", "window": "Push",
+               "trajectory": "falling", "ascending_pct": 3, "declining_pct": 24},
+              {"owner_id": "them", "owner": "them", "window": "Middling",
+               "trajectory": "steady", "ascending_pct": 10, "declining_pct": 10}]
     return ctx, rosters[0], states
 
 
@@ -324,6 +329,39 @@ def test_the_three_kinds_are_labelled_by_how_much_production_survives():
     assert by_name["Convert"]["kind"] == "conversion"
     assert "GIVES UP" in by_name["Convert"]["note"], "a conversion must state the loss"
     assert "Worse" not in by_name, "28% of the production is not a conversion at any price"
+
+
+def test_every_return_says_why_its_owner_would_part_with_him():
+    """Half the trade was missing. `wanted_by` said who would want the player I'd MOVE, and
+    nothing said why the player I'd GET would be available - so a tight end held by a contender
+    read exactly like one held by a seller. The owner named it: *"the fannin for kelce stuff -
+    shiv is win now and could choose to move off the aging value but doesn't have to."*
+
+    A `Rebuild` owner is already selling; anyone else has to be argued into it, which is the
+    same `_seller_case`/`_cliff_case` pair the persuasion tier uses, reused rather than
+    restated, and it comes with `needs_a_pivot` friction attached."""
+    ctx, me, states = _upgrade_fixture()
+    seller, holder = states[1], {"owner_id": "holder", "owner": "holder", "window": "Contend",
+                                "trajectory": "rising", "ascending_pct": 26, "declining_pct": 16}
+    seller["window"] = "Rebuild"
+    ctx.players["theirs"] = {"name": "Aging", "position": "TE", "value": 2000,
+                             "redraft_value": 1900, "age": 36}
+    ctx.rosters.append({"owner_id": "holder", "players": ["theirs"]})
+    ctx._starters["holder"] = {"theirs"}
+    states.append(holder)
+
+    moves = trade_targets.find_value_upgrades(
+        me, ctx, states, {"mine"}, {"them": 3, "holder": 3}, {}, "Push",
+        prior=None, premium_bars={"TE": 0.5})
+    by_name = {u["name"]: u for u in moves[0]["returns"]}
+
+    assert "no persuasion needed" in by_name["Cheaper"]["their_reason"], (
+        "a rebuilding owner is already selling this kind of production")
+    assert not by_name["Cheaper"].get("friction")
+
+    aging = by_name["Aging"]
+    assert "don't line up" in aging["their_reason"], "the cliff argument, not just 'he's old'"
+    assert [f["flavor"] for f in aging["friction"]] == ["needs_a_pivot"]
 
 
 def test_a_pushing_team_is_never_offered_a_conversion():
@@ -518,7 +556,7 @@ def test_offer_pool_protects_starters_who_are_actually_producing():
 def test_a_cornerstone_is_askable_and_tagged_rather_than_hidden():
     """Cornerstones used to be left out of `sellable` entirely, which made the best pieces on
     a roster literally unaskable - an owner deciding what he'd move names them first. Being
-    the hardest ask is a PRICE, not a veto, so they surface carrying `ask_difficulty`. The
+    the hardest ask is a PRICE, not a veto, so they surface carrying `friction`. The
     comparison player is a prime starter at the same value who stays protected, so this can't
     pass by accident: what lets the cornerstone through is the flag, not the value."""
     thresholds = {"QB": 100}
@@ -533,7 +571,8 @@ def test_a_cornerstone_is_askable_and_tagged_rather_than_hidden():
     by_name = {e["name"]: e for e in offered}
     assert "Rock" in by_name, "a cornerstone must be askable"
     assert "Producing" not in by_name, "an ordinary producing starter is still protected"
-    assert "hardest ask" in by_name["Rock"]["ask_difficulty"]
+    assert [f["flavor"] for f in by_name["Rock"]["friction"]] == ["cornerstone"]
+    assert "hardest ask" in by_name["Rock"]["friction"][0]["why"]
 
 
 def test_a_cornerstone_stays_out_of_the_pivot_sell_lists():
@@ -870,7 +909,7 @@ def test_unreachable_targets_are_split_out_rather_than_ranked_below():
 
     assert [t["name"] for t in out["targets"]] == ["Gettable"], (
         "only the one with nothing structural in the way belongs on the buy list")
-    blocked = {t["name"]: t["blockers"] for t in out["long_shots"]}
+    blocked = {t["name"]: [f["why"] for f in t["friction"]] for t in out["long_shots"]}
     assert set(blocked) == {"TheirRock", "Unaffordable", "QuietGuy"}
     # QuietGuy outproduces Gettable (3,000 vs 2,000), so under one ranked list he would have
     # led - which is the bug. The reason he is blocked has to be stated, not implied by order.
