@@ -325,6 +325,57 @@ def test_window_needs_both_axes_not_either_one():
         "young and genuinely bad is still a rebuild - being young doesn't make you close")
 
 
+class _Ctx:
+    """Minimal LeagueContext stand-in for find_value_upgrades."""
+    def __init__(self, players, rosters, starters):
+        self.players, self.rosters, self._starters = players, rosters, starters
+
+    def starters_for(self, roster):
+        return self._starters.get(roster["owner_id"], set())
+
+
+def _upgrade_fixture():
+    players = {
+        "mine": {"name": "Pricey", "position": "TE", "value": 3515, "redraft_value": 1811},
+        "better": {"name": "Cheaper", "position": "TE", "value": 2442, "redraft_value": 2044},
+        "lateral": {"name": "Lateral", "position": "TE", "value": 4000, "redraft_value": 2500},
+        "worse": {"name": "Worse", "position": "TE", "value": 900, "redraft_value": 500},
+    }
+    rosters = [{"owner_id": "me", "players": ["mine"]},
+               {"owner_id": "them", "players": ["better", "lateral", "worse"]}]
+    ctx = _Ctx(players, rosters, {"me": {"mine"}, "them": {"better", "lateral"}})
+    states = [{"owner_id": "me", "owner": "me", "window": "Push"},
+              {"owner_id": "them", "owner": "them", "window": "Middling"}]
+    return ctx, rosters[0], states
+
+
+def test_value_upgrade_requires_beating_a_starter_on_both_axes():
+    """More production AND less dynasty value. A player who is better but pricier is a
+    normal buy target, not this - the whole point is that it costs nothing to prefer him."""
+    ctx, me, states = _upgrade_fixture()
+    found = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3})
+    assert [u["name"] for u in found] == ["Cheaper"], "Lateral is pricier, Worse produces less"
+    assert found[0]["upgrades_over"] == "Pricey"
+    assert found[0]["production_gained"] == 233
+    assert found[0]["value_freed"] == 1073
+
+
+def test_value_upgrades_keep_the_best_per_starter_rather_than_a_capped_ranking():
+    """Ranking on production alone and capping dropped a real swap whose gain was mostly
+    value freed. One line per upgradeable starter keeps both kinds of winner."""
+    ctx, me, states = _upgrade_fixture()
+    ctx.players["mine2"] = {"name": "Pricey2", "position": "RB",
+                            "value": 3488, "redraft_value": 2319}
+    ctx.players["rb"] = {"name": "OldBack", "position": "RB",
+                         "value": 2982, "redraft_value": 4581}
+    me["players"].append("mine2")
+    ctx.rosters[1]["players"].append("rb")
+    found = trade_targets.find_value_upgrades(me, ctx, states, {"mine", "mine2"}, {"them": 3})
+    assert {u["upgrades_over"] for u in found} == {"Pricey", "Pricey2"}, (
+        "every upgradeable starter is represented, not just the biggest production gain")
+    assert found[0]["name"] == "OldBack", "still ordered by production gained"
+
+
 def test_middle_of_the_league_is_a_window_not_a_leftover():
     """Rebuild used to be the else branch, so a fringe team that merely wasn't rising fell
     into it and was told to sell. The live case was 3rd of 12 in total dynasty value with

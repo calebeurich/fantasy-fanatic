@@ -2819,6 +2819,39 @@ current starter at the candidate's position - the marginal lineup spot, the same
 `_injury_drop` makes - adds the candidate, and refills optimally so flex eligibility is
 respected. Counting bodies cannot distinguish the two WR rooms above; a real refill can.
 
+### Strictly better holdings (`find_value_upgrades`)
+
+Someone on another roster who produces **more** this season than one of my starters **and**
+costs **less** in dynasty value. Acquiring him raises the lineup and frees trade capital at
+once, and the starter he replaces drops to depth - which is where a below-replacement starter
+belongs.
+
+**The external twin of `find_efficiency_swaps`.** That one compares a starter against my own
+*bench*, so it returns nothing for a roster whose bench produces nothing - exactly the roster
+that most needs the answer. On a live Push team it found zero swaps while that lineup started
+a receiver producing 925 and carried two upside-priced starters. Its owner named the move it
+couldn't see: *"I should definitely be looking for some way to trade those two guys and have
+more redraft value in my lineup than I do now... I want Robinson and Sutton to be the depth at
+a good price, not the starters."*
+
+**Strict dominance on both axes**, so there is no threshold to tune and no lateral move can
+qualify. Same-position pairs only, for the reason `find_efficiency_swaps` documents: the
+redraft and dynasty scales are not normalized to each other, and only a same-position
+comparison cancels that out.
+
+**One line per upgradeable starter, not a ranked list with a cap.** The finding is
+two-dimensional - production gained *and* value freed - and ranking on either axis hides
+winners on the other. Sorted by production and capped at six, it dropped the exact swap that
+roster's owner had already identified himself: a tight end worth **+233** of production but
+the largest value release on the board at **1,073**. Keyed by the starter being replaced, it
+answers the question actually being asked - *which of my starters can I do better than, and by
+whom* - and needs no cap, since the lineup bounds it.
+
+**It prices nothing.** One player against one player is the whole claim. Value is not additive
+across players, so there is no package here - see "discovery tool, not a fairness calculator"
+above. Candidates are usually older, which is *why* they are cheap, so the note tells the
+reader to weigh the age against their own timeline before paying.
+
 **Which bar makes someone "only depth" depends on what the asking team is doing**, and it is
 the same two-metric split `replacement_thresholds` documents: *filling a lineup is a redraft
 question, holding a lottery ticket is a dynasty one.*

@@ -281,6 +281,92 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict
     return offers
 
 
+VALUE_UPGRADE_NOTE = (
+    "STRICTLY BETTER TO HOLD, not a priced offer. Each of these produces more this season "
+    "than one of your starters AND costs less in dynasty value, so acquiring him raises the "
+    "lineup and frees trade value at the same time - the player he replaces drops to depth, "
+    "which is where a below-replacement starter belongs. What it takes to get him is a "
+    "separate question this tool does not answer: value is not additive across players, so "
+    "there is no package price here, only the observation that one holding beats another. "
+    "These are usually older, which is exactly why they are cheaper - check the age against "
+    "your own timeline before paying."
+)
+
+
+def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: set[str],
+                        trade_counts: dict[str, int]) -> list[dict]:
+    """The same arbitrage as `find_efficiency_swaps`, sourced from other rosters instead of
+    my own bench: someone who produces MORE this season than one of my starters while
+    costing LESS in dynasty value.
+
+    `find_efficiency_swaps` needs a bench alternative to compare against, so it returns
+    nothing for a roster whose bench produces nothing - which is exactly the roster that most
+    needs the answer. On a real Push team it found zero swaps while that lineup started a
+    receiver producing 925 and carried two upside-priced starters, and the owner named the
+    move it couldn't see: *"I should definitely be looking for some way to trade those two
+    guys and have more redraft value in my lineup than I do now."*
+
+    **Strict dominance on both axes** - more production, less dynasty value - so there is no
+    threshold to tune and no lateral move can qualify. Comparisons stay one player against
+    one player at the same position, for the reason `find_efficiency_swaps` documents: the
+    two value scales are not normalized to each other, and only a same-position pair cancels
+    that out. It deliberately does not price a package - it says which single holding is
+    strictly better, and leaves what it takes to get him to a human.
+
+    A candidate is matched against the *weakest* starter he dominates, since that is the slot
+    he would actually take and the one that makes the lineup gain largest.
+
+    **One line per starter, rather than a ranked list with a cap.** This is a two-dimensional
+    finding - production gained and dynasty value freed - and ranking on either one hides
+    winners on the other. Sorted by production and capped at six, it dropped the exact swap
+    this roster's owner had already identified himself: a tight end worth +233 of production
+    but the largest value release on the board at 1,073. Keeping the best alternative for each
+    upgradeable starter answers the question actually being asked - *which of my starters can
+    I do better than, and by whom* - and needs no cap, since it is bounded by the lineup."""
+    mine_by_pos = {}
+    for pid in my_starters:
+        info = ctx.players.get(pid)
+        if info:
+            mine_by_pos.setdefault(info["position"], []).append(info)
+
+    by_owner_id = {s["owner_id"]: s for s in states}
+    upgrades = []
+    for roster in ctx.rosters:
+        other = by_owner_id.get(roster["owner_id"])
+        if other is None or roster["owner_id"] == me_roster["owner_id"]:
+            continue
+        their_starters = ctx.starters_for(roster)
+        for pid in roster["players"] or []:
+            info = ctx.players.get(pid)
+            if not info:
+                continue
+            produced = info.get("redraft_value") or 0
+            beaten = [m for m in mine_by_pos.get(info["position"], [])
+                      if produced > (m.get("redraft_value") or 0) and info["value"] < m["value"]]
+            if not beaten:
+                continue
+            replaced = min(beaten, key=lambda m: m.get("redraft_value") or 0)
+            gained = produced - (replaced.get("redraft_value") or 0)
+            freed = replaced["value"] - info["value"]
+            upgrades.append(_with_trade_note({
+                "name": info["name"], "position": info["position"],
+                "value": info["value"], "redraft_value": produced,
+                "is_starter": pid in their_starters,
+                "upgrades_over": replaced["name"],
+                "production_gained": gained, "value_freed": freed,
+                "note": (f"Produces {produced:,} this season against {replaced['name']}'s "
+                         f"{replaced.get('redraft_value') or 0:,}, and costs {freed:,} less in "
+                         f"dynasty value - strictly the better holding for a team trying to "
+                         f"win now. {replaced['name']} becomes depth rather than a starter."),
+            }, other, trade_counts))
+    best_per_starter = {}
+    for u in upgrades:
+        held = best_per_starter.get(u["upgrades_over"])
+        if held is None or u["production_gained"] > held["production_gained"]:
+            best_per_starter[u["upgrades_over"]] = u
+    return sorted(best_per_starter.values(), key=lambda u: -u["production_gained"])
+
+
 def find_efficiency_swaps(roster_entries: list[dict]) -> list[dict]:
     """Win-now arbitrage *within* a position: a lineup player whose bench alternative
     produces nearly as much this season for meaningfully less dynasty value. Sell the
@@ -1025,6 +1111,14 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         # asset". `already` existed for this and was being handed an empty set.
         surfaced = {t["name"] for t in result.get("targets") or []}
         surfaced |= {t["name"] for t in (result.get("push") or {}).get("targets") or []}
+        # Not for a rebuilder: "strictly better to hold if you're winning now" is advice for
+        # someone who is. Every other window can buy production, including Middling, whose
+        # whole push half is about whether to.
+        if me["window"] != "Rebuild":
+            upgrades = find_value_upgrades(my_roster, ctx, states, my_starters, trade_counts)
+            if upgrades:
+                result["value_upgrades"] = upgrades
+                result["value_upgrade_note"] = VALUE_UPGRADE_NOTE
         depth = _depth_adds(my_roster, ctx, states, me["window"] != "Rebuild",
                             my_starters, surfaced)
         if depth:
@@ -1227,6 +1321,7 @@ def _print_push(push: dict, extras: dict) -> None:
     # Cheapest and most gettable first, escalating to the long shots. The old order led with
     # "harder asks" - teams that aren't selling - and buried the nominal-price depth below two
     # targets stamped NEVER TRADES. Read top-down, it recommended the least likely moves first.
+    _print_value_upgrades(extras)
     _print_depth(extras)
     if not push["targets"]:
         print("no obvious targets found (no needs, or no Rebuilding team has a sell candidate there)")
@@ -1268,6 +1363,19 @@ def _print_report(result: dict) -> None:
         print(f"{me['owner']}: {me['window']}, needs: {_needs_summary(result['needs'])}")
         print(f"  {me['window_note']}")
         _print_push(result, result)
+
+
+def _print_value_upgrades(result: dict) -> None:
+    if not result.get("value_upgrades"):
+        return
+    print("\nstrictly better holdings (more production this season, less dynasty value):")
+    for u in result["value_upgrades"]:
+        trades = (f"{u['from_owner_trades']} trade(s) made" if u["from_owner_trades"]
+                  else "NEVER TRADES - unlikely")
+        print(f"  {u['name']} ({u['position']}, {u['redraft_value']:,} this season) from "
+              f"{u['from_owner']} - over {u['upgrades_over']}: {u['production_gained']:+,} "
+              f"production, {u['value_freed']:,} dynasty freed - {trades}")
+    print(f"  {result['value_upgrade_note']}")
 
 
 def _print_depth(result: dict) -> None:
