@@ -537,6 +537,44 @@ def test_offer_pool_protects_starters_who_are_actually_producing():
     assert "QB2" not in names, "a prime starter is current production, not surplus"
 
 
+def test_a_cornerstone_is_askable_and_tagged_rather_than_hidden():
+    """Cornerstones used to be left out of `sellable` entirely, which made the best pieces on
+    a roster literally unaskable - an owner deciding what he'd move names them first. Being
+    the hardest ask is a PRICE, not a veto, so they surface carrying `ask_difficulty`. The
+    comparison player is a prime starter at the same value who stays protected, so this can't
+    pass by accident: what lets the cornerstone through is the flag, not the value."""
+    thresholds = {"QB": 100}
+    rock = {"name": "Rock", "position": "QB", "value": 5916, "is_starter": True,
+            "bucket": "prime", "is_cornerstone": True}
+    producing = {"name": "Producing", "position": "QB", "value": 5916, "is_starter": True,
+                 "bucket": "prime"}
+
+    offered = trade_targets._my_offer_pool(
+        {"sellable": [rock, producing], "tradeable_surplus": [], "window": "Contend"},
+        thresholds, needs={})
+    by_name = {e["name"]: e for e in offered}
+    assert "Rock" in by_name, "a cornerstone must be askable"
+    assert "Producing" not in by_name, "an ordinary producing starter is still protected"
+    assert "hardest ask" in by_name["Rock"]["ask_difficulty"]
+
+
+def test_a_cornerstone_stays_out_of_the_pivot_sell_lists():
+    """He is askable, but not via `situational` - that label reads "years still on them, just
+    not your long-term core", and a cornerstone is the long-term core by definition. Printing
+    him there would be a self-contradicting label, the defect class this codebase keeps
+    hitting. `my_offers` and `value_upgrades` are the surfaces that name him instead."""
+    rock = {"name": "Rock", "position": "WR", "value": 6000, "redraft_value": 4000,
+            "bucket": "prime", "years_to_decline": 5.0, "is_starter": True,
+            "is_cornerstone": True}
+    aging = {"name": "Aging", "position": "WR", "value": 3000, "redraft_value": 2800,
+             "bucket": "declining", "years_to_decline": 0.5, "is_starter": True}
+    me = {"sellable": [rock, aging], "owner_id": "me", "roster_id": 1}
+
+    out = trade_targets._pivot_path(me, [], {"WR": 0}, {})
+    assert [e["name"] for e in out["sell_candidates"]] == ["Aging"]
+    assert out["situational"] == [], "the cornerstone must not be called 'not your core'"
+
+
 def test_offer_pool_lets_a_push_team_offer_an_ascending_starter():
     """"Is he a starter" was a proxy for "does moving him cost me", and on a real roster it
     hid the owner's single biggest trade chip: an ascending TE at 3,660 dynasty against

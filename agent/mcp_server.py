@@ -52,7 +52,10 @@ def check_league_format(league_id: str) -> dict:
 def get_team_state(league_id: str, owner_name: str = None) -> dict:
     """Strategic window per team, with each team's cornerstones
     (long-term foundation), sellable players (real trade chips, split declining=urgent
-    vs prime=situational), and tradeable surplus (young non-core depth). Pass
+    vs prime=situational), and tradeable surplus (young non-core depth). A cornerstone is
+    ALSO a trade chip - never say a player is untouchable or unavailable because he is one.
+    Being the foundation raises his price, it does not remove him from the table, and
+    `get_trade_targets` marks him `ask_difficulty` when it lists him. Pass
     owner_name for a question about one team (much smaller result, and this IS the
     authoritative classification - don't re-derive a team's window from
     get_roster_detail instead). Omit owner_name only when you actually need every
@@ -176,6 +179,10 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     loses if he goes, after refilling itself optimally. Say that number when you name him -
     it is a cost, not a reason to omit him, and for a Push team an ascending starter is
     often the single biggest chip available precisely because his value is future.
+    An entry carrying "ask_difficulty" is a CORNERSTONE, and it is on the list on purpose:
+    the field says what the ask costs, not that the ask is off. Name him with that caveat
+    attached - "the hardest ask on your roster, expect to pay over market or hear no" - and
+    never silently drop him or call him untradeable. He is usually the biggest chip there is.
 
     "value_upgrades", when present, are the strongest single finding this tool produces and
     should usually lead the answer for a team trying to win now. Each names a current starter

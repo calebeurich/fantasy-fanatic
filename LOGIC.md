@@ -1003,6 +1003,24 @@ have yet) - deferred rather than faked.
   away its own WRs, which only moves the shortage around rather than fixing it. Applies
   to both "thin" and "critical" needs, not just critical - a thin position is already at
   the bare minimum, trading from it just makes it critical.
+- **A cornerstone is the hardest ask, not an unavailable one.** `team_state.classify` used to
+  put a high-value player with real runway in `cornerstones` *only*, so he never reached
+  `sellable` and was therefore literally unaskable anywhere downstream - while the actual
+  owner, asked what he would move, names those players first. Being the foundation is a
+  **price**, not a veto. Cornerstones now also enter `sellable`, `_my_offer_pool` lets them
+  past the protected-starter gate on the flag alone, and they carry `ask_difficulty`
+  (`CORNERSTONE_ASK`) wherever they appear. That is deliberately the same job
+  `from_owner_trades`/"NEVER TRADES" does for a counterparty, one notch softer: an owner who
+  never trades may not answer at all, whereas a cornerstone's owner will answer and will want
+  over-market. Effect across the three leagues: `my_offers` 98 -> 164 entries, buy targets
+  113 -> 142, persuasion targets 79 -> 108 - the same players were always there, on both
+  sides of the table, and only the filter hid them.
+
+  **They are still kept out of the pivot lists**, because `situational` is labelled "years
+  still on them, just not your long-term core" and a cornerstone is the long-term core by
+  definition. Surfacing him there would print a label contradicting itself, which is the
+  defect class this document exists to catch. `my_offers` and `value_upgrades` are the
+  surfaces that name him.
 - **Sell candidates split by urgency, not lumped into one list.** A player inside
   `MIN_MEANINGFUL_RUNWAY` of his decline cutoff only loses value from here - real urgency
   to move it. A player below the cornerstone bar with years still on him is often still

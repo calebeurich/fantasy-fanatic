@@ -206,6 +206,13 @@ def _with_trade_note(entry: dict, other: dict, trade_counts: dict[str, int]) -> 
             **never, **starter_note}
 
 
+# Difficulty, not availability - the same job `from_owner_trades`/"NEVER TRADES" does for a
+# counterparty, one notch softer. An owner who never trades may genuinely not answer; a
+# cornerstone's owner will, and will want more than market.
+CORNERSTONE_ASK = ("cornerstone - the runway this roster is built around, so expect to pay "
+                   "over market or be told no. Moveable, just the hardest ask here")
+
+
 def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict],
                    pick_values: dict[str, int] | None = None,
                    covered: dict[str, float] | None = None) -> list[dict]:
@@ -250,7 +257,7 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict
     covered = covered or {}
 
     def offerable(e):
-        if not e["is_starter"]:
+        if not e["is_starter"] or e.get("is_cornerstone"):
             return True
         return covered.get(e["name"]) == 0 or (
             me.get("window") == "Push" and e["bucket"] == "ascending")
@@ -272,6 +279,8 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict
     # note under "Known limitations"). It's discounted, not zero - a sweetener that
     # shouldn't anchor an offer, rather than a name to be embarrassed about including.
     for e in offers:
+        if e.get("is_cornerstone"):
+            e["ask_difficulty"] = CORNERSTONE_ASK
         e["value_over_replacement"] = round(e["value"] - thresholds[e["position"]])
         e["tier"] = ("core piece - above replacement, scarce" if e["value_over_replacement"] > 0
                      else "depth - real but discounted, a sweetener not a centerpiece")
@@ -994,7 +1003,14 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     `team_state.classify`, which this path missed. Splitting on `bucket == "declining"` put
     Justin Jefferson - 6,828, the most valuable asset on a rebuilding roster, and 1.8 years
     from his cutoff - under "no urgency", while a 2,145 back at -2.2 read as urgent."""
-    real_sellable = [e for e in me["sellable"] if team_state.clears_relevance_floor(e, thresholds)]
+    # Cornerstones are in `sellable` because they are askable (see CORNERSTONE_ASK), but they
+    # do not belong in *these* two lists: `situational` means "years still on them, just not
+    # your long-term core", and a cornerstone is by definition the long-term core. Putting
+    # them here would print a label that contradicts itself. Where a cornerstone is genuinely
+    # the piece to move, `my_offers` and `value_upgrades` are the surfaces that say so.
+    real_sellable = [e for e in me["sellable"]
+                     if team_state.clears_relevance_floor(e, thresholds)
+                     and not e.get("is_cornerstone")]
 
     def on_a_clock(e):
         return (e["years_to_decline"] or 0) < MIN_MEANINGFUL_RUNWAY
@@ -1311,8 +1327,9 @@ def _print_push(push: dict, extras: dict) -> None:
         print("you could offer (most value over replacement first):")
         for e in push["my_offers"]:
             cost = OFFER_GIVE_UP_COST[team_state.VALUE_BASIS[e["bucket"]]]
+            hard = " [CORNERSTONE - hardest ask here]" if e.get("ask_difficulty") else ""
             print(f"  {e['name']} ({e['position']}, value={e['value']}, "
-                  f"{e['value_over_replacement']:+} vs replacement) - give-up cost: {cost}")
+                  f"{e['value_over_replacement']:+} vs replacement) - give-up cost: {cost}{hard}")
     else:
         print("you could offer: no obvious surplus")
     if push.get("picks_to_trade_away"):

@@ -204,7 +204,13 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
             win_now_core.append(entry)
             sellable.append(entry)  # valuable but short - still sellable, just pricier
         else:
+            entry["is_cornerstone"] = True
             cornerstones.append(entry)
+            # A cornerstone is the hardest ask on the roster, which is a PRICE, not a veto.
+            # Leaving them out of `sellable` made them literally unaskable: an owner deciding
+            # what he'd move names them first and gets told to expect over-market or no.
+            # `win_now_core` above already sets the precedent of one piece in two lists.
+            sellable.append(entry)
     tradeable_surplus.sort(key=lambda e: -e["value"])
     sellable.sort(key=lambda e: -e["value"])
 
