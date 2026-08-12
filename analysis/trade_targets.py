@@ -320,7 +320,8 @@ def _buy_friction(player: dict, other: dict, best_chip: dict | None, trades: int
 
 def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict],
                    pick_values: dict[str, int] | None = None,
-                   covered: dict[str, float] | None = None) -> list[dict]:
+                   covered: dict[str, float] | None = None,
+                   backfills: dict[str, dict] | None = None) -> list[dict]:
     """What you could realistically offer: bench value that isn't elite enough to be a
     cornerstone but also isn't part of your actual lineup (e.g. a 3rd QB in a 2-QB-max
     format), plus young surplus, plus any starter the roster **covers from the bench for
@@ -360,6 +361,7 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict
     # of names threaded through five functions. Fixing the flag at its source deleted all
     # of that.
     covered = covered or {}
+    backfills = backfills or {}
 
     def offerable(e):
         if not e["is_starter"] or e.get("is_cornerstone"):
@@ -397,14 +399,27 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict
         # Lamar Jackson costs 6,043 and leaves 84%. Grouping those as one kind of hard put the
         # cheapest real chip on the roster behind the most expensive.
         produced = me.get("starting_production") or 0
-        cost = e.get("lineup_cost") or 0
-        notices = (produced - cost) / produced < NOISE_RETAINED if produced else bool(cost)
-        if cost and notices:
-            share = f" - {round(100 * cost / produced)}% of what it scores now" if produced else ""
+        cost_now = e.get("lineup_cost") or 0
+        notices = ((produced - cost_now) / produced < NOISE_RETAINED
+                   if produced else bool(cost_now))
+        if cost_now and notices:
+            share = (f" - {round(100 * cost_now / produced)}% of what it scores now"
+                     if produced else "")
             friction.append(_friction("costs_you_production",
-                                      f"moving him costs {cost:,.0f} of production out of your "
+                                      f"moving him costs {cost_now:,.0f} of production out of your "
                                       f"own lineup{share}, after it refills itself"))
         e["friction"] = friction
+        # The trade-off in one line, in both currencies, which is what the owner asked for:
+        # "seeing if the prod lost is anywhere close to the value realized from moving an asset
+        # priced for youth." Fannin frees 3,688 of dynasty value for 122 of production, because
+        # Metcalf takes the FLEX. Naming the replacement is what turns 122 from an arbitrary
+        # number into the argument.
+        if backfills.get(e["name"]):
+            bf = backfills[e["name"]]
+            e["backfill"] = bf
+            e["trade_off"] = (f"frees {e['value']:,} of dynasty value for "
+                              f"{cost_now:,.0f} of production, because {bf['name']} "
+                              f"({bf['position']}, {bf['redraft_value']:,}) steps in")
         e["value_over_replacement"] = round(e["value"] - thresholds[e["position"]])
         e["tier"] = ("core piece - above replacement, scarce" if e["value_over_replacement"] > 0
                      else "depth - real but discounted, a sweetener not a centerpiece")
@@ -1117,7 +1132,8 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
               my_picks: list[dict] | None = None,
               prior: dict[str, dict] | None = None,
               premium_bars: dict[str, float] | None = None,
-              covered: dict[str, float] | None = None) -> dict:
+              covered: dict[str, float] | None = None,
+              backfills: dict[str, dict] | None = None) -> dict:
     """The push case: fill needs with sellable value from Rebuilding teams."""
     my_needs = needs_by_owner_id.get(me["owner_id"], {})
     # Worst-shaped need first (roster_needs.NEED_PRIORITY): a position you can't field at
@@ -1133,7 +1149,7 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
     # One player against one player is the only comparison available, so that is the test:
     # a target priced above your best chip cannot be reached by any single-piece deal, and
     # what it would actually take is a negotiation this tool does not price.
-    my_pool = _my_offer_pool(me, thresholds, my_needs, pick_values, covered)
+    my_pool = _my_offer_pool(me, thresholds, my_needs, pick_values, covered, backfills)
     best_chip = max(my_pool, key=lambda e: e["value"], default=None)
 
     # `never_trades` is only ever a fact about a COUNTERPARTY - the asking team's own trade
@@ -1363,6 +1379,11 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
                    my_roster, ctx.players, pid, my_starters,
                    ctx.lineup_dedicated, ctx.lineup_flex)
                for pid in my_starters if pid in ctx.players}
+    # Who replaces each of them, which is WHY the number above is small when it is small.
+    backfills = {ctx.players[pid]["name"]: roster_needs.backfill_for(
+                     my_roster, ctx.players, pid, my_starters,
+                     ctx.lineup_dedicated, ctx.lineup_flex)
+                 for pid in my_starters if pid in ctx.players}
 
     # A rebuilding team (especially one tanking for a pick) isn't trying to fill
     # starting-lineup needs with proven vets - it wants to sell what age value it has
@@ -1439,14 +1460,14 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         return with_extras({"me": me, "mode": "middling", "timing_note": timing,
                 "push": _buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
                                   max_per_position, pick_values, my_picks, prior,
-                                  premium_bars, covered),
+                                  premium_bars, covered, backfills),
                 "pivot": _pivot_path(me, states, thresholds, trade_counts, picks_by_owner,
                                      stranded, committed=False)})
 
     result = {"me": me, "mode": "buy",
               **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
                           max_per_position, pick_values, my_picks, prior,
-                          premium_bars, covered)}
+                          premium_bars, covered, backfills)}
 
     result = with_extras(result)
     if stranded:
@@ -1519,6 +1540,8 @@ def _print_push(push: dict, extras: dict) -> None:
             print(f"  {e['name']} ({e['position']}, value={e['value']}, "
                   f"{e['value_over_replacement']:+} vs replacement) - "
                   f"give-up cost: {cost}{flavors}")
+            if e.get("trade_off"):
+                print(f"      {e['trade_off']}")
             for f in e["friction"]:
                 print(f"      - {f['why']}")
     else:

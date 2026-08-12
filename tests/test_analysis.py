@@ -605,6 +605,30 @@ def test_a_cornerstone_is_askable_and_tagged_rather_than_hidden():
     assert "hardest ask" in by_name["Rock"]["friction"][0]["why"]
 
 
+def test_an_offer_says_who_backfills_and_what_the_trade_off_is():
+    """A starter shown as costing 122 of production reads as an arbitrary number. "122, because
+    DK Metcalf takes the FLEX at 944" is the argument for moving him, and it puts both currencies
+    on one line: *"seeing if the prod lost is anywhere close to the value realized from moving an
+    asset priced for youth."* Live contrast the line has to make legible - Fannin frees 3,688 for
+    122, Lamar Jackson frees 7,255 for 6,043."""
+    thresholds = {"TE": 100}
+    cheap = {"name": "Cheap", "position": "TE", "value": 3688, "redraft_value": 1066,
+             "bucket": "ascending", "is_starter": True}
+    me = {"sellable": [cheap], "tradeable_surplus": [], "window": "Push",
+          "starting_production": 38467}
+
+    offers = trade_targets._my_offer_pool(
+        me, thresholds, needs={}, covered={"Cheap": 122.0},
+        backfills={"Cheap": {"name": "Backup", "position": "WR", "redraft_value": 944}})
+    entry = offers[0]
+    assert entry["backfill"]["name"] == "Backup"
+    assert "frees 3,688 of dynasty value for 122 of production" in entry["trade_off"]
+    assert "because Backup" in entry["trade_off"]
+    # 122 of 38,467 leaves 99.7% standing, so it is not friction - but the trade-off line
+    # still has to state the number, which is the only place it now appears.
+    assert not entry["friction"]
+
+
 def test_a_cornerstone_stays_out_of_the_pivot_sell_lists():
     """He is askable, but not via `situational` - that label reads "years still on them, just
     not your long-term core", and a cornerstone is the long-term core by definition. Printing

@@ -297,6 +297,25 @@ def production_lost_without(roster: dict, players: dict[str, dict], player_id: s
     return produced(starters) - produced(refilled)
 
 
+def backfill_for(roster: dict, players: dict[str, dict], player_id: str, starters: set[str],
+                 dedicated: dict[str, int], flex: list[tuple[str, ...]]) -> dict | None:
+    """WHO steps into the lineup if `player_id` leaves - which is the reason
+    `production_lost_without` is small whenever it is small, and the reason was missing. A
+    starter shown as costing 122 of production reads as an arbitrary number; "122, because DK
+    Metcalf takes the FLEX at 944" is the actual argument for moving him.
+
+    The highest-producing promotion when a departure cascades through flex slots: that is the
+    player who directly replaces him, and the rest is the lineup reshuffling behind."""
+    without = {**roster, "players": [p for p in (roster["players"] or []) if p != player_id]}
+    promoted = projected_starters(without, players, dedicated, flex) - starters
+    entries = [players[p] for p in promoted if p in players]
+    if not entries:
+        return None
+    best = max(entries, key=lambda e: e.get("redraft_value") or 0)
+    return {"name": best["name"], "position": best["position"],
+            "redraft_value": best.get("redraft_value") or 0}
+
+
 def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[str, int],
                      thresholds: dict[str, float],
                      starters: dict[str, set[str]] | None = None,
