@@ -105,6 +105,9 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
       short-runway cornerstone is often a rebuilder's right sale.
     - A cornerstone is ALSO a trade chip: being the foundation raises his price, it never
       removes him from the table.
+    - `window_edge`, when present, means the label itself sits within refresh noise of
+      the adjacent tier: present that tier's advice as live alongside this one, and a
+      different label on a re-ask is pricing noise, never the team changing direction.
     - Read `lineup` before saying how many of a position a team can start.
     - `leverage`/`leverage_note`, when present, say what a team could BECOME (convertible:
       weak lineup, top-third war chest; mortgaged: the reverse) - raise it whenever asked

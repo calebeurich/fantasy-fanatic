@@ -10,7 +10,8 @@ from sources import fantasycalc
 
 from .. import team_state, roster_needs, trade_activity, prior_season
 from ..league import context
-from ..team_values import owned_picks, now_premium_bar, INSIDE_FINAL_YEAR
+from ..team_values import (owned_picks, now_premium_bar, INSIDE_FINAL_YEAR,
+                           NOISE_BAND, NOISE_RETAINED)
 
 # A parameter, not a hard limit - "give me more" means call again with a higher number.
 DEFAULT_MAX_PER_POSITION = 5
@@ -20,13 +21,6 @@ DEFAULT_MAX_PER_POSITION = 5
 # TE pool), so this is a percentile of redraft/dynasty within each position - it picks
 # which *sentence* describes a price, never whether an entry exists.
 NOW_PREMIUM_PERCENTILE = 0.9
-
-# Two prices inside this band are the same price, on either axis and in either direction.
-# One-sided use made findings flicker between value refreshes and called a +0.12%
-# production gain "strictly the better holding".
-NOISE_RETAINED = 0.98
-NOISE_BAND = 1 - NOISE_RETAINED
-
 
 @dataclass
 class Board:

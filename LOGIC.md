@@ -245,6 +245,56 @@ not the tertile: "is the rebuild working" is about the roster, and in a league f
 ascending rebuilds the tertile called the clearest working rebuild "stalled". Middling
 keeps the tertile because whether waiting is free is genuinely league-relative.
 
+### Boundary noise and the hedge (`window_edge`)
+
+The tertiles are hard breakpoints on continuous measures, and the core labels used to
+flip a team's whole identity when a value refresh nudged one rank ("ask twice, get two
+windows" - it happened live twice, once mid-refactor when an nflverse role flap moved
+one runway). The fix keeps the tertile as the label and ships the label's *stability*
+next to it: the two teams straddling a tertile line, when their scores are within
+refresh noise of each other, each carry `window_edge` - prose naming the tier across
+the line, saying the flip would be pricing noise, and telling the reader to hold both
+tiers' advice live.
+
+Calibrated, not guessed - every player jittered +/-2% (a refresh's observed size), 300
+trials on each of three real leagues:
+
+| measure | median move | p95 | max |
+|---|---|---|---|
+| lineup production total | 0.33% | ~0.9% | 1.5% |
+| trajectory score | 0 pts | 1 pt | 3 pts |
+
+A straddling pair can therefore close a production gap of about 2 x 0.9% - which is the
+existing `NOISE_BAND` (2%), reused rather than re-invented (it moved to `team_values`).
+The measured flip boundary agrees exactly: the one pair 0.5% apart flipped windows on
+20% of simulated refreshes; the pair 2.4% apart never flipped in 300; no other team in
+any league flipped at all. Trajectory gets its own band in POINTS
+(`TRAJECTORY_NOISE_POINTS = 2`) because the score crosses zero, where a relative band
+means nothing - one live line ran through a literal 37-37 tie, i.e. the tier assignment
+was dict order.
+
+Two deliberate asymmetries:
+
+- **The label still comes from the tertile, not from the largest gap.** Cutting at
+  natural gaps was considered (one league has clean 11.8%/12.6% gaps at both lines) and
+  rejected: gaps aren't reliably there (another league's line lands mid-cluster), and a
+  gap-cut moves the *boundary* under noise instead of one team - group sizes swing and
+  several teams relabel at once. Tertiles flip at most the straddling pair, and the
+  hedge covers exactly that pair.
+- **An edge is only an edge if crossing the line changes the message.** A contention
+  flip always changes the window. A trajectory flip only matters where trajectory
+  decides something: the Push/Contend clock, or a plain Middling flavor. A Rebuild's
+  flavor is absolute and `convertible` outranks trajectory, so those hedge nothing -
+  noise about a tier that isn't being used is not information.
+
+What the hedge does NOT cover: an nflverse role flap moves a whole player between
+buckets and can jump the trajectory score by tens of points - far past any honest band.
+That is a data-feed event, and it is `data_gap`'s job to disclose, not the hedge's to
+absorb. Hysteresis (labels that stick until the boundary is cleared by a margin) was the
+alternative design; it needs persisted prior state the stateless per-request pipeline
+doesn't have, and the hedge makes the instability honest without it - revisit only if
+testers still find the flips confusing with the hedge in place.
+
 **Backlog - `ascending` needs a quality floor.** `ascending_pct` is a share of the team's
 OWN production, so it is scale-free: a roster whose young players are all bad still reads
 ascending (live: 23/7 while ranking 12th of 12 in both contention and assets - the owner:
@@ -368,9 +418,10 @@ composing per window - buy for Push/Contend, pivot for Rebuild, both for Middlin
   call for different responses and because lists group by them. None is a price.
 - **`_best_chip`**: max single value in a pool - "out of reach" always means above one
   piece, never above a sum.
-- Noise bands: `NOISE_RETAINED = 0.98` / `NOISE_BAND` - two prices inside the band are
-  the same price, both axes, both directions (one-sided use made findings flicker
-  between refreshes and called +0.12% a lineup upgrade).
+- Noise bands: `NOISE_RETAINED = 0.98` / `NOISE_BAND` - two values inside the band are
+  the same value, both axes, both directions (one-sided use made findings flicker
+  between refreshes and called +0.12% a lineup upgrade). Lives in `team_values` now:
+  the same band decides whether a tertile boundary is real ("Boundary noise", above).
 
 ### Value basis and the relevance floor
 
@@ -562,9 +613,9 @@ families, named so the next instance is recognized rather than re-patched:
 
 3. **Hard breakpoints on continuous measures** - 24% of starters sit within one year of
    the 2.0 runway bar, and `years_to_decline` itself degrades to position defaults when
-   nflverse flaps. Fixed for ages (runway everywhere a boundary decides), and STILL OPEN
-   at the core: the window tertiles flip a team's whole identity when a value refresh
-   nudges one rank. The next behavioral fix.
+   nflverse flaps. Fixed for ages (runway everywhere a boundary decides), and at the
+   core by `window_edge` (Team windows, "Boundary noise"): a label within refresh noise
+   of a tertile line now says so, instead of flipping silently between runs.
 4. **Computed, attached, rendered by nothing** - six live instances in one module.
    Guarded by `check_everything_computed_is_printed` (renders through `_print_report`
    and greps); note it CANNOT catch an early return that skips a populated block.
@@ -696,9 +747,11 @@ to a new conversation rather than an error.
 
 Measured or confirmed, none urgent, kept so nobody re-derives them:
 
-- **Window tertile instability** - the hard-breakpoint family applied to the core
-  labels; a value refresh can flip a window between runs. The next behavioral fix
-  (distance-from-boundary or hysteresis).
+- **The window hedge discloses instability rather than removing it** - `window_edge`
+  says when a label is one refresh from flipping, but the label still flips.
+  Hysteresis would pin it and needs persisted prior state the stateless pipeline
+  doesn't have; build it only if testers find the hedged flips confusing. Role-flap
+  jumps in trajectory (tens of points) remain `data_gap`'s problem, not the band's.
 - **`redraft_value` is a trade price, not a weekly projection**, and the difference has
   a direction: prices bake in positional scarcity, so `fill_lineup` is biased toward
   TEs in flex slots, and the redraft tail collapses to a floor below ~the 30th player

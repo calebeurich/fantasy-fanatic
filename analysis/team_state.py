@@ -14,8 +14,10 @@ most of the codebase keys on:
 
 Contending and rebuilding complement each other in both directions; same-state pairs do
 not; a Middling team is a "maybe" until it picks a side (`_sells_him` in trade_targets).
-Owning your own next 1st is a constraint on the pivot, not a fourth tier. History and the
-models this replaced: LOGIC.md, "Team windows".
+Owning your own next 1st is a constraint on the pivot, not a fourth tier. A label within
+refresh noise of a tertile line carries `window_edge` - the adjacent tier's advice is
+live too, and a flip between runs is pricing noise, not news. History and the models
+this replaced: LOGIC.md, "Team windows".
 
 Smoke test: python -m analysis.team_state <league_id>
 """
@@ -25,7 +27,7 @@ import sys
 from sources import sleeper, fantasycalc
 from . import trade_activity
 from .team_values import (age_bucket, years_to_decline, MIN_MEANINGFUL_RUNWAY,
-                          INSIDE_FINAL_YEAR,
+                          INSIDE_FINAL_YEAR, NOISE_BAND,
                           get_players_with_roles, rank_map,
                           owned_picks, pick_capital,
                           split_starters_bench, tertile)
@@ -307,6 +309,89 @@ def leverage(contention_rank: int, asset_rank: int, num_teams: int) -> str | Non
     return None
 
 
+# How close two trajectory scores sit before a refresh can swap their ranks. In points,
+# not a share - the score crosses zero, where a relative band means nothing. Under the
+# same +/-2% value jitter that calibrated NOISE_BAND, the score moved 1 point at the 95th
+# percentile and 3 at most, so a pair within 2 points is one ordinary update from
+# trading places (calibration: LOGIC.md, "Boundary noise").
+TRAJECTORY_NOISE_POINTS = 2
+
+
+def tertile_edges(ranks: dict, scores: dict, num_teams: int, same) -> dict:
+    """The teams whose tertile is one value refresh from flipping: each pair straddling a
+    tertile line whose scores `same` calls indistinguishable. Maps owner_id -> (the
+    tertile across the line, the score gap). The label keeps the tertile - a cut at the
+    largest GAP instead would relabel several teams at once whenever the gap moved
+    (LOGIC.md, "Boundary noise") - this just says when the line runs through noise."""
+    lines = [r for r in range(1, num_teams)
+             if tertile(r, num_teams) != tertile(r + 1, num_teams)]
+    out = {}
+    for line in lines:
+        above = next(o for o, r in ranks.items() if r == line)
+        below = next(o for o, r in ranks.items() if r == line + 1)
+        if same(scores[above], scores[below]):
+            out[above] = (tertile(line + 1, num_teams), scores[above] - scores[below])
+            out[below] = (tertile(line, num_teams), scores[above] - scores[below])
+    return out
+
+
+EDGE_CONTENTION = (
+    "This label is within refresh noise of the line: {gap_pct}% of starting production "
+    "separates this team from the one across the tertile boundary, and a routine value "
+    "refresh moves lineup totals about 1%, so an ordinary update can relabel it "
+    "{alt_window}. That flip would be pricing noise, not the team changing direction - "
+    "treat {alt_window}'s advice as live alongside this window's."
+)
+
+EDGE_CLOCK = (
+    "The clock is within refresh noise: {gap} of trajectory separate{s} this team from "
+    "the one across the line, so an ordinary update can relabel it {alt_window}. Whether "
+    "this roster is declining is genuinely unclear at this margin - don't let {window} "
+    "vs {alt_window} decide a premium on its own."
+)
+
+EDGE_FLAVOR = (
+    "The trajectory read is within refresh noise: {gap} separate{s} this team from the "
+    "one across the line, so '{flavor}' can read '{alt_flavor}' after an ordinary "
+    "update. At this margin the tilt is a coin flip, not a measurement."
+)
+
+
+def _points(n: int) -> str:
+    return f"{n} point" + ("" if n == 1 else "s")
+
+
+def window_edge(row: dict, contention_edges: dict, trajectory_edges: dict) -> str | None:
+    """The stability of the label, next to the label. Which flip matters depends on the
+    axis and the window: a contention flip always changes the window; a trajectory flip
+    only matters where trajectory decides something (the Push/Contend clock, or a
+    Middling flavor - never a Rebuild, whose flavor is absolute)."""
+    notes = []
+    edge = contention_edges.get(row["owner_id"])
+    if edge:
+        alt_tier, gap = edge
+        alt_window = window_for(CONTENTION_TIER[alt_tier], row["trajectory"])
+        notes.append(EDGE_CONTENTION.format(
+            gap_pct=round(100 * gap / row["starting_production"], 1)
+            if row["starting_production"] else 0,
+            alt_window=alt_window))
+    edge = trajectory_edges.get(row["owner_id"])
+    if edge:
+        alt_tier, gap = edge
+        alt_trajectory = TRAJECTORY_TIER[alt_tier]
+        alt_window = window_for(row["contention"], alt_trajectory)
+        alt_flavor = flavor_for(alt_window, alt_trajectory, row["leverage"],
+                                row["ascending_pct"], row["declining_pct"])
+        s = "s" if gap == 1 else ""
+        if alt_window != row["window"]:
+            notes.append(EDGE_CLOCK.format(gap=_points(gap), s=s,
+                                           window=row["window"], alt_window=alt_window))
+        elif alt_flavor != row["flavor"]:
+            notes.append(EDGE_FLAVOR.format(gap=_points(gap), s=s,
+                                            flavor=row["flavor"], alt_flavor=alt_flavor))
+    return " ".join(notes) or None
+
+
 def classify_league(league_id: str) -> list[dict]:
     """Full team-window report for every roster in the league, ranked by starter value.
     Reused by anything downstream that needs to know each team's strategic posture
@@ -368,10 +453,16 @@ def classify_league(league_id: str) -> list[dict]:
     # `starter_value` (dynasty) is still reported - "what is my roster worth" is a real
     # question - but the window is decided by current production only.
     num_teams = len(rows)
-    contention_rank = rank_map({r["owner_id"]: r["starting_production"] for r in rows})
+    production = {r["owner_id"]: r["starting_production"] for r in rows}
+    trajectory_scores = {r["owner_id"]: r["trajectory_score"] for r in rows}
+    contention_rank = rank_map(production)
     asset_rank = rank_map({r["owner_id"]: r["asset_value"] for r in rows})
-    trajectory_rank = rank_map({r["owner_id"]: r["trajectory_score"] for r in rows})
-    best_production = max(r["starting_production"] for r in rows) or 1
+    trajectory_rank = rank_map(trajectory_scores)
+    best_production = max(production.values()) or 1
+    contention_edges = tertile_edges(contention_rank, production, num_teams,
+                                     lambda a, b: a - b <= a * NOISE_BAND)
+    trajectory_edges = tertile_edges(trajectory_rank, trajectory_scores, num_teams,
+                                     lambda a, b: a - b <= TRAJECTORY_NOISE_POINTS)
 
     for row in rows:
         c_rank = contention_rank[row["owner_id"]]
@@ -403,6 +494,8 @@ def classify_league(league_id: str) -> list[dict]:
         row["flavor"] = flavor_for(window, trajectory, row["leverage"],
                                    row["ascending_pct"], row["declining_pct"])
         row["flavor_note"] = FLAVOR_NOTE[row["flavor"]]
+        # After flavor: an edge is only an edge if crossing the line changes the message.
+        row["window_edge"] = window_edge(row, contention_edges, trajectory_edges)
         row["leverage_note"] = (
             LEVERAGE_NOTE[row["leverage"]].format(
                 asset_rank=row["asset_rank"], contention_rank=c_rank, num_teams=num_teams,
@@ -434,6 +527,8 @@ def main(league_id: str) -> None:
               f"{row['ascending_pct']:4}/{row['declining_pct']:<4} "
               f"{row['starter_value']:8,} {dyn_rank:3}{tank_note}")
         print(f"       {row['contention']} + {row['trajectory']}")
+        if row["window_edge"]:
+            print(f"       borderline: {row['window_edge']}")
         names = lambda entries: ", ".join(e["name"] for e in entries)
         print(f"       cornerstones: {names(row['cornerstones']) if row['cornerstones'] else 'none'}")
         if row["win_now_core"]:

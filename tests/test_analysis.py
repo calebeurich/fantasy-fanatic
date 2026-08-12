@@ -327,6 +327,84 @@ def test_a_rebuild_flavor_is_absolute_because_the_label_makes_a_claim():
         "a contender's flavor is the clock, whatever its asset base says")
 
 
+_SAME_PRODUCTION = lambda a, b: a - b <= a * team_values.NOISE_BAND
+
+
+def test_a_tertile_line_through_a_tie_hedges_both_sides_and_a_clear_gap_neither():
+    """A live trajectory line once ran through a literal 37-37 tie - which side each team
+    sat on was decided by dict order, not football. The pair straddling a line is hedged
+    when their scores are within refresh noise of each other; across a clear gap the
+    labels are solid and nothing is hedged."""
+    scores = {f"o{r}": s for r, s in enumerate(
+        [50_000, 46_000, 42_000, 38_000, 34_000, 30_000], start=1)}  # every gap ~10%
+    assert team_state.tertile_edges(team_values.rank_map(scores), scores, 6,
+                                    _SAME_PRODUCTION) == {}
+
+    scores["o3"] = scores["o2"]  # tie exactly on the top line of a 6-team field
+    edges = team_state.tertile_edges(team_values.rank_map(scores), scores, 6,
+                                     _SAME_PRODUCTION)
+    assert edges == {"o2": ("middle", 0), "o3": ("top", 0)}, (
+        "each side is told which tier it is one refresh from")
+
+
+def test_the_hedge_band_splits_the_measured_flip_boundary():
+    """Calibration, from jittering every player +/-2% across 300 simulated refreshes on
+    three real leagues: the one straddling pair 0.5% apart flipped windows on 20% of
+    refreshes, and the pair 2.4% apart never flipped once. The band (NOISE_BAND, 2%)
+    must land between those - hedge the first pair, trust the second."""
+    scores = {"o1": 50_000,
+              "o2": 40_000, "o3": 39_040,   # 2.4% apart across the top line
+              "o4": 35_000, "o5": 34_825,   # 0.5% apart across the bottom line
+              "o6": 20_000}
+    edges = team_state.tertile_edges(team_values.rank_map(scores), scores, 6,
+                                     _SAME_PRODUCTION)
+    assert edges == {"o4": ("bottom", 175), "o5": ("middle", 175)}
+
+
+def _edge_row(**kw):
+    row = {"owner_id": "me", "contention": "fringe", "trajectory": "steady",
+           "window": "Middling", "flavor": "steady", "leverage": None,
+           "ascending_pct": 20, "declining_pct": 20, "starting_production": 30_000}
+    return {**row, **kw}
+
+
+def test_an_edge_is_only_an_edge_when_crossing_the_line_changes_the_message():
+    """A Rebuild's flavor is absolute and `convertible` outranks trajectory, so a
+    trajectory flip tells neither team anything new - hedging them would be noise about
+    noise. The same flip IS news to a contender (the clock: Push vs Contend) and to a
+    plain Middling team (whether patience is free)."""
+    a_point_from_lower = {"me": ("middle", 1)}
+    rebuild = _edge_row(window="Rebuild", contention="also-ran", trajectory="rising",
+                        flavor="ascending", ascending_pct=40, declining_pct=3)
+    assert team_state.window_edge(rebuild, {}, a_point_from_lower) is None
+
+    convertible = _edge_row(trajectory="rising", flavor="convertible",
+                            leverage="convertible")
+    assert team_state.window_edge(convertible, {}, a_point_from_lower) is None
+
+    middling = _edge_row(trajectory="rising", flavor="rising")
+    note = team_state.window_edge(middling, {}, a_point_from_lower)
+    assert "'rising'" in note and "'steady'" in note, (
+        "whether patience is free is the thing that can flip")
+
+    contender = _edge_row(window="Contend", contention="contender", flavor="Contend")
+    note = team_state.window_edge(contender, {}, {"me": ("bottom", 2)})
+    assert "Push" in note, "the clock is the thing that can flip"
+
+    assert team_state.window_edge(middling, {}, {}) is None
+
+
+def test_a_contention_edge_names_the_window_across_the_line():
+    """The alternate window is computed with the team's OWN trajectory - a falling team
+    one refresh from the top tier would arrive there as Push, not generic Contending."""
+    note = team_state.window_edge(_edge_row(), {"me": ("top", 300)}, {})
+    assert "Contend" in note and "1.0%" in note, (
+        "the gap ships labelled, in the team's own production terms")
+    note = team_state.window_edge(_edge_row(trajectory="falling"),
+                                  {"me": ("top", 300)}, {})
+    assert "Push" in note
+
+
 class _Ctx:
     """Minimal LeagueContext stand-in for find_value_upgrades."""
     def __init__(self, players, rosters, starters):

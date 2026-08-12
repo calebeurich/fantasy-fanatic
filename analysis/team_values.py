@@ -110,6 +110,16 @@ def rank_map(scores: dict, high_is_first: bool = True) -> dict:
     return {key: i for i, key in enumerate(order, start=1)}
 
 
+# Two values inside this band are the same value, on either axis and in either direction -
+# a routine FantasyCalc refresh moves prices about this much, so any finding that needs a
+# finer difference flickers between runs. Born in trade matching (one-sided use called a
+# +0.12% production gain "strictly the better holding"); also the bar for whether a
+# tertile boundary is real (`team_state`'s window_edge). Calibration: LOGIC.md,
+# "Boundary noise".
+NOISE_RETAINED = 0.98
+NOISE_BAND = 1 - NOISE_RETAINED
+
+
 # How far apart a player's two positional ranks must sit, as a share of his position's pool,
 # before the two markets are saying different things about him. The median gap is 0% at every
 # position - which is the property the raw ratio never had - so zero is genuinely neutral here
