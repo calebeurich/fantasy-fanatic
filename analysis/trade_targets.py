@@ -107,6 +107,19 @@ SELL_CLOCK_OPTIONAL = (
     "direction before the price decays, not an instruction to sell now"
 )
 
+ACQUIRE_NOTE = (
+    "YOUNG VALUE SURPLUS TO ITS OWNER'S PLAN, which is the one thing every name here has in "
+    "common - so it is said once rather than repeated under each. A contender's ascending pieces "
+    "score nothing in the seasons it is actually playing for, and neither do a middling team's if "
+    "that team is going nowhere. Two things follow. A team RISING through the middle is excluded "
+    "outright: accumulating this kind of value IS its plan, so its youth is what it builds with "
+    "and asking for it argues for a trade nobody would make. And none of these owners is SHOPPING "
+    "the player - surplus to a plan is not the same as on the market - so expect to pay for the "
+    "asking, and read the friction on each line for what else is in the way. Capped per position "
+    "and cleanest first, because an uncapped list sorted by price alone printed thirty names down "
+    "to a 726-value quarterback and buried the reachable ones."
+)
+
 STRANDED_NOTE = (
     "STRANDED PRODUCTION - the most valuable thing this roster owns that it cannot use. "
     "Each of these produces at least DOUBLE what the weakest player in the starting lineup "
@@ -1455,7 +1468,9 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
 
 def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trade_counts: dict[str, int],
                 picks_by_owner: dict[int, list[dict]] | None = None,
-                stranded: list[dict] | None = None, committed: bool = True) -> dict:
+                stranded: list[dict] | None = None, committed: bool = True,
+                my_roster: dict | None = None, needs_by_owner_id: dict | None = None,
+                ctx=None, max_per_position: int = 5) -> dict:
     """The sell case: cash in declining/non-core value for youth from teams that
     don't need it, same logic a Rebuilding team uses.
 
@@ -1495,8 +1510,20 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
                 {**e, "friction": [_friction("cornerstone", CORNERSTONE_SELL[committed])]}
                 for e in entries]
 
-    sell_candidates = tagged([e for e in real_sellable if on_a_clock(e)])
-    situational = tagged([e for e in real_sellable if not on_a_clock(e)])
+    def with_buyers(entries: list[dict]) -> list[dict]:
+        """Who would take him, and what makes him worth more to them than to you.
+
+        The sell lists were bare names. A contender is *told* that buying production is worth a
+        premium in its own window note, and a team selling age had no idea who that was - so the
+        one fact that turns "sell Travis Etienne" into a phone call was computed elsewhere and
+        never joined here. `wanted_by` is the same helper `value_upgrades` and `stranded` use."""
+        if my_roster is None:
+            return entries
+        return [{**e, "wanted_by": wanted_by(e, my_roster, states, needs_by_owner_id or {}, ctx)}
+                for e in entries]
+
+    sell_candidates = with_buyers(tagged([e for e in real_sellable if on_a_clock(e)]))
+    situational = with_buyers(tagged([e for e in real_sellable if not on_a_clock(e)]))
     # Most now-weighted first, not most valuable first. A seller is converting present into
     # future, so the right order is how much of a player's price is present - the same
     # `redraft / dynasty` reading `_persuasion_targets` buys on, read from the selling side.
@@ -1505,17 +1532,46 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     # 25-year-old receiver who is exactly the kind of asset a rebuild should keep.
     # Players with no redraft price sort last: unknown, not zero.
     situational.sort(key=lambda e: -((e.get("redraft_value") or 0) / e["value"]) if e["value"] else 0)
-    acquire_targets = []
+    # **This list had none of the treatment the buy path got.** It printed every qualifying name
+    # in the league - 30 of them on a live Middling roster, down to a 726-value quarterback -
+    # sorted by raw dynasty value, each line carrying nothing but a price and a trade count. No
+    # cap, no friction, no reason that owner would part with him. Every one of those exists on
+    # the buy side and none of it reached here, which is what "the rebuild path is the untested
+    # one" looks like in practice.
+    others_have_traded = any(n for oid, n in trade_counts.items() if oid != me["owner_id"])
+    best_chip = max(real_sellable, key=lambda e: e["value"], default=None)
+    by_position = {}
     for other in _others(states, me, NOT_SELLER):
+        # **The mirror of `_sells_him`, and the premise fails on exactly one kind of team.** This
+        # list is "young value surplus to its owner's plan", which is true of a contender and of a
+        # middling team going nowhere - and false of a middling team that is RISING, because
+        # accumulating that value IS its plan. Vicdank's youth is fair game; a rising owner's is
+        # what he is building with, and claiming otherwise argued for a trade nobody would make.
+        if other["window"] == "Middling" and other.get("trajectory") == "rising":
+            continue
         for player in other["tradeable_surplus"]:
             if not team_state.clears_relevance_floor(player, thresholds):
                 continue
-            acquire_targets.append(_with_trade_note(player, other, trade_counts))
-    # Value first, activity as the tiebreak - see the buy path for why trade history
-    # ranking ahead of value hid the best available player behind a chatty owner.
-    acquire_targets.sort(key=lambda t: (-t["value"], -t["from_owner_trades"]))
+            entry = {**_with_trade_note(player, other, trade_counts),
+                     **_buy_friction(player, other, best_chip,
+                                     trade_counts.get(other["owner_id"], 0), others_have_traded),
+                     # Why this owner is a seller of youth is the same sentence for all of them,
+                     # so it lives in the block note (ACQUIRE_NOTE) and only the part that VARIES
+                     # rides on the entry. Written per-entry first, it printed the identical
+                     # paragraph 18 times - third time today that mistake has been made.
+                     "seller_state": f"{other['state']}, not rising"}
+            by_position.setdefault(player["position"], []).append(entry)
+    # Capped per position like every buy-side list, and cleanest-first inside each: friction last,
+    # then value. Ranking on value alone put a cornerstone-priced name nobody can reach above a
+    # reachable one, the same defect `_my_offer_pool` was fixed for.
+    acquire_targets = []
+    for pos in sorted(by_position):
+        ranked = sorted(by_position[pos],
+                        key=lambda t: (bool(t["friction"]), -t["value"], -t["from_owner_trades"]))
+        acquire_targets += ranked[:max_per_position]
+    acquire_targets.sort(key=lambda t: (bool(t["friction"]), -t["value"]))
     result = {"sell_candidates": sell_candidates, "situational": situational,
-              "acquire_targets": acquire_targets,
+              "acquire_targets": acquire_targets, "acquire_note": ACQUIRE_NOTE,
               "sell_clock_note": SELL_CLOCK_COMMITTED if committed else SELL_CLOCK_OPTIONAL}
     if stranded:
         result["stranded"] = stranded
@@ -1667,7 +1723,9 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     if me["window"] == "Rebuild":
         return with_extras({"me": me, "mode": "rebuild",
                             **_pivot_path(me, states, thresholds, trade_counts, picks_by_owner,
-                                          stranded)})
+                                          stranded, my_roster=my_roster,
+                                          needs_by_owner_id=needs_by_owner_id, ctx=ctx,
+                                          max_per_position=max_per_position)})
 
     if me["window"] == "Middling":
         # Hasn't committed to a direction - show what pushing looks like AND what
@@ -1682,7 +1740,9 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
                                   max_per_position, pick_values, my_picks, prior,
                                   premium_bars, covered, backfills),
                 "pivot": _pivot_path(me, states, thresholds, trade_counts, picks_by_owner,
-                                     stranded, committed=False)})
+                                     stranded, committed=False, my_roster=my_roster,
+                                     needs_by_owner_id=needs_by_owner_id, ctx=ctx,
+                                     max_per_position=max_per_position)})
 
     result = {"me": me, "mode": "buy",
               **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
@@ -1727,17 +1787,32 @@ def _print_pivot(me: dict, pivot: dict) -> None:
         return ", ".join(e["name"] + (" [CORNERSTONE]" if e.get("friction") else "")
                          for e in entries) or "none"
 
+    def buyers(entries: list[dict]) -> None:
+        """Who would take him, and what makes him worth more to them than to you - the fact that
+        turns a sell list into a phone call. Printed under the list it belongs to: one loop over
+        both put a sell candidate's buyers under the situational heading."""
+        for e in entries:
+            for w in (e.get("wanted_by") or [])[:2]:
+                premium = (" - and a contender pays a PREMIUM for production, which is what makes "
+                           "him worth more there than here"
+                           if w["window"] in ("Push", "Contend") else "")
+                print(f"      {e['name']} -> {w['owner']} [{w['window']}]: {w['why']}{premium}")
+
     print(f"sell candidates (under {MIN_MEANINGFUL_RUNWAY:g} years before decline): "
           f"{names(pivot['sell_candidates'])}")
     print(f"  {pivot['sell_clock_note']}")
+    buyers(pivot["sell_candidates"])
     # This list used to be labelled "just not your long-term core", which was true only because
     # cornerstones were filtered out of it - and filtering them out hid the one decision a
     # rebuilding or middling team most needs to see.
     print(f"pieces with years still on them, most now-weighted first - your cornerstones "
           f"included and tagged: {names(pivot['situational'])}")
-    for e in pivot["sell_candidates"] + pivot["situational"]:
-        for f in e.get("friction") or []:
-            print(f"  - {e['name']}: {f['why']}")
+    buyers(pivot["situational"])
+    # Said once, not once per cornerstone. Four identical paragraphs is the same noise the
+    # league-relative decline caveat was moved out of entries for.
+    cornerstones = [e for e in pivot["sell_candidates"] + pivot["situational"] if e.get("friction")]
+    if cornerstones:
+        print(f"  {cornerstones[0]['friction'][0]['why']}")
     if not pivot["acquire_targets"]:
         print("no obvious acquire targets found")
         return
@@ -1746,10 +1821,14 @@ def _print_pivot(me: dict, pivot: dict) -> None:
         for t in pivot["picks_to_acquire"][:5]:
             trade_note = f"{t['from_owner_trades']} trade(s)" if t["from_owner_trades"] else "NEVER TRADES"
             print(f"  {t['pick']} (value={t['value']}) from {t['from_owner']} - {trade_note}")
-    print("acquire targets (young ascending surplus sitting on Win-Now/Middling rosters):")
+    print("acquire targets (cleanest first, capped per position):")
     for t in pivot["acquire_targets"]:
         trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "NEVER TRADES - unlikely"
-        print(f"  {t['name']} ({t['position']}, value={t['value']}) from {t['from_owner']} - {trade_note}")
+        print(f"  {t['name']} ({t['position']}, value={t['value']}) from {t['from_owner']} "
+              f"[{t['seller_state']}] - {trade_note}")
+        for f in t["friction"]:
+            print(f"      - [{f['flavor']}] {f['why']}")
+    print(f"  {pivot['acquire_note']}")
 
 
 def _needs_summary(needs: dict) -> str:

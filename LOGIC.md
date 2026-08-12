@@ -2377,6 +2377,36 @@ It also guarded the wrong pair - Hurts against *Herbert*, while asserting someth
 against *Goff*. Both pairs are now checked before an API call is spent, and the message names the
 likely cause rather than reporting "fixture drift" and leaving the reader to find it.
 
+### The rebuild path finally got the buy path's treatment (`_pivot_path`)
+
+Everything built for the buy side this session had to be built again here, which is what "the
+rebuild path is the untested one" looks like once someone reads it. Found by spot-checking
+bigbuttboi, a Middling/rising roster in XFL 2.
+
+**Sell lists were bare names.** `sell_candidates` printed *"Travis Etienne, Jerry Jeudy"* and
+stopped. A contender is told in its own window note that buying production is worth a premium, and
+a team selling age had no idea who that was - so the one fact that turns a sell list into a phone
+call was computed by `wanted_by` elsewhere and never joined here. Caleb's read of the same roster
+was exactly the join: *"he should probably dump etienne for assets more on his timeline since he
+could get more a production premium from someone like dez."* It now prints
+`Travis Etienne -> dezdroppedit27 [Push]: short at RB (critical) - and a contender pays a PREMIUM
+for production`.
+
+**`acquire_targets` had no cap, no friction, and no reason.** Thirty names on one roster, sorted by
+raw dynasty value, down to a 726-value quarterback, each line carrying a price and a trade count.
+It now caps per position like every buy-side list, sorts friction-last, and carries
+`_buy_friction` - the same `never_trades` / `cornerstone` / `beyond_your_best_chip` vocabulary.
+
+**And the premise was false for one kind of team.** The list means "young value surplus to its
+owner's plan", which is true of a contender and of a middling team going nowhere - and false of a
+middling team that is RISING, because accumulating that value *is* its plan. Excluded outright,
+the mirror of `_sells_him` on the buy side.
+
+**Written per-entry first, the reason printed the identical paragraph eighteen times.** Third
+instance of that mistake today, after the league-relative decline caveat and the cornerstone note:
+what every entry shares belongs in the block note, and only what VARIES rides on the line. Each
+now shows `[Contending, not rising]` and the argument is made once.
+
 ### Seller-ness belongs to the pair, not the team (`_sells_him`)
 
 `_buy_path` searched teams where `window == "Rebuild"`, which made "is this owner selling?" a
