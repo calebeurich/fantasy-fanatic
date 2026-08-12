@@ -758,26 +758,38 @@ def test_leverage_separates_what_a_team_is_from_what_it_could_become():
         "in a tiny league 'top third' is one team and the comparison means nothing"
 
 
-def test_stranded_production_is_capacity_not_quality():
+def test_stranded_production_needs_a_real_margin_not_just_a_blocked_slot():
     """The miss that a live rebuilding roster exposed: four startable QBs in superflex, two
     QB-capable slots, and the QB3 producing 4,880 sat on the bench while a receiver producing
     420 started. Every number was already computed; nothing put them side by side.
 
-    `stranded` is a *capacity* statement - these players out-produce the weakest starter and
-    cannot be fielded - so it must not sweep in ordinary bench depth that simply isn't good
-    enough. Both are on the roster below."""
-    slots, flex = {"QB": 1, "WR": 1}, []
+    But `stranded` is a MAGNITUDE statement, not a capacity one - the lineup is picked
+    optimally, so every bench player is blocked by something and "he'd start if a slot
+    allowed" separates nothing. Reading it as capacity told a live roster its 944 receiver
+    was the most valuable thing it couldn't use, on the strength of clearing a 643 RB sitting
+    in a dedicated slot the receiver could never occupy.
+
+    The marginal man can only arise that way, since a bench player above the weakest starter
+    in a slot he IS eligible for would simply be starting. `RB1` is that dedicated-slot
+    starter here and `WR3` is that man: past him, nowhere near double him, ordinary depth,
+    and he must not appear beside a QB producing multiples of the lineup floor."""
+    slots, flex = {"QB": 1, "RB": 1, "WR": 1}, [("WR", "TE")]
     players = {
         "qb1": {"name": "QB1", "position": "QB", "redraft_value": 900, "value": 900},
         "qb2": {"name": "QB2", "position": "QB", "redraft_value": 800, "value": 800},
-        "wr1": {"name": "WR1", "position": "WR", "redraft_value": 100, "value": 100},
-        "wr2": {"name": "WR2", "position": "WR", "redraft_value": 50, "value": 50},
+        "rb1": {"name": "RB1", "position": "RB", "redraft_value": 60, "value": 60},
+        "wr1": {"name": "WR1", "position": "WR", "redraft_value": 300, "value": 300},
+        "wr2": {"name": "WR2", "position": "WR", "redraft_value": 200, "value": 200},
+        "wr3": {"name": "WR3", "position": "WR", "redraft_value": 100, "value": 100},
     }
-    roster = {"players": ["qb1", "qb2", "wr1", "wr2"]}
+    roster = {"players": list(players)}
     starters = roster_needs.projected_starters(roster, players, slots, flex)
+    assert players[roster_needs.weakest_starter(players, starters)]["name"] == "RB1"
     stranded = roster_needs.stranded_starters(roster, players, starters)
     assert [players[p]["name"] for p in stranded] == ["QB2"], (
-        "QB2 beats the weakest starter and cannot be fielded; WR2 is merely worse")
+        "QB2 produces 13x the weakest starter with both QB slots held by someone better; "
+        "WR3 clears that starter's 60 without doubling it, so he is depth rather than "
+        "stranded value - the live Metcalf-behind-Gainwell case")
 
 
 def test_exposure_flags_an_unpriced_replacement():
@@ -1193,9 +1205,14 @@ def test_te_premium_scales_only_tight_ends(monkeypatch):
 
 # ------------------------------------------------------------- persuasion targets
 
-def _holder(owner, window, trajectory, players, asc=20, dec=30):
+def _holder(owner, window, trajectory, players, asc=20, dec=30, traj_rank=9, of_teams=12):
+    """`trajectory_rank`/`of_teams` are on every real `classify_league` row. The seller case
+    quotes them because "falling" is a league tertile, not an absolute: a live team with 24%
+    declining against 22% ascending was told its roster was falling on the strength of a
+    two-point gap."""
     return {"owner_id": owner, "owner": owner, "roster_id": 1, "window": window,
             "trajectory": trajectory, "ascending_pct": asc, "declining_pct": dec,
+            "trajectory_rank": traj_rank, "of_teams": of_teams,
             "sellable": players, "tradeable_surplus": []}
 
 
@@ -1290,12 +1307,14 @@ def test_persuasion_bar_is_relative_to_the_players_own_position():
 def test_persuasion_includes_a_falling_contender_that_has_not_won():
     """The mirror: same window, same kind of asset, but the roster is aging out and the
     core has not delivered. That team has a real reason to listen."""
-    falling = _holder("kk", "Push", "falling", [_aging("Aging", 4000, 6000)])
+    falling = _holder("kk", "Push", "falling", [_aging("Aging", 4000, 6000)], traj_rank=11)
     out = trade_targets._persuasion_targets(
         ME, [falling], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)}, BARS)
     assert [t["name"] for t in out] == ["Aging"]
     why = out[0]["why_they_might_listen"]
-    assert "falling" in why and "hasn't delivered" in why
+    assert "11 of 12 on trajectory" in why and "hasn't delivered" in why, (
+        "the decline argument must quote its league-relative rank, because 'falling' is a "
+        "tertile - it once asserted a falling roster off a two-point gap")
     assert "not currently a seller" in out[0]["cost_note"], "the ask must carry its price"
 
 

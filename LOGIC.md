@@ -2316,9 +2316,40 @@ counts as implausible is the subtle part, and the first answer was wrong - see b
 
 ### What makes a non-seller plausible (`_seller_case`)
 
-A falling trajectory (aging out is the one thing that turns a contender into a seller), or
-a core that missed the playoffs with the roster it still has. Both are properties of the
-**team**, and that was originally the whole test: no team-level reason, no suggestion.
+A falling trajectory (aging out is the one thing that turns a team that isn't selling into
+one that will), or a core that missed the playoffs with the roster it still has. Both are
+properties of the **team**, and that was originally the whole test: no team-level reason, no
+suggestion.
+
+**`falling` is a league tertile, and the prose was quoting it as an absolute.** rjl22 in XFL 2
+sits at 24% declining against 22% ascending - a two-point gap - and was told "their roster is
+falling", with those two percentages printed beside it as if they were the evidence. Any reader
+subtracts them and stops believing the sentence. The rank is what the code actually computed,
+so the rank is what the sentence now says: *"among this league's least improving - 9 of 12 on
+trajectory"*, with the percentages as detail and the league-relative caveat stated once in the
+block note rather than repeated on every entry. Same defect family as the labels elsewhere in
+this file: the number was never wrong, the claim built on it was. It also said "turns a
+**contender** into a seller" about Vicdank, who is Middling.
+
+### The block heading contradicted nine of its own ten entries
+
+`needs_a_pivot` is computed per entry - whether that owner has a hole this roster can fill, in
+which case the trade serves his existing plan rather than asking him to abandon it. The heading
+above them ignored it and asserted *"each of these is asking a team to change direction, not
+take a fair offer"*, while nine of ten entries said the opposite two lines below in their own
+`cost_note`. Entries now sort by `needs_a_pivot` (stable, so production-per-cost ordering holds
+within each group) and the genuine pivots are marked `[PIVOT]`.
+
+This is also what put **Travis Etienne** in the wrong place. He's held by bigbuttboi, Middling
+and *rising* (55% ascending against 8% declining) - a team whose direction already argues for
+selling a declining 27-year-old RB. `_buy_path` only searches `Rebuild` teams, so Etienne can't
+be a plain easy buy, but filing him under "asking a team to change direction" was the opposite
+of true. Sorted to the top of the fits, which is where he belongs and the order to make the
+calls in.
+
+`persuasion_note` had also been attached to the result and printed by nothing since it was
+written - the same defect as `stranded`, `depth_adds`, `cost_note`, and `you_could_offer` before
+it. That is now five instances of *computed, attached, never rendered* in one module.
 
 ### Why a team-level test wasn't enough (`_cliff_case`)
 
@@ -2986,14 +3017,32 @@ started - and that QB3 alone out-produced the team's entire starting RB room by 
 three times. Every number was already computed. Nothing put them next to each other, so he
 appeared as an ordinary trade chip in a list sorted by dynasty value.
 
-`stranded_starters` returns bench players who beat the **weakest starter** and are held out
-by positional capacity alone. Capacity, not quality, is the distinction: these are not
-surplus because they're mediocre, they're surplus because the lineup physically cannot field
-them, so their entire value to this roster is what they fetch. True in every window - a
-contender converts one into the position it's short at, a rebuilder into futures.
+`stranded_starters` returns bench players producing at least `STRANDED_MULTIPLE` (2.0x) what
+the **weakest starter** does, while every slot they're eligible for is held by someone better.
+Their entire value to this roster is what they fetch - true in every window: a contender
+converts one into the position it's short at, a rebuilder into futures.
 
 It immediately found the same shape on a league already examined all session: the owner's
 own QB3, whom he had independently named as his second-biggest trade piece.
+
+**The 2.0x bar replaced "beats the weakest starter", and the framing it replaced was wrong
+in a way worth recording.** This was documented as a *capacity, not quality* test - "surplus
+because the lineup physically cannot field them." That distinction doesn't exist. `best_lineup`
+is optimal, so **every** bench player is out of it through some mix of capacity and quality,
+and "he'd be starting if a slot allowed it" is true of the entire bench. It separates nothing.
+
+What made the QB3 worth his own block was the *size* of the idle production, not the fact of
+being blocked. Reading it as capacity mislabelled a live roster: dez in XFL 2 starts Kenny
+Gainwell at 643 in a **dedicated RB slot**, and DK Metcalf at 944 was called "the most
+valuable thing you own that you cannot use" on the strength of clearing that bar - a bar no
+receiver could ever contest, since only an RB can take that slot. Metcalf was 122 behind the
+last flex body: ordinary depth, and `would_start_if_one_out` is where he belongs. Tyler
+Shough at 3,380 behind two better QBs, 5.3x the lineup floor, is the real thing. The two live
+cases sit either side of 2.0x by a long way, so the constant isn't doing delicate work.
+
+The printed line now states the multiple and the eligibility fact instead of asserting "no
+slot left for another WR", which was never checked - and is false for a WR in a league with
+three flex slots.
 
 ### 2. Sell lists sorted by dynasty value
 

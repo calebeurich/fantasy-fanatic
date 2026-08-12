@@ -494,6 +494,9 @@ def classify_league(league_id: str) -> list[dict]:
         row["pct_of_best"] = round(100 * row["starting_production"] / best_production)
         row["trajectory"] = trajectory
         row["trajectory_rank"] = t_rank
+        # Every rank on a row is meaningless without it, and prose built from these ranks was
+        # having to guess the denominator or leave it out.
+        row["of_teams"] = num_teams
         row["window"] = window
         row["state"] = STATE[window]
         row["window_note"] = window_note(window, c_rank, num_teams, row["pct_of_best"],

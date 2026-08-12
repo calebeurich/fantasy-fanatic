@@ -118,6 +118,15 @@ MIN_TEAMS_FOR_QUALITY = 4
 # field badly.
 NEED_PRIORITY = {"critical": 0, "top-heavy": 1, "weak": 2}
 
+# How far above the weakest starter a bench player has to produce before holding him is a
+# problem in its own right rather than ordinary depth. Doubling him is the line: a body
+# marginally better than your worst starter is the first man up when someone misses a week,
+# which is what depth IS, while one producing twice over is carrying a starter's worth of
+# scoring that the lineup never collects. The two live cases sit either side of it by a long
+# way - a blocked QB at 5.3x, a flex receiver at 1.5x - so the exact figure is not doing
+# delicate work.
+STRANDED_MULTIPLE = 2.0
+
 # **Everything in this module is a win-now measurement**, and about a third of any league is
 # not playing that game. `replacement_thresholds` has always said so in its docstring - "read
 # a rebuilder's positional needs as what a contending version of this roster would be short
@@ -192,10 +201,17 @@ def _injury_drop(roster: dict, players: dict[str, dict], pos: str, starters: set
     return production_lost_without(roster, players, weakest, starters, dedicated, flex)
 
 
+def weakest_starter(players: dict[str, dict], starters: set[str]) -> str | None:
+    """The starter producing least - the marginal lineup spot, the same one `_injury_drop`
+    reasons about. Shared so `stranded_starters` and its caller's prose read the bar off one
+    definition instead of each computing their own."""
+    lineup = [p for p in starters if p in players]
+    return min(lineup, key=lambda p: players[p].get("redraft_value") or 0) if lineup else None
+
+
 def stranded_starters(roster: dict, players: dict[str, dict], starters: set[str]) -> list[str]:
-    """Player ids of bench players who out-produce this lineup's *weakest* starter and are
-    kept out of it only by positional capacity. The most valuable thing a roster owns that
-    it cannot use.
+    """Player ids of bench players producing multiples of what this lineup's weakest starter
+    does. The most valuable thing a roster owns that it cannot use.
 
     **The case this was missing is the whole reason superflex exists as a format.** A real
     rebuilding roster held four startable quarterbacks with two QB-capable slots. Its QB3
@@ -204,23 +220,29 @@ def stranded_starters(roster: dict, players: dict[str, dict], starters: set[str]
     three times. Every number needed to see that was already computed; nothing put them
     next to each other, so the tool listed him as an ordinary trade chip.
 
-    Capacity, not quality, is what makes this different from ordinary bench depth. These
-    players are not surplus because they're mediocre - they're surplus because the lineup
-    physically cannot field them, which means their entire value to *this* roster is what
-    they fetch. That is true regardless of window: a contender should convert one into the
-    position it's short at, and a rebuilder should convert one into futures.
+    **This is a magnitude test, and it is not "capacity, not quality" however tempting that
+    framing is.** The lineup is chosen optimally, so *every* bench player is out of it by
+    some mix of the two, and "he'd be starting if a slot allowed it" is true of the whole
+    bench - it separates nothing. What made that QB3 worth its own block is the size of the
+    idle production, not the fact of being blocked.
 
-    Compared against the weakest starter because that is the lineup spot actually in play -
-    the same marginal-slot logic `_injury_drop` uses. A bench player who beats the weakest
-    starter would improve the lineup if he were eligible for that slot, and the fact that he
-    isn't is a roster-construction problem no amount of holding will fix."""
-    lineup = [p for p in starters if p in players]
-    if not lineup:
+    Merely clearing the weakest starter isn't enough, because that starter is usually in a
+    *dedicated* slot no one else can take. A live example: a roster starting an RB at 643
+    was told its 944 receiver was the most valuable thing it couldn't use, while a 3,380
+    quarterback sat behind two better ones on the same bench. The receiver was 122 behind
+    the last flex body - ordinary depth, and `would_start_if_one_out` is where he belongs.
+    `STRANDED_MULTIPLE` is what keeps the two apart.
+
+    What survives is genuinely unusable, which means its entire value to *this* roster is
+    what it fetches - true regardless of window: a contender converts one into the position
+    it's short at, a rebuilder into futures."""
+    weakest = weakest_starter(players, starters)
+    if weakest is None:
         return []
-    weakest = min((players[p].get("redraft_value") or 0) for p in lineup)
+    bar = (players[weakest].get("redraft_value") or 0) * STRANDED_MULTIPLE
     bench = [p for p in (roster["players"] or [])
              if p not in starters and p in players
-             and (players[p].get("redraft_value") or 0) > weakest]
+             and (players[p].get("redraft_value") or 0) > bar]
     return sorted(bench, key=lambda p: -(players[p].get("redraft_value") or 0))
 
 

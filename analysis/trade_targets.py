@@ -91,8 +91,11 @@ SELL_CLOCK_OPTIONAL = (
 
 STRANDED_NOTE = (
     "STRANDED PRODUCTION - the most valuable thing this roster owns that it cannot use. "
-    "Each of these out-produces the WEAKEST player in the starting lineup and is kept out "
-    "of it purely by positional capacity, not by being worse. That makes their entire value "
+    "Each of these produces at least DOUBLE what the weakest player in the starting lineup "
+    "does, while every slot he is eligible for is held by someone better still - so the gap "
+    "is not depth waiting its turn, it is a starter's worth of scoring the lineup can never "
+    "collect. A body only marginally better than the worst starter is ordinary depth and "
+    "belongs in the depth list instead. That makes their entire value "
     "to this team whatever they fetch in a trade, which is true whichever direction the team "
     "is heading: a contender should convert one into the position it is short at, a "
     "rebuilder into futures. Lead with these before anything else in the sell lists - "
@@ -100,12 +103,18 @@ STRANDED_NOTE = (
 )
 
 PERSUASION_NOTE = (
-    "These are held by teams that are NOT currently sellers, so none of them is available "
-    "the way a rebuilding team's pieces are. Each carries why that owner might listen and "
-    "what it costs to ask. Ranked by current production per unit of trade value, which is "
-    "the right order for a team buying for this season - the cheapest name here is often "
-    "better than the most valuable one, because the market discounts age the buyer isn't "
-    "paying for."
+    "These are held by teams that are NOT shopping them, so none is available the way a "
+    "rebuilding team's pieces are. Each carries why that owner might listen and what it "
+    "costs to ask. Two different asks sit here and the difference decides whether to make "
+    "the call: where the owner has a hole this roster can fill, the trade serves his "
+    "existing plan and is nearer a fit than a pitch, and those come first. Where he has no "
+    "such hole it is marked PIVOT - you are asking him to change direction, which is a "
+    "commitment on his part and prices above market. Within each group, ranked by current "
+    "production per unit of trade value, the right order for a team buying for this season: "
+    "the cheapest name is often better than the most valuable one, because the market "
+    "discounts age the buyer isn't paying for. Where a decline argument is made it is "
+    "LEAGUE-RELATIVE - a trajectory tertile - so read the two percentages it quotes: a "
+    "narrow gap means this league is young, not that this roster is old."
 )
 
 # A persuasion target has to be *age-discounted*, which is the entire rationale for asking
@@ -1067,9 +1076,11 @@ def _seller_case(other: dict, prior: dict | None) -> str | None:
     would. A None here is no longer the end of the search - see `_cliff_case`."""
     same_team = bool(prior and prior["describes_this_team"])
     if other["trajectory"] == "falling":
-        base = (f"Their roster is falling - {other['declining_pct']}% of their current "
-                f"production comes from declining players, against {other['ascending_pct']}% "
-                f"ascending. Aging out is the one thing that turns a contender into a seller.")
+        base = (f"Their roster is among this league's least improving - {other['trajectory_rank']} "
+                f"of {other['of_teams']} on trajectory, where 1 is the most ascending - with "
+                f"{other['declining_pct']}% of their current production coming from declining "
+                f"players against {other['ascending_pct']}% ascending. Aging out is the one "
+                f"thing that turns a team that isn't selling into one that will.")
         if same_team and not prior["made_playoffs"]:
             return (f"{base} And it hasn't delivered: {prior['note']}")
         return base
@@ -1402,6 +1413,8 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     # `with_extras` rather than here, because it has to know what the buy path surfaced.
     stranded_ids = roster_needs.stranded_starters(my_roster, ctx.players, my_starters)
     by_name = {e["name"]: e for e in me["sellable"] + me["tradeable_surplus"]}
+    weakest_id = roster_needs.weakest_starter(ctx.players, my_starters)
+    weakest = ctx.players[weakest_id] if weakest_id else None
     stranded = []
     for player_id in stranded_ids:
         info = ctx.players[player_id]
@@ -1409,11 +1422,16 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
                                            "value": info["value"],
                                            "redraft_value": info.get("redraft_value")})
         wanted = wanted_by(entry, my_roster, states, needs_by_owner_id, ctx)
+        floor = weakest["redraft_value"] or 0
         stranded.append({**entry, "blocked_by": info["position"],
                          "wanted_by": wanted,
-                         "note": (f"Produces {info.get('redraft_value') or 0:,} this season - more than "
-                                  f"the weakest player in your lineup - but cannot be started: "
-                                  f"this roster has no slot left for another {info['position']}."
+                         "times_weakest": (round((info.get("redraft_value") or 0) / floor, 1)
+                                           if floor else None),
+                         "note": (f"Produces {info.get('redraft_value') or 0:,} this season against the "
+                                  f"{weakest['redraft_value'] or 0:,} of {weakest['name']} "
+                                  f"({weakest['position']}), who starts - and every "
+                                  f"{info['position']}-capable slot is held by someone better, so "
+                                  f"none of it reaches the lineup."
                                   + (f" {len(wanted)} team(s) are short at {info['position']}: "
                                      + ", ".join(f"{w['owner']} ({w['need_level']})" for w in wanted[:3])
                                      + " - start there."
@@ -1589,12 +1607,16 @@ def _print_push(push: dict, extras: dict) -> None:
         print(f"  {push['long_shot_note']}")
     if push.get("persuasion_targets"):
         print()
-        print("harder asks (aging production on teams that are NOT selling yet - each of these "
-              "is asking a team to change direction, not take a fair offer):")
-        for t in push["persuasion_targets"]:
+        # The heading used to say every entry was "asking a team to change direction". Nine of
+        # ten under it then said the opposite in their own cost line, because `needs_a_pivot`
+        # was computed per entry and the heading ignored it. Ordering by it puts the ones that
+        # are nearly fits first, which is also the order to make the calls in.
+        print("harder asks (aging production on teams that are NOT shopping it - most are still "
+              "a fit for both sides; the ones marked PIVOT need them to change direction):")
+        for t in sorted(push["persuasion_targets"], key=lambda t: t["needs_a_pivot"]):
             print(f"  {t['name']} ({t['position']}, {t['production_per_cost']}x production "
                   f"per unit of cost - dyn {t['value']:,} / redraft {t['redraft_value']:,}) "
-                  f"from {t['from_owner']}")
+                  f"from {t['from_owner']}" + (" [PIVOT]" if t["needs_a_pivot"] else ""))
             print(f"      why they might listen: {t['why_they_might_listen']}")
             # `you_could_offer`/`why_it_fits` and `cost_note` were all computed and none of
             # them printed - so the CLI showed the argument for asking and never what the ask
@@ -1606,6 +1628,7 @@ def _print_push(push: dict, extras: dict) -> None:
             for f in t.get("friction") or []:
                 if f["flavor"] != "needs_a_pivot":   # already said by cost_note above
                     print(f"      - [{f['flavor']}] {f['why']}")
+        print(f"  {push['persuasion_note']}")
 
 
 def _print_report(result: dict) -> None:
@@ -1688,8 +1711,11 @@ def _print_stranded(result: dict) -> None:
     print("STRANDED - the most valuable thing you own that you cannot use:")
     for e in result["stranded"]:
         wants = ", ".join(f"{w['owner']}[{w['window']}]" for w in (e.get("wanted_by") or [])[:3])
+        margin = (f"{e['times_weakest']}x what your weakest starter produces"
+                  if e.get("times_weakest") else "production your weakest starter has none of")
         print(f"  {e['name']} ({e['position']}, {e['redraft_value'] or 0:,} this season, "
-              f"{e['value']:,} dynasty) - no slot left for another {e['blocked_by']}"
+              f"{e['value']:,} dynasty) - {margin}, and every {e['blocked_by']}-capable slot "
+              f"is held by someone better"
               + (f"; wanted by {wants}" if wants else ""))
     print(f"  {result['stranded_note']}")
 
