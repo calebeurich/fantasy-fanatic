@@ -378,12 +378,19 @@ def test_value_upgrades_are_organised_around_the_player_being_moved():
 
 
 def test_value_upgrade_names_who_would_want_the_player_being_moved():
-    """The join that turns a fact into a phone call - a move is only actionable if somebody
-    is short at that position."""
+    """The join that turns a fact into a phone call. `them` is short at TE but already starts
+    two better ones, so he is not a counterparty; `needy` starts a worse one and is."""
     ctx, me, states = _upgrade_fixture()
-    needs = {"them": {"TE": {"level": "critical", "rank": 12}}}
+    ctx.players["their_scrub"] = {"name": "Scrub", "position": "TE",
+                                  "value": 400, "redraft_value": 300}
+    ctx.rosters.append({"owner_id": "needy", "players": ["their_scrub"]})
+    ctx._starters["needy"] = {"their_scrub"}
+    states.append({"owner_id": "needy", "owner": "needy", "window": "Push"})
+    needs = {"them": {"TE": {"level": "critical", "rank": 12}},
+             "needy": {"TE": {"level": "critical", "rank": 11}}}
+
     moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, needs)
-    assert [w["owner"] for w in moves[0]["wanted_by"]] == ["them"]
+    assert [w["owner"] for w in moves[0]["wanted_by"]] == ["needy"]
     assert moves[0]["wanted_by"][0]["need_level"] == "critical"
     assert "short at TE" in moves[0]["wanted_by"][0]["why"]
 
@@ -404,6 +411,26 @@ def test_a_falling_roster_wants_ascending_value_at_any_position():
 
     assert trade_targets.wanted_by(old, me_roster, states, {}) == [], (
         "a falling roster has no special appetite for another declining player")
+
+
+def test_a_positional_need_is_not_the_same_as_wanting_this_player():
+    """Listed four counterparties for a QB none of them would have started. He only helps a
+    team whose current starter at the position produces less than he does."""
+    players = {"weak": {"name": "Weak", "position": "QB", "redraft_value": 780},
+               "theirs_good": {"name": "TheirStud", "position": "QB", "redraft_value": 7894},
+               "theirs_bad": {"name": "TheirScrub", "position": "QB", "redraft_value": 518}}
+    ctx = _Ctx(players,
+               [{"owner_id": "stocked", "players": ["theirs_good"]},
+                {"owner_id": "desperate", "players": ["theirs_bad"]}],
+               {"stocked": {"theirs_good"}, "desperate": {"theirs_bad"}})
+    states = [{"owner_id": "stocked", "owner": "stocked", "window": "Push"},
+              {"owner_id": "desperate", "owner": "desperate", "window": "Push"}]
+    needs = {"stocked": {"QB": {"level": "critical"}},
+             "desperate": {"QB": {"level": "critical"}}}
+
+    wants = trade_targets.wanted_by(players["weak"], {"owner_id": "me"}, states, needs, ctx)
+    assert [w["owner"] for w in wants] == ["desperate"], (
+        "both are short at QB; only one of them he actually improves")
 
 
 def test_middle_of_the_league_is_a_window_not_a_leftover():

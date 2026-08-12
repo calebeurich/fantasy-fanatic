@@ -296,8 +296,23 @@ VALUE_UPGRADE_NOTE = (
 RETURNS_PER_MOVE = 4  # a shortlist of who to ask about, not the league
 
 
+def _would_actually_help(player: dict, roster: dict, ctx) -> bool:
+    """Does he beat what they already start at his position? An empty slot takes anybody.
+
+    **A positional need is not the same as wanting THIS player**, and reading it that way
+    listed four counterparties for a quarterback none of them would have started. He produces
+    780 against a replacement level of 2,579; of the five teams short at QB, the only lineup
+    he improves is the one whose second starter produces 518. His owner put it better than
+    the tool did: no contender would start him and no rebuilder sees him rising - he is injury
+    cover for a core, and that is the whole of it."""
+    theirs = [ctx.players[pid].get("redraft_value") or 0
+              for pid in ctx.starters_for(roster)
+              if pid in ctx.players and ctx.players[pid]["position"] == player["position"]]
+    return not theirs or (player.get("redraft_value") or 0) > min(theirs)
+
+
 def wanted_by(player: dict, me_roster: dict, states: list[dict],
-              needs_by_owner_id: dict) -> list[dict]:
+              needs_by_owner_id: dict, ctx=None) -> list[dict]:
     """Which other owners would want THIS player, and in one line why.
 
     Lifted to module level so `find_value_upgrades` and the stranded block share one
@@ -312,13 +327,18 @@ def wanted_by(player: dict, me_roster: dict, states: list[dict],
     league - needed no tight end and no running back. He needed youth, at 4% ascending
     against 40% declining and 11th of 12 in dynasty value, and this function could not say
     so, because it only knew about needs."""
+    rosters_by_owner = {r["owner_id"]: r for r in ctx.rosters} if ctx else {}
     wanting = []
     for other in states:
         if other["owner_id"] == me_roster["owner_id"]:
             continue
         reasons = []
         need = needs_by_owner_id.get(other["owner_id"], {}).get(player["position"])
-        if need:
+        # The trajectory reason below is about future value and stands on its own, so the
+        # production test gates only the positional one.
+        their_roster = rosters_by_owner.get(other["owner_id"])
+        helps = their_roster is None or _would_actually_help(player, their_roster, ctx)
+        if need and helps:
             reasons.append(f"short at {player['position']} ({need['level']})")
         ascending_pct, declining_pct = other.get("ascending_pct", 0), other.get("declining_pct", 0)
         if player.get("bucket") == "ascending" and declining_pct > ascending_pct:
@@ -425,7 +445,7 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
             "value": mine["value"], "redraft_value": produced,
             "bucket": profile["bucket"],
             "now_share": round(produced / mine["value"], 2) if mine["value"] else None,
-            "wanted_by": wanted_by(profile, me_roster, states, needs_by_owner_id),
+            "wanted_by": wanted_by(profile, me_roster, states, needs_by_owner_id, ctx),
             "returns": returns,
             "best_gain": returns[0]["production_gained"],
         })
@@ -1134,7 +1154,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         entry = by_name.get(info["name"], {"name": info["name"], "position": info["position"],
                                            "value": info["value"],
                                            "redraft_value": info.get("redraft_value")})
-        wanted = wanted_by(entry, my_roster, states, needs_by_owner_id)
+        wanted = wanted_by(entry, my_roster, states, needs_by_owner_id, ctx)
         stranded.append({**entry, "blocked_by": info["position"],
                          "wanted_by": wanted,
                          "note": (f"Produces {info.get('redraft_value') or 0:,} this season - more than "
