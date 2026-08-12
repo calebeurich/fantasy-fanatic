@@ -1025,6 +1025,18 @@ have yet) - deferred rather than faked.
   sense for a specific Middling team likely depends on something not built yet -
   the season record (see below) - so showing both rather than guessing is the honest
   answer until that exists.
+- **The same runway is an instruction to a rebuilder and a deadline to a Middling team.**
+  `_print_pivot` serves both modes, and its copy was written for the committed one: it
+  called the sell list "real urgency to move it" regardless. On `mgibbons612` that put a
+  direct contradiction inside one report - the timing note four lines above said waiting
+  for real results was a legitimate choice, then eight aging starters (Barkley, Jacobs,
+  Kittle, Adams, Kelce...) were stamped urgent. The clock is identical in both modes and
+  the player list doesn't change; what changes is what it obliges. A team that has picked
+  this direction should move the piece. A team that may still wait is instead being told
+  *what waiting costs, and the deadline on deciding* - the aging production is exactly the
+  asset whose price decays while the season answers the question. This is the same
+  one-function-two-modes drift as the depth bar (see the window table below), and it is
+  why `committed` is a parameter rather than two copies of the block.
 - **Trade activity is a flag, not a ranking.** It used to sort *first*, on the reasoning
   that a smaller name from an active trader beats a bigger name from someone who never
   trades. That reasoning is fine and the implementation was not: how often an owner trades

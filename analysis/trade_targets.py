@@ -89,6 +89,17 @@ CONTEND_CHOICE_NOTE = (
     "contender with no clock can wait for a good price rather than chase one."
 )
 
+# The same runway means different things depending on whether the team has picked this
+# direction. A committed seller should move the piece; a Middling team may still wait, and
+# for it the clock bounds how long waiting stays free instead of ordering a sale. One string
+# so the CLI line and the agent's JSON can't drift apart the way they did on `mgibbons612`.
+SELL_CLOCK_COMMITTED = "value only goes down from here, real urgency to move it"
+SELL_CLOCK_OPTIONAL = (
+    "value only goes down from here - so these are what waiting costs, and the deadline on "
+    "deciding. This team has NOT committed to selling: the clock is a reason to pick a "
+    "direction before the price decays, not an instruction to sell now"
+)
+
 STRANDED_NOTE = (
     "STRANDED PRODUCTION - the most valuable thing this roster owns that it cannot use. "
     "Each of these out-produces the WEAKEST player in the starting lineup and is kept out "
@@ -1040,7 +1051,7 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
 
 def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trade_counts: dict[str, int],
                 picks_by_owner: dict[int, list[dict]] | None = None,
-                stranded: list[dict] | None = None) -> dict:
+                stranded: list[dict] | None = None, committed: bool = True) -> dict:
     """The sell case: cash in declining/non-core value for youth from teams that
     don't need it, same logic a Rebuilding team uses.
 
@@ -1080,7 +1091,8 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     # ranking ahead of value hid the best available player behind a chatty owner.
     acquire_targets.sort(key=lambda t: (-t["value"], -t["from_owner_trades"]))
     result = {"sell_candidates": sell_candidates, "situational": situational,
-              "acquire_targets": acquire_targets}
+              "acquire_targets": acquire_targets,
+              "sell_clock_note": SELL_CLOCK_COMMITTED if committed else SELL_CLOCK_OPTIONAL}
     if stranded:
         result["stranded"] = stranded
         result["stranded_note"] = STRANDED_NOTE
@@ -1213,7 +1225,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
                                   max_per_position, pick_values, my_picks, prior,
                                   premium_bars, covered),
                 "pivot": _pivot_path(me, states, thresholds, trade_counts, picks_by_owner,
-                                     stranded)})
+                                     stranded, committed=False)})
 
     result = {"me": me, "mode": "buy",
               **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
@@ -1339,8 +1351,8 @@ def offerable_names(result: dict) -> set[str]:
 
 def _print_pivot(me: dict, pivot: dict) -> None:
     sell = ", ".join(e["name"] for e in pivot["sell_candidates"]) or "none"
-    print(f"sell candidates (under {MIN_MEANINGFUL_RUNWAY:g} years before decline - value only "
-          f"goes down from here, real urgency to move it): {sell}")
+    print(f"sell candidates (under {MIN_MEANINGFUL_RUNWAY:g} years before decline): {sell}")
+    print(f"  {pivot['sell_clock_note']}")
     situational = ", ".join(e["name"] for e in pivot["situational"]) or "none"
     print(f"situational pieces (years still on them, just not your long-term core - take a fair "
           f"offer, no urgency): {situational}")

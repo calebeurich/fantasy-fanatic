@@ -153,12 +153,17 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     explaining why the two paths cost differently - surface that reasoning rather than
     just listing both sets of names.
 
-    A Rebuild result returns "sell_candidates" (under two years before their decline cutoff,
-    so urgent - this includes prime-age players, not just declining ones), "situational" (everything
+    A Rebuild result returns "sell_candidates" (under two years before their decline cutoff -
+    this includes prime-age players, not just declining ones), "situational" (everything
     else worth selling, ordered by how much of the player's price is CURRENT production - the
     top entry is the best sell-high, not the most valuable player) and "acquire_targets".
     A young rebuilding roster legitimately has an empty "sell_candidates"; that is not an
     error, and its window_note will say so rather than telling it to sell decline it lacks.
+    How hard to press the sale is NOT yours to infer from the runway - "sell_clock_note"
+    alongside the list says it, and it differs by mode: a Rebuild team is told to move the
+    piece, while the same names under a Middling team's "pivot" are the cost of waiting and
+    the deadline on choosing, NOT players to sell today. Repeat that distinction; do not
+    flatten a Middling pivot list into urgent sell advice.
 
     Also returns draft picks, in the direction that team should be moving them:
     "picks_to_trade_away" for a contender and "picks_to_acquire" for a rebuilder.

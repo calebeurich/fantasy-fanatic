@@ -1415,3 +1415,28 @@ def test_losing_a_starter_cascades_through_flex_from_any_eligible_position():
     assert after["2"] == "RB", "the FLEX back slides up into the vacated RB slot"
     assert "3" in after and after["3"] == "FLEX", "the bench TE fills FLEX, not the WR"
     assert "4" not in after
+
+
+# ------------------------------------------------------- pivot urgency by commitment
+
+def test_a_middling_teams_sell_list_does_not_order_it_to_sell():
+    """A live contradiction inside one report: mgibbons612's timing note said waiting for
+    real results was legitimate, and four lines later the same output called eight aging
+    starters `real urgency to move it`. `_pivot_path` serves both modes and its copy was
+    written for the committed one. The runway is identical either way - what changes is
+    whether it is an instruction or a deadline, so the distinction ships as
+    `sell_clock_note` in the data rather than as printer-only wording the agent never sees."""
+    kelce = {"name": "Travis Kelce", "position": "TE", "bucket": "declining",
+             "value": 2000, "redraft_value": 1800, "years_to_decline": 0.5}
+    me = {"sellable": [kelce], "owner_id": "me", "roster_id": 1}
+    thresholds = {"TE": 0}
+
+    committed = trade_targets._pivot_path(me, [], thresholds, {})
+    assert committed["sell_candidates"] == [kelce]
+    assert "real urgency to move it" in committed["sell_clock_note"]
+
+    optional = trade_targets._pivot_path(me, [], thresholds, {}, committed=False)
+    assert optional["sell_candidates"] == [kelce], "the clock and the list are unchanged"
+    assert "real urgency" not in optional["sell_clock_note"], \
+        "told a team that may still wait that it has to sell now"
+    assert "deadline" in optional["sell_clock_note"]
