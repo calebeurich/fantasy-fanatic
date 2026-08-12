@@ -71,8 +71,9 @@ CONTEND_CHOICE_NOTE = (
     "ascending, so it is not choosing whether to compete - it is choosing how. STACK: buy "
     "more current production. Already the strongest lineup, so the marginal win is cheaper "
     "here than for anyone else, and nothing has to be given up on. CONVERT: move the aging "
-    "starters listed in `conversion_candidates` for value that matches the seasons the rest "
-    "of the roster is built for. Both are defensible; the cost is that stacking spends "
+    "starters named above for value that matches the seasons the rest of the roster is built "
+    "for - and note that this is the same list every other manager in the league is being "
+    "handed as the reason to call you. Both are defensible; the cost is that stacking spends "
     "future value on a lead this team already has, while converting gives up real "
     "production this season for a roster that stays strong longer. Neither is urgent - a "
     "contender with no clock can wait for a good price rather than chase one."
@@ -1685,6 +1686,9 @@ def _print_report(result: dict) -> None:
     if result["mode"] == "rebuild":
         tank_note = "" if me["owns_next_first"] else " (doesn't own next 1st, so tanking for a pick wouldn't help)"
         print(f"{me['owner']}: Rebuilding{tank_note} - playing for future value, not starting-lineup needs")
+        # Stranded applies in every window - its own note says a rebuilder converts one into
+        # futures - and only the pushing branch was printing it.
+        _print_stranded(result)
         _print_pivot(me, result)
         _print_depth(result)
     elif result["mode"] == "middling":
@@ -1699,6 +1703,7 @@ def _print_report(result: dict) -> None:
         print(f"{me['owner']}: {me['state']} ({me['flavor']}), needs: {_needs_summary(result['needs'])}")
         print(f"  {me['window_note']}")
         _print_push(result, result)
+        _print_conversion_candidates(result)
 
 
 def _print_value_upgrades(result: dict) -> None:
@@ -1747,7 +1752,29 @@ def _print_value_upgrades(result: dict) -> None:
             # like one held by a seller.
             if u.get("their_reason"):
                 print(f"           why they'd move him: {u['their_reason']}")
+            # Friction was computed on every return and rendered on none of them, so a Kelce
+            # needing his owner to change direction read like a straight swap. `never_trades` is
+            # skipped only because the header line above already shouts it.
+            for f in u.get("friction") or []:
+                if f["flavor"] != "never_trades":
+                    print(f"           - [{f['flavor']}] {f['why']}")
     print(f"  {result['value_upgrade_note']}")
+
+
+def _print_conversion_candidates(result: dict) -> None:
+    """`_cliff_case` aimed at your own roster - and computed since it was written without a
+    printer, so the CLI told eleven other managers which of your starters to call you about and
+    never told you. Its own docstring is the argument for printing it: if they hear it, you hear
+    it, in the same terms."""
+    if not result.get("conversion_candidates"):
+        return
+    print("\nWHAT THEY WILL CALL YOU ABOUT - your own aging starters, priced for a season your "
+          "roster is least short of:")
+    for e in result["conversion_candidates"]:
+        print(f"  {e['name']} ({e['position']}, {e['production_per_cost']}x production per unit "
+              f"of cost - dyn {e['value']:,} / redraft {e['redraft_value']:,})")
+        print(f"      {e['note']}")
+    print(f"  {result['choice_note']}")
 
 
 def _print_stranded(result: dict) -> None:

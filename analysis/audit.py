@@ -22,7 +22,9 @@ Not part of `pytest`: this needs the network, and `tests/` is free and offline b
 Run: python -m analysis.audit [league_id ...]
 """
 
+import io
 import sys
+from contextlib import redirect_stdout
 
 from . import roster_needs, team_state, trade_targets
 from .league import context
@@ -181,6 +183,35 @@ def check_one_player_is_not_described_two_ways(league_id, ctx, results) -> list[
     return problems
 
 
+def check_everything_computed_is_printed(league_id, ctx, results) -> list[str]:
+    """A block attached to the result and rendered by nothing. **Six instances of this in one
+    module**, each shipping silently because the data was right and only the CLI was blind:
+    `stranded`, `depth_adds`, `you_could_offer`, `cost_note`, `persuasion_note`, and friction on
+    value-upgrade returns - the last of which made a Kelce who needs his owner to change
+    direction read like a straight swap.
+
+    Checked by rendering the report and looking for each entry's name and each note's opening
+    words in the output, which is the only way to catch it: every unit test passes on a block
+    that never reaches a human."""
+    problems = []
+    for owner, result in results.items():
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            trade_targets._print_report(result)
+        printed = buffer.getvalue()
+        blocks = _blocks(result)
+        for key in COVERAGE_BLOCKS:
+            entries = _entries(result, key)
+            if entries and not any((e.get("name") or e.get("move_off", "")) in printed
+                                   for e in entries):
+                problems.append(f"{owner}: {key} has {len(entries)} entries and none of their "
+                                f"names appear in the printed report")
+        for key, note in blocks.items():
+            if key.endswith("_note") and isinstance(note, str) and note[:40] not in printed:
+                problems.append(f"{owner}: {key} is computed but never printed")
+    return problems
+
+
 def check_every_window_gets_what_applies(league_id, ctx, results) -> list[str]:
     """Blocks that apply in every window must be computed in every window. Live: depth and
     stranded were computed inside the buy branch, which `Rebuild` returns before - so the team
@@ -202,6 +233,7 @@ CHECKS = [
     check_no_tier_is_structurally_unreachable,
     check_claims_match_the_data,
     check_one_player_is_not_described_two_ways,
+    check_everything_computed_is_printed,
     check_every_window_gets_what_applies,
 ]
 

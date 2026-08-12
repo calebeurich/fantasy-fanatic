@@ -2349,7 +2349,31 @@ calls in.
 
 `persuasion_note` had also been attached to the result and printed by nothing since it was
 written - the same defect as `stranded`, `depth_adds`, `cost_note`, and `you_could_offer` before
-it. That is now five instances of *computed, attached, never rendered* in one module.
+it.
+
+### Computed, attached, never rendered - now audited (`check_everything_computed_is_printed`)
+
+Nine instances of one defect in one module. Every unit test passes on a block that never reaches
+a human, so the check renders the report and looks for each entry's name and each note's opening
+words in the output. It found the last three itself:
+
+| # | what | how it was found |
+|---|---|---|
+| 1-4 | `stranded`, `depth_adds`, `you_could_offer`, `cost_note` | grid spot-checks |
+| 5 | `persuasion_note` | reading the report against the module |
+| 6 | friction on value-upgrade returns | a Kelce needing a pivot read as a straight swap |
+| 7 | `stranded` in the **rebuild** branch | the check |
+| 8-9 | `conversion_candidates` + `choice_note` | the check |
+
+The last is the worst of them: `_conversion_candidates` is `_cliff_case` aimed at your own
+roster, and it shipped with no printer at all. The CLI was telling eleven other managers which
+of your starters to call you about while never telling you. Both sides now read the same list -
+dez is told to ring shivvv about Kelce and Henry, and shivvv is told those two are what he will
+be rung about. That symmetry is what the function's docstring promised and what two separate
+rules would eventually have broken.
+
+Instance 7 is `check_every_window_gets_what_applies` recurring: `stranded`'s own note says a
+rebuilder should convert one into futures, and only the pushing branch printed it.
 
 ### One concept, two definitions (`fills_a_hole`)
 
