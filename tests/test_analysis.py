@@ -385,6 +385,25 @@ def test_value_upgrade_names_who_would_want_the_player_being_moved():
     moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, needs)
     assert [w["owner"] for w in moves[0]["wanted_by"]] == ["them"]
     assert moves[0]["wanted_by"][0]["need_level"] == "critical"
+    assert "short at TE" in moves[0]["wanted_by"][0]["why"]
+
+
+def test_a_falling_roster_wants_ascending_value_at_any_position():
+    """Positional need alone missed the most obvious counterparty on a live board: the owner
+    holding both best returns needed no TE and no RB, he needed youth."""
+    me_roster = {"owner_id": "me"}
+    young = {"name": "Kid", "position": "TE", "bucket": "ascending"}
+    old = {"name": "Vet", "position": "TE", "bucket": "declining"}
+    states = [{"owner_id": "me", "owner": "me", "window": "Push"},
+              {"owner_id": "falling", "owner": "falling", "window": "Middling",
+               "ascending_pct": 4, "declining_pct": 40}]
+
+    wants = trade_targets.wanted_by(young, me_roster, states, {})
+    assert [w["owner"] for w in wants] == ["falling"], "no positional need, wants youth"
+    assert "falling roster" in wants[0]["why"] and wants[0]["need_level"] is None
+
+    assert trade_targets.wanted_by(old, me_roster, states, {}) == [], (
+        "a falling roster has no special appetite for another declining player")
 
 
 def test_middle_of_the_league_is_a_window_not_a_leftover():

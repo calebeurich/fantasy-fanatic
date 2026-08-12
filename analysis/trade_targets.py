@@ -296,23 +296,43 @@ VALUE_UPGRADE_NOTE = (
 RETURNS_PER_MOVE = 4  # a shortlist of who to ask about, not the league
 
 
-def wanted_by(position: str, me_roster: dict, states: list[dict],
+def wanted_by(player: dict, me_roster: dict, states: list[dict],
               needs_by_owner_id: dict) -> list[dict]:
-    """Which other teams are short at this position, worst shortage first.
+    """Which other owners would want THIS player, and in one line why.
 
-    Lifted to module level so `find_value_upgrades` and `find_targets`' stranded block share
-    one definition. `stranded` correctly said "the whole value of this player is what he
-    fetches" and then left the reader to work out who would give anything for him, while
-    `league_needs` had the answer in the next tool result."""
+    Lifted to module level so `find_value_upgrades` and the stranded block share one
+    definition. `stranded` correctly said "the whole value of this player is what he fetches"
+    and then left the reader to work out who would give anything for him, while
+    `league_needs` had the answer in the next tool result.
+
+    **Two reasons, not one, and checking only the first missed the most obvious counterparty
+    on a live board.** Positional need is the easy half. The other is trajectory: a roster
+    whose production is falling wants *ascending* value at any position. The owner holding
+    both of the best returns available to one manager - and the most active trader in that
+    league - needed no tight end and no running back. He needed youth, at 4% ascending
+    against 40% declining and 11th of 12 in dynasty value, and this function could not say
+    so, because it only knew about needs."""
     wanting = []
     for other in states:
         if other["owner_id"] == me_roster["owner_id"]:
             continue
-        need = needs_by_owner_id.get(other["owner_id"], {}).get(position)
+        reasons = []
+        need = needs_by_owner_id.get(other["owner_id"], {}).get(player["position"])
         if need:
-            wanting.append({"owner": other["owner"], "window": other["window"],
-                            "need_level": need["level"], "rank": need.get("rank")})
-    return sorted(wanting, key=lambda w: roster_needs.NEED_PRIORITY[w["need_level"]])
+            reasons.append(f"short at {player['position']} ({need['level']})")
+        ascending_pct, declining_pct = other.get("ascending_pct", 0), other.get("declining_pct", 0)
+        if player.get("bucket") == "ascending" and declining_pct > ascending_pct:
+            reasons.append(f"falling roster ({ascending_pct}% ascending against "
+                           f"{declining_pct}% declining) - ascending value is what it is short "
+                           f"of, whatever the position")
+        if not reasons:
+            continue
+        wanting.append({"owner": other["owner"], "window": other["window"],
+                        "need_level": need["level"] if need else None,
+                        "rank": need.get("rank") if need else None,
+                        "reason_count": len(reasons), "why": "; ".join(reasons)})
+    return sorted(wanting, key=lambda w: (roster_needs.NEED_PRIORITY.get(w["need_level"], 3),
+                                          -w["reason_count"]))
 
 
 def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: set[str],
@@ -398,11 +418,14 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
         returns = sorted(by_starter[mine["name"]],
                          key=lambda u: -u["production_gained"])[:RETURNS_PER_MOVE]
         produced = mine.get("redraft_value") or 0
+        profile = {**mine, "bucket": age_bucket(mine["position"], mine.get("age"),
+                                                mine.get("usage_role"))}
         moves.append({
             "move_off": mine["name"], "position": mine["position"],
             "value": mine["value"], "redraft_value": produced,
+            "bucket": profile["bucket"],
             "now_share": round(produced / mine["value"], 2) if mine["value"] else None,
-            "wanted_by": wanted_by(mine["position"], me_roster, states, needs_by_owner_id),
+            "wanted_by": wanted_by(profile, me_roster, states, needs_by_owner_id),
             "returns": returns,
             "best_gain": returns[0]["production_gained"],
         })
@@ -1111,7 +1134,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         entry = by_name.get(info["name"], {"name": info["name"], "position": info["position"],
                                            "value": info["value"],
                                            "redraft_value": info.get("redraft_value")})
-        wanted = wanted_by(info["position"], my_roster, states, needs_by_owner_id)
+        wanted = wanted_by(entry, my_roster, states, needs_by_owner_id)
         stranded.append({**entry, "blocked_by": info["position"],
                          "wanted_by": wanted,
                          "note": (f"Produces {info.get('redraft_value') or 0:,} this season - more than "
@@ -1402,9 +1425,13 @@ def _print_value_upgrades(result: dict) -> None:
                    f"already now-priced at {m['now_share']}, so this is a straight upgrade")
         print(f"  move off {m['move_off']} ({m['position']}, {m['value']:,} dynasty / "
               f"{m['redraft_value']:,} this season - {pricing}):")
-        wants = ", ".join(f"{w['owner']} ({w['need_level']}, {w['window']})"
-                          for w in m["wanted_by"][:4]) or "nobody is short at this position"
-        print(f"      who wants that profile: {wants}")
+        if m["wanted_by"]:
+            print("      who would want him:")
+            for w in m["wanted_by"][:3]:
+                print(f"        {w['owner']} [{w['window']}] - {w['why']}")
+        else:
+            print("      who would want him: nobody obvious - no team is short here and "
+                  "nobody's roster is crying out for this profile")
         for u in m["returns"]:
             trades = (f"{u['from_owner_trades']} trade(s)" if u["from_owner_trades"]
                       else "NEVER TRADES")
