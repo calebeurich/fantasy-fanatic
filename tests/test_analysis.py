@@ -839,6 +839,61 @@ def test_win_now_buyer_sees_production_priced_targets_first():
         "declining (production-priced) should outrank higher-value prime for a Win-Now buyer"
 
 
+def test_unreachable_targets_are_split_out_rather_than_ranked_below():
+    """One ranked list made attainability compete with quality for the same ordering, and
+    quality won by design. Live: a critical RB list read Gibbs (a cornerstone priced above the
+    roster's best chip), then three names from an owner who has never traded, and only then
+    Jaylen Warren - the one realistic call on the board. "Who do I ring first" is a different
+    question from "who is best", so it gets its own list, and the cap applies per half so a
+    blocked target can never displace a reachable one."""
+    me = {"owner_id": "me", "window": "Push", "tradeable_surplus": [],
+          "sellable": [{"name": "MyChip", "position": "WR", "value": 3000,
+                        "redraft_value": 2800, "bucket": "prime", "is_starter": False}]}
+    thresholds = {"RB": 100, "WR": 100}
+    sellers = [
+        {"owner_id": "active", "owner": "active", "window": "Rebuild", "sellable": [
+            {"name": "Gettable", "position": "RB", "value": 2000, "redraft_value": 2000,
+             "bucket": "declining", "is_starter": False},
+            {"name": "TheirRock", "position": "RB", "value": 2200, "redraft_value": 4000,
+             "bucket": "prime", "is_starter": True, "is_cornerstone": True},
+            {"name": "Unaffordable", "position": "RB", "value": 9000, "redraft_value": 5000,
+             "bucket": "prime", "is_starter": False},
+        ]},
+        {"owner_id": "quiet", "owner": "quiet", "window": "Rebuild", "sellable": [
+            {"name": "QuietGuy", "position": "RB", "value": 1900, "redraft_value": 3000,
+             "bucket": "declining", "is_starter": False},
+        ]},
+    ]
+    need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12}
+    out = trade_targets._buy_path(me, sellers, {"me": {"RB": need}}, thresholds,
+                                  trade_counts={"active": 4}, max_per_position=5)
+
+    assert [t["name"] for t in out["targets"]] == ["Gettable"], (
+        "only the one with nothing structural in the way belongs on the buy list")
+    blocked = {t["name"]: t["blockers"] for t in out["long_shots"]}
+    assert set(blocked) == {"TheirRock", "Unaffordable", "QuietGuy"}
+    # QuietGuy outproduces Gettable (3,000 vs 2,000), so under one ranked list he would have
+    # led - which is the bug. The reason he is blocked has to be stated, not implied by order.
+    assert "never made a trade" in blocked["QuietGuy"][0]
+    assert "cornerstone" in blocked["TheirRock"][0]
+    assert "biggest single chip (MyChip, 3,000)" in blocked["Unaffordable"][0]
+
+
+def test_no_trade_history_anywhere_does_not_block_every_target():
+    """A zero trade count only says something about an owner when somebody in the league has
+    traded. In a fresh league it describes the LEAGUE, and treating it as a blocker would empty
+    the buy list for all twelve teams at once."""
+    me = {"owner_id": "me", "window": "Push", "sellable": [], "tradeable_surplus": []}
+    seller = {"owner_id": "them", "owner": "them", "window": "Rebuild", "sellable": [
+        {"name": "Available", "position": "RB", "value": 2000, "redraft_value": 2000,
+         "bucket": "declining", "is_starter": False}]}
+    need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12}
+    out = trade_targets._buy_path(me, [seller], {"me": {"RB": need}}, {"RB": 100},
+                                  trade_counts={}, max_per_position=5)
+    assert [t["name"] for t in out["targets"]] == ["Available"]
+    assert not out.get("long_shots")
+
+
 def test_offers_are_tiered_by_value_over_replacement_not_raw_value():
     """Trade value isn't linear in raw value. Value above replacement is scarce; value
     below it is replaceable off waivers, so the raw number overstates what it fetches.

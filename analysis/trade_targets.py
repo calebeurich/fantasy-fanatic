@@ -224,6 +224,34 @@ CORNERSTONE_ASK = ("cornerstone - the runway this roster is built around, so exp
                    "over market or be told no. Moveable, just the hardest ask here")
 
 
+def _reach(player: dict, other: dict, best_chip: dict | None, trades: int,
+           trades_are_informative: bool) -> dict:
+    """Why this target might not be gettable, in the reader's own terms. Three independent
+    reasons, all named rather than folded into a score, because they call for different
+    responses: an inactive owner may not answer at all, a cornerstone's owner will answer and
+    say no, and a player priced above your best single chip is a different conversation
+    entirely. Empty `blockers` means nothing structural is in the way.
+
+    Deliberately NOT a price. "Costs more than your biggest chip" is a one-against-one
+    comparison, which is the only kind this project can make - it does not say what the deal
+    would be, only that no single piece covers it."""
+    blockers = []
+    if player.get("is_cornerstone"):
+        blockers.append(f"a cornerstone for {other['owner']} - they are building around him, "
+                        f"so expect a no rather than a price")
+    if best_chip and player["value"] > best_chip["value"]:
+        blockers.append(f"costs more than your biggest single chip ({best_chip['name']}, "
+                        f"{best_chip['value']:,}), so no one-for-one reaches him")
+    # Only when somebody in this league HAS traded. In a league with no trade history at all,
+    # a zero says nothing about this owner - it describes the league - and treating it as a
+    # blocker would empty the buy list for all twelve teams. Same reasoning as the
+    # `no_trade_history` flag `team_state` already carries.
+    if trades_are_informative and not trades:
+        blockers.append(f"{other['owner']} has never made a trade, so the call may not "
+                        f"be returned at all")
+    return {"blockers": blockers}
+
+
 def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict],
                    pick_values: dict[str, int] | None = None,
                    covered: dict[str, float] | None = None) -> list[dict]:
@@ -303,6 +331,16 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict
     offers.sort(key=lambda e: -e["value_over_replacement"])
     return offers
 
+
+LONG_SHOT_NOTE = (
+    "LONG SHOTS - real fits, but something structural is in the way, and `blockers` says what. "
+    "These are separated from the buy list rather than ranked below it because the reason is "
+    "not price: an owner who has never traded may not answer, a cornerstone's owner will answer "
+    "and say no, and a player costing more than your biggest single chip cannot be reached "
+    "one-for-one at all. Ring the buy list first. Raise one of these only when you already "
+    "know something this tool doesn't - that the owner is about to sell, or that you are "
+    "willing to open a negotiation with no single piece that covers it."
+)
 
 VALUE_UPGRADE_NOTE = (
     "BETTER TO HOLD, not a priced offer. Every one of these costs LESS in dynasty value than "
@@ -931,12 +969,17 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
     ordered_positions = sorted(
         my_needs, key=lambda p: roster_needs.NEED_PRIORITY[my_needs[p]["level"]])
 
-    # Everything this team could realistically put on the table - the denominator for
-    # `cost_share`. Offers plus the picks it should be moving anyway.
-    my_capital = (sum(e["value"] for e in _my_offer_pool(me, thresholds, my_needs, pick_values, covered))
-                  + sum(p["value"] for p in (my_picks or [])))
+    # The BIGGEST SINGLE thing this team could put on the table, not the sum of everything.
+    # `cost_share` used to divide a target's price by that sum, which is the additive
+    # assumption this module rejects everywhere else - it implied a roster could be stacked
+    # into one offer, and 64%-of-capital read as merely expensive rather than out of reach.
+    # One player against one player is the only comparison available, so that is the test:
+    # a target priced above your best chip cannot be reached by any single-piece deal, and
+    # what it would actually take is a negotiation this tool does not price.
+    my_pool = _my_offer_pool(me, thresholds, my_needs, pick_values, covered)
+    best_chip = max(my_pool, key=lambda e: e["value"], default=None)
 
-    targets = []
+    targets, long_shots = [], []
     for pos in ordered_positions:
         need = my_needs[pos]
         # A `weak` position already has the slots filled - the problem is that the group
@@ -953,21 +996,16 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
                     continue
                 if upgrade_bar is not None and (player.get("redraft_value") or 0) <= upgrade_bar:
                     continue
-                # The two things a reader uses to tell a realistic target from an
-                # aspirational one, and neither was here. `production_per_cost` is the same
-                # efficiency measure the persuasion tier already reports - a buy list that
-                # omitted it left an elite player and a cheap one looking equivalent.
-                # `cost_share` is blunter and answers "can I actually pay": his price as a
-                # fraction of everything this team could put on the table. A player at 64% of
-                # a roster's entire tradeable value is technically available and practically
-                # not, which is a different statement from "expensive".
+                # `production_per_cost` is the same efficiency measure the persuasion tier
+                # reports - without it an elite player and a cheap one look equivalent.
                 ratio = ((player.get("redraft_value") or 0) / player["value"]
                          if player.get("value") else None)
                 pos_targets.append({"position": pos, "need_level": need["level"],
                                      "need_note": need["note"],
                                      "production_per_cost": round(ratio, 2) if ratio else None,
-                                     "cost_share": (round(100 * player["value"] / my_capital)
-                                                    if my_capital else None),
+                                     **_reach(player, other, best_chip,
+                                              trade_counts.get(other["owner_id"], 0),
+                                              any(trade_counts.values())),
                                      **_with_trade_note(player, other, trade_counts)})
         # Window fit before raw value. A Win-Now buyer wants *current production*, and
         # this project's own pricing model says declining players are "production-priced"
@@ -1009,10 +1047,23 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
             0 if (prefer_production and t["bucket"] == "declining") else 1,
             -t["from_owner_trades"],
         ))
-        targets += pos_targets[:max_per_position]
+        # Split, not merely sorted. One ranked list forced attainability to compete with
+        # quality for the same ordering, and quality won by design: a real RB list read
+        # Gibbs (a cornerstone priced above this roster's best chip), then three names from an
+        # owner who has never traded, and only then Jaylen Warren - who was the one realistic
+        # call on the board. The reader's question is "who do I ring first", and that is a
+        # different question from "who is best", so it gets its own list. Both halves keep the
+        # production-first ordering above; the cap applies per half so a blocked target can
+        # never displace a reachable one.
+        reachable = [t for t in pos_targets if not t["blockers"]]
+        blocked = [t for t in pos_targets if t["blockers"]]
+        targets += reachable[:max_per_position]
+        long_shots += blocked[:max_per_position]
 
-    result = {"needs": my_needs, "targets": targets,
-              "my_offers": _my_offer_pool(me, thresholds, my_needs, pick_values, covered)}
+    result = {"needs": my_needs, "targets": targets, "my_offers": my_pool}
+    if long_shots:
+        result["long_shots"] = long_shots
+        result["long_shot_note"] = LONG_SHOT_NOTE
 
     # Sellers-only search misses the best available production - see _persuasion_targets.
     stretch = _persuasion_targets(me, states, my_needs, thresholds, trade_counts, prior or {},
@@ -1308,15 +1359,25 @@ def _print_push(push: dict, extras: dict) -> None:
     # targets stamped NEVER TRADES. Read top-down, it recommended the least likely moves first.
     _print_value_upgrades(extras)
     _print_depth(extras)
-    if not push["targets"]:
-        print("no obvious targets found (no needs, or no Rebuilding team has a sell candidate there)")
-        return
-    print("buy targets (from Rebuilding teams, at a position you need):")
-    for t in push["targets"]:
-        trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "NEVER TRADES - unlikely"
-        price_note = BUY_PRICE_NOTE[team_state.VALUE_BASIS[t["bucket"]]]
-        print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}) from {t['from_owner']} "
-              f"- need: {t['need_level']} - {trade_note}")
+    if push["targets"]:
+        print("BUY TARGETS - ring these first (from Rebuilding teams, at a position you need):")
+        for t in push["targets"]:
+            trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "no trades yet"
+            price_note = BUY_PRICE_NOTE[team_state.VALUE_BASIS[t["bucket"]]]
+            print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}) from "
+                  f"{t['from_owner']} - need: {t['need_level']} - {trade_note}")
+    else:
+        print("no reachable targets found (no needs, no Rebuilding team is selling there, or "
+              "everything available is a long shot below)")
+    if push.get("long_shots"):
+        print("\nlong shots (real fits, but something is in the way - see why on each):")
+        for t in push["long_shots"]:
+            price_note = BUY_PRICE_NOTE[team_state.VALUE_BASIS[t["bucket"]]]
+            print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}) from "
+                  f"{t['from_owner']} - need: {t['need_level']}")
+            for b in t["blockers"]:
+                print(f"      - {b}")
+        print(f"  {push['long_shot_note']}")
     if push.get("persuasion_targets"):
         print()
         print("harder asks (aging production on teams that are NOT selling yet - each of these "

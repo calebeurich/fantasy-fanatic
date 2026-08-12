@@ -36,8 +36,11 @@ DEFAULT_LEAGUES = [
     "1313999558660857856",   # God Bless The Plug
 ]
 
-# Blocks that name players and must never name one the asking team already owns.
-PLAYER_BLOCKS = ("targets", "acquire_targets", "depth_adds", "persuasion_targets")
+# Blocks that name players and must never name one the asking team already owns. Also the
+# pool `check_best_available_is_surfaced` searches, which is why `long_shots` belongs here:
+# splitting unreachable targets into their own list is a change of *placement*, not of
+# coverage, and the check asks whether the best available is named anywhere in the advice.
+PLAYER_BLOCKS = ("targets", "long_shots", "acquire_targets", "depth_adds", "persuasion_targets")
 
 
 def _blocks(result: dict) -> dict:
@@ -171,7 +174,7 @@ CHECKS = [
 # for a different reason (it was package math this project cannot price). `value_upgrades` is
 # here because it shipped computed and unprinted - a block nobody counts is a block nobody
 # notices is empty.
-COVERAGE_BLOCKS = ("targets", "persuasion_targets", "stranded", "depth_adds",
+COVERAGE_BLOCKS = ("targets", "long_shots", "persuasion_targets", "stranded", "depth_adds",
                    "my_offers", "acquire_targets", "value_upgrades")
 
 

@@ -2687,18 +2687,58 @@ adding a second tuned threshold to rescue it, but recorded as a known distortion
 **What the annotation fixes instead.** The manager's own reaction to seeing Allen listed was
 that these are "reasonable but harder to get and less production value efficient" - which is
 two measurements, neither of which the buy list carried. `production_per_cost` (already
-reported by the persuasion tier, absent here) and `cost_share`, a player's price as a
-percentage of everything this team could put on the table:
+reported by the persuasion tier) is one.
 
-| target | dynasty | prod/cost | cost share |
-|---|---|---|---|
-| Chase Brown | 4,069 | 1.06 | **25%** |
-| Josh Allen | 10,415 | 1.00 | **67%** |
+The other started as `cost_share` - a player's price as a percentage of *everything* the team
+could put on the table - and that was quietly the same additive mistake this file warns about
+everywhere else. A denominator built by summing an offer pool asserts the pool can be stacked
+into one offer, and "67% of capital" reads as merely expensive rather than out of reach. It is
+now a one-against-one test instead: **does he cost more than your single biggest chip?** If he
+does, no one-for-one deal reaches him, and what it would actually take is a negotiation this
+tool does not price. Same reader question, no arithmetic the module cannot justify.
 
-67% of a roster's entire tradeable value is technically available and practically not, which
-is a different statement from "expensive" and the one a reader needs.
+### Likely and unlikely are different lists, not different ranks
 
-## Leverage: what a team could become (`team_state.leverage`)
+The buy list ranks on production for a `Push` team, which is right, and that put attainability
+in permanent competition with quality - a competition quality wins by construction. Live, on a
+critical RB need:
+
+```
+Jahmyr Gibbs      10,192   BenSimonds    (cornerstone, priced above the whole roster's best chip)
+Chase Brown        4,114   spugz13       NEVER TRADES
+Breece Hall        3,747   spugz13       NEVER TRADES
+David Montgomery   2,101   spugz13       NEVER TRADES
+Jaylen Warren      2,055   jqsimonds22   4 trades
+```
+
+Read top-down that recommends four dead ends before the one realistic call. It is the same
+defect already fixed once in the depth list - *"read top-down, it recommended the least likely
+moves first"* - surviving in a second list, which is exactly the pattern CLAUDE.md warns about.
+
+Sorting differently cannot fix it, because "who is best" and "who do I ring first" are two
+questions and one order cannot answer both. So `targets` now holds only what nothing
+structural is blocking, `long_shots` holds the rest, and the cap applies per half so a blocked
+target can never displace a reachable one. Three blockers, each named rather than scored,
+because they call for different responses:
+
+| blocker | what it means |
+|---|---|
+| a cornerstone for that owner | they will answer and say no. Being the foundation is a price, not a veto - see the offer-pool rules - but it is a price on *their* side too |
+| costs more than your biggest single chip | no one-for-one reaches him; anything else is a package this tool cannot price |
+| that owner has never made a trade | the call may not be returned at all |
+
+The third only counts when somebody in the league *has* traded. In a league with no trade
+history a zero describes the league, not the owner, and using it as a blocker would empty the
+buy list for all twelve teams - the same reasoning behind the existing `no_trade_history` flag.
+
+The owner's independent ranking of that same RB board was *"warren and pollard are the best
+targets for me, then the montgomery situation, maybe brown and hall but they aren't as
+efficient, and he doesn't trade, Gibbs is probably just impossible because he's a cornerstone
+and I can't afford that"* - which is the split, in order, including both of Gibbs's blockers.
+
+`long_shots` is in `audit.py`'s `PLAYER_BLOCKS` as well as `COVERAGE_BLOCKS`: the split changes
+*placement*, not coverage, and `check_best_available_is_surfaced` asks whether the best
+available is named anywhere in the advice.
 
 The window model answers *what should this team do with the roster it has*. It had nothing
 to say about **how much rope a team has to change that roster**, and collapsing both into

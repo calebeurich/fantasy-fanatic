@@ -226,6 +226,14 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     crowd them out - a smaller player from a team already selling is a far easier trade than
     talking a contender into changing direction.
 
+    "targets" and "long_shots" are two lists on purpose, and the order you present them in
+    matters more than the values in them. "targets" is who to ring first: nothing structural
+    is in the way. Every "long_shots" entry carries "blockers" saying what IS in the way -
+    the owner has never traded, the player is a cornerstone on that roster, or he costs more
+    than the asking team's biggest single chip. State the blocker whenever you name one, lead
+    with "targets" even when a long shot is a bigger name, and never imply a long shot is
+    merely expensive when the blocker says it is unreachable one-for-one.
+
     "conversion_candidates" + "choice_note" appear only for a contender whose production is
     still tilting ascending. That team has TWO live paths and the answer must present both:
     stack more current production, or convert those aging starters into value matching the
