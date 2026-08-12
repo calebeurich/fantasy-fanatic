@@ -744,7 +744,11 @@ def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict]) -> 
                        if e.get("value_over_replacement", 0) > 0
                        and (e.get("redraft_value") or 0) > 0
                        and (e.get("years_to_decline") or 0) >= MIN_RUNWAY_FOR_LATER),
-                      key=lambda e: -(e.get("redraft_value") or 0))
+                      # Friction last, then most current production - the same key
+                      # `_my_offer_pool` sorts by. Ranking on production alone put Lamar
+                      # Jackson at the head of "what they want from you" while the offer list
+                      # four lines above listed him LAST with two reasons not to move him.
+                      key=lambda e: (bool(e.get("friction")), -(e.get("redraft_value") or 0)))
         if both:
             return {"you_could_offer": [e["name"] for e in both[:3]],
                     "why_it_fits": (f"{other['owner']} has no positional hole, so there is "
@@ -1544,6 +1548,16 @@ def _print_push(push: dict, extras: dict) -> None:
                   f"per unit of cost - dyn {t['value']:,} / redraft {t['redraft_value']:,}) "
                   f"from {t['from_owner']}")
             print(f"      why they might listen: {t['why_they_might_listen']}")
+            # `you_could_offer`/`why_it_fits` and `cost_note` were all computed and none of
+            # them printed - so the CLI showed the argument for asking and never what the ask
+            # costs, which is the half that decides whether to make the call.
+            if t.get("you_could_offer"):
+                print(f"      what they want from you: {', '.join(t['you_could_offer'])}")
+            if t.get("cost_note"):
+                print(f"      what it costs: {t['cost_note']}")
+            for f in t.get("friction") or []:
+                if f["flavor"] != "needs_a_pivot":   # already said by cost_note above
+                    print(f"      - [{f['flavor']}] {f['why']}")
 
 
 def _print_report(result: dict) -> None:
