@@ -17,7 +17,7 @@ AGE_CURVE = {
 # earlier; a dual threat keeps the default because elite passing survives the legs; a
 # pocket passer holds value far longer (38, not 40 - the curve should turn before the
 # market does); receiving-down RBs age more like WRs. Tags are earned by measured usage,
-# not reputation - LOGIC.md, "The QB curve by archetype".
+# not reputation - LOGIC.md, "Age curves and runway".
 AGE_CURVE_OVERRIDES = {
     "rushing_qb": (26, 32),
     "dual_threat_qb": (26, 34),
@@ -28,7 +28,7 @@ AGE_CURVE_OVERRIDES = {
 # The single definition of "has a future": seasons before his own decline cutoff, the
 # horizon claims like "still there later" actually make. Buckets are only a discretization
 # of this - nobody's value falls off a cliff on a birthday - so anywhere a boundary decides
-# something, use the runway (LOGIC.md, "Runway, not buckets").
+# something, use the runway (LOGIC.md, "Age curves and runway").
 MIN_MEANINGFUL_RUNWAY = 2.0
 
 # Inside his final year: is the player at his own edge right now. Distinct from the buyer's
@@ -148,7 +148,7 @@ def now_premium_bar(players: dict[str, dict], percentile: float = 0.9) -> dict[s
     """Per position, the `redraft_value / value` cutoff at `percentile` of that position's
     pool - how now-weighted a price has to be to be extreme FOR HIS POSITION. Per-position
     because the two scales' relationship differs sharply by position (an absolute bar once
-    sat above the entire TE pool - LOGIC.md, "The bar has to be per-position"). Measures
+    sat above the entire TE pool - LOGIC.md, "The dynasty/redraft measure"). Measures
     shape only; whether a player is worth having is `clears_relevance_floor`'s question."""
     bars = {}
     for player in players.values():

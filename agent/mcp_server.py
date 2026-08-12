@@ -2,7 +2,7 @@
 agent. Every tool is a thin wrapper over an already-validated module - no new business
 logic lives here. See LOGIC.md for the reasoning behind what each one computes.
 
-Local stdio transport only - single user, no network exposure. See LOGIC.md's "MCP"
+Local stdio transport only - single user, no network exposure. See LOGIC.md's "The agent stack"
 section for why that keeps this phase pure plumbing with no new risk surface.
 
 Run: python -m agent.mcp_server

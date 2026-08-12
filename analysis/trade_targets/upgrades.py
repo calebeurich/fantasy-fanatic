@@ -1,6 +1,6 @@
 """Better things to own than what you start: same-position holdings that beat a current
 starter for less dynasty value, and the same cliff argument pointed at your own roster.
-History: LOGIC.md, "Better holdings than what you start".
+History: LOGIC.md, "Better holdings and the mirror".
 """
 
 from .. import team_state

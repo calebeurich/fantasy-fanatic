@@ -246,7 +246,7 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
     need - it is a separate axis, and the drop-off sidesteps the replacement bar, which by
     construction leaves almost nobody with "startable bench". Numbers ship with the
     sentence that interprets them. Why the bare count this replaced was nearly inverted:
-    LOGIC.md, "Count vs quality"."""
+    LOGIC.md, "Positional needs"."""
     groups = {r["owner_id"]: _starting_group(r, players, slots) for r in rosters}
     usable = {r["owner_id"]: _usable_by_position(r, players, thresholds, "redraft_value")
               for r in rosters}

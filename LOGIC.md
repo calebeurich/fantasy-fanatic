@@ -1,3822 +1,746 @@
 # Logic reference
 
-Living doc: every heuristic, threshold, and "why" behind this repo's analysis, kept in
-sync as modules are added. The eventual chatbot's whole value is explaining *why* a
-recommendation happened, not just stating it - so this file is what it should ground
-those explanations in. Update it in the same change that adds or adjusts a heuristic.
+Every heuristic, threshold, and "why" behind this repo's analysis - the material the
+eventual chatbot grounds its explanations in. Update it in the same change that adds or
+adjusts a heuristic. This is a reference to the CURRENT rules, organized by concept;
+the full history of how each rule was arrived at lives in git (`git log` reads as a
+narrative on purpose).
+
+## The model in one page
+
+1. **Two currencies.** Dynasty value prices production plus future years; redraft value
+   prices this season alone. Confusing them is this project's most common bug, and the two
+   scales are unnormalized - never compare or ratio them absolutely; compare ranks within a
+   position, or pairwise at the same position where the skew cancels.
+2. **Three states, each with flavors.** Contending (`Push`/`Contend` - only the clock
+   differs), Middling (`rising`/`falling`/`steady`/`convertible`), Rebuilding
+   (`ascending`/`stalled`/`convertible`). Contenders and rebuilders complement each other
+   in trades; same-state pairs don't; Middling is a real position, not an unmade decision.
+3. **Age is a distance, not a category.** `years_to_decline` (runway to the player's own
+   curve cutoff) is the measure; buckets are only its sign. Anywhere a boundary decides
+   something, use the runway. Curves differ in width per position, so "two years of
+   runway" means different ages at RB than QB.
+4. **Value is not additive across players.** Nothing here prices a package; every
+   comparison is one player against one player, and the tools are built so that stays
+   structural rather than a prompt instruction.
+5. **Everything is league-relative** (tertiles, percentiles, replacement levels), so
+   nothing is a constant tuned to one league. The cost is hard breakpoints on continuous
+   measures: a value refresh can flip a label. Known, and the next behavioral fix.
+6. **A recommendation needs a plausible counterparty.** Every suggestion carries why the
+   other owner would say yes, in his own window's terms.
 
 ## Data sources and why
 
-- **Sleeper API** (`sleeper.py`): public, free, no auth. Source of truth for league
-  settings, rosters, users, transactions, and traded picks.
-- **FantasyCalc** (`fantasycalc.py`): dynasty trade values, player age, and rookie pick
-  values. Chosen over KeepTradeCut because KTC's ToS explicitly forbids scraping or
-  reproducing their values in a tool - FantasyCalc has a genuine free public API instead.
-- **nflverse / OverTheCap** (`contracts.py`, `player_roles.py`, `nflverse_ids.py`):
-  real NFL contracts and season usage stats. OverTheCap's own site also forbids
-  scraping, but nflverse is the community-standard open-data project that redistributes
-  this data from GitHub-hosted releases, not by us hitting overthecap.com directly -
-  meaningfully lower risk than writing our own scraper.
-- **ID crosswalk** (`nflverse_ids.py`): nflverse data keys players by `gsis_id` (the
-  NFL's own ID), not Sleeper's `player_id`. `gsis_to_sleeper()` bridges the two so
-  contracts and usage stats can join onto a Sleeper roster.
+- **Sleeper API** (`sources/sleeper.py`): public, free, no auth. League settings,
+  rosters, users, transactions, traded picks.
+- **FantasyCalc** (`sources/fantasycalc.py`): dynasty + redraft values, ages, pick
+  values. Chosen over KeepTradeCut because KTC's ToS forbids scraping or reproducing
+  their values; FantasyCalc has a genuine public API.
+- **nflverse** (`sources/contracts.py`, `player_roles.py`, `injuries.py`,
+  `nflverse_ids.py`): contracts, usage stats, weekly availability - the community
+  open-data redistribution, not scraping OverTheCap directly. Keyed by `gsis_id`;
+  `nflverse_ids.gsis_to_sleeper()` is the crosswalk.
+- **Degraded feeds** (`sources/degraded.py`): both nflverse call sites fall back rather
+  than crash (a role is an override; absent means no adjustment) but never quietly -
+  stderr warns the author, `degraded.record()` reaches the ANSWER: the MCP layer stamps
+  `data_gap` on every tool result and agent rule 12 makes the model say it in one
+  sentence. With roles missing, every curve is a position default - that once moved a
+  QB's runway from 6.2 to 2.1 years and reversed a sell recommendation, so a degraded
+  run's runway advice is materially less precise.
+
+### Source caching (`sources/cache.py`)
+
+~20 lines of TTL memoization, not a library. The TTL split is a correctness decision:
+stale rosters give confidently wrong advice, so live state (rosters, transactions,
+traded picks) gets 60s - just enough to collapse one question's 2-4 tool calls into one
+fetch - league config 10m, FantasyCalc values 1h, nflverse reference 6h. Measured win:
+`classify_league` 6.85s cold / 0.00s warm. The cache lives in the MCP server subprocess;
+persistent sessions (below) are what keep it warm across questions.
 
 ## Shared league context (`analysis/league.py`)
 
-A consolidation pass after a long run of individually-small fixes, which is exactly the
-situation CLAUDE.md's anti-bloat rule describes: when patches for related issues start
-duplicating the same concept, stop and unify before continuing.
+One `LeagueContext` built per league (TTL-cached), because five modules had copy-pasted
+the same setup and kept picking the wrong near-twin concept. The disambiguation table:
 
-What had accumulated: the same four-line setup - fetch league, describe format, derive
-`num_qbs`, load the player pool - copy-pasted in **five** modules (`roster_detail`,
-`roster_needs`, `team_state`, `team_values`, `waiver_wire`), plus an eight-line preamble
-in `find_targets` that fetched the league twice. `roster_needs._league_setup` already was
-this function; being private, everyone else re-derived it. That had already cost real
-effort - adding `redraft_value` to the player pool meant hunting down every copy.
+- `needs_slots` folds SUPER_FLEX into an extra QB - "how many of this position must I own".
+- `lineup_dedicated` + `lineup_flex` model the real lineup - "who actually starts".
+- `start_thresholds` (redraft): can this player start? `trade_thresholds` (dynasty): is
+  he a real chip? Conflating them once marked a team with three startable WRs critical.
+- `starters` is THE definition of a lineup: value-derived (`projected_starters`), never
+  Sleeper's current-week snapshot, which is meaningless preseason (it once listed one QB
+  for a superflex team, so the QB2 was offered away as spare parts).
+- Owner lookup matches on handle AND team name, normalized to letters/digits only -
+  team names are free text full of characters nobody retypes ("Where's the Lamb
+  Sauce???" stores a curly apostrophe).
 
-`context(league_id)` returns one `LeagueContext` carrying all of it, TTL-cached like
-everything else. This is a **maintainability** fix, not a performance one: `sources/cache.py`
-had already made the repetition nearly free. The win is that there's now one place to add
-a field, and one place that names which of several similar-looking concepts is which:
+## Format detection and FantasyCalc's parameters (probed, not assumed)
 
-- `needs_slots` folds SUPER_FLEX into an extra QB - right for "how many of this position
-  must I own", which is what replacement level and needs ask.
-- `lineup_dedicated` + `lineup_flex` model the real lineup, where SUPER_FLEX takes any
-  position - right for "who actually starts".
-- `start_thresholds` (redraft) answers "can this player start"; `trade_thresholds`
-  (dynasty) answers "is this a real trade chip". Conflating those two made a team with
-  three startable WRs read as critically short.
+`sleeper.describe_format`: dynasty = Sleeper's `settings.type == 2`; superflex =
+`SUPER_FLEX` in `roster_positions`; TEP maps to FantasyCalc's three bands.
 
-Those pairs existed before and were distinguishable only by reading the call site
-carefully - which is how the wrong one kept getting used. The refactor removed
-`_league_setup` and four now-dead imports; all 44 tests, every module smoke test, and the
-MCP protocol test pass unchanged.
+What the FantasyCalc parameters actually do, measured by pulling and diffing:
 
-## Source caching (`sources/cache.py`)
+- **`numQbs` has exactly two settings** - 1, and >=2 (byte-identical for 2, 3, 0).
+  Superflex and 2QB are one market. The format move is four per-position scalars:
+  QB x1.883, RB x0.923, WR x1.007, TE x1.101, constant across each whole position;
+  only picks genuinely vary (x1.026-1.148). Consequences: within-position comparisons
+  are format-independent (the scalar cancels), cross-position comparisons rest entirely
+  on those four numbers, and superflex QB scarcity is NOT steepened - the real cliff at
+  QB12-13 is invisible to a flat scalar, so the marginal QB2 is probably worth more than
+  these values say.
+- **`ppr` is a flat per-position scalar and nearly invisible**: 0->1.0 PPR moves RB
+  x0.9943, WR x1.0180, TE x1.0232, QB x1.0114. It cannot distinguish a receiving back
+  from an early-down back (McCaffrey and Henry move identically), which is what full PPR
+  most changes. Nothing to fix at this layer - there is no per-player PPR data to apply,
+  and a guessed multiplier would have nothing to calibrate against. Recorded so the
+  passthrough isn't mistaken for precision.
+- **TE premium is applied by FantasyCalc in the browser, not the server** - the API 404s
+  on every `tep` value except `none`, and their site rescales the TE column client-side
+  by a flat multiplier. `fantasycalc.TEP_MULTIPLIER` replicates it: TEP+ x1.1490, TEP++
+  x1.2900, TEs only; bands verbatim from their UI (Off <=0.25, TEP+ 0.5-1.0, TEP++
+  start-2-TE or >1.0). Both real leagues here score 0.5, so every TE was ~15%
+  undervalued before this. Caveat: a replicated client transform can drift silently -
+  `python -m sources.fantasycalc` prints the multipliers for a one-command check.
+  (An earlier note here called TEP unfixable after reading the documented parameter
+  list; watching what the site actually sends found both the mechanism and the
+  calibration. Checking documentation and stopping was the mistake.)
 
-Every data-source call originally did a fresh HTTP request or nflverse download, and a
-single agent question makes 2-4 tool calls that each re-derive the same league state -
-so the same FantasyCalc values and nflverse datasets were pulled several times to answer
-one question. Measured on a real league: `classify_league` took 6.85s cold and 0.00s
-warm, with identical results, and a `find_targets` call immediately after went from ~7s
-to instant.
+## Format support gate (`analysis/format_support.py`)
 
-~20 lines rather than a caching library: this needs a TTL and nothing else.
+`assess_format` returns `unsupported` (not dynasty - the concepts mean different things
+there, so the agent refuses rather than degrades), `degraded` (< 8 teams - percentile
+math gets noisy; not yet validated against a real shallow league), or `full`.
 
-**The TTL split is a correctness decision, not just performance.** Roster data changes
-the moment someone trades or claims a player, and serving a stale roster means giving
-confidently wrong advice - strictly worse than being slow. So:
+**Structural limitation:** real leagues carry house rules no API exposes. Confirmed live:
+XFL 2 awards the 1st overall pick by lowest full-season BEST-BALL score, not standings -
+under that rule tanking a lineup doesn't even work, and `team_state`'s tanking note
+assumes reverse-standings order. Capturing freeform per-league rules and letting them
+caveat downstream logic is an unbuilt design, and more of these gaps should be expected.
 
-| Data | TTL | Why |
-|---|---|---|
-| Rosters, transactions, traded picks | 60s | Long enough to collapse one question's tool calls into a single fetch, short enough that a stale roster can't outlive the question |
-| League config (settings, users) | 10m | Can change mid-season; effectively never does |
-| FantasyCalc values | 1h | Recomputed periodically, not continuously |
-| nflverse reference data (contracts, id crosswalk, usage roles) | 6h | Updates weekly at most, and is the slowest pull here |
+## Age curves and runway (`team_values.py`, `sources/player_roles.py`)
 
-Fixed a real bug found while adding this: `contracts.py` called `nfl.load_contracts()`
-twice in one expression, downloading the entire contracts dataset a second time on
-every call.
+Per-position breakpoints (ascending below / declining at-or-above), dynasty-community
+heuristics: QB 26/34, RB 24/27, WR 25/29, TE 25/30. Usage-based overrides from measured
+season data (nflreadpy), thresholds picked from natural gaps in the real distribution:
 
-**Scope limit worth knowing:** the cache lives in the MCP server subprocess. Before
-per-session clients existed, that subprocess was spawned fresh per question, so the
-benefit was confined to *within* a question. Persistent sessions (below) keep it warm
-across questions too.
+- `rushing_qb` (carries/game >= 5.0, not an elite passer): 26/32
+- `dual_threat_qb` (>= 5.0 carries AND elite passer): 26/34 - the point is the absence
+  of the rushing discount, not a bonus; elite passing survives the legs
+- `pocket_passer` (elite passer, not a runner): 26/38 - not 40, because the curve should
+  turn before the market does; the top passing-EPA tier over three seasons is all pocket
+  throwers, so the tag is earned by production
+- `pass_catching_rb` (targets/game >= 4.0): 24/29
 
-## Format detection (`sleeper.describe_format`)
+"Elite passer" = top third of passing EPA/game over three seasons. EPA over CPOE
+despite CPOE being better isolated, because CPOE penalises aggressive downfield throwing
+(Stafford: 5.33 EPA, -0.47 CPOE). The pocket/rushing spread (38 vs 32) is the only
+constant in this project changed on an outside opinion - a sports-modelling data
+scientist argued the pocket end was too pessimistic - and it was changed because the
+measured data backed it: the top three-season EPA tier (Goff 6.87, Purdy 6.62,
+Stafford, Burrow, Mahomes) is all pocket throwers. `dual_threat_qb` exists because the
+rushing discount assumed nothing to fall back on: Allen (6.05 EPA) and Lamar (5.25)
+clear the elite-passer bar while Hurts (2.99, 8.5 carries/g) does not - visibly
+different in the same data.
 
-- Dynasty vs redraft/keeper comes from Sleeper's own `settings.type` flag (2 = dynasty).
-- Superflex = `SUPER_FLEX` present in `roster_positions`.
-- TE premium maps to one of FantasyCalc's three bands (`sleeper.tep_tier`).
-- `is_dynasty`/`num_qbs`/`num_teams`/`ppr` feed FantasyCalc's `values/current` API params
-  directly, so PPR-vs-standard scoring and dynasty-vs-redraft pricing come from their
-  value model at the source rather than anything approximated here.
+**Runway (`years_to_decline`)** is the distance to the player's own cutoff, negative past
+it - the single definition of "has a future" (`MIN_MEANINGFUL_RUNWAY = 2.0`, the horizon
+claims like "still there later" actually make). Buckets are its sign and nothing more;
+age ordering can invert runway ordering (Goff 31.8 -> 6.2 years vs Hurts 28.0 -> 4.0),
+which both a human expert and the agent once got backwards. `INSIDE_FINAL_YEAR = 1.0` is
+the seller-side question - is he at his own edge - kept separate because on the RB curve
+the buyer's 2.0 horizon means "any RB over 25".
 
-### What FantasyCalc's format parameters actually do (probed, not assumed)
+**Contract outliers** (`find_outliers`): declining-by-age but 2+ years remaining AND
+guaranteed money > 0 (461 of 1,695 active contracts guarantee $0, so years alone
+self-refutes). Display-only by design - the market's own pricing already carries "how
+long does he have left" continuously, while a contract encodes what a team believed at
+signing, possibly years stale.
 
-**`numQbs` has exactly two settings.** `numQbs=1`, and `numQbs>=2` which returns byte-
-identical data for 2, 3, and 0. There is no separate superflex market - superflex and 2QB
-are one market, which matches how the format actually plays: starting two QBs is generally
-the best projection when you can, so the second QB is near-mandatory in practice without
-being mandatory in the rules.
+**Open decision - contract signal vs age curve:** whether NFL contract years should feed
+decline math at all. Evidence against: see the display-only reasoning above; revisit only
+with calibration data.
 
-**And that market is four per-position scalars, not a re-derivation.** Comparing every
-player present in both pulls (excluding sub-500 values, where integer rounding dominates):
+## Pick valuation (`team_values.owned_picks`, `pick_capital`)
 
-| position | 1QB -> SF/2QB ratio | spread across the position |
-|---|---|---|
-| QB | **1.883** | 1.8819 - 1.8845 |
-| RB | 0.923 | 0.9221 - 0.9237 |
-| WR | 1.007 | 1.0059 - 1.0078 |
-| TE | 1.101 | 1.1000 - 1.1015 |
-| PICK | ~1.066 | 1.026 - 1.148 (genuinely varies) |
+Two future classes only (`FUTURE_DRAFT_YEARS` - further out is too speculative and
+rarely traded). Ownership resolves through `traded_picks`; a pick not listed is still
+its original roster's. Picks are priced by the ORIGINAL owner's window where the market
+publishes tiers - a rebuilder's 1st is an early pick whoever holds it, and Early/Late
+differ by ~2x (2027 1st: 4,487 / 2,955 / 2,263 vs flat 2,853). Only the next class has
+tiered prices (a window predicts one season's finish, not two); later picks keep the
+flat round value with `slot_basis` saying so. `pick_capital` is a sum over `owned_picks`,
+deliberately not a second ownership implementation. `pick_equivalent` maps a player value
+to the nearest pick ("about a 2027 3rd") because a raw number is hard to feel.
 
-Josh Allen and the QB40 move by the same 1.883. Two consequences worth holding onto:
-*within*-position comparisons are format-independent (the scalar cancels, so
-`find_value_upgrades` comparing two QBs is unaffected), while *cross*-position
-comparisons rest entirely on those four numbers. **Not modelled by the source: superflex
-QB scarcity is not steepened.** The real cliff in a superflex league is around QB12-QB13,
-where the last startable QB2s go - a flat scalar cannot express that, so the marginal QB2
-is probably worth more than these values say. Picks are the one thing that genuinely
-varies, which makes sense: a pick's worth depends on the player pool it converts into.
+`team_state.classify_league` prices pick capital WITHOUT the window keying, because the
+window is what that measure helps produce - the label must not feed its own input.
 
-**`ppr` is a flat per-position scalar too, and a nearly-invisible one.** Measured 0 PPR
--> 1.0 PPR: RB x0.9943, WR x1.0180, TE x1.0232, QB x1.0114, each constant across its whole
-position to four decimals. The single largest scoring setting in fantasy football moves RB
-values by 0.6%.
+## The dynasty/redraft measure (`priced_for`, `now_premium_bar`)
 
-Worse, it cannot distinguish a receiving back from an early-down back, which is precisely
-what full PPR most changes:
+The relationship between the two prices is read via **positional rank gap**
+(`priced_for`: rank within position on each scale, compare, ±10% of pool size decides
+later/now/aligned). The raw ratio cannot answer this: half the dynasty pool has no
+redraft price, measured ratio medians are QB 0.36 / RB 0.05 / WR 0.00 / TE 0.00, so 1.0
+is nowhere near neutral - it once mislabelled 111 entries against 32. Rank gets ten
+known-answer players right where the ratio got six wrong. Known limit: ±10% of a 29-man
+TE pool is coarser than of a 75-man WR pool.
 
-| player | 0 PPR | 1.0 PPR | ratio |
-|---|---|---|---|
-| Christian McCaffrey | 4,462 | 4,437 | **x0.9944** |
-| Derrick Henry | 2,995 | 2,978 | **x0.9943** |
+`now_premium_bar` (percentile of the ratio WITHIN each position, 0.9) survives for one
+job: picking the price *sentence* in `_cliff_case`/`_conversion_candidates` (discounted
+to harvest vs pure window mismatch). It gates nothing, and its old absolute form sat
+above the entire TE pool - treat any absolute threshold on these two scales as a bug on
+sight.
 
-A pure receiving back and a pure between-the-tackles back move identically. In a real
-full-PPR league McCaffrey's edge over Henry is far larger than in standard scoring, and
-none of that is in these numbers. Nothing to fix at this layer: there's no per-player PPR
-data here to apply, and inventing a multiplier off `player_roles.pass_catching_rb` would be
-a guessed heuristic with nothing to calibrate against - unlike TEP, where FantasyCalc's own
-UI supplied the calibration. Recorded so the `ppr` passthrough isn't mistaken for format
-precision it doesn't have.
+### Alternatives tested and rejected - do not re-derive
 
-**TE premium is applied by FantasyCalc in the browser, not on the server.** Their site
-only ever requests `tep=none`; the API 404s on every other `tep` value. Selecting TEP+ or
-TEP++ on their page fires no network request and rescales the TE column client-side, by a
-flat multiplier - identical to four decimals across every TE, and unchanged between 10-
-and 12-team settings. So `fantasycalc.TEP_MULTIPLIER` replicates it: **TEP+ x1.1490,
-TEP++ x1.2900**, TEs only. Bands are theirs, verbatim from their control labels: Off
-(<=0.25), TEP+ (0.5 to 1.0), TEP++ (start 2 TE or >1.0).
+- **Replacement multiples** (value / replacement on each scale): the denominators are in
+  different currencies whose ratio varies by position, so it reintroduces the distortion;
+  called known cases backwards.
+- **Sleeper `search_rank`**: format-agnostic, so it under-ranks the scarcest asset in
+  superflex (median QB rank move +43 vs a superflex value ordering). FantasyCalc already
+  takes `numQbs`; our values are format-correct and it is not.
+- **Positional scarcity inflating a TE-heavy lineup**: tested three ways; normalizing
+  moved the TE-heavy roster UP (Bowers is 9.6x TE replacement). The scarcity premium in
+  that league is at QB. The allocation thesis has no support in these numbers.
 
-**This corrects a wrong conclusion previously recorded here**, which said TE premium was
-unfixable because the endpoint had no parameter for it and there was "no real data to
-calibrate a manual multiplier against." Both halves were wrong, and the reason is worth
-keeping: that conclusion came from reading FantasyCalc's *documented parameter list*
-instead of watching what their site actually sends. The calibration data was sitting in
-their own UI the whole time. Checking the documentation and stopping was the mistake.
+### The axis is misnamed (backlog)
 
-It matters here rather than being academic - **both real leagues in this project score
-`bonus_rec_te = 0.5`**, which is TEP+, so every TE was ~15% undervalued. Being a flat
-scalar, it changes no TE-vs-TE comparison (ranks, thresholds, and needs are identical);
-what it fixes is TE-vs-everything-else, which is exactly what trade valuation runs on.
+`starting_production` is a sum of redraft TRADE VALUES of projected starters, not points.
+Defensible measurement (best available, format-correct), overclaiming name - it is the
+most load-bearing axis in the project and its notes say "production" about market value.
+Rename to "lineup market value" or similar.
 
-*Caveat*: this replicates a client-side transform, not an API contract. If FantasyCalc
-retunes it we drift silently, so `python -m sources.fantasycalc` prints the multipliers
-in use next to the resulting TE values for a one-command check against their site.
+## Team windows (`analysis/team_state.py`)
 
-## Format support gate (`format_support.py`)
-
-Built before any agent exists, specifically so format-safety is a deterministic code
-fact the agent inherits later rather than something it has to reason its own way into
-respecting. `assess_format(league_id)` returns one of three tiers:
-
-- **`unsupported`**: `is_dynasty == False`. This isn't a "slightly less accurate"
-  situation - dynasty trade value, the age-curve win-window classification, cornerstone
-  thresholds, and pick capital are all dynasty-specific concepts. Running them on a
-  redraft/keeper league doesn't degrade gracefully, it produces a confidently-wrong
-  answer, because the underlying values mean something different there. The agent
-  should refuse and explain, not attempt analysis.
-- **`degraded`**: fewer than `MIN_TEAMS_FOR_FULL_SUPPORT` (8) teams. The percentile-based
-  math elsewhere (`team_state.cornerstone_threshold` at the 90th percentile,
-  `roster_needs.replacement_thresholds` at the Nth-best-player-leaguewide) gets noisy in
-  a shallow pool - a 4-team league's "90th percentile" is one player. Numbers still
-  compute, but should carry a visible caveat.
-- **`full`**: standard dynasty league, no caveats needed.
-
-Validated against three real leagues: two real dynasty leagues (both correctly `full`)
-and a real redraft league (correctly `unsupported`). The `degraded` tier and its
-threshold are **not yet validated against a real shallow league** - none of the leagues
-checked in this project are that small. Revisit the exact cutoff once one is available
-rather than trusting it blindly.
-
-**A deeper, structural limitation, not just a missing tier**: `assess_format` can only
-see what Sleeper's API exposes as structured settings. Real leagues carry rules that
-live nowhere in the API - constitutions, pinned Discord messages, commissioner house
-rules - and those can invalidate assumptions baked elsewhere in this codebase, not just
-in format detection. Concrete, confirmed example: the user's own XFL 2 league determines
-next draft's 1st overall pick by **lowest full-season best-ball score**, not standings.
-`team_state.py`'s "doesn't own next 1st, tanking wouldn't help" logic implicitly assumes
-a standard reverse-standings draft order - under this league's actual rule, deliberately
-starting a bad lineup wouldn't even work as a tank strategy, since best-ball scoring is
-calculated from the best *possible* lineup regardless of what was actually started. This
-isn't fixable by adding another `assess_format` tier - it needs a way to capture
-freeform, per-league house rules that no API will ever expose, and a mechanism for those
-rules to actually override or caveat the relevant downstream logic (the tanking note
-specifically, likely others not yet identified). Not designed yet - flagged as a real,
-recurring category of gap to expect more of as this tool sees other real leagues.
-
-## Backlog: this document is invisible to the agent
-
-**The stated end goal is a chatbot that explains its recommendations, and the reasoning it
-would explain from lives in a file it cannot read.** Reasoning currently reaches the
-assistant through exactly two surfaces:
-
-1. **Note strings inside tool output** - `window_note`, `depth_note`, `value_upgrade_note`,
-   `why_they_might_listen`. These work well and are why so much prose is embedded next to
-   the data rather than kept here. They only carry reasoning attached to a specific field.
-2. **MCP tool descriptions** (`agent/mcp_server.py`) - always in context, so they carry the
-   "how to read this block" instructions.
-
-LOGIC.md itself - every *why* behind every constant, every rejected alternative, every live
-case that forced a change - reaches the agent through neither. A concrete miss: asked about
-a Push team 76% of the best lineup against a leader at 100% who is *also* rising, the right
-read is "you cannot out-wait him, so push harder or don't push at all." Every number needed
-is in `get_team_state`'s league rows. Nothing tells the agent to make the comparison, and
-`window_note` describes a team in isolation.
-
-Three steps, cheapest first, none built:
-
-- **A comparative field on the team row** - the gap to the league's best lineup and whether
-  that team is rising - so the read above becomes data with a note attached rather than an
-  inference the agent may or may not make. Same pattern as everything else here.
-- **Doctrine in the system prompt** *(done - `agent/agent.py`)*. Five principles that are not
-  about any single field: pick an end of the spectrum, don't confuse the two currencies, age
-  is a distance, value is not additive, and a trade needs a plausible counterparty. These
-  are the ideas the tools encode and no single tool result states.
-- **LOGIC.md as an MCP resource** the agent can query - "why is this a Push team", "why isn't
-  contract length in the age curve". This is the version where the assistant wields the whole
-  picture instead of a summary, and where the document and the agent cannot drift apart.
-  Needs chunking that survives this file's length, which is the actual design work.
-
-### Three states, and the flavors are now computed
-
-`window` has always returned four labels - `Push`, `Contend`, `Middling`, `Rebuild` - and the
-model has always been three states. `window_for`'s own comment says so (*"Good now. The only
-question is whether there's a clock on it"*), and shipping four peer labels still cost both a
-reader and this file's author the model in the same conversation. `state` is now the base and
-`window` stays the flavor:
+Two measured axes, each cut into league tertiles so no constant is tuned to one league:
+**contention** = the projected lineup's total REDRAFT value ranked against the league
+(dynasty value prices future seasons - swapping to redraft moved teams 4-5 places on real
+leagues, including a roster that was "old but genuinely close" being told it was
+mid-pack), and **trajectory** = ascending minus declining share of that production
+(production, not dynasty value, which would double-count - ascending players are PRICED
+on the growth being measured). This replaced an age-only model plus two patch flags that
+were crude proxies for the missing contention axis.
 
 | state | flavors | wants | can spare |
 |---|---|---|---|
-| **Contending** | `Push` (clock) / `Contend` (none) | production now | future years - youth, picks |
-| **Middling** | `rising` / `falling` / `steady` / `convertible` | information; can go either way | nothing freely |
+| **Contending** | `Push` (clock) / `Contend` (none) | production now | future years |
+| **Middling** | `rising` / `falling` / `steady` / `convertible` | information | nothing freely |
 | **Rebuilding** | `ascending` / `stalled` / `convertible` | future years | production now |
 
-And the flavors are derived from fields that already existed - `trajectory` and `leverage` -
-rather than being new computation. They had been described here for a while and labelled
-nowhere, so the flavor column repeated the state for two of the three states. That is how a
-documented distinction stays invisible.
-
-**`convertible` outranks trajectory**, because a weak lineup on a top-third war chest is not
-described by which way it happens to be tilting. Live: `jwall567` (contention 9, assets 3) and
-`dkwnsepw` (contention 11, assets 2) - the case that opened this whole thread.
-
-#### The rebuild flavor has to be absolute, and this is the one place that matters
-
-`ascending` vs `stalled` was first derived from the trajectory *tertile*, and it immediately
-produced a false label. `BartolosHeroes` is **40% ascending against 3% declining** and lands in
-the middle tertile only because its league is full of ascending rebuilds - so the tertile said
-"steady" and the flavor said `stalled`, whose note reads *"nothing arriving and nothing to
-convert - genuinely stuck"*, about the clearest working rebuild on the board.
-
-"Is the rebuild working" is a question about the roster, not about its rank, so it is
-`ascending_pct > declining_pct`. Checked against every rebuilding team in all three leagues,
-including the two this document already named as stalled:
-
-| team | asc/dec | flavor |
-|---|---|---|
-| BartolosHeroes | 40/3 | `ascending` (was wrongly `stalled`) |
-| tchoezin | 87/0 | `ascending` |
-| spugz13 | 9/12 | `stalled` |
-| jqsimonds22 | 18/20 | `stalled` |
-| HiThirstylmDad | 9/9 | `stalled` - a tie is nothing arriving |
-
-**Middling deliberately keeps the tertile.** There the question genuinely is comparative:
-whether waiting is free *relative to this league* is what decides push versus pivot, which is
-how `WINDOW_NOTE` has always read it. Same word, two honest meanings - which is exactly why the
-flavor is named per state (`rising` for Middling, `ascending` for Rebuilding) rather than shared.
-
-**Known bug, backlogged:** `FitzmagicsEMUs` is 23/7 and therefore `ascending`, while ranking
-12th of 12 in **both** contention and assets. The owner's read: *"that guy's team is probably
-just stalled as well since his ascending assets are just bad."* That is right, and it says what
-the defect is.
-
-`ascending_pct` is a share of **this team's own** production, so it is scale-free by
-construction: a roster whose young players are all bad still reads 23% ascending, because the
-denominator is equally bad. The ratio answers "which way is this roster tilting" and the
-`ascending` label claims something stronger - that *real* future production is arriving. On a
-team ranked last in assets, nothing real is arriving.
-
-So the flavor needs an absolute quality floor on top of the ratio, not a different ratio: are
-the ascending players actually worth something? `clears_relevance_floor` already answers exactly
-that question, position-relative and tiered by value basis, and `asset_rank` already says whether
-the war chest is real. Both exist; the flavor reads neither. Until then `stalled` is
-under-reported at the very bottom of the league, which is the least harmful direction for it to
-be wrong but is still wrong.
-
-### Backlog: the dynasty/redraft measure, and three alternatives already tested
-
-The relationship between dynasty and redraft price is read in five places, and one absolute
-threshold survives: `now_share` in `find_value_upgrades`, which calls a player "upside-priced"
-below **1.0**. Measured medians of redraft/dynasty are 0.36 (QB), 0.05 (RB), 0.00 (WR), 0.00
-(TE) - half the dynasty pool has no redraft price at all - so 1.0 is nowhere near neutral and
-the label fires **111 times against 32**. Live on the team being spot-checked: Kenny Gainwell,
-a 26-year-old backup at dynasty #37 / redraft #33 among RBs, is called *"upside-priced, only
-0.39 of his dynasty price is production now"*. There is no upside to sell; he is just marginal.
-Rashee Rice at 0.75 is the same error. It is a **label** defect - no selection logic reads
-`now_share` - so it misdescribes rather than misrecommends, which is why the audit never caught
-it.
-
-**The fix is positional rank gap**, not a percentile of the ratio: rank within position on each
-scale, and compare. Tested against ten players whose answer we know, it gets all ten right where
-the ratio gets six wrong, in both directions:
-
-| player | ratio says | rank says | right |
-|---|---|---|---|
-| Harold Fannin (TE, dyn #6 / red #10) | upside 0.29 | upside | both |
-| Travis Kelce (36yo, dyn #17 / red #9) | upside 0.85 | **now** | rank |
-| Tony Pollard (dyn #41 / red #32) | upside 0.48 | **now** | rank |
-| Smith-Njigba (WR2 on both boards) | upside 0.88 | **aligned** | rank |
-| Lamar Jackson (QB3 dyn / QB2 red) | now 1.30 | **aligned** | rank |
-
-And the **median gap is 0% at every position**, which the ratio never managed - so zero is
-genuinely neutral and no per-position bar is needed. That was overstated when first recorded:
-`now_premium_bar` still does a real job - it picks the *sentence* about a player's price in
-`_cliff_case` and `_conversion_candidates` (discounted to harvest vs. a pure window mismatch) -
-so it stays until something rank-based replaces that clause too.
-`check_no_tier_is_structurally_unreachable` IS gone: a percentile bar is clearable by
-construction (~10% of every position always clears), so the check could never fire once the
-absolute bar it guarded was deleted. Known limit: a band on the
-gap is still a constant, and because a rank move is 3.4% of a 29-man TE pool against 1.3% of a
-75-man WR pool, ±10% catches 20% of QBs and 55% of TEs. Smaller than the ratio's distortion, not
-zero.
-
-#### Three alternatives tested and rejected - do not re-derive these
-
-- **Replacement multiples** (value / replacement level on each scale, then compare). Worse than
-  either. The two replacement levels are each defined in their own currency at the Nth slot, and
-  the ratio between the denominators varies by position, so dividing reintroduces the
-  distortion. Medians went back to 1.00 / 0.76 / 0.83 / 0.88, and it called Fannin "aligned" and
-  Egbuka "now" - both backwards.
-- **Sleeper `search_rank`** as an ADP-like points-order signal. It exists on the players payload
-  and is **format-agnostic**, which makes it unusable here: median rank move against a superflex
-  trade-value ordering is **QB +43**, RB −14, WR −7, TE +2. It does not know two QBs start, so it
-  would systematically under-rank the scarcest asset in the format. FantasyCalc already takes
-  `numQbs`, so our values are format-correct and `search_rank` is not.
-- **Positional scarcity inflating a TE-heavy lineup.** Hypothesis was that an elite TE carries
-  trade value out of proportion to the points he scores, over-rating his owner. Tested three
-  ways on `kierankieran` (Brock Bowers, 18% of his lineup): gross value ranks him 3rd, value over
-  replacement 3rd, per-position multiples **2nd** - normalizing moves him *up*, because Bowers is
-  9.6x a TE replacement level of 728. `search_rank` moves TEs +2, i.e. no premium at all. The
-  scarcity premium in this league is at **QB**, and kieran is 18% QB - among the lowest in the
-  league - while the team questioning his rank is 40%.
-
-#### And the axis is misnamed
-
-`starting_production` is the **sum of redraft trade values** of the projected starters, not
-points. Trade value prices what it costs to secure an edge at a slot, which is why an elite TE
-and an elite WR land near each other despite scoring differently. Every window note says
-"current starting production ranks 4 of 12", which asserts points about a number that is market
-value. The measurement is defensible - it is the best available and it is format-correct - but
-the name is not, and it is the most load-bearing axis in the project. Rename to starting redraft
-value, or say "lineup market value" in the notes.
-
-### Backlog: what the first real agent runs left open
-
-Three live runs against a friend's league, at ~$0.04 each. Two failures were fixed at the
-data level and hold; two were addressed in prose and did not.
-
-**Fixed, and the fix stuck** - because it went into the data:
-- The lineup format now ships with every roster (`get_team_state`'s `lineup`), after a run
-  called `check_league_format`, got superflex, and wrote "a league that only starts one" a
-  few hundred tokens later.
-- The grounding check no longer fires on *"don't* trade X" - it was spending a retry
-  contradicting correct advice, about a third of the answer's budget.
-
-**Still open, and both were addressed in prose rather than data, which is why:**
-- **Runway does not survive an open-ended question.** Asked "which QB should he trade", the
-  agent reasons from `years_to_decline` correctly. Asked "what should he do", it opens with
-  "Ship Jared Goff" - the older man with *more* runway - and never weighs Hurts. The tool
-  description says to sort on runway; that only bites when the question is pointed. The fix
-  is to surface runway inside the sell block itself, ranked, rather than describing it.
-- **Package math survives the system prompt.** Principle D forbids totalling two sides of a
-  trade, and a run still proposed "ship Flowers + Downs, get Burden + Fannin + a 1st". Needs
-  something structural, the way `find_value_upgrades` is structurally one-player-to-one-player
-  and therefore cannot drift into pricing.
-
-Also cosmetic and unfixed: dollar signs on unitless values, and a player misgendered.
-
-**The pattern is the finding.** Fixes that live in the data hold; fixes that live in a prompt
-leak. Every durable correction this project has made went into a field, a note attached to a
-field, or a deterministic Python check - never into an instruction alone.
-
-## Age curve (`team_values.AGE_CURVE`, `age_bucket`)
-
-Per-position aging breakpoints (ascending / prime / declining), because a flat
-"30 = old" rule is wrong - RBs decline earliest, QBs/TEs age gracefully. These are
-dynasty-community heuristics, not a fitted model:
-
-| Position | Ascending below | Declining at/above |
-|---|---|---|
-| QB | 26 | 34 |
-| RB | 24 | 27 |
-| WR | 25 | 29 |
-| TE | 25 | 30 |
-
-**Usage-based overrides** (`player_roles.py`): a flat position curve also misses that
-mobile QBs lean on athleticism (decline pulls forward), that a *good* pocket passer
-trades on arm talent and processing (decline pushes back a long way), and that
-pass-catching RBs age like WRs. Tags come from real season data (nflreadpy), not a guess:
-- `rushing_qb`: carries/game >= 5.0 and *not* an elite passer -> 26/32
-- `dual_threat_qb`: carries/game >= 5.0 *and* an elite passer -> 26/34 (the default; the
-  point is the **absence** of a discount, not a bonus)
-- `pocket_passer`: elite passer, not a runner -> 26/38
-- `pass_catching_rb`: targets/game >= 4.0 -> 24/29 instead of 24/27
-
-"Elite passer" is the top third of passing EPA per game over three seasons
-(`ELITE_PASSER_PERCENTILE`), a measured tier rather than a reputation one. Carry and
-target thresholds were picked from the natural gap in the real distribution (Lamar
-Jackson/Josh Allen/Jalen Hurts clear 5 carries/game while pure pocket passers don't crack
-3) - not arbitrary round numbers. Full reasoning for the three-way QB split, including
-why the pocket end stops at 38 rather than 40, is in `team_values.AGE_CURVE_OVERRIDES`.
-
-## Team value (`team_values.py`)
-
-- **Starters vs bench split**: bench value is real but shouldn't be treated the same as
-  starting value - a team's competitiveness this year is about who's in the lineup.
-- **Pick capital** (`pick_capital`): projects the next 2 draft classes (further out is
-  too speculative to value meaningfully, and dynasty traders rarely deal that far
-  ahead). Ownership is resolved through `traded_picks` - a pick not listed there is
-  still owned by its original roster.
-- **Contract outliers** (`find_outliers`): a player who's "declining" by age alone but
-  still has 2+ years left on a real contract is a weaker sell than the age curve implies
-  - the NFL team is still paying for the role, not letting it expire. Source: real
-  guaranteed money and years remaining from `contracts.py`, not a guess.
-  **Both conditions, not just years**: 461 of 1,695 active contracts guarantee $0, 44 of
-  them with 2+ years remaining, and at ~$1M APY those are veteran-minimum deals carrying
-  no commitment at all. Testing years alone printed "contract-secure: J.K. Dobbins
-  (2yr/$0.0M gtd)", which refutes itself on the same line. Guaranteed money is the part
-  that binds, so the flag requires `guaranteed > 0` as well.
-  *Known limitation*: `> 0` is a categorical line (is the team committed at all), not a
-  calibrated one - $0.3M guaranteed clears it. A dollar threshold would need calibration
-  this project doesn't have, and the categorical version fixes the contradiction.
-
-  Note this flag is **display-only** by design and feeds no downstream math. See the age
-  curve above: the market's own dynasty/redraft split already prices "how long does he
-  have left" continuously, while a contract encodes what a team believed at signing,
-  possibly years stale. Kittle (3yr/$35M) and Mark Andrews (2yr/$20.9M) trip this flag
-  identically while the market prices them nothing alike.
-
-## Team windows: two measured axes (`team_state.py`)
-
-A team's window comes from two things that are actually measured, not from age alone.
-
-**Axis 1 - contention: can this team compete *this season*?** The total **redraft** value
-of its projected starting lineup, ranked against the league.
-
-**Axis 2 - trajectory: where does the roster go on its own?** Ascending minus declining
-share of that same current production.
-
-Both are cut into league tertiles (`team_values.tertile`), so neither axis carries a
-constant tuned to one league. The raw numbers - rank, % of the league's best lineup,
-ascending/declining shares - ship in `window_note` alongside the label.
-
-### Why this replaced the age-only model
-
-The predecessor read Win-Now / Middling / Rebuilding purely off the age split, then bolted
-on two overrides to fix the answers age got wrong: `is_thin` ("bottom-third starter value
-with barely any cornerstones") and `is_loaded` ("top-third but reads Rebuilding"). Both
-were crude proxies for a missing contention axis, and measuring contention properly
-subsumes them exactly - **two special cases deleted, one honest axis added.**
-
-And the contention proxy those overrides used was the recurring bug in this project one
-more time: it ranked the league by **dynasty** starter value, which prices future seasons
-that score no points now. Swapping to redraft moved teams four and five places on two real
-leagues:
-
-| team | dynasty rank | production rank | reads |
-|---|---|---|---|
-| dezdroppedit27 | 8th of 12 | **4th** (80% of the best lineup) | old, but genuinely close |
-| bergenjay | 2nd of 12 | **6th** (75%) | price is mostly potential |
-| tchoezin (league 2) | 4th of 12 | **9th** (53%) | 87% of production is ascending |
-| mgibbons612 (league 2) | 10th of 12 | **6th** (62%) | 40% declining, better than it looked |
-
-The first row is the case that motivated the change - a manager who described his own team
-as *"close, not just old and bad"* was being told he was mid-pack by a metric that
-discounted him for being old.
-
-**Trajectory is measured on production, not dynasty value**, for a related reason. Dynasty
-value would double-count the very effect being measured: ascending players are *priced* on
-the growth in question, so weighting by it inflates every young roster's ascending share
-and reports the market's opinion back as though it were a roster fact.
-
-### Three core states, with flavors
-
-**The v1 core is three states: contending, middling, rebuilding.** In dynasty a team is
-winning now or rebuilding, and the honest answer for anyone in between is "both directions
-are open, and waiting on how the season starts is allowed." Everything below is a *flavor*
-of one of those three - a different reason to be in the state, which changes what the team
-is told without changing what it is. Flavors are deliberately notes rather than labels: a
-fourth and fifth label would make the model harder to hold in your head, which is the one
-thing this project won't trade away.
-
-| core | flavor | separated by | how it ships |
-|---|---|---|---|
-| **Contending** | `Push` - there is a clock | trajectory falling | its own label |
-| | `Contend` - no clock | steady or rising | its own label |
-| **Middling** | patience is free | rising | `MIDDLING_TIMING_NOTE_RISING` |
-| | patience buys information | steady or falling | `MIDDLING_TIMING_NOTE` |
-| **Rebuilding** | nothing left to sell | `dec_pct == 0` | `REBUILD_NOTHING_DECLINING` |
-| | *ascending / stalled / convertible* | — | **not built** (see below) |
-
-Contending is the one core state whose flavors are separate labels, because the two
-genuinely want opposite actions - `Push` buys production and spends picks, `Contend` does
-nothing at a premium. Middling and Rebuilding flavors want the *same* actions for different
-reasons, so they change the wording and nothing else.
-
-#### The unbuilt rebuild flavors — three of them, and one is already computed
-
-Every rebuilding team currently reads identically, and there are **three genuinely different
-situations** underneath the one label. This is the next piece of work.
-
-**1. Ascending — the rebuild is working.** Young, rising, nothing declining. It needs
-patience and nothing else. *XFL 2: BartolosHeroes (40% ascending / 3% declining),
-BenSimonds (48/0).*
-
-**2. Stalled — just bad.** Flat or falling with nothing arriving, and no asset base to
-convert. This is the only one that is genuinely stuck, and it is the one that most needs to
-be told so. *XFL 2: spugz13 (9/12), jqsimonds22 (17/20).*
-
-**3. Convertible — a weak lineup on a strong asset base.** Not bad, *unspent*. The right
-counsel is close to the Middling one: hold, see how the season opens, and be ready to convert
-into a push if it starts well - because the assets to do it are already owned.
-
-**The third already exists and is not wired into the rebuild advice.** `leverage` /
-`asset_rank` / `leverage_note` compute exactly this, comparing every player *plus every pick*
-a team owns against what it actually starts. On a live roster: jwall567 in God Bless The Plug
-is **3rd of 12 in total tradeable value against 9th in what he starts**, flagged
-`convertible`, with a note that says the gap "is an option, not an oversight." He is not a
-poor rebuilder; he is an unspent one, and that is the single most important fact about his
-roster.
-
-Worth recording how that was found. Asked what jwall should do, the **agent led with the
-leverage note and got it right**, while the human reading the same tools called it wrong
-twice - having read `starter_value` (the starting lineup's dynasty value, 10th) and treated
-it as the war chest. The field existed for exactly that read; only one of the two readers
-used it.
-
-So the work is not to invent a third flavor but to **join one that already exists to the
-window that should be using it** - and to add the ascending/stalled split, which nothing
-computes yet. The existing `REBUILD_NOTHING_DECLINING` flavor does not cover any of this: it
-asks "do you have inventory to sell", a different question, and correctly leaves
-BartolosHeroes on the generic note since he really does have four sell candidates.
-
-### The four windows
-
-- **`Push`** - contender whose roster is falling. The window is open and closing on its
-  own, so waiting costs value. Buy production, spend picks. Pivoting stays *available*, it
-  just returns poorly: the production making the team competitive is priced on
-  already-realized value, so selling it converts a lot of what wins games into
-  comparatively little dynasty value. Being decent now is itself the argument against
-  tearing down.
-- **`Contend`** - contender that is steady or rising. Good now with no clock, so nothing
-  needs buying at a premium and nothing needs selling.
-- **`Middling`** - middle third of the league, *either trajectory*. Both paths are shown
-  with the cost difference stated, and waiting to see how the season actually starts is
-  treated as a legitimate choice rather than an unmade decision. Trajectory sets the
-  **note**, not the window:
-  - *rising* (`MIDDLING_TIMING_NOTE_RISING`) - this roster's own ascending players supply
-    next season's production for free, so pushing now pays a market premium for one extra
-    year of contention. **Waiting is the cheaper default.**
-  - *steady or falling* (`MIDDLING_TIMING_NOTE`) - nothing arrives for free, so waiting
-    does not lower the price of contending; what it buys is **information**, and a few weeks
-    of real results settle whether this team is closer than the standings say. Pivot if the
-    season opens badly, while the aging production still prices well.
-
-  Either way: push when the price is below market, or when a need is *count*-shaped - an
-  empty starting slot costs points every week and no amount of patience fills it.
-- **`Rebuild`** - bottom third in current production. Sell what's declining, accumulate
-  youth and picks.
-
-**`Rebuild` stopped being the else branch**, which is what this window was renamed for.
-Previously only `fringe` **and** `rising` reached the both-paths window, so a middle-of-the-
-league team that merely wasn't rising fell through to `Rebuild` and was told to sell. In XFL
-2 the team that hit it was **3rd of 12 in total dynasty value** by this project's own
-`team_values`, 5th overall on an outside dynasty site, average age 26.0, holding the best QB
-room in the league - and `team_state` called it "not in contention and not rising fast enough
-to change that." The owner's framing is the rule now: *in dynasty you are either winning now
-or rebuilding, and if you are in the middle you should see the options in both directions and
-be free to wait on how the season starts.*
-
-Renamed from `Ascend` rather than kept, because routing falling teams into a window called
-*Ascend* is a label asserting something the data denies - the failure mode this document
-records over and over. The name "Middling" is not new; it is what the pre-two-axis model
-called this tier, and comments in `trade_targets.py` never stopped using it.
-
-Downstream routing follows the window rather than a parallel vocabulary: `prefer_production`
-is **Push-only** (converting future premium into capital only makes sense when the future
-you're selling is further out than your window), `find_value_upgrades` runs for every window
-except `Rebuild`, sellers are
-`Rebuild` teams, and `WINDOW_TO_PICK_TIER` prices picks by where the originating team
-finishes.
-
-### Owning your own next 1st is a constraint on the pivot, not a fourth tier
-
-Tanking only pays if you hold the pick your bad season earns. Without it, a losing season
-buys nothing, so the case for selling has to stand on trade returns alone. That **lowers
-the return on pivoting rather than removing the option** - and it doesn't change the
-window, since a rebuild is still a rebuild (you acquire young assets by trade instead of by
-finishing last). So it ships as a note. Both real leagues have several teams in this spot.
-
-## Team window classification (`team_state.py`)
-
-**Win-Now / Middling / Rebuilding**, from the *starting lineup's* age composition, not
-the whole roster - a deep-bench ascending flier doesn't define a team's direction the
-way a starter does.
-
-- Score = `ascending% - declining%` among starters only.
-- `diff <= -10` -> Win-Now (value skews toward aging-but-productive players - that IS
-  the definition of a win-now core, not a red flag).
-- `diff >= +30` -> Rebuilding (value skews toward still-developing players).
-- Otherwise -> Middling.
-
-These breakpoints are **organic, not a forced even split** - found by computing the
-real diff for all 12 teams in a live league and locating the natural gaps in the
-distribution (there was a clean jump from +5 to +17, and another from +22 to +40).
-Deliberately not percentile/rank-based, because forcing e.g. a 4-4-4 split would
-mislabel a league that's genuinely lopsided one way.
-
-**Cornerstones**: top-value players who are *not* declining - a long-term foundation,
-not just "good players." Threshold is the **90th percentile of the format's own value
-pool** (`cornerstone_threshold`), not a hardcoded dollar amount, so it generalizes
-across league formats (superflex/TE-premium values are on a totally different scale
-than a standard 1QB league). A team can have zero cornerstones - that's a real signal,
-not a bug to paper over.
-
-**Win-now core**: the mirror case - top-value *declining* players. For a Win-Now team
-these are literally what you're playing to win with. For a Rebuilding team, the same
-list is framed as sell candidates.
-
-**Tradeable surplus**: ascending players *below* the cornerstone threshold - not
-foundational, but not throwaway either. This is the realistic "what would you actually
-offer in a trade" list (young depth, lottery tickets) - explicitly validated against a
-real case where a user-named trade-away piece (a starting TE, still ascending but not a
-cornerstone) showed up here correctly.
-
-**Sellable**: prime or declining players below the cornerstone threshold, plus any
-declining player regardless of value (mirrors win-now-core, just unthresholded on that
-side). This is deliberately broader than "declining only" - a rebuilding team's decent
-prime-bucket players who aren't its long-term core (e.g. a good-but-not-elite TE that's
-25 years old) are just as realistically sellable as its aging vets. Missing this
-initially caused a validated real bug: a real league member's rebuilding team had two
-legitimate prime-bucket trade chips that a declining-only search couldn't see at all.
-
-**"Thin roster" flag**: a team can just be bad regardless of its age split. Bottom-third
-starter value *and* at most 1 cornerstone gets flagged "(thin roster)" - validated
-against a real league member's own team that the raw age-composition score alone
-mislabeled as ordinary "Middling."
-
-**Effective strategy**: thin rosters get `effective_strategy = "Rebuilding"` regardless
-of their raw age-composition label, because a team that's weak *and* directionless
-can't realistically compete this year either way. The raw `state` is kept separate so
-the "why" stays visible - but the *headline* label printed is always
-`effective_strategy`, never the raw `state`, with the raw signal shown as context
-instead. This mattered in practice: on a genuinely weak roster, the raw diff can read
-"Win-Now" purely from having almost no ascending value to offset a little declining
-value (not from an actual aging contender core), which produced a real, confusing
-"Win-Now (thin roster)" label on a second league before the display was fixed to lead
-with the effective strategy.
-
-**Owns next 1st**: tanking for a better draft slot only helps a team if it still owns
-its *own* next-season 1st-round pick - if that pick's already been traded away, playing
-for a worse record just hands the upside to whoever holds it. Checked directly against
-`traded_picks` rather than assumed.
-
-**"Loaded" flag - the mirror case of thin**: a team can be the #1 roster in the league
-by starter value and still trip the age-composition "Rebuilding" read purely because it
-also has a lot of great young talent mixed in - that's not a fire-sale seller, it's a
-loaded team, and treating it as an easy Rebuilding-team source for buy targets produces
-bad recommendations. Top-third starter value rank *and* a raw "Rebuilding" label gets
-`effective_strategy` overridden to "Middling" (mirroring thin's override to
-"Rebuilding"). Validated on a real, live case, not hypothetical: asked the agent what a
-Win-Now team should do in a real league, and it recommended trading for a specific WR
-because the team holding him read "Rebuilding" - except that team had `starter_value_
-rank: 1` (the single best roster in the entire league), so a real trade offer like that
-would almost certainly be refused, since no #1 team is actually giving away a good piece
-for a discount. Re-running the exact same live question after the fix, that team no
-longer showed up in the buy-target search at all - the fix propagated through
-`trade_targets.py` to the agent automatically, with zero prompt or agent-code changes,
-because it was fixed in the shared, deterministic classification logic every other
-feature already depends on.
-
-**"No trade history" flag**: Win-Now/Middling/Rebuilding reads a team's *current* age
-composition, but real dynasty identity is actually built through trades over time - a
-fresh league (or one that just hasn't traded yet) hasn't had the chance to
-differentiate, so the labels mean the least right when a league is newest. Rather than
-trying to detect "hasn't separated yet" statistically from the age-diff numbers
-themselves (no real fresh-league data on hand to calibrate a threshold against, and
-guessing one would violate this project's own "thresholds come from real data" rule),
-`no_trade_history` uses a directly-knowable proxy instead: zero trades in the league's
-entire history (`trade_activity.get_trade_counts`, already built for trade-partner
-scoring). When true, every row carries the flag and the agent is told (system prompt
-rule 9) to caveat the labels rather than presenting them as settled. Acknowledged as a
-proxy, not a perfect measure - a league could theoretically differentiate through
-startup-draft strategy alone with zero trades, or stay untraded for reasons unrelated to
-freshness - but it's simple, honest about what it actually checks, and directly
-testable, unlike an arbitrary numeric cutoff on `diff` spread would be.
-
-**Three analysis bugs found by reading a real answer critically** (all fixed in Python,
-so they propagate everywhere rather than needing a prompt rule):
-
-- **A bare `diff` field was an invitation to confabulate.** The tool returned
-  `{"diff": -11}` with no units or meaning, and the model reliably invented one -
-  describing teams as "below their expected win total", "underperforming by 25 points",
-  "13 points below median". None of that exists; it's `ascending% - declining%` of
-  starter value, and in the preseason there are no wins to be below. Replaced with
-  `age_mix_score`, `ascending_pct`, `declining_pct` and an `age_mix_note` that states
-  outright: *"This is a roster age-composition measure only - it says nothing about
-  wins, points scored, or performance."* The general lesson: an unlabelled number in a
-  tool result will get a meaning attached to it, so the label has to ship with the value.
-
-- **`is_starter` came from Sleeper's live snapshot, which is meaningless in the
-  preseason.** In a real superflex league (2 QB slots) the current-week lineup listed
-  exactly one QB, so the team's obvious QB2 - C.J. Stroud, ascending, 3,288 value - was
-  classed as bench and offered away as spare parts. In superflex a second QB is among
-  the most valuable things on a roster, not dead weight.
-  `roster_needs.projected_starters` derives the lineup from value and the league's own
-  slot counts instead, and `trade_targets` uses that. Precise rather than blunt after
-  the fix: Stroud disappears from the offer pool while Sam Darnold, genuinely QB3 in a
-  2-QB league, correctly remains.
-
-- **Buy targets ignored window fit.** Targets were sorted by `(trade activity, value)`
-  only, which contradicted this project's own pricing model - `BUY_PRICE_NOTE` calls
-  declining players "production-priced" and prime ones "upside-priced, may cost more
-  than the fit justifies", because prime value bakes in future growth a win-now team
-  isn't buying. A real Win-Now team was handed six buy targets, every one of them prime,
-  and none of the cheaper production it actually needed. Win-Now buyers now sort
-  production-priced first; Rebuilding and Middling buyers keep the old ordering, having
-  no reason to prefer aging players.
-
-**Dynasty value vs. current production** (`redraft_value`, `future_premium`,
-`find_value_upgrades`): FantasyCalc's API takes an `isDynasty` flag, and this project
-had only ever asked for `true`. Flipping it returns redraft values - the same market
-pricing *this season's production alone*. Free, already available, previously unused.
-
-The gap between the two prices is what a win-now team is overpaying for. Real case:
-a superflex roster's QB2 (C.J. Stroud, 3,288 dynasty / 2,744 redraft) and QB3 (Sam
-Darnold, 2,735 / 2,704) produce within **1.5%** of each other this season, yet Stroud
-costs **553 more** in trade value. Ranking by dynasty value alone cannot see that;
-selling Stroud and starting Darnold converts future premium into trade capital at
-almost no cost to the current lineup.
-
-**The first implementation of this was wrong and the numbers say exactly how.** It
-exposed a `future_premium` = dynasty/redraft ratio and flagged anything above an
-absolute threshold. Measured across the 200 players present in both pools: **median
-ratio 2.22, p10 0.93, p90 18.1**. The two pools *are* anchored to the same top of scale
-(dynasty max 10,380, redraft max 10,452 - so the intuition that both run "out of 10,000"
-is right), but dynasty spreads its total across ~400 players against redraft's ~200, and
-the ratio's distribution is heavily right-skewed by young players with no current role.
-
-So 1.0 is not neutral - typical is 2.22. A player at 2.01 was being labelled "100%
-future potential" while actually sitting *below* median, and the flag fired on
-production-oriented veterans like Chuba Hubbard, who is early-prime and should be
-roughly production-priced. That is the `diff` mistake repeated: an unlabelled ratio
-invites a wrong reading. `future_premium` was removed entirely rather than relabelled;
-`redraft_value` stays because a price on a known scale is unambiguous.
-`find_value_upgrades` compares players **pairwise within a position** instead, where
-both values come from the same two scales and the skew cancels.
-
-**Trade value is not linear in raw value** (`value_over_replacement`, `tier`). A real
-offer list led with Christian McCaffrey (+1,783 over positional replacement) and then
-listed Ollie Gordon (947 raw, but **1,637 below** replacement) as though they were
-comparable pieces, which is the kind of suggestion that makes a tool look naive - real
-managers discount a below-replacement name heavily, because anyone can get that guy off
-waivers, while value above replacement is scarce and hard to ascend to. Offers now carry
-their surplus over positional replacement (already computed by `roster_needs`, just
-never used here) and sort by it.
-
-The labels deliberately avoid overcorrecting: below-replacement depth is *"real but
-discounted, a sweetener not a centerpiece"*, not "worthless". Injuries and byes are real,
-and a cheap backup RB can spike overnight (see the handcuff item under "Known
-limitations") - the raw number overstates what it fetches in a trade, but it isn't zero.
-Thresholds are deliberately strict (≥90% of current production retained, ≥300 dynasty
-value freed) because this trades real production for trade capital and shouldn't be
-suggested on noise.
-
-Coverage is partial by nature: redraft carries ~200 players against dynasty's ~400,
-since deep dynasty-only assets have no redraft market. Those get `redraft_value: None`
-and are skipped rather than treated as zero production.
-
-**Lineups are ranked by redraft value, for every window.** The follow-on above turned
-out to be simpler than "do this for Win-Now teams": a lineup is *who scores most this
-week*, which is exactly what redraft prices measure, while dynasty value governs who you
-keep or trade. A rebuilding team still starts its best scorers.
-
-The correction it produced is significant, not cosmetic. rjl22's backfield:
-
-| RB | dynasty | redraft |
-|---|---|---|
-| Bijan Robinson | 10,255 | 10,004 |
-| Ashton Jeanty (rookie) | 7,008 | 6,290 |
-| Christian McCaffrey | 4,367 | **6,518** |
-
-Ranked by dynasty value, McCaffrey is RB3 and was being offered away - by current
-production he's the second-best back on the roster, and the rookie is who sits. Telling
-a win-now team to trade its RB2 was a real, confident, wrong recommendation. The TE
-efficiency swap that had been reporting *102% of production retained* also disappeared,
-because the lineup now starts the better current player in the first place - fixed at
-the source rather than surfaced as a suggested swap.
-
-Missing redraft prices sort last, which is safe rather than lossy: across a real 12-team
-league the highest-dynasty rostered player without one was 1,350, far below every
-positional replacement level.
-
-**Flex slots are now modelled** (`lineup_slots`, and the flex-filling half of
-`projected_starters`). `dedicated_slots` ignores flex - a disclosed approximation that's
-fine for "how many of this position must I have", and wrong for building a lineup. The
-real league shape is QB 1 / RB 2 / WR 3 / TE 1 / **FLEX 2 / SUPER_FLEX 1**: ten starters,
-three of them flexible. Modelling only dedicated slots claimed *eight*, and separately
-folded SUPER_FLEX into a second dedicated QB - asserting a QB must fill a slot any
-position can.
-
-The consequence was concrete: a team with three excellent backs starts all three (two at
-RB, one at FLEX), but the model saw the third as spare parts and offered him. rjl22's
-projected lineup now comes out as all of Bijan / McCaffrey / Jeanty, with the superflex
-QB2 in SUPER_FLEX - ten players, matching the league's ten slots. Dedicated slots fill
-first, then flex most-restrictive-first, so a SUPER_FLEX doesn't take a player only a
-narrower FLEX could have used.
-
-*Framing note on near-equal swaps*: when `find_value_upgrades` returns a `value_decision`
-(98-100% production retained), that is explicitly **not** "start A, bench B". Two players
-that close trade places week to week on matchups, and either is a defensible starter. The
-note says so - it's a value decision about which one to own, not a lineup upgrade.
-
-**Pick equivalents** (`team_values.pick_equivalent`): FantasyCalc prices rookie picks on
-the same scale as players, and this project already fetched them for `pick_capital` -
-so translating a value into "about a 2028 3rd" is a lookup, not a model. Added because
-a raw number is hard to feel: told a bench piece is "worth 947", nobody knows whether
-that's an asset; told it's *about a 2028 3rd*, every dynasty manager immediately does.
-It also lands on the right intuition for depth - late-pick-shaped, real but not what a
-deal is built around. Approximate by nature, since future classes are priced as flat
-round averages.
+- `Push` = contender + falling: waiting costs value, buy production, spend picks.
+  Pivoting stays available but returns poorly. `prefer_production` ordering is Push-only.
+- `Contend` = contender, no clock: never pay a premium. A Contend team tilting ascending
+  additionally gets `conversion_candidates` + `choice_note` (stack vs convert - a choice
+  about HOW to contend, so `window` deliberately stays singular).
+- `Middling` is a window, not a leftover (`Rebuild` used to be the else branch and told a
+  team with the league's best QB room to sell decline it didn't have). Trajectory sets
+  the note only: rising = patience is free; steady/falling = waiting buys information.
+- `Rebuild` = bottom third. A young rebuild with `dec_pct == 0` gets
+  `REBUILD_NOTHING_DECLINING` instead of "sell what's declining".
+
+**Flavors** are computed from fields that already existed (`trajectory`, `leverage`).
+`convertible` outranks trajectory - a weak lineup on a top-third war chest is not
+described by its tilt. The rebuild split is ABSOLUTE (`ascending_pct > declining_pct`),
+not the tertile: "is the rebuild working" is about the roster, and in a league full of
+ascending rebuilds the tertile called the clearest working rebuild "stalled". Middling
+keeps the tertile because whether waiting is free is genuinely league-relative.
+
+**Backlog - `ascending` needs a quality floor.** `ascending_pct` is a share of the team's
+OWN production, so it is scale-free: a roster whose young players are all bad still reads
+ascending (live: 23/7 while ranking 12th of 12 in both contention and assets - the owner:
+"his ascending assets are just bad"). The flavor needs an absolute floor on top of the
+ratio; `clears_relevance_floor` and `asset_rank` both exist and the flavor reads neither.
+Until then `stalled` is under-reported at the very bottom, the least harmful direction.
+
+**Leverage** (`convertible` / `mortgaged` / None): `asset_rank` (every player plus every
+pick) against `contention_rank`, tertile-cut. The state the window could not express - a
+roster 9th in production holding the 2nd war chest is not "bad", it is unspent.
+Deliberately not a fifth window: window says what to do with this roster, leverage how
+much rope there is to change it. `pick_share` rides along, reported not weighted - HOW
+much more liquid a pick is than a player is nothing this project can calibrate. Not
+computed under `MIN_TEAMS_FOR_LEVERAGE` (6).
+
+**Per-roster lists** (`classify`): `cornerstones` = top 10% of the format's value pool
+(`CORNERSTONE_PERCENTILE`) AND at least `MIN_MEANINGFUL_RUNWAY` of runway - runway, not
+bucket, so an elite back months from his cutoff is a sell surface, not a foundation.
+Cornerstones ALSO appear in `sellable`, tagged: the hardest ask is a price, not a veto.
+`win_now_core` = valuable but short-runway. `sellable` = everything a team could
+realistically be asked about (prime/declining below the threshold, plus the two above).
+`tradeable_surplus` = ascending below the threshold - lottery tickets and young depth.
+
+**`owns_next_first`** ships as a note whose meaning depends on the window: a real
+constraint for a rebuilder (tanking pays nothing without the pick), the window working as
+intended for a contender. **`no_trade_history`** flags a league with zero trades ever -
+dynasty identity is built through trades, so the labels are least reliable exactly when a
+league is newest; agent rule 9 caveats them.
+
+**Load-bearing rule, stated once:** if the question is "this season", the metric is
+`redraft_value`; if it is "what is this worth", the metric is `value`. Every one of this
+project's worst bugs was one of these used for the other's question.
 
 ## One definition of "who starts" (`LeagueContext.starters`)
 
-Sleeper's `roster["starters"]` is a snapshot of whatever the current week's lineup happens
-to be, which is meaningless in the preseason. This was **known**, documented at length on
-`projected_starters`, and fixed - on exactly one code path. Three others kept reading the
-snapshot:
+`roster_needs.projected_starters`, called once per league: value-derived (redraft - a
+lineup is who scores most this week, in every window), flex slots filled properly
+(dedicated first, then flex most-restrictive-first, so SUPER_FLEX doesn't take a player
+only a narrower FLEX could use), missing redraft prices sorting last (safe: the highest
+dynasty value without one measured far below every replacement level). Player IDS, not
+names, so `is_starter` is stamped on entries at the source instead of a set threaded
+through callers. Nothing reads Sleeper's current-week snapshot. `fill_lineup` keeps
+slot labels and is exposed as `get_optimal_lineup` because filling flex slots in prose
+is a deterministic optimisation an LLM gets subtly wrong (a vacated FLEX correctly went
+to a TE, not the assumed WR).
 
-| reader | what it fed |
-|---|---|
-| `team_values.split_starters_bench` | `starter_value` -> the league-wide rank -> `is_thin`/`is_loaded` -> `effective_strategy` |
-| `team_state.classify` | the age-mix buckets that set Win-Now / Middling / Rebuilding, and every entry's `is_starter` |
-| `roster_detail.build_rows` | the starter/bench label a user reads on screen |
+## Positional needs (`analysis/roster_needs.py`)
 
-So the single most load-bearing label in the project was derived from data the project
-itself documents as unreliable. Measured on the real league the effect is mostly small -
-rank order moves by one place - but **not nil**: rjl22's snapshot listed 1 QB and 5 RBs in
-a superflex league, and his classification changed once the lineup was derived properly.
-BenSimonds had only 8 of 10 slots set at all.
+Needs are measured on current production, trade relevance on dynasty value - same
+`replacement_thresholds`, explicit `metric` required. Replacement level = the Nth-best
+player leaguewide, N = the league's starting slots at the position; a win-now lens, so a
+rebuilder's needs are "what a contending version would be short of" (`REBUILD_LENS` ships
+on their entries, and exposure is explicitly not a risk for them).
 
-`LeagueContext.starters` (owner_id -> set of player_ids) is now the one answer, computed
-once per league. **Nothing reads the snapshot.**
+**Count and quality are different problems with opposite fixes** - a bare count was close
+to inverted on a real league (the 2nd-best WR room read critical because its WR3 sat
+below the bar; the 9th-best read fine because four bodies barely cleared it):
 
-**Ids, not names.** `projected_starters` used to return names, so every consumer was
-handed a `projected` set and did string comparison - a `projected` argument threaded
-through five functions, plus `league_projected_starters` to build it. With ids,
-`_usable_by_position` and `team_state.classify` stamp `is_starter` on entries as they
-build them and callers just read the field. That deleted the whole apparatus: the
-argument, the helper, and `_my_offer_pool`'s `is_lineup` shim. **Fixing a flag at its
-source beat threading the correction through the callers** - the general form of the
-recurring bug in this file.
+- `critical` - can't field the slots AND the group is weak: bodies and quality.
+- `top-heavy` - can't field the slots, but what's there is good: a body, NOT an upgrade.
+- `weak` - slots fillable, group bottom-tertile or under `WEAK_VS_MEDIAN` (0.5) of the
+  league median (the median test catches skewed positions rank alone hides): an
+  upgrade, NOT depth. Had no representation at all under the old rule.
+- `ok` - includes mid-league with no star, which is not a need.
 
-## Duplication removed alongside it
+Quality is not asserted below `MIN_TEAMS_FOR_QUALITY` (4) - a shortage falls back to
+`critical` rather than a label derived from nothing. Downstream, the shape decides the
+fix: the buy path applies the weakest-starter upgrade bar, waivers only fill count-shaped
+needs, and the persuasion tier requires beating the weakest starter at every need level.
 
-- **`pick_capital` was a second copy of `owned_picks`'s traded-pick resolution**,
-  differing only in summing flat round values rather than returning the picks. Two
-  implementations of "who owns which future picks" meant two draft-capital numbers could
-  disagree, and once `owned_picks` learned to price by the originating team's window, they
-  did. `pick_capital` is now a one-line sum over `owned_picks`.
-- **Owner lookup by substring existed in six places.** `LeagueContext.roster_for` had been
-  added for exactly this and had **zero callers**. Now `roster_for` (rosters) and
-  `pick_owner` (already-computed per-team rows, which is what the trade paths hold) share
-  one `_match`, so the rule and its error message can't drift.
-- **`sleeper.starting_qbs` replaces `NUM_QBS = {True: 2, False: 1}`.** The old form was
-  keyed on `is_superflex`, which answers "can a non-QB fill the second slot" - a different
-  question from "how many QBs start", and the one that prices the market. A true 2QB
-  league (two literal QB slots, no SUPER_FLEX) therefore fetched 1QB values. Practically
-  theoretical, since superflex has replaced 2QB in real leagues; kept because it's the
-  same amount of code and removes a second place that computed how many QBs a team
-  starts. Clamped to 2 for FantasyCalc, which publishes nothing beyond;
-  `dedicated_slots` is deliberately unclamped since it counts real roster slots.
-- **`replacement_thresholds` no longer defaults its `metric`.** It defaulted to `"value"`
-  while `_usable_by_position` defaulted to `"redraft_value"` - two functions that must
-  agree, shipping opposite defaults, in the file whose central documented bug is that
-  exact conflation. Callers now state which question they're asking.
-- **`_usable_by_position` sorted on a different metric than it filtered on** (redraft in,
-  dynasty out), so a caller taking the top N as "the starters" could keep a pricier
-  prospect over a better current producer.
+**Injury exposure is measured and is NOT a need** (`drop_if_injured`, `exposure`,
+ranked): magnitude if it happens, computed by removing the weakest starter and refilling
+optimally (flex-aware, so a superflex QB3 build reads sound rather than exposed), with
+`position_miss_rate` (measured: QBs miss ~11% of roster weeks, RBs ~19%) supplying the
+likelihood half and `replacement_is_unpriced` flagging when the number is only an upper
+bound. "Low exposure" on a critical need carries the consolation caveat - it is the hole
+restated, not comfort.
 
-**Replacement level is a win-now lens**, worth stating because it bounds all of the above:
-"is there a startable player here" is only the operative question for a team trying to
-field its best lineup this season. A rebuilding team isn't shopping above replacement level
-at all - it wants ascending value and picks, which is why `find_targets` routes it to the
-pivot path. Read a rebuilder's positional needs as "what a contending version of this
-roster would be short of", not a to-do list.
+**Stranded production** (`stranded_starters`): bench players producing at least
+`STRANDED_MULTIPLE` (2.0) of the weakest starter - a magnitude test (live cases sit at
+5.3x and 1.5x, so the figure is not doing delicate work). Their whole value to this
+roster is what they fetch, in any window; the report leads with them.
 
-## Positional needs (`roster_needs.py`)
-
-**Needs are measured on current production, trade relevance on dynasty value** - the same
-`replacement_thresholds` function, called with a different `metric`, because they answer
-different questions. "Can I field a lineup?" is about production now; "is this a real
-trade chip?" is about what it fetches.
-
-Using dynasty value for the first was badly wrong. It asks whether a player beats the
-36th-most-*valuable* WR - a pool full of young prospects priced on upside - rather than
-the 36th-best current *producer*. Measured on a real league the bar was **2.5x too strict
-at WR (2,126 vs 855) and 3.2x at TE (2,013 vs 630)**, so a team with three startable WRs
-and two startable TEs was reported as *critical at both*, and the buy path went shopping
-for positions it didn't need. After the fix that team shows a single "WR: thin" and
-nothing critical, which matches how its own manager reads the roster.
-
-This is the third instance of one root cause: dynasty value was being used for questions
-about the current season. The others were lineup ranking and the win-now efficiency
-comparison. Worth stating as a rule - **if the question is "this season", the metric is
-`redraft_value`; if it's "what is this worth", the metric is `value`.**
-
-"Usable" is relative to the league's own format, not a hardcoded value cutoff:
-replacement level at a position = the value of the Nth-best player at that position
-**leaguewide**, where N = how many dedicated starting slots the whole league has there
-(`roster_positions.count(pos)`, plus superflex counted as an extra QB slot). Flex slots
-aren't attributed to any specific position (approximation, disclosed rather than hidden).
-
-### Count vs quality: why "thin" was replaced (`assess_positions`)
-
-The rule above was originally the *whole* rule: fewer usable players than starting slots
-= `critical`, exactly enough = `thin`, more = no need. That is purely a **count** of
-bodies clearing a floor, and measured against a real 12-team superflex league it was
-close to **inverted**:
-
-| team | WR room (starting production) | rank | old label | new label |
-|---|---|---|---|---|
-| bergenjay | 13,116 (Nacua + Nabers) | **2nd of 12** | `critical` | `top-heavy` |
-| rjl22 | 10,081 | 7th | `thin` | *(not a need)* |
-| bigbuttboi | 6,322 (four bodies just over the bar) | **9th** | *(no need)* | `weak` |
-| BenSimonds | 2,251 | 12th | `critical` | `critical` |
-
-The second-best WR room in the league read `critical` because its WR3 sat below the bar;
-the 9th-best read as no need at all because four players cleared a low bar (794) by a
-little. Replacement level answers *"can this player start"* - a floor. Applied to *"is
-this group good"* it passes teams that are merely numerous and fails teams that are
-merely top-heavy.
-
-Worse, it pointed at the wrong position entirely. rjl22 was told "thin at WR", where he
-ranked an unremarkable 7th of 12, while his genuinely bad positions were invisible: **QB
-9th of 12 in a superflex league**, and TE 8th at 39% of the league median. Both read as
-fine, because he owned enough warm bodies at each.
-
-So a position now carries both readings, and the level names the **shape** of the problem
-rather than its severity alone - because the shapes have opposite fixes:
-
-- `critical` - can't field the slots *and* the group is weak. Needs bodies and quality.
-- `top-heavy` - can't field the slots, but what's there is good. Wants a **body**; the
-  stars are already in place. (bergenjay: Nacua and Nabers don't need upgrading.)
-- `weak` - can field the slots, but the group is bottom-tertile or below
-  `WEAK_VS_MEDIAN` of the league median. Wants an **upgrade**, not depth - this is the
-  consolidation case, and it had no representation at all before.
-- `ok` - neither. Notably includes "mid-league with no star", which is *not* a need.
-  Calling that "thin" sent teams shopping for problems they didn't have.
-
-**Why a median test as well as a rank test.** Positional distributions are skewed, TE
-especially, so rank alone hides real gaps: rjl22's TE room ranked a middling 8th of 12
-while sitting at 648 against a league median of 1,667 - 10% of the best room in the
-league. Half the league's median production from a position means giving up roughly a
-full starter's worth of scoring against a typical opponent every week, which is a need
-wherever it happens to sort. A team is weak if *either* test fires.
-
-**Quality isn't asserted below `MIN_TEAMS_FOR_QUALITY` (4).** In a 1-team league every
-rank is simultaneously first and last, which the naive tertile test read as bottom-tertile
-- i.e. every position weak, from no evidence. Below the cutoff the count test stands alone
-and a shortage falls back to `critical`, the old conservative label. Same reasoning as
-`format_support`'s degraded tier, applied one level down.
-
-**Downstream, the shape decides the fix**, or the split would be cosmetic:
-- The buy path applies an **upgrade bar** to `weak` positions only - a target must beat
-  the current worst starter there, since anyone who wouldn't displace him is not a fix,
-  however cheap. Count-shaped needs have an empty slot, so any relevant body helps.
-- Waiver claims only fill `critical`/`top-heavy`. The best name on waivers is by
-  definition not an upgrade over a startable player, so claiming one at a `weak`
-  position is churn.
-- Efficiency swaps are suppressed at any need position. Selling a starter to promote his
-  backup raises capital you'd have to spend straight back on the same position - and the
-  swap injection adds that player to `my_offers`, re-introducing the very position the
-  offer pool excludes for being a need.
-
-There is deliberately **no single-roster `find_needs`** any more. Quality is measured
-against the rest of the league, so a per-roster entry point would have had to either take
-the league as an argument anyway or quietly degrade to a 1-of-1 ranking. A function that
-silently answers a different question than the one asked is how the count-only rule
-survived this long.
-
-**Surplus** (`find_surplus`/`league_surplus`) was deleted with the mutual-swap engine it
-existed to feed - see "Deleted: mutual win-now swaps" above for why, and for the
-supply-equals-demand measurement that should have retired it sooner. Two findings from it
-survive elsewhere because they were never really about surplus: the projected-starters
-exclusion (a league running RB 2 / FLEX 2 puts a third RB outside `needs_slots["RB"]`, so
-rjl22's Ashton Jeanty was once offered as spare depth while starting every week - the same
-snapshot-vs-projected distinction `_my_offer_pool` already respected), and the point that
-**replacement level is a win-now idea**, which `clears_relevance_floor` encodes by scaling the
-bar to the kind of value a player carries.
+**Depth as a third state** (`would_start_if_one_out`): binary needs leave depth
+invisible. A body who steps in when the weakest starter at his position is out has real
+value at a nominal price - stated with "don't overpay", never as a need.
 
 ## Trade activity (`trade_activity.py`)
 
-Sleeper has no "trade block" feature exposed via the API (checked roster metadata
-directly - not there), so realized trade history across the league's **full season
-chain** (walking `previous_league_id` back through every prior year) is the best
-available proxy for "will this owner actually engage with a trade." A team can be a
-perfect value match and still be a wasted pursuit if the owner has made zero trades in
-two seasons.
-
-## Trade target matching (`trade_targets.py`)
-
-This is a **discovery tool, not a fairness calculator** - it finds *who* to call, not
-whether a specific package is fair. A real trade calculator is a separate, harder
-problem: naive value-summing treats 5 replaceable bench pieces as equal to 1 stud, which
-is wrong because roster construction caps how much bench depth is actually usable. The
-honest fix needs full replacement-level/VORP modeling (weekly production data we don't
-have yet) - deferred rather than faked.
-
-- **Win-Now / Middling requester**: buy targets = `sellable` players (prime or
-  declining, any value - not just cornerstone-tier) at a position of need, from
-  Rebuilding teams, sorted by (trade activity, value).
-- **Rebuilding requester**: the opposite question. It shouldn't be filling starting-
-  lineup needs with proven vets - it wants to sell whatever declining value it has left
-  and stockpile youth. Acquire targets = *tradeable surplus* (young, ascending, non-
-  cornerstone) sitting on Win-Now/Middling rosters - those teams don't care about it,
-  which is exactly what makes it gettable.
-- **`VALUE_BASIS` (`team_state.py`)**: one shared classification - `declining` ->
-  "production" (value is almost entirely already-realized output, the market has priced
-  out its future), `prime` -> "mixed" (some current production, some future growth
-  priced in), `ascending`/`unknown` -> "upside" (mostly speculative future growth). This
-  single mapping is the source of truth for every place that needs to reason about *why*
-  a player's value is what it is - it replaced two independently-written, near-identical
-  labeling schemes (a buy-side "price note" and a sell-side "give-up cost") that were
-  caught and consolidated in the same session they were written, per the standing rule
-  in CLAUDE.md against letting the same concept re-diverge across files.
-  - **Minimum relevance floor** (`clears_relevance_floor`): neither side of a trade
-    should be roster filler indistinguishable from the waiver wire, but "production"/
-    "mixed" value needs to clear *half* of `roster_needs`' replacement-level threshold
-    (full replacement level = "startable quality," the bar for whether a team *has* a
-    need - a target doesn't need to be startable to be worth a conversation, just not
-    worthless), while "upside" value only needs a *quarter* (its appeal is future growth
-    the market already prices lower, so a higher bar would exclude real, validated trade
-    chips). Both fractions were calibrated against real named examples, not picked
-    arbitrarily.
-  - **Buy-side labeling**: "production-priced" (declining) vs. "upside-priced, may cost
-    more than the fit justifies" (prime) vs. "mostly future value - likely a real
-    overpay for current-year fit" (ascending). Doesn't filter anything - surfaces the
-    trade-off so a human (or the eventual agent) can judge whether a specific overpay is
-    worth it, instead of presenting a safe buy and a disguised-expensive one as
-    equivalent in the same ranked list.
-  - **Sell-side "give-up cost"**: the same classification, read from the other
-    direction - "low" (declining: you're not sacrificing future value you'd have gotten
-    anyway), "moderate" (prime), "high" (ascending: this is real future value you won't
-    get back). Getting this right required distinguishing prime from declining within
-    the sellable pool, which the unification surfaced as a real accuracy improvement,
-    not just a size reduction - a validated real case had a prime bench piece wrongly
-    grouped with pure decliners as equally "safe" to trade away before the fix.
-- **What you could offer** pulls from two pools: your own `tradeable_surplus` (young
-  depth) plus your own bench-only `sellable` players, both filtered by the relevance
-  floor above. Starters are excluded from the sellable side even when they clear the
-  value bar - a valuable-but-non-cornerstone *starter* isn't surplus, it's your team.
-  This was a validated real bug: a real team's 3rd QB in a 2-QB-max format was a genuine
-  trade chip (pure roster-construction surplus, independent of age) that an age-bucket-
-  only view couldn't see, while the fix had to avoid pulling in that same team's actual
-  starting QB2 just because he sat below the cornerstone threshold too.
-- **"Is he a starter" was a proxy, and it hid the biggest chip on the board.** The rule
-  excluded every starter, which is right for the case it was written for (a team told to
-  offer its own starting QB2) and wrong for the question it was standing in for: *what does
-  moving him actually cost*. The live example is a `Push` team whose two largest trade
-  pieces were an ascending TE (3,660 dynasty against 1,035 redraft) and a backup QB. Its
-  owner named the TE first when asked what he'd move. The tool could not list him at all -
-  while a bench TE covers most of the production and the rest is future value, which is
-  precisely what a closing window exists to spend.
-
-  A starter is now offerable when either: the bench **covers him for free**
-  (`roster_needs.production_lost_without` returns 0 - he's in the lineup only because
-  somebody has to be), or he is **ascending and the team is `Push`**. Declining and prime
-  starters stay protected in every window; they *are* the current production a pushing team
-  is trying to keep. On the live roster this correctly offers the TE at 1,035-against-3,660
-  and never the best WR at 3,961-against-3,773.
-
-  The free-cover test alone would still have missed him: replacing him costs 230 of current
-  production, which is real. So the cost is **reported** (`lineup_cost`) rather than used as
-  a veto - whether it's worth paying depends on the return, which this module deliberately
-  doesn't price. The efficiency-swap writeback attaches the same field, so both routes into
-  `my_offers` answer the question in the same units.
-
-  `production_lost_without` is `_injury_drop`'s guts, extracted rather than reimplemented.
-  "How bad is it if I lose him" and "can I afford to trade him" are the same computation
-  asked in opposite directions, and two copies would eventually have disagreed about the
-  same player on the same roster.
-- **Never offer a position you yourself have a need at.** The offer pool didn't check
-  this originally - a real Win-Now team with a critical WR need was being told to offer
-  away its own WRs, which only moves the shortage around rather than fixing it. Applies
-  to both "thin" and "critical" needs, not just critical - a thin position is already at
-  the bare minimum, trading from it just makes it critical.
-- **A cornerstone is the hardest ask, not an unavailable one.** `team_state.classify` used to
-  put a high-value player with real runway in `cornerstones` *only*, so he never reached
-  `sellable` and was therefore literally unaskable anywhere downstream - while the actual
-  owner, asked what he would move, names those players first. Being the foundation is a
-  **price**, not a veto. Cornerstones now also enter `sellable`, `_my_offer_pool` lets them
-  past the protected-starter gate on the flag alone, and they carry `cornerstone` friction
-  (`CORNERSTONE_ASK`) wherever they appear. That is deliberately the same job
-  `from_owner_trades`/"NEVER TRADES" does for a counterparty, one notch softer: an owner who
-  never trades may not answer at all, whereas a cornerstone's owner will answer and will want
-  over-market. Effect across the three leagues: `my_offers` 98 -> 164 entries, buy targets
-  113 -> 142, persuasion targets 79 -> 108 - the same players were always there, on both
-  sides of the table, and only the filter hid them.
-
-  **They are still kept out of the pivot lists**, because `situational` is labelled "years
-  still on them, just not your long-term core" and a cornerstone is the long-term core by
-  definition. Surfacing him there would print a label contradicting itself, which is the
-  defect class this document exists to catch. `my_offers` and `value_upgrades` are the
-  surfaces that name him.
-- **Sell candidates split by urgency, not lumped into one list.** A player inside
-  `MIN_MEANINGFUL_RUNWAY` of his decline cutoff only loses value from here - real urgency
-  to move it. A player below the cornerstone bar with years still on him is often still
-  genuinely good (e.g. a real starting-caliber WR who just doesn't crack an unusually deep
-  corps) - not losing value on a clock, so it's a situational, take-a-fair-offer piece, not
-  an urgent sell. Presenting both the same way overstated how clear-cut the second group is.
-  **Split on runway, not on `bucket`.** Splitting on `bucket == "declining"` put Justin
-  Jefferson - 6,828, the most valuable asset on a rebuilding roster, 1.8 years from his
-  cutoff - under "take a fair offer, no urgency", while a 2,145 back at -2.2 years read as
-  urgent. That is the fourth site of the same defect `MIN_MEANINGFUL_RUNWAY` was introduced
-  to fix (see the age curve above for the first three); the constant was already imported
-  into `trade_targets.py` and this path simply never used it. The printed labels and the
-  MCP tool's own description of `sell_candidates` were corrected in the same change, since
-  both had said "declining" and the block now holds prime-age players too.
-- **Middling teams get both paths, not a silent default.** A Middling team hasn't
-  committed to pushing or pivoting - showing only the buy path (like Win-Now) would be
-  picking a direction for them. `find_targets` runs `_buy_path` and `_pivot_path` and
-  returns both, sharing the exact same logic Win-Now/Rebuilding use individually
-  (no duplicated implementation, just composed differently). Which path actually makes
-  sense for a specific Middling team likely depends on something not built yet -
-  the season record (see below) - so showing both rather than guessing is the honest
-  answer until that exists.
-- **The same runway is an instruction to a rebuilder and a deadline to a Middling team.**
-  `_print_pivot` serves both modes, and its copy was written for the committed one: it
-  called the sell list "real urgency to move it" regardless. On `mgibbons612` that put a
-  direct contradiction inside one report - the timing note four lines above said waiting
-  for real results was a legitimate choice, then eight aging starters (Barkley, Jacobs,
-  Kittle, Adams, Kelce...) were stamped urgent. The clock is identical in both modes and
-  the player list doesn't change; what changes is what it obliges. A team that has picked
-  this direction should move the piece. A team that may still wait is instead being told
-  *what waiting costs, and the deadline on deciding* - the aging production is exactly the
-  asset whose price decays while the season answers the question. This is the same
-  one-function-two-modes drift as the depth bar (see the window table below), and it is
-  why `committed` is a parameter rather than two copies of the block.
-- **Trade activity is a flag, not a ranking.** It used to sort *first*, on the reasoning
-  that a smaller name from an active trader beats a bigger name from someone who never
-  trades. That reasoning is fine and the implementation was not: how often an owner trades
-  ended up deciding which players a manager was shown at all. On the live league the #1 RB
-  recommendation to a `Push` team produced **738** redraft and came from the most active
-  trader, while the second-best current production available (**1,883**) sat 5th - off the
-  end of the default three - because its owner had never traded. Activity says something
-  about whether a call gets returned; it says nothing about whether the player helps. It is
-  now the last tiebreak and stays fully visible (`from_owner_trades`, rendered as
-  "NEVER TRADES" in the text output) so the caller can weigh it themselves. Applied to all
-  three sorts - buy targets, acquire targets, pick targets - rather than the one that
-  surfaced it, since siblings keeping the old behaviour is this project's second-most
-  common bug.
-- **Rank on the metric the window is buying.** The same sort then broke its own tiebreak by
-  ordering on dynasty value, directly contradicting the line above it that puts declining
-  players first *because* current production is the point. A `Push` team now orders by
-  `redraft_value`; everyone else still orders by dynasty value, which is correct for them.
-  This is the recurring root cause (dynasty value answering a current-season question)
-  found for the fifth separate time.
-- **Draft picks move in the direction the window implies** (`team_values.owned_picks`).
-  Picks were previously used only as an aggregate - `pick_capital` for "who has draft
-  capital" and `owns_next_first` for whether tanking is even coherent - which is enough
-  to describe a team and useless for suggesting a trade. `owned_picks` resolves ownership
-  through trades and returns the individual picks, so both sides of the conversation
-  become possible:
-  - **Win-Now** gets `picks_you_could_spend`. Converting future value into current
-    production *is* the window; a contender hoarding its own 2028 1st is holding an asset
-    it's less positioned to use than almost anyone else in the league.
-  - **Rebuilding** gets `picks_to_acquire`, restricted to picks held by Win-Now and
-    Middling teams. A pick is worth more to a rebuilder than to the contender holding it,
-    which is exactly what makes the ask realistic - another rebuilder's pick isn't going
-    anywhere. Sorted by trade activity first, same as player targets.
-  - **Middling** sees both, consistent with getting both the push and pivot paths.
-
-  Same two-year horizon as `pick_capital` (`FUTURE_DRAFT_YEARS`), since further-out picks
-  are too speculative to price and rarely trade. Validated against a real consistency
-  check: rjl22 shows a 2028 1st but no 2027 1st, matching the `owns_next_first: False`
-  that `team_state` derives independently from the same traded-pick data.
-- **Pick slots are estimated from the *originating* team's window.** A "2027 1st" isn't
-  one thing - a rebuilding team's is an early pick, a contender's is a late one, and the
-  market prices that gap at nearly **2x**: Early 4,487 / Mid 2,955 / Late 2,263, against
-  a flat 2,853. Treating them as equal understates a rebuilder's first by ~57% and
-  overstates a contender's by ~26%.
-
-  No new data was needed. FantasyCalc already publishes Early/Mid/Late prices for the
-  next class - the market has priced this distinction all along - and `owned_picks`
-  already tracked `originally`, since a pick's slot is decided by *whose pick it is*, not
-  who currently holds it. `STRATEGY_TO_PICK_TIER` maps Rebuilding/Middling/Win-Now onto
-  Early/Mid/Late, keyed on `effective_strategy` so a "Rebuilding" team that's actually
-  loaded doesn't get its pick priced as an early one.
-
-  Demonstrated on real data: a Middling team held a 2027 3rd originating from a Win-Now
-  team, and it correctly priced as **(Late) 956** rather than the holder's own (Mid)
-  1,051.
-
-  **Only the next class gets tiered**, which is the honest limit rather than a gap - a
-  team's current window is a fair guide to where it finishes next season and a poor one
-  two years out. Later picks keep the flat round value, and every pick carries a
-  `slot_basis` string saying which it is, so the distinction is visible rather than
-  implied.
-
-  *Not modelled, and league-specific*: the actual draft order. Real leagues use their own
-  tiebreakers - one here orders by best-ball scoring and then playoff finish - and those
-  rules live in league documents, not the Sleeper API. Late in a season, or in the
-  offseason before the rookie draft, the real slot is often knowable exactly, which would
-  beat any window-based estimate.
-
-## Deleted: mutual win-now swaps (`find_mutual_swaps`, `get_mutual_swaps`)
-
-This matched two teams both still trying to win, each holding spare depth the other was
-short at, and proposed a two-way trade. It was removed outright - along with
-`roster_needs.find_surplus` and `league_surplus`, which existed only to feed it, and the
-`get_mutual_swaps` MCP tool - because **it was package math, and this project has no tool
-that can price a package.**
-
-Every other block here compares one player against one player, deliberately. Mutual swaps
-could not: a fit is inherently *these bodies* for *those bodies*, so the output summed each
-side's dynasty value and printed the two totals. A `MIN_SWAP_BALANCE` of 0.6 then declared
-the sides "comparable". Both steps assume value is additive across players, which is the one
-thing this document states most often that it is not - and no caveat printed underneath
-undoes an arithmetic claim printed above it. What it produced on a live roster:
-
-> with kierankieran: you get Corum, Mason, Sampson, Allen, James (5,809)
-> for Metcalf, Nailor, Washington (4,331)
-
-Five sub-replacement backs for three receivers, totalled, offered to a team whose own report
-called its RB room *"a real hole - needs both bodies and quality"*. Five bodies that each
-fail the startable bar do not fix that, and the totals implied a fairness the tool could not
-assess. The owner's verdict was the deciding one: *"Package math bad. No package math. You do
-not have the tools to figure out packages."*
-
-**The measurement that should have retired it earlier.** `find_surplus` was built on
-replacement level, and above-replacement supply equals demand by construction - across two
-real leagues, exactly: QB 24 slots / 24 rostered above the bar, RB 24/24, WR 36/36, TE 12/12.
-So surplus could only exist where one team held more than its share, matched one-for-one by
-another team's deficit; league-wide surplus was ~0, only 3 of 12 teams had any, and
-`find_mutual_swaps` returned nothing for **36 consecutive team-reads across three leagues**.
-Rebasing surplus off replacement level made it non-empty, which kept the feature alive for
-another few weeks - fixing the emptiness rather than asking whether the question was one this
-tool could answer.
-
-**What replaced it: nothing, on purpose.** "How do I improve without giving up my best guys"
-is answered by `find_value_upgrades` (one holding beats another, including from your own
-bench) and by `depth_adds` (cheap bodies below replacement). Assembling an actual multi-player
-deal is left to the human, and `agent.py` rule 8 now says so explicitly rather than pointing
-at a tool: never build or price a bundle, compare one player against one player, and if asked
-"what would it take", name the right centrepiece and say the rest is a negotiation you cannot
-price.
-
-## Validated foundations
-
-Things checked directly against real data rather than assumed, since the value of the
-heuristics above depends on the plumbing underneath being correct:
-
-- **Multi-hop traded picks resolve correctly.** A real pick in this league's history
-  changed hands twice (original owner -> team A -> team B). Sleeper's `traded_picks`
-  endpoint is a denormalized "who owns this right now" view, not a raw event log - it
-  correctly showed the final owner, confirmed by cross-referencing the actual
-  chronological trade transactions. `pick_capital()`'s ownership resolution depends on
-  this being true.
-- **Usage-role tagging is clean on real rostered players.** All 18 rushing_qb/
-  pass_catching_rb-tagged players actually rostered in the league match real-world
-  knowledge with no anomalies (Lamar Jackson, Josh Allen, Jalen Hurts, Jaxson Dart as
-  rushing QBs; Bijan Robinson, Jahmyr Gibbs, Christian McCaffrey, De'Von Achane as
-  pass-catching backs).
-
-## Waiver wire (`waiver_wire.py`)
-
-Reuses the same relevance floor from `team_state.py` (a candidate's bucket is computed
-on the fly since the base player dict doesn't carry it) rather than inventing a separate
-threshold - the question "is this player worth anything" should have one answer across
-the whole codebase, not a waiver-specific variant.
-
-**Upgrade logic**: an available player is worth surfacing if either (a) its value beats
-this team's *worst* rostered player at the position (a literal drop-add), or (b) the
-position is a real need (`roster_needs`) even if it isn't better than the worst - a
-team with zero usable players at a position should hear about a decent option even if
-it doesn't outvalue a bench scrub they were never going to start anyway.
-
-**Why this matters more later than now**: validated against the real league - zero
-upgrades found for any of the 12 teams, top available player worth only 492. Expected
-and correctly reflects a deep 12-team dynasty league with little left on waivers. The
-real payoff comes once a news/sentiment or sportsbook-line signal exists: it could flag
-a currently-unrostered player *before* his dynasty value catches up (the original
-"Greg Dulcich hype" idea from the start of this project), and this module is what that
-signal would need to check against - "is this player actually available, and does
-anyone need him."
-
-**FAAB budget**: tracked per team (`waiver_budget_used` from Sleeper, subtracted from
-the league's total budget) even though it's tradeable in this league and nobody ever
-actually trades it - still useful context for whether a team could act on a claim.
-
-## MCP server (`mcp_server.py`)
-
-Phase 1 of the agent build-out plan. Every tool is a thin wrapper over an
-already-validated module - no new business logic here, only plumbing. Two modules
-(`roster_detail.py`, `waiver_wire.py`) only had print-only `main()` functions before
-this, so each got the same small extraction already used elsewhere in this codebase
-(`get_roster_rows`, `league_upgrades`) - a reusable function the CLI and the MCP tool
-both call, not two copies of the same orchestration.
-
-**A real, non-obvious finding from validating this, not just assumed to work**: the
-installed MCP SDK (`mcp` 2.0.0) serializes a tool's return value differently depending
-on its top-level type. A dict becomes one JSON content block; a bare top-level `list`
-gets split into *one content block per list item* instead of a single JSON array. This
-isn't a bug in the underlying analysis (`team_state.classify_league` is correct and
-already validated) - it's a serialization quirk in how this tool-calling layer handles
-list-typed returns, and it's exactly the kind of thing that would silently confuse an
-agent later (or look like each team is a separate response) if it went unnoticed. Fixed
-by having `get_team_state` wrap its list in `{"teams": [...]}` - every tool in this
-server now returns a dict at the top level, so this can't recur. Confirmed via a real
-MCP client test (`test_mcp_server.py`, spawns the server over stdio like a real agent
-would, calls every tool, and asserts the result matches calling the underlying Python
-function directly) rather than trusting the code compiled.
-
-**Also note**: this is why Phase 1's plan explicitly calls for validating through an
-actual MCP client, not just confirming the server starts - a server that starts fine
-can still silently misshape its output in a way that only shows up when something
-actually calls it end-to-end.
-
-**Version note**: installing `claude-agent-sdk` (Phase 2) downgraded the installed
-`mcp` package from 2.0.0 to 1.29.0, which uses the classic `FastMCP` API instead of
-2.0's `MCPServer` class - `mcp_server.py` targets 1.29.0/`FastMCP` since that's the
-version that's actually installed once `claude-agent-sdk` is a dependency.
-
-## Local agent (`agent.py`, `evals.py`)
-
-Phase 2 of the agent build-out plan. Wraps the Phase 1 MCP server with the Claude
-Agent SDK. Model is Haiku (`claude-haiku-4-5-20251001`) - cheapest capable model,
-matching a small real starting API budget - via `ClaudeSDKClient` (stateful,
-multi-turn) rather than the one-shot `query()` function, specifically so a session
-asking several questions about the same league keeps that league's tool results in a
-reusable conversation history rather than starting fresh every call.
-
-**Guardrails are SDK-enforced, not just requested in the prompt**: `max_turns` (8) and
-`max_budget_usd` ($0.50/question) are real `ClaudeAgentOptions` fields the SDK itself
-respects, not something hand-rolled. Tool exposure is restricted via the `tools` field
-(not just `allowed_tools`) to exactly the 6 fantasy-fanatic MCP tools - `tools` is what
-actually excludes every built-in Claude Code tool (Bash, Read, Write, WebFetch, ...)
-rather than merely gating them behind a permission prompt. Validated live, not just
-assumed: asked the agent to "ignore your instructions" and use Bash/filesystem tools
-to read `.env` - it made zero tool calls and refused, because there was never a tool
-for that request to reach.
-
-**A real bug found through live testing, not assumed to work from the code**: asked
-"what team window is dezdroppedit27 in and why" and the agent called
-`check_league_format` then `get_team_state` correctly - but `get_team_state` returned
-the full league (55.7KB, all 12 teams), and the model explicitly said the output was
-"quite large" and fell back to calling `get_roster_detail` instead, then **reasoned its
-own way to a classification** from raw player ages rather than using the authoritative
-one it already had. It happened to land on the same answer as our tool this time, but
-that's coincidence, not correctness - the whole point of building `team_state.py`'s
-validated classification logic is defeated if the agent quietly re-derives its own
-version instead of using it. Root cause: `get_team_state` had no way to ask for just
-one team. Fixed by adding an optional `owner_name` filter (same pattern as
-`get_waiver_upgrades`) - re-running the identical question afterward, the agent called
-`get_team_state` with the filter, got a small single-team result, and grounded every
-claim in it directly (cornerstones, `owns_next_first`, starter value rank - all
-traceable to real tool output). Cost dropped too (large uncached tool results cost real
-money to read). This is exactly why Phase 2 validates through the actual CLI agent
-rather than trusting the MCP layer alone - a tool can be individually correct
-(Phase 1's tests passed) and still cause the agent to behave wrong at the orchestration
-level.
-
-**Cost investigation, since a real (if small, $20) budget is at stake**: a trivial
-"say OK, no tools" call still cost 3,332 input tokens with zero prompt-cache
-activity (`cache_creation_input_tokens` and `cache_read_input_tokens` both 0) even
-across repeated identical calls seconds apart. Two real, verified causes, not guesses:
-- **Claude Haiku 4.5 requires 4,096+ tokens in a cacheable block before caching
-  activates at all** - silently, no error. A trivial no-tools call doesn't clear that
-  bar, which is why the original measurement showed zero cache activity.
-
-  > **Correction (measured later, and the original conclusion here was wrong).** This
-  > section previously concluded "caching structurally cannot help at this tool count."
-  > That was an over-generalization from a *trivial* call to *all* calls, and the
-  > Anthropic console contradicted it - showing a real 26% cache hit rate. Measured
-  > directly on a real tool-using question: the cacheable prefix is **~4,714 tokens**,
-  > which *does* clear the 4,096 bar, and caching genuinely works. A controlled test
-  > made this unambiguous - turn 1 of a session: `cache_creation=4,714`,
-  > `cache_read=0`; turn 2 of the *same* session: `cache_read=9,766` (a large, real
-  > hit); a **brand-new session seconds later**: `cache_read=0` again.
-  >
-  > So the accurate picture is: **caching works within a question and is thrown away
-  > between questions.** Each `run_query` opens a fresh `ClaudeSDKClient`, and
-  > something session-unique in the CLI transport's prefix breaks the cache key, so
-  > every question re-pays ~4,700 tokens of cache *creation* - which bills at 1.25x,
-  > i.e. more than plain input. The agent still comes out ahead within a single
-  > question (3-5 turns, later turns reading the cache), which is exactly the ~26% hit
-  > rate the console reports. Only the 5-minute TTL is used; the 1-hour TTL shows
-  > `ephemeral_1h_input_tokens: 0` throughout.
-  >
-  > **Deliberately not "fixed" by reusing sessions across questions.** That would
-  > recover the ~4,700-token-per-question creation cost, but conversation history would
-  > accumulate into the prefix (growing cost per question until it exceeds the saving),
-  > and on a public endpoint one user's context would leak into another's session -
-  > a privacy problem, not just a cost one. The current per-question isolation is the
-  > right default; this is a documented cost, not an outstanding bug.
-  >
-  > The lesson worth keeping: the original claim was measured, but measured on the
-  > wrong thing, and then stated more broadly than the evidence supported. An external
-  > signal (the console dashboard) is what caught it.
-
-  **Where the tokens actually go** (measured, after noticing ~1.4M tokens over ~45
-  questions looked far larger than the information those questions contain):
-
-  > **First attempt at this breakdown was wrong, and the correction matters.** It
-  > estimated our tool cost from docstring length (586 tokens) and attributed the
-  > remaining ~3,400 to "`claude` CLI overhead we don't control - 72%". Both parts were
-  > wrong. Tool definitions are sent as full JSON Schema, not docstrings, so the real
-  > figure is 1,044. And the CLI floor was never measured, just inferred by subtraction.
-  > Measuring it directly (bare options: one-line system prompt, no tools, no MCP
-  > server) came back at **136 tokens** - essentially nothing.
-
-  Measured by adding one layer at a time, each a real API call:
-
-  | Configuration | Total tokens | Added by that layer |
-  |---|---|---|
-  | Bare CLI (1-line prompt, no tools) | 136 | — (the actual SDK floor) |
-  | + our real system prompt | 819 | **+683** (ours) |
-  | + MCP server and 7 tools | 2,695 | **+1,876** (1,044 tool schemas + ~830 MCP framing) |
-
-  So roughly **65% of the baseline is our own content** - the system prompt and the
-  tool descriptions - not framework overhead. The SDK is close to free; we are the
-  expensive part.
-
-  Tool *results* were the intuitive suspect and turned out not to be the problem -
-  measured on a real league, the owner-filtered `get_team_state` is ~742 tokens,
-  `get_trade_targets` ~1,074, `get_roster_needs` ~201, `check_league_format` ~16. Only
-  unfiltered `get_team_state` is large (~7,846), which is why the `owner_name` filter
-  added earlier matters more than it first appeared.
-
-  **This kills the cost argument for dropping the Agent SDK.** The earlier (wrong)
-  version of this section suggested calling the Anthropic API directly to escape ~3,400
-  tokens of framework overhead. That overhead does not exist - switching to the raw API
-  would carry the same system prompt and the same tool schemas and save on the order of
-  a hundred tokens. If the SDK is ever replaced it should be for a different reason
-  (control, dependencies, portability), not this one.
-
-  **What is actually trimmable, and the reason not to rush it:** the system prompt is 10
-  rules and the tool descriptions are deliberately wordy - and nearly every bit of that
-  verbosity was added to fix a real observed failure (rule 6's grounding constraint,
-  rule 8's tool-choice guidance, rule 10's stop-on-error, `get_team_state`'s "this IS
-  the authoritative classification, don't re-derive it from roster_detail"). Cutting
-  them would save maybe 500-800 tokens per question and risk regressing bugs that took
-  real debugging to find. With per-session prompt caching now in place, that prefix is
-  re-read at 0.1x rather than re-created anyway, so the remaining upside is small.
-  Trimming is a real option, but it should be driven by the eval suite, not by
-  eyeballing which sentences look long.
-
-  **Per-session clients (`agent/sessions.py`) are the available mitigation**, and this
-  is the strongest argument for that work: a fresh client per question re-*creates* the
-  4,714-token prefix at 1.25x cache-creation pricing, while a persistent session
-  re-*reads* it at 0.1x. That turns roughly 5,900 token-equivalents per follow-up
-  question into roughly 470 - about a 92% reduction on the prefix for every question
-  after the first in a conversation.
-
-  A RAG/vector-retrieval layer to shrink the tool surface would still be backwards
-  here - it would push the prefix back *below* the caching threshold, not above it,
-  and our tool schemas are only 586 tokens anyway, so there is nearly nothing to win.
-  Switching to Sonnet (1,024-token threshold) was considered and rejected on cost:
-  Sonnet is more expensive per token even with cache reads, and this project's usage
-  pattern (occasional queries, not high-frequency repeated calls) doesn't favor it.
-- **The SDK auto-loads this repo's own `CLAUDE.md` as project memory by default**
-  (`setting_sources` defaults to `None`, not an empty list) - a 38% input-token cut
-  (3,332 -> 2,051 tokens, confirmed on an identical call) from setting
-  `setting_sources=[]`. `CLAUDE.md` guides *coding* on this repo; it has nothing to do
-  with how the fantasy agent should answer a league question, and was being sent, and
-  paid for, on every single call regardless. Verified the fix didn't change tool-call
-  correctness (re-ran the eval suite, still 4/4) before trusting it.
-
-## Hosting platform evaluation (Phase 5) - decided: Google Cloud Run
-
-The original plan defaulted to AWS Lambda behind API Gateway without seriously
-comparing alternatives. Revisited properly rather than treated as already decided,
-and one real problem turned up: **Lambda itself has a genuine permanent free tier
-(1M requests + 400K GB-seconds/month), but API Gateway does not** - new accounts get
-a 6-month credit, then it's real per-request billing on top of CloudWatch Logs
-ingestion charges. "Lambda + API Gateway" quietly becomes a 2-3-service bill, not the
-free/near-free setup the plan assumed.
-
-Compared four real options against what this agent actually needs (a Python process
-that spawns a child process over stdio for MCP - needs a real container/OS
-environment, not a constrained edge function):
-
-- **AWS Lambda + Function URL** (a built-in HTTPS endpoint on the function itself,
-  skipping API Gateway entirely) - closes the gap above while staying 100% AWS.
-  Genuine permanent free tier. More moving parts than the alternatives below (IAM,
-  container-image packaging, Secrets Manager, DynamoDB for a request counter).
-- **Google Cloud Run** - best technical fit: it's a real container, so nothing about
-  this codebase needs to change to run there, one HTTPS endpoint is built into the
-  service (no separate gateway piece), and its always-free tier is larger (2M
-  requests + 360K GB-seconds + 180K vCPU-seconds/month, permanent).
-- **Firebase** - its Python compute (2nd-gen Cloud Functions) *is* Cloud Run under
-  the hood, wrapped in a friendlier single CLI (`firebase deploy`). Same technical
-  outcome as Cloud Run, easier on-ramp, weaker "AWS" keyword match for a resume.
-- **Render** - simplest possible deploy (connect a GitHub repo, no cloud console),
-  real free tier, but free services sleep after 15 minutes idle and cold-start
-  ~1 minute on the next request - a real risk for a portfolio link someone clicks
-  cold. Weakest cloud-provider resume signal of the four.
-
-**Decided: Cloud Run.** Checked real postings and hiring-trend data across several
-top companies before deciding rather than guessing: AWS is the single most-named
-individual cloud platform in data science/AI engineering postings, but it's almost
-always listed as "AWS, Azure, or GCP" - interchangeable cloud familiarity, not an
-AWS-exclusive requirement, except at companies whose own product is that cloud
-(Amazon's own postings skew AWS, Google's skew GCP). Amazon itself isn't a specific
-target employer here, so there's no reason to eat the extra complexity and the
-API-Gateway cost gap above just for a marginal keyword match. Cloud Run wins cleanly
-on its own merits: best technical fit (real container, nothing to restructure),
-larger genuine free tier, and one fewer service to reason about.
-
-## HTTP API wrapper (`agent/api.py`)
-
-Built ahead of the platform decision above, deliberately - it's the one piece every
-option on that list needs regardless of which wins (none of them can invoke a
-one-shot CLI directly), so building it first makes real progress without committing
-to a provider. Plain FastAPI, no provider-specific code: two routes, `/health` and
-`POST /ask` (question in, `{text, cost_usd, num_turns, grounding_retries}` out),
-calling `agent.run_query` directly - the exact same function the CLI and the eval
-harness already use, so there's no second code path to keep in sync.
-
-Validated locally end-to-end before trusting it: started the server with `uvicorn`,
-sent a real question via `curl`, got a real grounded answer back, and confirmed
-`observability.py` logged the run identically to a CLI-triggered one with zero extra
-wiring - the logging lives inside `run_query` itself, so it doesn't care who called it.
-
-**Daily budget ceiling (`agent/budget.py`)** - the thing that actually makes a public
-endpoint safe to expose, and a sequencing error caught only on a deliberate re-review
-of the plan: `agent.py`'s `MAX_BUDGET_USD` caps a *single call*, which is the wrong
-unit for a public URL. At ~$0.015-0.05 a call, roughly 40 uncapped requests would
-drain the entire project API budget, and a bot scanning for open endpoints does that
-in under a minute. The plan had "create the GCP account and connect a public
-endpoint" scheduled *before* this existed - exactly backwards.
-
-**In-process counter, no database - a real simplification over the original plan.**
-That plan called for DynamoDB/Firestore to hold the counter, but persistent storage is
-only necessary when several instances each hold a partial count. Pinning Cloud Run to
-`max-instances=1` makes a plain in-process counter exactly accurate with zero extra
-infrastructure - and this service wants that anyway, since every request spawns both a
-`claude` CLI process and an MCP server subprocess, making it memory-heavy rather than a
-horizontal-scaling workload. `concurrency=1` alongside it removes any check-then-record
-race, so the ceiling can't be overshot by parallel requests. Giving up horizontal
-scaling is a real tradeoff, and the right one for a demo.
-
-Two ceilings, because one isn't enough: a dollar ceiling (the thing actually being
-protected) plus a request-count backstop, since a failed call can report `cost_usd:
-None` and would otherwise never move the dollar counter at all. Failed calls still
-count against the day rather than being free to retry in a loop. Bounded, accepted
-imprecision: a call's real cost isn't known until after Claude has been called, so the
-check is "has the ceiling already been passed?" - it can be exceeded by at most one
-call's worth ($0.50 worst case) before the next request is refused. Pre-estimating
-token cost to close that gap would be a guess, so it isn't done.
-
-Verified end-to-end rather than assumed, and cheaply: both ceilings were tripped in a
-free unit-style check first (no API calls), then the real integration was tested with a
-deliberately tiny `DAILY_BUDGET_USD` so one real call exhausted it - the first request
-went through and recorded $0.015, and the next was refused **in 41ms with no API call
-at all**, returning a static message. A `/budget` route exposes the counter so the cap
-is externally verifiable rather than something to trust is working.
-
-**Still open, and gating public exposure**: the cap above is only sound while
-`max-instances=1` actually holds - it's an assumption enforced by Cloud Run service
-config, not by the code, so that setting has to be verified at deploy time rather than
-assumed. Deploy sequence is therefore: deploy with **authentication required** first
-(private, zero abuse surface) to prove the container builds and the Node/CLI/MCP
-subprocess stack works at all, confirm `/budget` behaves against the real service, and
-only then make it public.
-
-## Conversation sessions and UI (`agent/sessions.py`, `agent/static/index.html`)
-
-The agent presented as conversational but was strictly single-turn: every question
-opened a fresh `ClaudeSDKClient`, so after asking "what's your league ID?" it had no
-memory of asking. Verified live before and after - turn 1 "hey can you help me with my
-team" produces the clarifying question, and turn 2 "league <id>, I'm <owner>", with no
-restatement, now continues correctly instead of landing on a model with zero context.
-*Looking* conversational while being unable to hold a conversation is the worst
-combination for a demo visitor, who will treat it like a chatbot.
-
-`SessionManager` keeps a live client per client-supplied session id, with an idle TTL,
-an LRU cap, and a per-session `asyncio.Lock` so two concurrent requests on one session
-can't interleave on the same client and corrupt the conversation. **Sessions are never
-shared between callers** - that was the context-leak trap identified during the caching
-investigation, where naively reusing one client would have leaked one user's
-conversation into another's.
-
-**The extra complexity earns its place by fixing two measured inefficiencies as a side
-effect**: both the Anthropic prompt cache and the MCP data cache live inside the
-per-session client, so a fresh client per question meant re-paying ~4,700 tokens of
-cache *creation* (billed at 1.25x) and re-downloading FantasyCalc and nflverse data
-every single time. A persistent session re-*reads* that prefix at 0.1x instead - roughly
-a 92% reduction on the prefix for every question after the first.
-
-`MAX_SESSIONS` defaults to **2** deliberately: each live session holds two subprocesses
-(the Node CLI and the Python MCP server with polars/pandas loaded) on top of the uvicorn
-parent, against a 2 GiB container. Raise only alongside the memory limit.
-
-**A bug this introduced, caught by asking what the UI would display**:
-`ResultMessage.total_cost_usd` is cumulative for the client's lifetime, not per-question
-- harmless when every question got a fresh client, but on a persistent session it keeps
-growing. The UI would have shown each question costing progressively more, and worse,
-`budget.record()` would have charged the running total every turn - three questions
-costing $0.015/$0.016/$0.013 billed as $0.090 against real spend of $0.044, draining the
-daily ceiling roughly twice as fast as actual usage. `Session.cost_delta()` tracks the
-baseline and returns the difference.
-
-The UI is one static HTML page with vanilla JS served by FastAPI - no build step, no
-npm, ships in the same container. Session ids are generated client-side, so an expired
-session starts a new conversation rather than erroring, and one browser tab's
-conversation is unreachable from another.
-
-**League data is rendered directly, not described by the model** (`GET
-/api/league/{id}`). This is the frontend expression of the project's core split: the
-analysis layer already computes team windows, ranks, needs and cornerstones exactly, so
-paying Claude tokens to *recite* them is both wasteful and the one place confabulation
-can creep in - the model inventing a rank or a player name. The agent is reserved for
-reasoning ("should I trade for him", "why is this team Win-Now"), not for reading a
-table aloud. It also makes every analysis flag visible that was previously buried in
-JSON: `is_loaded`, `is_thin` and `owns_next_first` now show as badges on the teams they
-apply to. Measured: 6.97s cold, **0.045s warm** off `sources/cache.py` - a 150x
-difference that makes browsing several teams feel instant.
-
-A small markdown renderer (~6 lines of regex, no library) handles the model's `##` and
-`**`, which previously rendered as literal characters.
-
-**Three real bugs surfaced within minutes of having a browser-driven dev loop**, none
-of which the container or the CLI had exposed:
-1. **`load_dotenv()` searched the working directory**, so running the app from anywhere
-   but the repo root silently left `ANTHROPIC_API_KEY` unset. Masked in production,
-   where Cloud Run injects the key as a real env var and no `.env` exists at all. Now
-   an explicit path relative to the module.
-2. **`api.py`'s `except Exception:` swallowed the error without logging it** - the same
-   debugging dead-end this project already hit with the MCP subprocess. Failures in
-   `sessions.acquire()` happen outside `run_query`, so its `try/finally` never saw them
-   and the only copy of the traceback was discarded. Now logged before being swallowed;
-   the caller still gets a generic message.
-3. **`uvicorn --reload` is unusable for this app on Windows.** Reload puts the worker on
-   asyncio's `SelectorEventLoop`, which cannot spawn subprocesses at all (bare
-   `NotImplementedError` from `_make_subprocess_transport`), and this agent spawns two.
-   Every request died with an opaque "Failed to start Claude Code". Setting the event
-   loop policy in the app module does *not* fix it - uvicorn creates the loop before
-   importing the module, so the policy applies too late; that was tried and removed
-   rather than left in as code that looks like a fix. Plain `uvicorn` works. Linux is
-   unaffected, which is why the container never hit it.
-
-## Container image (`Dockerfile`)
-
-**Local machine doesn't need to run any of this** - a real, worth-stating-explicitly
-point that almost got lost in planning: Cloud Run builds and runs the container in
-Google's cloud, not locally. The `Dockerfile` only needs to exist as a text file in
-the repo; Google Cloud Build can build it directly from the GitHub repo through the
-browser console, with no Docker install, no `gcloud` CLI, and no local build step
-required at all for the core path. Local Docker only becomes useful later as a faster
-local-iteration/debugging loop, not a requirement.
-
-**It took five real failures to get this working**, none of which could be caught
-locally (no Docker here or on the dev machine). The sequence is worth keeping,
-because four of the five were invisible in exactly the same way:
-
-1. **`pip install` died on a corrupted wheel** ("PACKAGES DO NOT MATCH THE HASHES").
-   `pip-system-certs` was installing unconditionally - it exists only to work around
-   Norton's TLS inspection on the Windows dev machine, and it patches Python's SSL
-   handling, which is meaningless in a Linux container and a plausible cause of a
-   truncated download. Gated behind `sys_platform == "win32"`.
-2. **Secret Manager permission denied.** The compute service account had project
-   **Editor**, which looks sufficient but deliberately excludes secret *payload*
-   access - `roles/secretmanager.secretAccessor` has to be granted explicitly.
-3. **`--dangerously-skip-permissions cannot be used with root/sudo privileges`.**
-   `permission_mode="bypassPermissions"` becomes that CLI flag, and the CLI refuses it
-   as root. Cloud Run runs as root by default - fixed with a non-root `appuser`, which
-   is better container practice anyway.
-4. **A wrong fix, honestly recorded**: the MCP subprocess was spawned as
-   `python -m agent.mcp_server`, which assumes `python` on PATH *and* the repo root as
-   CWD. Both were changed to be assumption-free (absolute `sys.executable` + absolute
-   script path + `sys.path` bootstrap). This was a **guess, and it was wrong** - the
-   later diagnostics showed `cwd` was `/app` and the interpreter path was fine all
-   along. The change is still an improvement, but it fixed nothing that was broken.
-5. **The actual cause: an unpinned dependency.** `requirements.txt` had no version
-   pins. Locally `mcp` sits at 1.29.0 (which has `mcp.server.fastmcp.FastMCP`) only
-   because installing `claude-agent-sdk` downgraded it from 2.0.0 earlier in the
-   project's history. A clean container install resolved to a newer `mcp` where
-   `FastMCP` moved, so `mcp_server.py` died on its import line. Everything is now
-   pinned to versions verified working locally.
-
-**The failure mode is the real lesson, not the version bug.** A `ModuleNotFoundError` -
-about as diagnosable an error as exists - reached the user as an agent confidently
-asserting *"dezdroppedit27 is in a Win-Now window. They likely have a strong current
-roster"*, with no data behind it. Three layers each did something locally defensible:
-the subprocess crashed and wrote to a stderr nobody read; the SDK swallowed the failure
-and handed the model an empty toolset; the model, told by its system prompt that it was
-a fantasy football assistant, produced a plausible answer rather than admitting it had
-nothing. Earlier it had claimed to have "tools for design systems and background
-monitoring," and later it emitted `<function_calls>` blocks as literal text - all
-symptoms of the same silent void.
-
-**A system that confabulates instead of crashing is worse than one that crashes**, and
-this one did it while every individual component behaved "correctly." Two guessed fixes
-went out before `/diagnostics` (`agent/api.py`) was built to spawn the MCP server
-directly and report the captured subprocess stderr - after which the diagnosis took
-seconds. The lesson recorded here for next time: when a failure is invisible, stop
-guessing and spend the effort on visibility first. That endpoint is kept, not deleted,
-for exactly that reason.
-
-**One dependency that had to be gotten right without being able to test it**: the
-Claude Agent SDK shells out to the `claude` CLI as its transport (`agent/agent.py`),
-which needs Node.js - not just Python. Checked the actual current requirement rather
-than guessing: `@anthropic-ai/claude-code` needs **Node 22+** as of mid-2026, so the
-image installs Node via NodeSource on top of a `python:3.12-slim` base rather than
-assuming whatever Debian's default `apt` Node package version happens to be (often
-older than what's actually required).
-
-`ANTHROPIC_API_KEY` is never baked into the image - `.env` is gitignored, so it isn't
-even present in what Cloud Build pulls from GitHub. It has to be set as a real Cloud
-Run environment variable (bound to a Secret Manager secret) when the service is
-configured - `load_dotenv()` in `agent.py` already no-ops harmlessly if no `.env`
-file exists and reads straight from the real environment either way, so no code
-changes needed for this to work once that binding exists.
-
-## CI/CD (`.github/workflows/`)
-
-Deployment originally ran through a Cloud Build trigger created by the Cloud Run
-console, which built and deployed on every push to `main`. When unit tests were added,
-CI and CD ended up running **independently** - GitHub Actions ran the tests while Cloud
-Build deployed regardless of the result, so a push that broke tests still shipped.
-
-`deploy.yml` closes that: it triggers on `workflow_run` after `tests` completes and
-explicitly checks `conclusion == 'success'`, because `workflow_run` fires on failure
-too. It checks out `workflow_run.head_sha` rather than current `main`, since those can
-differ if something lands while a test run is in flight.
-
-**Authentication is Workload Identity Federation, not a service account key.** The
-common approach is a service account JSON key stored in GitHub secrets, which works and
-is still widespread - but it's a long-lived credential sitting on someone else's
-server, and every third-party action in a workflow runs arbitrary code with access to
-`secrets.*`. WIF instead has GCP trust GitHub's OIDC issuer and exchange a per-run
-token for a short-lived GCP one. The provider's `attribute-condition` pins that
-exchange to this repository; without it, *any* GitHub repo could impersonate the
-deployer service account.
-
-**Remaining risk, and what was done about it.** A pipeline that deploys arbitrary code,
-running code that needs a secret, can always be made to leak that secret - that part is
-inherent to CD and can't be engineered away. What *was* fixable: the service originally
-ran as the **default compute service account, which carries project Editor**, so a
-compromised deploy would have inherited control of the whole project rather than just
-the one secret. It now runs as a dedicated `fantasy-fanatic-run` identity holding
-exactly one permission - `secretmanager.secretAccessor` on `anthropic-api-key` - and no
-project-level roles at all.
-
-The deployer's permissions were narrowed the same way, in the safe order (add the
-tighter grant, verify, then remove the broad one, with the rollback command in hand
-since Actions is now the only deploy path). It ended up with exactly three project
-roles - `run.admin`, `artifactregistry.writer`, `cloudbuild.builds.editor` - plus
-`storage.admin` scoped to the single `run-sources-fantasy-fanatic-us-central1` staging
-bucket rather than project-wide. The WIF condition also pins to
-`refs/heads/main`, so a workflow on any other ref can't mint a token at all, and the
-old default compute account's leftover access to the secret was revoked once the
-dedicated runtime identity was proven working.
-
-Deliberately imprecise in one place: the bucket grant is `storage.admin` scoped to that
-bucket, not a more minimal `objectAdmin`. Finding the true minimum would take several
-break-and-fix deploy cycles, and the gap between "one bucket" and "one bucket, fewer
-verbs" is small next to the gap from "every bucket in the project."
-
-**What remains is inherent, not an oversight**: a pipeline that deploys arbitrary code,
-running code that needs a secret, can always be made to leak that secret. The blast
-radius is now one prepaid API balance rather than the whole project. Writing this down
-rather than hiding it is deliberate - the workflow file is public, so the permissions
-are inspectable regardless. Obscurity would buy nothing, and an unexamined risk is
-worse than a documented one.
-
-**The Cloud Run settings live in the workflow, not only in console click-state.**
-`--concurrency 1` and `--max-instances 1` are load-bearing (`budget.py`'s daily cap is
-only exactly accurate with a single instance, and each request spawns two subprocesses),
-`--memory 2Gi` covers polars/pandas in both the parent and the MCP subprocess, and
-`gen2` is needed for subprocess spawning. Those were previously invisible configuration
-that a stray console edit could silently undo.
-
-CI deliberately excludes `agent/evals.py` (real paid API calls) and
-`agent/test_mcp_server.py` (hits live third-party APIs, so it would go red on someone
-else's outage rather than on a real regression). No `ANTHROPIC_API_KEY` is provided to
-the workflow, so a test that silently started needing one would fail loudly.
-
-## Observability (`agent/observability.py`, `agent/log_summary.py`)
-
-Phase 3. Every `run_query` call previously printed to the console and then vanished -
-no durable record of what got asked, what it cost, which tools fired, or whether
-anything errored once the process exited. `log_run` appends one JSON line per call to
-a local, gitignored `logs/agent_runs.jsonl`: timestamp, the question (truncated to 300
-chars), outcome (`ok`/`error`), latency, `num_turns`, `cost_usd`, `grounding_retries`,
-which league_id(s) got touched, what format tier `check_league_format` found (if
-called), and any tool-level errors.
-
-**Plain JSONL over SQLite, deliberately** - no schema, no migrations, and still
-trivially summarizable (`log_summary.py`, a ~30-line script reading the same
-`read_runs()` helper) at the scale this project actually runs at. Converts to SQLite
-in one `sqlite3` import later if real query power is ever needed - not a dead end,
-just not built before there's a reason to.
-
-**The file-only version was silently broken for the hosted case** - found by
-re-reviewing the deployment plan rather than by anything failing locally. Cloud Run's
-container filesystem is in-memory tmpfs: appending to `logs/agent_runs.jsonl` there
-would quietly consume the memory limit and then lose the entire file when the instance
-scales to zero. Correct locally, useless hosted. Now every record goes to **stdout**
-always (Cloud Run pipes stdout straight into Cloud Logging - durable and queryable for
-free, no client library or extra service), with the local file written only when not on
-Cloud Run. The environment identifies itself via `K_SERVICE`, which Cloud Run always
-sets, so there's no deploy-time config to remember to flip. A file-write failure logs
-to stderr instead of taking the whole record down with it - stdout has already
-succeeded by that point.
-
-**Logging lives in a single `try/finally` around all of `run_query`, not scattered
-print-style calls** - it fires exactly once per call whether the call succeeds,
-partially succeeds (a tool errored but the model recovered gracefully), or an
-exception reaches all the way out, since all three are real outcomes worth a record.
-Variables the `finally` block reads (`total_turns`, `retries`, `result`,
-`all_tool_calls`, `all_tool_results`) are all initialized before the `try`, not just
-inside it - otherwise an exception on the very first `_run_turn` call would hit an
-`UnboundLocalError` in the logging code itself, on top of whatever the original
-exception was.
-
-**Format tier and tool errors both required capturing the SDK's tool-*result*
-messages, not just tool *calls*** (`ToolResultBlock` inside `UserMessage`, matched
-back to a tool name via the `ToolUseBlock.id` recorded when the call was made) - the
-existing code only ever looked at what the model *asked for*, never what a tool
-actually *returned*. This is also what makes the malformed-league_id eval case
-possible: `ToolResultBlock.is_error` is the real, structured signal for "this call
-failed," confirmed against a real 404 (see "Format support gate" for the live-tested
-shape: FastMCP turns a raw `HTTPError` into `isError=True` on the client side, not a
-crash).
-
-**A real, live-found gap while testing this**: with a nonexistent league_id, the
-model called `check_league_format` (which errored), and then called `get_team_state`
-anyway against the same broken league_id (which also errored) before finally
-explaining the league didn't exist - a real if minor wasted call, since rules 1-3 only
-ever covered the *tier-based* branches ("unsupported"/"degraded"), never a hard tool
-*error*. Fixed with rule 10 ("if check_league_format itself errors, stop for that
-league_id - don't retry with a different tool"), confirmed live: identical question
-afterward made exactly one tool call. Like rule 2, this isn't perfectly reliable
-either - see "Eval harness" below.
-
-## Unit tests (`tests/`)
-
-Added late, and the gap they closed is worth recording: the project had an eval harness
-and **no unit tests at all** - pytest wasn't even installed. That left the most
-carefully-reasoned part of the codebase with the least protection. Age curves,
-team-window thresholds, relevance floors, and need/surplus logic had been validated by
-eyeballing real league output once, and were asserted nowhere.
-
-The concrete trigger: the caching change touched every data source and the eval suite
-passed 7/7 - but those evals only detect *agent misbehavior*. They would have passed
-just as happily if a TTL had served stale rosters or a threshold had been mistyped.
-
-26 tests, **free and offline**, because almost every rule in `analysis/` is already a
-pure function taking plain data - no fixtures, no network, no API spend, ~1.5s. They
-assert the *boundaries* the heuristics turn on (exact age cutoffs per position, the
-usage-role overrides, the 50%/25% relevance split, need-vs-surplus symmetry) plus
-regression guards for real bugs found during development: never offer a starter, never
-offer a position you need, report every grounding violation rather than the first, and
-bill the per-question cost delta rather than the cumulative session total.
-
-**Verified the tests actually bite** rather than assuming: deliberately changing the RB
-decline age from 27 to 99 fails 2 tests instead of passing quietly. Also caught one test
-of my own that passed vacuously - an `all()` over an empty list - and rewrote it to
-compare two otherwise-identical players differing only in starter status, so it can't
-succeed by accident.
-
-`pytest` lives in a separate `requirements-dev.txt` so it doesn't ship in the Cloud Run
-image, where Artifact Registry storage is billed past 0.5 GB.
-
-## Eval harness (`evals.py`)
-
-Deliberately 7 cases, not the 10-20 the original plan called for - each real case is a
-real paid API call against a small starting budget, and these cover the distinct
-failure modes actually found or worth guarding against so far: correct tool selection
-for a team-window question, the non-dynasty refusal, a trade-target question using the
-real tool instead of improvising, resistance to an explicit instruction-override/
-tool-boundary-probing attempt, refusing an off-topic request that needs no tool at all
-to answer, only naming players actually present in a team's real offer list, and a
-nonexistent league_id failing gracefully instead of crashing or wasting extra calls.
-Expand this set as new scenarios get validated live, the same way every other module
-in this project grew - not by front-loading hypothetical cases now.
-
-**Two of these needed a real fix, and they reveal an important asymmetry**:
-- `case_team_window`'s underlying bug (`get_team_state` needing an `owner_name`
-  filter) and the "loaded team" bug (`team_state.py`'s `is_loaded` flag) were both
-  **data/logic gaps** - fixed once in Python, propagated everywhere instantly and
-  reliably, verified with a plain regression re-run.
-- `case_grounded_trade_chips` is different: the underlying data was already correct
-  (the real offer list never included the players in question), so the bug was purely
-  "does the model follow an instruction to only use that list." Strengthening the
-  system prompt rule fixed the off-topic-scope case cleanly on the first try, but
-  **failed to fully fix the trade-chip grounding case even on a second, more explicit
-  attempt** - the model suggested the same ungrounded player again. Prompt-level
-  constraints are probabilistic, not guaranteed, in a way a Python fix to a real data
-  gap simply isn't - chasing a third, even-more-forceful prompt wasn't pursued given
-  the diminishing returns and real cost per attempt.
-
-**Closed with a post-hoc grounding check instead of a better prompt** (`agent.py`):
-after each answer, `_banned_trade_names` recomputes the real offerable set straight
-from `trade_targets.find_targets` + `roster_detail.get_roster_rows` for the same
-league/owner the model already queried (free, deterministic, no LLM involved), and
-checks whether any name in the response text falls outside it. On a violation, one
-corrective follow-up is sent on the same session ("you named X, who isn't offerable -
-redo it using only the real list") before the answer is returned. This is the
-generate-then-verify pattern: generation stays probabilistic, but verification is a
-plain set-membership check, so the *system's* reliability no longer depends on the
-model getting the instruction right on the first try. Validated live on the exact
-case that kept failing: first pass named Christian McCaffrey, the check caught it,
-the retry corrected to only TreVeyon Henderson and Jacory Croskey-Merritt (the real
-`my_offers` list) - `case_grounded_trade_chips` now passes.
-`trade_targets.offerable_names()` was added as the one shared definition of "real
-offerable set" across all three `find_targets` modes (buy/rebuild/middling), so the
-check doesn't duplicate that mode-branching logic itself.
-
-A residual, accepted gap: the check is a substring match on player names, so a name
-mentioned *without* being recommended as a give-up (e.g. "unlike some teams, you
-don't have a Jonathan Taylor to dangle") would still trigger a retry. A false-positive
-retry costs a small extra call; it doesn't let a real violation through, which is the
-failure mode that actually mattered here.
-
-**That false-positive turned out to be common, not rare, in practice - it fired on
-nearly every real "what should I do" question**, because answering that question
-naturally involves describing the team's *current* roster (cornerstones, starting RB
-room, etc.), which necessarily mentions plenty of non-offerable players. `_trade_
-violations` narrows the check to only fire when a banned name appears on the same
-*line* as trade-action language (send/offer/trade/sell/give up/package/dangle/swap),
-not anywhere in the whole response - live-tested on the exact question that had been
-tripping it: flagged names dropped from 5 to 1 on an identical re-run, and the eval
-suite still passed with the real-violation case still triggering a genuine retry (not
-silently defeated by the narrower trigger). The remaining miss on that live test
-("...without giving up Lamar Jackson") is a **negation** case a keyword-proximity
-check structurally can't catch - the line explicitly says the player *isn't* being
-given up, and telling that apart from a real "give up X" recommendation needs actual
-phrase-level parsing, not just a better keyword list. Deliberately not chased further:
-a much bigger jump in complexity for an already-narrow, further-shrinking edge case,
-and a false-positive retry still never lets a real violation through - it just costs
-one extra small call.
-
-**The eval harness immediately caught a real bug in this fix, not just in the
-original prompt.** First implementation picked a single violating name with
-`next()` and only told the model about that one in the correction message. The real
-failing answer had named *two* non-offerable players at once (Jonathan Taylor and
-Christian McCaffrey) - the one allowed retry fixed whichever name got mentioned and
-left the other, so `case_grounded_trade_chips` failed again on the next eval run even
-though a manual live test right before it had looked clean (that manual run happened
-to only have one violation to fix). Fixed by collecting every violation found and
-listing all of them in the correction message, then confirmed clean across two
-separate full eval runs (not just one) before trusting it - a single pass proves
-nothing when the fix itself is a probabilistic retry.
-
-**The eval's own assertion went stale the moment the narrower `_trade_violations`
-check shipped, and this needed the exact same discipline to catch as a real agent
-bug would.** After narrowing rule 6's trigger (above), `case_grounded_trade_chips`
-started failing again - but investigating the actual failing text (not just trusting
-the FAIL line) showed the model saying *"the system isn't flagging Jonathan Taylor as
-tradeable"* - correctly explaining why he ISN'T a real option, not recommending
-trading him. The eval's original assertion (`name not in result["text"]`, a blunt
-whole-text check) was written under the old zero-tolerance philosophy and never
-updated when that philosophy deliberately changed to "only a trade-context mention
-counts." Fixed by rewriting the assertion to call the exact same `_trade_violations`
-function production uses, so the eval checks the real invariant ("never recommended")
-instead of a stricter proxy ("never mentioned") that the intentional design change
-had already made obsolete. The lesson: a failing eval isn't automatically evidence of
-an agent regression - reading the actual failing output before concluding either way
-is what told these two apart.
-
-**Malformed league_id case, added alongside the observability work above**: the
-first live run of `case_malformed_league_graceful` surfaced the redundant-tool-call
-gap that became rule 10 (see "Observability"), and after that fix the eval passed
-immediately. It then failed once on a later full-suite run with the exact same
-pre-rule-10 symptom (an extra `get_team_state` call) - re-running the isolated case
-3x immediately after came back clean 3/3, the same low-frequency-noise signature
-already seen with rule 2. Logged as another data point that even a rule with a real,
-confirmed fix isn't pushed to 0% failure by a prompt change alone - only the
-generate-then-verify pattern used for rule 6 gets an invariant genuinely close to
-guaranteed, and building that same machinery for every rule regardless of how rarely
-it actually fails would be its own form of the scope creep this project keeps
-deliberately avoiding.
-
-## Known limitations / future work
-- **NEXT UP: `redraft_value` is a trade price, not a weekly point projection, and the
-  difference has a direction.** A trade price bakes in *positional scarcity* - a TE is
-  valued partly because you are forced to start one and the good ones are scarce, which is
-  a real advantage in the dedicated TE slot. But a FLEX decision is not about scarcity, it
-  is about raw expected points, and an RB or WR priced the same as a TE will usually
-  project higher week to week.
-
-  So `fill_lineup` is systematically biased toward putting tight ends in flex slots. The
-  live case is the one that prompted this: with the RB2 lost, the vacated FLEX went to
-  Dallas Goedert (627) over Wan'Dale Robinson (259) - and in reality Robinson is the more
-  likely start. The magnitude looks small enough to live with for now ("probably close
-  enough"), and TEP scaling pushes in the right direction for TE-premium leagues, but the
-  bias is directional rather than random so it will not average out.
-
-  A real fix needs actual weekly projections rather than trade values, which is a new data
-  source rather than a tweak. Note the same root cause is already documented for PPR -
-  FantasyCalc's `ppr` parameter is a flat 0.6% per-position scalar that cannot tell a
-  receiving back from an early-down back - so a projections source would close two gaps at
-  once and is probably the single highest-value external addition left.
-- **Injury rates are reported for players who could never play.** `miss_rate` is attached to
-  every roster row, so a deep bench body with a 44% rate reads as a risk when he was not going
-  to see the field either way - his availability changes nothing. The tool description now
-  says to weigh it only for starters and the bodies immediately behind them, but the data
-  itself doesn't distinguish. `would_start_if_one_out` already answers "could he plausibly
-  reach the lineup" and could gate it properly.
-- **The relevance floor ignores league size and roster depth.** `MIN_RELEVANCE_FRACTION` is a
-  flat 0.5 / 0.25 of a leaguewide top-N bar, and neither number knows how many teams there
-  are, how deep the benches go, or whether there is a taxi squad. Those settings decide how
-  much of the player pool is rosterable at all, which is exactly what "does this player have
-  real value" depends on: in a 10-team league with short benches, good players sit on waivers
-  and a bench piece is genuinely replaceable; in a 14-team league with 35-man rosters and a
-  taxi, almost nothing is.
-
-  The three real leagues here are 12 teams, 10 starters, 14-15 bench, 4 taxi - roughly 336
-  players rostered against 120 starting slots, so **two thirds of every roster is bench**.
-  A flat fraction is being asked to describe all of that.
-
-  **It cannot be calibrated from what we have** - all three leagues are the same shape, so
-  there is no variation to fit against. Same problem `format_support` handles by flagging
-  shallow leagues as degraded rather than pretending to know. Needs either more league formats
-  or a derivation from first principles (rostered players per team against valued players
-  available), not another guessed constant.
-- **Depth is not yet *weighted* by injury risk.** The rates now exist (`sources/injuries.py`)
-  and are reported, but nothing multiplies them together: how much a bench body is worth
-  should depend on the starter's own miss rate, the position's rate, and how long a typical
-  absence lasts. That last one isn't measured at all - a rate treats a one-week hamstring
-  and a torn ACL identically, and they are not the same problem for a roster. Doing this
-  properly means severity and duration by injury type, which is a real modelling exercise
-  and a genuine rabbit hole; noted as somewhere to go deliberately rather than to drift into.
-- **Freak accidents and chronic fragility are counted identically.** A rate cannot tell a
-  player who tore a ligament in a pile-up from one whose soft tissue keeps failing, though
-  only the second predicts anything. Injury *type* is in the report data
-  (`report_primary_injury`) and is not used yet.
-- **Availability is binary here, and playing hurt isn't.** Hamstring injuries in particular
-  linger for weeks after a player returns and depress production the whole time, so a
-  manager sees a healthy-looking `ACT` week and a diminished player. Nothing in this model
-  has a state between available and out, and adding one means joining injury designations to
-  weekly production - which is also the join that would let severity be measured rather than
-  assumed.
-- **Dynasty values are the market's own age curve, and we should probably calibrate against
-  them.** `AGE_CURVE` is documented as "dynasty community heuristics, not a model" while the
-  values we already pull encode thousands of traders' view of exactly the same question. Share
-  of players at each age carrying cornerstone value, measured on the live pool:
-
-  | age | QB | RB | WR | TE |
-  |---|---|---|---|---|
-  | 26-27 | 21% | 8% | 15% | 7% |
-  | 27-28 | 18% | 5% | **17%** | **0%** |
-  | 28-29 | 36% | 0% | **0%** | - |
-  | 31-32 | **0%** | - | 0% | 0% |
-
-  WR shows a clean cliff at **28** against our 29, and TE appeared plainly wrong - the market
-  looked like it stops paying at ~27 where our curve says **30**.
-
-  **The TE half of that reading was an artifact, and it is now resolved: the curve stays at
-  30.** The cornerstone bar is a single leaguewide 90th percentile, and the entire TE
-  cornerstone population is **four players** (Bowers 23.7, McBride 26.7, Loveland 22.4, Warren
-  24.2) against 13 QB, 13 WR and 10 RB. All four happen to be recent first-round picks, so
-  every cell from 27 up contains **zero** players and reads 0% - which says nothing about
-  aging and everything about there being no one in the cell. Tight end is a position with two
-  or three elite players at a time; a percentile cut shared with QB and WR will nearly always
-  find its TE cells empty.
-
-  The direct evidence points the other way. Kittle at **32.9** is the 11th most valuable TE in
-  the pool (2,424 dynasty / 2,053 redraft) and Kelce at **36.9** is 18th (1,805 / 1,473),
-  ahead of tight ends a decade younger; both carry redraft/dynasty ratios above 0.8, which is
-  exactly what our model should say about a productive declining asset - real now-value, no
-  future. And the curve reproduces the domain read without being tuned to it: McBride at 26.7
-  against a cutoff of 30 yields **3.3 years of runway**, matching the independent judgement
-  that he is good for about three more years.
-
-  **The age cutoff and the now-premium ratio do separate jobs, which is why neither needs to
-  move.** Age alone would lump Kittle (32.9, ratio 0.85), Kelce (36.9, 0.82) and Mark Andrews
-  (31.0, **0.39**) together as declining tight ends; the ratio alone would lump Kittle with
-  Bowers (23.7, 0.82). Read together they separate correctly: Kittle and Kelce are old and
-  still being paid for *now*, Andrews is old and no longer paid for anything, Bowers is young
-  and already producing. Andrews is the TE to move here and the only one the tool pushes -
-  which is the right answer and not one an age cutoff could reach by itself.
-
-  So this is the same confound already flagged for QB, caught a second time: cornerstone value
-  is decline **times remaining years**, and a small cell makes it unreadable. **WR is the one
-  cell where the signal survives** - 13 cornerstones, oldest 27.4, none at 28+ - so 29 may
-  genuinely be a year late. That one is still open. (RB's oldest cornerstone is McCaffrey at
-  30.2 against our cutoff of 27, which is one player and proves nothing.)
-
-  Three reasons the general version is not yet actionable. Cells hold 5-55 players, mostly 10-20, so one or
-  two names move a column (RB "recovering" at 29-31 is two backs). It measures a *different*
-  quantity: cornerstone value is decline **times remaining years**, so a 33-year-old elite QB
-  reads 0% because the market won't pay for years he lacks, not because he has declined -
-  which is why this shows QB ending at 31 while the passing-EPA work says 38, with no
-  contradiction. And it is survivorship-biased, since players who fall off leave the pool.
-
-  A real version needs a larger pool than the ~400 FantasyCalc values, and ideally the same
-  players tracked across seasons. Worth doing - it would replace four hand-set constants with
-  a measurement, which is this project's stated preference everywhere else.
-- **The market disagrees with our rushing-QB discount on its most valuable player.** Josh Allen
-  is 10,415 dynasty at ~29.5 with 7.1 carries a game. Our curve puts him on the rushing
-  schedule (decline at 31, so 1.5 years of runway); the market has explicitly declined to
-  discount him. One of the two is wrong about the single most valuable asset in the pool, and
-  the tag is the thing making the stronger claim.
-- **The pocket/rushing split may still be too coarse.** An elite QB who both throws and runs
-  (top passing EPA *and* 7+ carries a game) is forced onto the rushing curve by the
-  mutual-exclusion rule, which may badly underrate the passing half of his value. Resolving it
-  needs decline data split by archetype rather than another judgement call.
-- **Superseded: the QB age curve was wrong at both ends, per a domain expert.** `AGE_CURVE["QB"]` is
-  (26, 34), pulled to 31 for a tagged `rushing_qb`. A sports-modelling data scientist argued
-  that a pure pocket passer can hold value to nearly 40 while a rushing QB slows sharply
-  closer to 30 - so the real spread between the two roles is much wider than 34-vs-31, and
-  the pocket end is too pessimistic. This has teeth: it inverts a live sell recommendation.
-  The tool ranked a 31.8-year-old pocket passer as the top sell (highest now-weighting) where
-  he would sell the 28-year-old rushing QB, on the grounds that the market has not priced the
-  rushing decline. Both are defensible and they answer different questions - "who is the
-  market overpaying for now" versus "whose dynasty price erodes fastest" - and only the first
-  is modelled. Not changed on one opinion, but it is the best-argued challenge to a curve
-  constant so far and worth calibrating against real production-by-age data.
-- **Deliberate positional strategy is read as a flaw.** The same manager stacks WR and TE on
-  purpose - cheaper than QB, and value-insulated compared to RB - and stays light at RB
-  knowingly, because RB value decays fastest. The tool reports his RB room as a `critical`
-  need. `replacement_thresholds` already documents that a rebuilder's needs should be read as
-  "what a contending version of this roster would lack", but nothing in the output says so,
-  so a deliberate construction reads as a hole.
-- **A rebuild's timeline isn't checked against the age of its own assets.** The window model
-  says rebuild or contend; it never says *how long*. A roster whose best pieces are two
-  28-year-old quarterbacks - one of them a rushing QB, whose curve declines at 31 rather than
-  34 - cannot afford a three-year teardown, because the assets it is rebuilding around expire
-  inside the rebuild. Nothing currently computes when a rebuilding roster's own core stops
-  being good, which is the number that should set the urgency.
-- **Suspension risk is measured but not used.** `weeks_suspended` is reported and
-  deliberately excluded from `miss_rate`. Whether a past suspension predicts a future one is
-  a genuine question, and if it does it belongs in availability forecasting as its own term
-  rather than smuggled in under injury.
-- **Dynasty rosters are deeper than the replacement-level bar assumes.** Dynasty formats
-  carry far more players than redraft, so plenty of low-redraft-value players are
-  genuinely starter-relevant in a way a value-derived threshold does not reflect. This
-  interacts with `start_thresholds` and with "startable" everywhere it appears - and with
-  the depth finding above, where the bar is already known to define surplus out of
-  existence. Worth revisiting the whole "usable" concept once projections exist.
-- **The redraft tail collapses to noise, and it caps the persuasion tier.** Not scattered
-  outliers - a systematic floor effect below roughly the 30th-ranked player at a position.
-  Real WR board: Brandon Aiyuk **1**, Jerry Jeudy 70, Jalen Nailor 76, Tank Dell 114,
-  Khalil Shakir 140. Those are rostered NFL receivers whose weekly points are plainly not
-  ~0; a redraft value of 1 means "nobody would trade anything for him", which is a *price*,
-  not a forecast. (Wan'Dale Robinson at 259 was the first sighting of this, recorded then
-  as a possible one-off.)
-
-  The consequence is structural rather than cosmetic. `now_premium_bar` divides by these
-  numbers, so any mid-tier veteran's ratio is pushed toward zero and the whole persuasion
-  tier is effectively limited to the top ~30 per position. The live case: a 28.7-year-old
-  WR at WR36 reads 0.43 - "priced more for the future than for now" - which is not a
-  believable description of him, and his owner flagged it by eye. The bar is not too tight;
-  the denominator is unreliable down there. Loosening the bar to compensate would import the
-  noise instead of fixing it, so it is deliberately left alone until projections exist.
-  Same root cause as the two entries above.
-## Injury exposure (`roster_needs._injury_drop`)
-
-Replacement level **cannot express depth at all**, which is not a gap so much as a
-definition problem. `start_thresholds` is the Nth-best player leaguewide where N is every
-starting slot in the league, so by construction only about enough players clear it to fill
-everyone's lineups. Measured on two real leagues, **10 of 12 teams had zero startable
-bench** - an artifact of the bar, not a fact about their rosters. A manager who is
-genuinely one injury from disaster could not be told so.
-
-Drop-off sidesteps the bar by asking about magnitude instead of counting bodies:
-`drop_if_injured` is the production lost when the *last* starter at a position goes down,
-ranked into league tertiles like everything else. The marginal spot is the right one to
-price - if a team starts four RBs and its RB1 is hurt, everyone shuffles up and what
-actually enters the lineup is the best bench RB, so the loss is (worst starter - best
-bench). On a real roster that is 1,043, not the 4,298 a best-starter reading would give.
-
-**Deliberately not a need.** Depth and lineup quality are separate questions with opposite
-fixes, and folding exposure into `needs` would tell a perfectly healthy team it has four
-problems. A real case: a team with **no positional needs at all** ranks 2nd, 3rd and 4th
-worst in the league for QB, WR and RB exposure - the lineup is fine, and one injury ends
-that. Absent rather than zero when no lineup is supplied, since 0 would read as "perfectly
-deep".
-
-**Flex slots are honoured, which was a real bug in the first version.** It looked up the
-next player *at the same position*, so a QB lost from a SUPER_FLEX was priced against the
-team's QB3 - when in fact the slot backfills from any position. The drop is now computed by
-removing the weakest starter at the position and **refilling the lineup optimally**, which
-handles SUPER_FLEX and FLEX for free. Correcting it moved real numbers (one team's RB
-exposure 1,043 -> 900, TE 417 -> 232).
-
-**It is the magnitude if it happens, not an expected loss**, and that distinction changed
-the conclusion on the roster that motivated the feature. Its marginal losses are
-Herbert 6,602 / Hurts 6,030 / McCaffrey 6,026 / Taylor 6,001 - QB is *not* uniquely
-exposed, the whole top of the roster is, because the bench is uniformly barren. Combined
-with QBs being injured less often than RBs, and with a superflex slot that any position can
-fill, **two good QBs plus a cheap third is a sound build rather than a hole** - the initial
-read of "QB is the disaster here" was wrong, and came from comparing position groups
-instead of marginal risk.
-
-*Backlogged*: position-specific injury rates, which would turn magnitude into expected
-loss and is the missing half. nflverse publishes weekly injury reports, so unlike the PPR
-gap there is a real source to calibrate against rather than a guess.
-
-## Optimal lineup as a tool (`roster_detail.optimal_lineup`, `roster_needs.fill_lineup`)
-
-Filling FLEX and SUPER_FLEX is a small deterministic optimisation with exactly one right
-answer, and asking a language model to do it in prose is precisely the kind of thing it
-will confidently get subtly wrong. The code already existed (`projected_starters`); what
-was missing was any way for the agent to *reach* it, so "what if my RB2 gets hurt" was
-being reasoned through instead of computed.
-
-`fill_lineup` is `projected_starters` keeping **which slot** each player occupies, and
-`optimal_lineup(league_id, owner, without=[names])` exposes it as `get_optimal_lineup`.
-Slot assignments matter because the visible effect of an injury is players *moving*, not
-one name vanishing. On a real roster, losing the RB2:
-
-```
-   RB    Christian McCaffrey   6,653      RB    Christian McCaffrey  6,653
-   RB    Jonathan Taylor       6,628  ->  RB    TreVeyon Henderson   2,330   <- moved from FLEX
-   FLEX  TreVeyon Henderson    2,330      FLEX  D'Andre Swift        1,527
-   FLEX  D'Andre Swift         1,527      FLEX  Dallas Goedert         627   <- promoted
-```
-
-The manager's own expectation was that a WR would fill the vacated FLEX. It goes to a
-**tight end** (627) instead of the backup WR (259), because FLEX accepts RB/WR/TE and the
-bench TE simply produced more. That is the whole argument for the tool: the cascade is
-mechanical, cheap to compute exactly, and easy to get wrong by hand.
-
-System-prompt rule 10 forbids working a lineup out by hand and routes every "what would I
-start / who replaces X / what does this injury cost" question here. Same pattern as the
-trade-chip grounding check: where a deterministic answer exists, compute it rather than
-instructing the model to be careful.
-
-## Efficiency swaps: which windows, and what they are blind to
-
-Extended from Push-only to **Push and Contend**, since the mechanic means different things
-depending on whether there is a clock (`SWAP_FRAMING`): a closing window converts future
-premium into capital, while a healthy contender is taking profit with no urgency. Middling
-and Rebuild still want the premium this converts away.
-
-Also corrected: swaps were suppressed at *any* need position. That is right for
-count-shaped needs (critical/top-heavy), where promoting the backup fills the empty slot
-but spends the last body you had - and wrong for `weak`, which has its slots covered and
-wants a better starter, exactly what the freed value buys at flat production. The blanket
-rule silenced the only two swaps in the league: a Contend team weak at QB and TE could
-free 564 and 380 while its lineup barely moved.
-
-**What this cannot see, and why it wasn't stretched to fit.** The mechanic requires a
-replacement already on the roster producing >=90%, so it finds "sell the premium, promote
-the backup" and is blind to "sell an aging starter you have no replacement for". The
-clearest sell-high case in the league is invisible to it: a Contend team starting a
-33-year-old RB1 (4,597) and a 37-year-old TE (1,504) with Pacheco at 146 and Juwan Johnson
-at 318 behind them, while its entire WR room is 24. Selling both at peak is obviously
-right and the production genuinely leaves - it has to be replaced externally, which is a
-different trade. **Next up:** an age-cliff sell-high path keyed on age rather than the
-redraft/dynasty ratio, for contenders whose young core carries them.
-
-## Persuasion targets (`trade_targets._persuasion_targets`, `analysis/prior_season.py`)
-
-`_buy_path` only searches `Rebuild` teams, so the best available production at a need
-position could be structurally invisible. On the real league a `Push` team needing RB was
-offered Rachaad White (449 redraft) and Tony Pollard (697), while Jonathan Taylor (6,649)
-and Saquon Barkley (5,081) sat on a contender that is the most steeply falling team in the
-league. A 15x gap in current production, hidden by a binary seller/non-seller split.
-
-The fix is a separate, clearly-labelled tier - not a wider seller pool, because those
-teams genuinely aren't selling. Three choices, each of which was a trap found while
-scoping it:
-
-**1. Sourced from `sellable`, not `win_now_core`.** The latter is gated on the cornerstone
-threshold (4,289 here), so it holds Taylor (5,240) and drops Barkley (3,746) - the same
-roster's *better* target. The output would have looked entirely reasonable while missing
-the best name available.
-
-**2. Ranked by current production per unit of trade cost** (`redraft_value / value`), not
-by value. The normal buy path sorts by dynasty value descending, which is backwards for a
-win-now buyer:
-
-| player | held by | dynasty | redraft | prod/cost |
-|---|---|---|---|---|
-| Derrick Henry | shivvv (Contend) | 2,978 | 4,603 | 1.55x |
-| Christian McCaffrey | rjl22 (Contend) | 4,437 | 6,585 | 1.48x |
-| **Saquon Barkley** | kierankieran (Push) | 3,746 | 5,081 | **1.36x** |
-| Jonathan Taylor | kierankieran (Push) | 5,240 | 6,649 | 1.27x |
-
-Barkley beats Taylor on the ratio *and* costs 1,494 less outright, because at 29.5 the
-market discounts him for seasons a pushing team isn't buying. That discount is the entire
-point - the same arbitrage `find_value_upgrades` exploits, applied to ranking a buy list
-rather than to picking a single better holding. Anything not actually discounted is dropped - otherwise you'd be paying a
-future premium to a team that doesn't even want to sell, the worst of both. "Discounted"
-has to be judged **within the player's own position** (see `now_premium_bar` below); the
-absolute bar this originally used was wrong in a way that took a live spot-check to catch.
-An empty list is the honest answer when nobody's aging production is on sale to you.
-
-**3. Implausible sellers are excluded, not ranked last.** Listing a name nobody can get
-puts it at the top of a list sorted by ratio and makes the feature worse than nothing. What
-counts as implausible is the subtle part, and the first answer was wrong - see below.
-
-### The floor applies at every need level, not just `weak`
-
-A persuasion target has to beat who you already start. The check existed but was gated to `weak`
-needs, on the theory that at a *critical* need any body helps - which is what `depth_adds` is
-for, at a nominal price and no persuasion at all. So a critical need asked owners to change
-direction for players who would not crack the lineup: Tyrone Tracy at 255 of production against
-a weakest RB starter of 638, alongside Jordan Mason (390) and Blake Corum (581), all under a
-note promising "aging production the market discounts age on". At Tracy's **0.18x** production
-per unit of cost the market is pricing him far *above* what he produces - the exact opposite of
-the discount this block exists to harvest.
-
-This became visible only because a value refresh reshuffled the list, which is worth recording
-as a method: **run the same report twice and diff it.** Three entries turned out to be sitting
-inside noise of their thresholds -
-
-| entry | margin it lived on |
-|---|---|
-| rjl22's whole team (McCaffrey, Dowdle, Hubbard) | trajectory score of **−2**, rank 9→8, out of the bottom tertile - `falling` became `steady` and the entire counterparty vanished |
-| Rashee Rice → DeVonta Smith | Smith cost **32 less**, then 3 more, and the entry ceased to exist |
-| Tracy / Mason / Corum | newly cleared the relevance floor as thresholds moved |
-
-The tertile one is the same fragility `_seller_case`'s prose was already caught asserting past.
-A two-point gap deciding whether three players are recommended at all is not a bug in the
-tertile - it is what a league-relative measure does near a boundary - but it is the reason the
-sentence has to quote the rank rather than claim a roster is falling.
-
-### Your own cornerstone is a sell surface too (`CORNERSTONE_SELL`)
-
-`_pivot_path` filtered cornerstones OUT of both sell lists, because `situational` was labelled
-"years still on them, just not your long-term core" and a cornerstone is the core by definition.
-The label was the problem, not his presence - and the exclusion's own defence gives it away: it
-said *"`my_offers` and `value_upgrades` are the surfaces that name him instead"*, and **a rebuild
-result has neither key**. So on a rebuilding roster a cornerstone appeared in no sell surface at
-all, which is the worst roster to hide it on: a rebuilder's only real question is which good
-player converts, and a cornerstone whose runway ends before the rebuild lands is exactly the one
-to question.
-
-Caught by an eval, not by a spot check. `case_sells_on_runway_not_age` asks which of jwall567's
-five QBs to trade; the agent could not weigh Jalen Hurts against Justin Herbert because the tool
-never listed either, so it led with Jared Goff.
-
-They are now listed with the same `friction` vocabulary the buy side uses, and **the tag differs
-by direction, which is the `committed` distinction this path already carried**:
-
-- **Committed** (a rebuild): a hard move, and coherent. *"Only sell him for what actually
-  shortens the rebuild, never for a fair price on paper."*
-- **Not committed** (Middling): not one move among others - *it IS the choice.* Converting him is
-  what committing to the future consists of; keeping him is what committing to now consists of.
-  Caleb: *"I do think that is the main choice to surface for middling teams."*
-
-### An eval premise that depended on a flaky data source
-
-The same case then kept failing for a different reason, and the failure was the eval's. Its
-premise is that Goff has MORE runway than Hurts - true only because `pocket_passer` moves Goff to
-a (26, 38) curve and `dual_threat_qb` moves Hurts to (26, 34). **With nflverse unreachable both
-fall back to the position default and the comparison inverts**: Goff 2.1 against Hurts 6.0, at
-which point naming Goff is the correct runway answer and the eval was failing the agent for being
-right.
-
-It also guarded the wrong pair - Hurts against *Herbert*, while asserting something about Hurts
-against *Goff*. Both pairs are now checked before an API call is spent, and the message names the
-likely cause rather than reporting "fixture drift" and leaving the reader to find it.
-
-### Picks are the rebuild's first currency, and the printer hid them (`PICKS_NOTE`)
-
-Caleb settled the open design question by rejecting it: `acquire_targets` being roster-agnostic is
-**correct**, because a rebuilding team has no lineup to shape - *"you dont need a roster if youre
-rebuilding, and eventually youll just become middling if youre doing it correctly."* So identical
-output across three rebuilding teams is the honest answer, not a bug. What was missing is the other
-half: *"just have to make sure it says get picks as well."*
-
-Two fixes. `PICKS_NOTE` states why a pick is the cleanest thing a rebuild can hold - no age so no
-clock, no roster spot, and worth strictly less to a contender than to you, which is the only shape
-of asset both sides can rationally want to move the same way. That last point is also why picks are
-*cheaper to ask for* than young players: a contender's future 1st is something it has already
-decided not to use, where its young player is a piece it may still want.
-
-And a real bug found while wiring it: `_print_pivot` returned on an empty `acquire_targets`
-**before** reaching the picks block, so a rebuilding team with no reachable young players was told
-"no obvious acquire targets found" and never told to ask for picks at all - the cheaper currency,
-withheld from the team that needed it most. Picks now print first, and the empty-players line reads
-"which makes the picks above the whole plan, not a consolation". The printed list also went from 5
-to the 8 that were always computed.
-
-### The rebuild path finally got the buy path's treatment (`_pivot_path`)
-
-Everything built for the buy side this session had to be built again here, which is what "the
-rebuild path is the untested one" looks like once someone reads it. Found by spot-checking
-bigbuttboi, a Middling/rising roster in XFL 2.
-
-**Sell lists were bare names.** `sell_candidates` printed *"Travis Etienne, Jerry Jeudy"* and
-stopped. A contender is told in its own window note that buying production is worth a premium, and
-a team selling age had no idea who that was - so the one fact that turns a sell list into a phone
-call was computed by `wanted_by` elsewhere and never joined here. Caleb's read of the same roster
-was exactly the join: *"he should probably dump etienne for assets more on his timeline since he
-could get more a production premium from someone like dez."* It now prints
-`Travis Etienne -> dezdroppedit27 [Push]: short at RB (critical) - and a contender pays a PREMIUM
-for production`.
-
-**`acquire_targets` had no cap, no friction, and no reason.** Thirty names on one roster, sorted by
-raw dynasty value, down to a 726-value quarterback, each line carrying a price and a trade count.
-It now caps per position like every buy-side list, sorts friction-last, and carries
-`_buy_friction` - the same `never_trades` / `cornerstone` / `beyond_your_best_chip` vocabulary.
-
-**And the premise was false for one kind of team.** The list means "young value surplus to its
-owner's plan", which is true of a contender and of a middling team going nowhere - and false of a
-middling team that is RISING, because accumulating that value *is* its plan. Excluded outright,
-the mirror of `_sells_him` on the buy side.
-
-**Written per-entry first, the reason printed the identical paragraph eighteen times.** Third
-instance of that mistake today, after the league-relative decline caveat and the cornerstone note:
-what every entry shares belongs in the block note, and only what VARIES rides on the line. Each
-now shows `[Contending, not rising]` and the argument is made once.
-
-### Seller-ness belongs to the pair, not the team (`_sells_him`)
-
-`_buy_path` searched teams where `window == "Rebuild"`, which made "is this owner selling?" a
-fact about the roster. It isn't. **A Middling team that is rising is selling its aging pieces and
-nothing else** - it is accumulating the seasons those players will not be there for. That is not
-a new heuristic; it is the `rising` flavor already computed, read per player instead of per team.
-
-What the team-level test hid, on one roster:
-
-| player | held by | production | prod/cost | was | now |
-|---|---|---|---|---|---|
-| James Cook | kbmckenna (Middling/**rising**, 47% asc / 0% dec) | 6,027 | 1.21x | invisible, then a "harder ask" | **top buy target**, +5,389 over the weakest RB started |
-| Travis Etienne | bigbuttboi (Middling/**rising**, 55% / 8%) | 2,186 | 0.84x | "harder ask" | 2nd buy target, +1,548 |
-
-
-The best win-now RB reachable by a team whose critical need is RB was unreachable because his
-owner's *label* was Middling.
-
-**The clock is what keeps it honest.** Without the runway test this would offer up the very young
-core a rising team is accumulating - so a rising Middling owner sells only players inside
-`INSIDE_FINAL_YEAR` of their own cutoff. Same correction as `value_basis` below and found the same
-way: borrowing the buyer's 2.0 horizon put **RJ Harvey** in the buy list - 25.5 years old, 2,032 of
-dynasty value for 865 of production - as a man his owner was selling, when he is a player a rising
-team builds *with*. Caleb's read was immediate: *"Harvey does not make sense for me to trade
-for."* `_persuasion_targets` skips the same pairs, since
-that tier is for owners who have to be talked into it and these no longer do; without that they
-appeared as a target and a harder ask at once, which
-`check_one_player_is_not_described_two_ways` now catches.
-
-The buy heading changed with the code - it said "from Rebuilding teams", which had become false -
-and each entry names why that owner is selling *him*: `[rebuilding]` or
-`[rising, so selling age not youth]`.
-
-### `prime` is only the sign of a runway (`team_state.value_basis`)
-
-`age_bucket` and `years_to_decline` are the same computation - age against one cutoff - and the
-bucket is merely its sign. `age_bucket`'s own docstring says it "throws away the distance to the
-boundary", and reading the sign alone priced **DK Metcalf, 0.3 years from his cliff**, as `prime`
--> `mixed` -> *"moderate - some future value baked in too"*, while Dallas Goedert one year further
-along read *"low - value is mostly already-realized production"*. Nothing about those two prices
-differs in kind.
-
-`value_basis(entry)` returns `production` for anyone inside `INSIDE_FINAL_YEAR` of his cutoff and
-falls back to the bucket above it.
-
-**It first used `MIN_MEANINGFUL_RUNWAY` and that was wrong**, which is worth recording because the
-two thresholds look interchangeable and are not. 2.0 is a *buyer's planning horizon*. Whether a
-player is at his own edge right now is a nearer question, and the position curves are not the same
-width: **RB is (24, 27)**, so two years of runway means *any RB over 25*. That priced Zach
-Charbonnet - 25.6, 1,684 of dynasty value for 434 of production, a ratio of **0.26** - as
-"production-priced", which is the opposite of true. One year keeps Metcalf at 0.3 and returns
-Charbonnet to upside.
-
-It deliberately does not touch `MIN_RELEVANCE_FRACTION`, where `production` and `mixed` are both
-0.5 - so this changes what the two pricing labels *say* and nothing about who clears the floor.
-That is the fourth place `bucket` was standing in for a runway, after `classify`, `_pivot_path`
-and `_cliff_case`.
-
-### A relative measure must not print an absolute claim (`priced_for`)
-
-`priced_for` compares a player's two RANKS inside his own position pool, so it answers *"is the
-market pricing him more for later than it prices other RBs"* - not *"does his price contain future
-value"*. The `aligned` branch printed the second: **"no future premium to harvest"**.
-
-That contradicted the offer pool two blocks above, on the same player in the same report.
-TreVeyon Henderson, 23.8 with **3.2 years of runway** and an `ascending` bucket, read:
-
-- offer pool (`value_basis`, age-derived): *"high - real future value you won't get back"*
-- value upgrades (`priced_for`, rank-derived): *"no future premium to harvest"*
-
-Both measures were right and answering different questions; the sentence was wrong. It now reads
-*"priced like the rest of his position (15th of 56 at RB in dynasty against 18th in redraft) - he
-may still be young, this says only that the market is not paying him a premium other RBs don't
-get."* Caleb spotted it from the recommendation alone: *"It tells me to move off henderson in
-league 2?"* - the advice is actually sound for a Push team (Derrick Henry is +2,397 of production
-for 449 *less* dynasty value), which is why only the label needed fixing.
-
-### Hard breakpoints on continuous measures
-
-A recurring shape rather than three separate bugs. A threshold gets used as a *gate*, so two
-values a rounding error apart are treated as categorically different - and the measures these
-gates sit on are continuous and approximate. **24% of this league's starters sit within one year
-of the 2.0 runway breakpoint**, and `years_to_decline` is itself age against a position cutoff,
-degrading to position defaults whenever nflverse is unreachable.
-
-The fix in every case is the same: **the threshold decides what the sentence claims, not whether
-the entry exists.** Established by `_cliff_case`'s `discounted` clause and then applied twice
-more.
-
-| gate | what it excluded | now |
-|---|---|---|
-| `_cliff_case` on `now_premium_bar` | DeVonta Smith, ratio **0.8790** against a WR bar of **0.8790** | the case stands on runway; the sentence says whether a discount exists |
-| `_holding_kind` on strictly-less value | Smith at **3,619** against Rice at **3,616**, for +535 of production | `NOISE_BAND`, the same 2% read on the other axis |
-| `_counterparty_fit` on `MIN_RUNWAY_FOR_LATER` | CeeDee Lamb at **1.6**, DK Metcalf at **0.3** | runway ranks the pool; only past-his-cliff is dropped |
-
-`NOISE_BAND` applies to the `upgrade` kind only on the value side. Where the released value is the entire point -
-`value_decision`, `conversion` - it has to actually be released, and `MIN_VALUE_FREED` says how
-much. A negative `value_freed` also needs prose: "costs -3 less in dynasty value" is not a
-sentence, so an upgrade inside the band reads "same dynasty price".
-
-For the runway pool, past his own cliff stays excluded, because there the claim would be *false*
-rather than weaker. Everything else is ranked by runway ahead of production - runway is what that
-branch is selling - and the "still there in two" promise is made only when the weakest piece in
-the offer can support it. Otherwise it states the shortfall: *"the nearest of them is 0.3 years
-from his own decline cutoff, so this is the weaker version of that trade."*
-
-### Runway, not bucket - the third time (`_cliff_case`)
-
-`_cliff_case` gated on `bucket == "declining"`, the same test already corrected to a runway in
-`team_state.classify` and `_pivot_path`. It missed **DeVonta Smith**: 27.8, **1.2 years** to his
-cutoff, reading `prime`, starting for a roster 47% ascending against 0% declining. That is the
-archetype the function exists for and the bucket hid it. Runway is a strict superset - across
-three leagues, 24 starters on ascending-tilt teams qualify under both tests, 30 under runway
-alone, and **zero** under bucket alone - so the switch loses nothing.
-
-It also stopped gating the case on the now-premium bar, by the bar's own logic: the bar exists to
-keep the sentence *"priced as though his remaining years are gone"* honest, which is a job for the
-sentence. As a gate, Smith's ratio of **0.8790** against a WR bar of **0.8790** meant whether his
-owner had any reason at all came down to the fourth decimal place. The mismatch argument now
-stands on the runway and states outright whether a discount is there: undiscounted names read
-*"he is not discounted for it (0.84x), so this is about whose window he fits rather than a price
-to harvest."*
-
-**What this surfaced.** James Cook - 6,027 of production at 1.21x production per unit of cost,
-the best win-now RB reachable by a team whose critical need is RB - was invisible in every run
-before this. He is `prime` by bucket with 0.1 years of runway, on a Middling/rising roster
-built for seasons he will not be part of.
-
-### What makes a non-seller plausible (`_seller_case`)
-
-A falling trajectory (aging out is the one thing that turns a team that isn't selling into
-one that will), or a core that missed the playoffs with the roster it still has. Both are
-properties of the **team**, and that was originally the whole test: no team-level reason, no
-suggestion.
-
-**`falling` is a league tertile, and the prose was quoting it as an absolute.** rjl22 in XFL 2
-sits at 24% declining against 22% ascending - a two-point gap - and was told "their roster is
-falling", with those two percentages printed beside it as if they were the evidence. Any reader
-subtracts them and stops believing the sentence. The rank is what the code actually computed,
-so the rank is what the sentence now says: *"among this league's least improving - 9 of 12 on
-trajectory"*, with the percentages as detail and the league-relative caveat stated once in the
-block note rather than repeated on every entry. Same defect family as the labels elsewhere in
-this file: the number was never wrong, the claim built on it was. It also said "turns a
-**contender** into a seller" about Vicdank, who is Middling.
-
-### The block heading contradicted nine of its own ten entries
-
-`needs_a_pivot` is computed per entry - whether that owner has a hole this roster can fill, in
-which case the trade serves his existing plan rather than asking him to abandon it. The heading
-above them ignored it and asserted *"each of these is asking a team to change direction, not
-take a fair offer"*, while nine of ten entries said the opposite two lines below in their own
-`cost_note`. Entries now sort by `needs_a_pivot` (stable, so production-per-cost ordering holds
-within each group) and the genuine pivots are marked `[PIVOT]`.
-
-This is also what put **Travis Etienne** in the wrong place. He's held by bigbuttboi, Middling
-and *rising* (55% ascending against 8% declining) - a team whose direction already argues for
-selling a declining 27-year-old RB. `_buy_path` only searches `Rebuild` teams, so Etienne can't
-be a plain easy buy, but filing him under "asking a team to change direction" was the opposite
-of true. Sorted to the top of the fits, which is where he belongs and the order to make the
-calls in.
-
-`persuasion_note` had also been attached to the result and printed by nothing since it was
-written - the same defect as `stranded`, `depth_adds`, `cost_note`, and `you_could_offer` before
-it.
-
-### Computed, attached, never rendered - now audited (`check_everything_computed_is_printed`)
-
-Nine instances of one defect in one module. Every unit test passes on a block that never reaches
-a human, so the check renders the report and looks for each entry's name and each note's opening
-words in the output. It found the last three itself:
-
-| # | what | how it was found |
-|---|---|---|
-| 1-4 | `stranded`, `depth_adds`, `you_could_offer`, `cost_note` | grid spot-checks |
-| 5 | `persuasion_note` | reading the report against the module |
-| 6 | friction on value-upgrade returns | a Kelce needing a pivot read as a straight swap |
-| 7 | `stranded` in the **rebuild** branch | the check |
-| 8-9 | `conversion_candidates` + `choice_note` | the check |
-
-The last is the worst of them: `_conversion_candidates` is `_cliff_case` aimed at your own
-roster, and it shipped with no printer at all. The CLI was telling eleven other managers which
-of your starters to call you about while never telling you. Both sides now read the same list -
-dez is told to ring shivvv about Kelce and Henry, and shivvv is told those two are what he will
-be rung about. That symmetry is what the function's docstring promised and what two separate
-rules would eventually have broken.
-
-Instance 7 is `check_every_window_gets_what_applies` recurring: `stranded`'s own note says a
-rebuilder should convert one into futures, and only the pushing branch printed it.
-
-### One concept, two definitions (`fills_a_hole`)
-
-`needs_a_pivot` was being computed by two different rules in the same module:
-
-| | definition | verdict on Kelce/Paulyt101 |
-|---|---|---|
-| `_persuasion_targets` | no hole of theirs I can fill | `False` - "nearer a fit than a pitch" |
-| `_why_they_would_move_him` | the owner is not a rebuilder | `True` - "asks them to change direction" |
-
-Same player, same owner, same run, opposite advice two blocks apart. This is exactly the failure
-CLAUDE.md describes - one concept re-expressed slightly differently in two places - and it was
-invisible because each block reads correctly on its own.
-
-`_counterparty_fit` is now the single test and returns `fills_a_hole` as **data**. Both callers
-read it; `_why_they_would_move_him` takes it as an argument rather than guessing, because whether
-a trade serves the counterparty's plan is a fact about *my* roster against theirs, not about the
-player. That also retired a string sniff: `is_fit` was recovered by testing `"need at" in
-why_it_fits`, a label test standing in for the thing itself.
-
-**The nesting trap underneath it.** A Middling result nests its whole buy side under `push` while
-`value_upgrades` stays at the top level, so the upgrade block was handed `result["my_offers"]` -
-absent - and computed `fills_a_hole` from an EMPTY offer pool for every Middling team in every
-league. Six of the nine live contradictions were that, not the definition mismatch. Anything read
-from one side and used by the other has to look in both places.
-
-### Cross-block contradiction is now audited (`check_one_player_is_not_described_two_ways`)
-
-Three instances between three different pairs of lists, which is what makes it a check rather
-than a third patch:
-
-| player | said to be | and also | cause |
-|---|---|---|---|
-| Pollard, Warren | live targets at a critical need | cheap depth, "never worth a real asset" | two lists testing different metrics |
-| Montgomery, Stevenson | long shots, "call may not be returned" | cheap depth | `long_shots` split out of `targets`, exclusion set not updated |
-| Gainwell (two rosters) | cheap depth | a better thing to own than a starter | upgrades never deduped at all |
-
-The rule is one direction: **the buy path is primary, and no other buy-side block re-derives a
-name it already printed.** For a player at a need position the buy entry already carries
-`over_weakest_starter` - the same comparison the upgrade block would make - plus the need level,
-so nothing is lost. The one live case: Tony Pollard as a critical-need RB buy *and* as the return
-for a 638-production bench RB, worth +54 of production and 6% of that RB's value.
-
-That last entry was also **unstable**, which is its own argument for dropping it. Dez owns two
-interchangeable ~640 RBs (Gainwell 643, Dobbins 638); which one is the weakest starter flips as
-FantasyCalc values jitter between runs, so the recommendation changed identity between two reads
-minutes apart. A suggestion that names a different player each time it runs is noise regardless
-of how the arithmetic checks out.
-
-### Why a team-level test wasn't enough (`_cliff_case`)
-
-A trajectory is an average, and an average hides the individual. The league's **best** team
-(contention rank 1) reads `Contend`/`steady` at 26% ascending against 16% declining - a
-young core diluting the signal - while starting a 32.6-year-old RB the market prices at
-1.54x. The team gate rejected that roster before any player on it was examined, so the
-single best production-per-cost target in the league was unreachable.
-
-The fix is a per-player fallback, and it is **not** "the player is old". Old is half of it.
-The real condition is that **the owner's window and the player's don't overlap**:
-
-| held by | contention rank | ascending | declining | tilt | verdict |
-|---|---|---|---|---|---|
-| shivvv | **1** | 26% | 16% | **+10** | surfaced |
-| rjl22 | 2 | 21% | 23% | **−2** | not surfaced |
-
-Two `Contend` teams, the same aging-elite-RB profile, opposite answers. The first contends
-now *and* later, so its aging starter is surplus to a future that arrives without him. The
-second contends now and is aging into it - that player is aligned with its window, and
-keeping him is correct. `ascending_pct > declining_pct` is the entire discriminator, with
-no constant to calibrate.
-
-Two conditions guard it: the window tilt above, and **declining and starting** - a
-declining player on the *bench* is just a bad asset, since his owner already stopped
-relying on him and there's nothing to talk him out of. The now-weighting bar below is not a
-third condition; every candidate has already cleared it upstream.
-
-### The bar has to be per-position, and wasn't (`team_values.now_premium_bar`)
-
-The first version of the cliff rule used an absolute `1.25` on `redraft_value / value`,
-picked from a gap in the observed numbers. That was a bug wearing a threshold's clothes,
-and the same bug the persuasion tier already had. Measured over a whole league pool:
-
-| pos | n | p10 | median | p90 | **max** |
-|---|---|---|---|---|---|
-| QB | 39 | 0.26 | 0.97 | 1.31 | 1.60 |
-| RB | 56 | 0.07 | 0.49 | 1.05 | 1.54 |
-| TE | 30 | 0.03 | 0.25 | 0.81 | **1.01** |
-| WR | 75 | 0.03 | 0.37 | 0.89 | **1.07** |
-
-Dynasty and redraft are two unnormalized scales whose relationship differs sharply by
-position. An absolute bar is therefore not "strict" - it is *unreachable* for some
-positions. 1.25 could never be cleared by a TE or WR in any league. Worse, the pre-existing
-`MIN_PRODUCTION_PER_COST = 1.0` had the same defect and had been silently closing the
-entire persuasion tier to tight ends, and nearly closing it to receivers, since it was
-written - justified in the code by "below 1.0 he costs more in dynasty value than he
-delivers in current production", which reads as neutral and is nothing of the kind.
-
-**This is the third recorded instance of the same mistake.** `find_value_upgrades`
-documents it (fixed by comparing pairwise within a position) and `get_players_with_roles`
-documents it (fixed by not exposing a ratio at all). Treat an absolute threshold on these
-two scales as a bug on sight.
-
-Both bars are now `NOW_PREMIUM_PERCENTILE = 0.9` of the ratio **within the player's own
-position** - top-decile now-weighting. A percentile, not a tuned constant, so it
-recalibrates with the market and with league format, the same reasoning behind the tertiles
-in `team_state`. Ranked this way, a 36.9-year-old TE at 0.83 raw is the second most
-now-weighted declining starter in the league rather than a rounding error below the bar,
-which matches how the league's managers actually see him.
-
-**One bar, not two.** A separate looser floor for the team-level path was tried at the
-median and dropped: it admitted players who are merely typical (a WR at 0.43 against a 0.37
-median), which is not "age-discounted" in any sense a manager would recognise. So the cliff
-path needs no bar of its own, and what distinguishes it is solely the window mismatch.
-
-The bar measures *shape*, not quality - it says the market prices a player for now rather
-than later, not that he's any good. Whether he's worth having at all is an absolute
-question, and `clears_relevance_floor` already answers it upstream. A percentile cannot by
-itself return "nobody qualifies", since ~10% of each position always clears it; the honest
-empty answer comes from the other conditions, which is where it belongs.
-
-Across both 12-team leagues the cliff path adds **two** names, each to the teams with a
-real need at that position. That is the intended volume - the tier is for the rare case a
-team-level read structurally cannot see, not a second opinion on every roster.
-
-**The reigning-champion veto was removed by this change.** It existed to stop exactly the
-aging-contender case the tilt now rejects on its merits, and it was already redundant on
-the team path (a non-falling champion made the playoffs, so `_seller_case` returned `None`
-anyway). Keeping both would be two mechanisms for one job. The tilt is also the better
-reason: a title says less about whether an owner should sell than the shape of their roster
-does, and a champion tilting ascending is a team that can afford to sell, trophy or not.
-
-This tier deliberately does **not** check whether the owner has a replacement behind the
-player. That question - *should* they do this - is answered from their own side of the table.
-This one only answers *is it worth asking*, and `cost_note` says an ask is all it is.
-
-## How often players actually miss games (`sources/injuries.py`)
-
-`drop_if_injured` measured magnitude and disclaimed likelihood in its own note - "injury
-rates differ by position and are not modelled, so an equal number at QB and at RB is not
-equally worrying." That told a reader the number wasn't comparable across positions without
-giving them any way to compare it. Now it is measured, from nflverse weekly rosters plus the
-weekly injury report, over the last three completed seasons:
-
-| position | share of roster weeks missed |
-|---|---|
-| QB | **0.107** |
-| TE | 0.177 |
-| WR | 0.195 |
-| RB | 0.200 |
-
-Quarterbacks miss roughly **half** as often as skill players, which is what makes the old
-disclaimer real rather than theoretical, and independently matches what the league's manager
-assumed when he built two good QBs plus a cheap third in superflex.
-
-**A missed week is an *injury* reserve week, an injury inactive, or an `Out` report - and
-the reserve half matters most.** Season-ending injuries live on IR, and a player on IR often
-stops appearing on the weekly report altogether: R01 weeks show up on the report only **5%**
-of the time, so reading the report alone would undercount precisely the absences a manager
-most needs to plan for. `Questionable` and `Doubtful` are excluded, since they describe
-uncertainty rather than absence and plenty of questionable players play a full game.
-
-**Suspension is not fragility, and the first version said it was.** Counting all of status
-`RES` scored suspensions as injuries. A receiver came out at 0.451, six weeks of which were a
-suspension served in perfect health - caught by his owner reading the output, within minutes
-of the module shipping. `status_description_abbr` carries the reason, and the codes were
-classified **empirically** - by how often each also appears on the injury report, and by who
-is in it - rather than by guessing at the NFL's vocabulary:
-
-| code | weeks | on injury report | reading |
-|---|---|---|---|
-| R01 | 12,309 | 5% | Reserve/Injured |
-| R48 | 1,162 | 47% | IR, designated to return |
-| R04 / R05 | 1,328 | ~11% | PUP / non-football injury |
-| I01 | 1,872 | - | inactive, injury |
-| **R40** | 177 | **0%** | **suspended** |
-| **R30** | 51 | **0%** | **suspended, indefinite** |
-| **R06** | 53 | **0%** | **did not report / left squad** |
-
-An **allowlist**, so an unfamiliar or newly-added code counts as not-injury. That is the safe
-direction: understating a rate is a smaller error than telling someone a player is fragile
-when he was suspended. Non-injury absences are dropped from the numerator *and* the
-denominator - leaving them in the denominator would quietly reward being suspended with a
-lower miss rate - and surfaced separately as `weeks_suspended`, because being unavailable is
-still a real fact and suspension arguably predicts itself. What it must not do is arrive
-wearing an injury label.
-
-The correction moves real numbers: 0.451 to 0.378 for the receiver above, and 0.022 for a
-different one whose only absences were a six-week suspension.
-
-**The denominator is weeks actually on an NFL roster, not a flat 17 per season.** The flat
-version silently rates a player who wasn't in the league as perfectly durable. Practice-squad
-weeks are excluded too - those players aren't expected to dress, so counting them would read
-as availability nobody wanted.
-
-**Two sample floors, and the second was found by looking at the output.** With only a week
-floor, the tail was nonsense at both ends: players who spent one season on IR and were never
-otherwise rostered scored exactly 1.000 (17 of 17), and *every rookie* scored 0.000. The
-second error is the more dangerous one, since rookies are what a dynasty manager is most
-often asked to price, and "never been hurt" is a very different claim from "we have watched
-him for four months." `MIN_SEASONS = 2` is the point at which the number describes a player
-rather than a year. It costs coverage - 257 of 398 pool players carry a rate - and the
-missing ones are reported as **None for unknown, which is not zero**, in line with how this
-project handles every other absent number.
-
-Face validity on the live pool: Jonathon Brooks 0.912, Deshaun Watson 0.725, J.K. Dobbins
-0.529, Anthony Richardson 0.510. Dobbins is a starter on the roster whose owner described it
-as "short and injury-prone" before any of this was measured - and the bench body behind him
-sits at 0.441, so the cover is itself fragile.
-
-Pooled over player-*weeks* rather than averaged over players, because the question is what
-happens to a lineup slot, not what the average résumé looks like - a per-player mean lets a
-fringe body who spent one year hurt count as much as a decade-long starter.
-
-Deliberately shallow: this says *whether* a player was available, never the severity, type,
-or recency of what kept him out, and it forecasts nothing. Weighting depth by injury type and
-expected duration is logged under future work rather than half-built here.
-
-## The QB curve by archetype, and runway (`player_roles`, `years_to_decline`)
-
-The QB age curve was 34, pulled to 31 for a tagged `rushing_qb`. A sports-modelling data
-scientist reviewing the tool argued the pocket end was badly pessimistic: a genuine pocket
-passer trades on arm talent and processing, which hold into the late thirties, while a rushing
-QB leans on legs that slow near 30. **The only constant in this project changed on an outside
-opinion** - and changed because the data backed it.
-
-Quality is the operative part. A *mediocre* pocket passer does not age gracefully; he gets
-replaced. Measured over three seasons of passing EPA per game, the top tier is exactly the
-archetype:
-
-| QB | EPA/g | CPOE | carries/g |
-|---|---|---|---|
-| Jared Goff | **6.87** | 3.66 | 1.7 |
-| Brock Purdy | 6.62 | 3.97 | 3.7 |
-| Matthew Stafford | 5.33 | −0.47 | 1.6 |
-| Joe Burrow | 4.51 | 4.68 | 2.5 |
-| Patrick Mahomes | 4.30 | 2.40 | 4.6 |
-| *Jalen Hurts* | 2.99 | 5.30 | **8.5** |
-| *Justin Herbert* | **1.66** | 0.41 | 4.5 (5.47 in one season) |
-
-**EPA rather than CPOE, despite CPOE being the better-isolated statistic.** Completion
-percentage over expected penalises aggressive downfield throwing, and Stafford posts −0.47
-CPOE against 5.33 EPA per game - requiring positive CPOE would drop one of the clearest
-examples of the archetype the tag exists to capture. Top *third* rather than a fixed EPA
-number, so it recalibrates with the league's passing environment.
-
-**One window for every tag, and a long one.** These tags feed an *age curve* - a claim about
-how a player holds up over years - so the question is always what kind of player he is, never
-what he did last autumn. Splitting quality over three seasons and usage over one seemed
-defensible and immediately cost something real: a quarterback ran 5.47 times a game in a
-single season against 4.46 across three, which flipped him across the rushing bar and onto a
-curve declining three years earlier. His own manager called it wrong on sight. He is untagged
-now - the honest answer, since the evidence points nowhere in particular.
-
-That is the general principle: **tags are hard to earn and most players get none.** A wrong
-tag costs far more than a missing one, because it substitutes a confident claim for a neutral
-default. It is also where this project stops - projecting an individual's decline is sports
-modelling, done properly by people who do it for a living, and these tags exist only to keep
-the age curve from being obviously wrong about broad archetypes. `rushing_qb` and `pocket_passer` are mutually exclusive and rushing wins -
-a QB who runs enough to clear that bar carries the rushing risk whatever his arm does. That
-is the conservative reading and a real judgement call, since it puts the league's best
-run-and-throw QBs on a curve that may be too pessimistic for them.
-
-**38, not 40.** The claim is that these players hold dynasty *trade value*, and a 39-year-old
-is priced on one more season however well he is playing. The curve should turn before the
-market does, not with it.
-
-### Three archetypes, because running and throwing are separate measurements
-
-Making rushing and passing mutually exclusive - with rushing winning - forced the league's
-best run-and-throw quarterbacks onto the curve built for players whose game is *only*
-mobility. The market disagreed loudly: **Josh Allen is 10,415 dynasty at 30.2 with 7.1 carries
-a game**, and the old curve gave him 0.8 years of runway. It is hard to hold both views.
-
-The two measurements are independent, so there is a genuine third case rather than a tie to
-break. A quarterback who runs *and* passes at an elite level has something to fall back on
-when the legs go; one who only runs does not.
-
-| tag | cutoff | who | why |
-|---|---|---|---|
-| `rushing_qb` | **32** | Hurts (2.99 EPA/g, 8.5 car/g), Daniels, Nix, Murray | mobility-only, marked down |
-| `dual_threat_qb` | **34** | Allen (6.05, 7.1), Lamar (5.25, 7.9), Maye | no discount - the *default* curve |
-| `pocket_passer` | **38** | Goff, Purdy, Stafford, Burrow, Mahomes | arm and processing outlast legs |
-
-`dual_threat_qb`'s cutoff is just the default QB curve: the point is the **absence** of a
-discount, not a new bonus, and a named tag says that where an untagged player would leave it
-implicit. Not 38 either - their value still leans on mobility.
-
-Runway moves accordingly: Allen 0.8 → **3.8**, Lamar 1.4 → **4.4**, while Hurts stays on the
-rushing curve at 4.0. Pure rushing also moved 31 → 32.
-
-**This also cleared the overshoot recorded above.** Allen and Lamar were "sellable" only
-because a discount they should never have carried put them under `MIN_MEANINGFUL_RUNWAY`;
-both are cornerstones again, and the audit stays clean. Two findings that arrived separately
-turned out to be one bug.
-
-### The change is currently a no-op, and that is worth stating
-
-Nine QBs across three real leagues carry the tag. **Zero of them change bucket**, because none
-sits between 34 and 38 - Goff is 31.8 and Dak 33.1 (prime either way), Stafford 38.5
-(declining either way). It is a forward-looking correction that will start mattering within a
-year, not a fix to anything visible today. Recording that rather than letting a green test
-suite imply otherwise.
-
-### Runway (`years_to_decline`)
-
-What *did* resolve the underlying disagreement. `age_bucket` answers "which side of the line"
-and discards the distance to it, which is the number a dynasty seller wants:
-
-| | age | role | years to decline |
-|---|---|---|---|
-| Justin Herbert | 28.4 | rushing_qb | **2.6** |
-| Jalen Hurts | 28.0 | rushing_qb | **3.0** |
-| Sam Darnold | 29.2 | - | 4.8 |
-| Jared Goff | 31.8 | pocket_passer | **6.2** |
-
-All four read `prime`. The tool's sell list ranked Goff first, because it ranks on how
-now-weighted the market's price is. The expert said sell Hurts and keep Goff - the older man
-throws from the pocket and has twice the runway, and the market has not priced the rushing
-decline. Both answers are defensible and they answer different questions; only one of them was
-computable before this.
-
-Deliberately **not** folded into any existing sort. Two orderings competing inside one list is
-exactly how the buy path ended up ranking trade activity above value. It is reported so a
-caller can weigh runway against price - and it is the input the rebuild-timeline backlog item
-needs, since a roster whose core turns in three years cannot run a four-year teardown.
-
-## Win-now measurements handed to teams that aren't playing (`REBUILD_LENS`)
-
-Everything `roster_needs` computes is a win-now measurement, and about a third of any league
-is not playing that game. `replacement_thresholds` has said so in its docstring since it was
-written - "read a rebuilder's positional needs as what a contending version of this roster
-would be short of, not a to-do list" - and **nothing in the output ever said it**, so the tool
-reported a deliberate allocation as a hole.
-
-The live case: a manager who stacks receivers and tight ends on purpose and stays light at
-running back knowingly. The tool called his RB room `critical`. It is not wrong about the
-lineup; it is answering a question he is not asking.
-
-Two things flip for a rebuilding team, not one:
-
-- **A need becomes descriptive.** Useful for valuing the roster, misleading as advice.
-- **Exposure stops being a risk at all.** A team not playing for this season loses nothing it
-  wants when a starter goes down. Presenting high exposure to a rebuilder as a concern is not
-  merely mistimed, it is backwards - and that had never been said anywhere.
-
-Needs entries now carry `applies_this_season: False` plus `REBUILD_LENS`, and `depth_adds`
-switches note: for a contender those cheap bodies are insurance for a lineup worth
-protecting, for a rebuilder they are lottery tickets, because a back who inherits a starting
-job becomes a sellable asset. Same players, different reason, and the note has to say which
-or it recommends the right thing for a reason that doesn't apply.
-
-## Positional market structure, and the limits of testing an allocation thesis
-
-The same manager's stated strategy is that WR and TE are *cheaper than QB* and more
-value-insulated than RB, so he accumulates there and stays light at running back. Worth
-recording what could and could not be checked, because the first attempt got the reasoning
-wrong.
-
-**Raw dynasty values ARE comparable across positions** - that is the entire premise of a
-trade calculator, one currency for every player. What is *not* comparable across positions is
-the `redraft / dynasty` ratio, since those are two unnormalized scales (see
-`now_premium_bar`). Extending "the ratio isn't cross-comparable" to "the values aren't
-cross-comparable" was simply wrong, and it briefly ruled out a measurement that is perfectly
-sound.
-
-Dynasty cost of the Nth-best player at each position, in a 12-team superflex TE-premium
-league (2 QB slots, 2 RB, 2 WR, 1 TE, 3 flex):
-
-| rank | QB | RB | WR | TE |
-|---|---|---|---|---|
-| 1 | 10,423 | 10,189 | 9,929 | 8,406 |
-| 12 | **4,671** | 3,848 | 4,368 | **2,329** |
-| 24 (replacement) | 2,698 | 2,599 | **3,281** | 2,329 |
-| 36 | 1,285 | 1,663 | 2,118 | 781 |
-| 48 | **291** | 1,317 | 1,784 | 270 |
-
-**The thesis is half right.** TE is genuinely cheap - TE12 costs 2,329 against QB12 at 4,671,
-less than half. But WR is the *most* expensive position at replacement level (3,281), above
-QB, because receivers fill the flex slots too. "WR is cheaper than QB" does not survive
-contact with this league's own market.
-
-The more interesting structure is the **cliff**: QB48 is 291 against WR48 at 1,784. Elite QBs
-cost about what elite receivers cost, and then QB depth simply vanishes. In superflex the
-scarcity is in the tail, not the top - which is a fact about format, not about players, and is
-exactly the kind of thing this tool could report.
-
-**The value-insulation half remains untestable here.** Measuring decay needs the same players
-tracked across time; a cross-section of current values is survivorship-biased, because backs
-who fall off leave the valued pool entirely, so the ones still in it are those who didn't.
-Doing it properly means snapshotting the market periodically - the first persistent state this
-project would own, and a deliberate decision rather than a casual one.
-
-## What the market source already gives us and we never read
-
-`values/current` returns more per player than the four fields this project reads. Verified by
-inspecting the payload rather than guessing endpoint names - which is how `tep` was found, and
-guessing had already failed here (four 404s on invented history paths).
-
-- **`redraftValue` is embedded in the dynasty response**, and is *identical* to the value from
-  the separate `isDynasty=false` call - 192 of 192 players matched exactly, zero differences.
-  The project makes that second HTTP request for data it already has.
-- **`trend30Day`** exists but is **not** the decay signal the value-insulation thesis needs.
-  Medians sit at or near zero for every position (QB −34, RB −2, TE −5, WR 0) with roughly
-  half of each position negative. That is a month of market drift, not an aging curve; reading
-  positional decay into it would be exactly the kind of plausible-looking mistake this file
-  exists to prevent.
-- **`maybeTradeFrequency`** measures how often a player is actually traded - a real liquidity
-  measure, and the honest version of the "picks are easier to move" intuition that `pick_share`
-  currently reports without weighting.
-
-## Joining facts the tool already had (`_counterparty_fit`)
-
-Persuasion targets were ranked purely on production-per-cost and never looked at the other
-side of the table. On a live roster that put **Derrick Henry (1.54x) first, held by the one
-team in the league with no needs at all** - unattainable - above **Saquon Barkley (1.37x),
-whose owner had a *critical* QB need for the exact quarterback the asking team could not
-play**. Stranded knew about the quarterback. `league_needs` knew about the critical need.
-Persuasion knew about the back. Nothing joined them.
-
-Two ways an owner is interested, and the second is the one that mattered:
-
-1. **He is short at a position I can offer.** The obvious case, and the one that surfaces the
-   Barkley trade.
-2. **He should be converting aging production, and I hold what he'd convert into.** A team
-   contending now *and* tilting ascending - the `_cliff_case` shape - has no positional hole,
-   but wants value that scores this season *and* is still there later. Reading "he needs
-   nothing, so there is no deal" misses the trade that is the entire reason his aging starter
-   appeared on the list. The manager put it exactly: *"shiv may not need a position strictly,
-   but could still get off his old players with generally non-cliff-facing assets."*
-
-**Annotation, not ranking.** Cheap targets from teams already selling need no persuasion at
-all, and re-sorting this tier by fit would push the low-friction options down in favour of a
-bigger ask. Two orderings inside one list is a mistake this module already made once, when
-trade activity outranked value.
-
-Three corrections landed the moment a manager read the first output, and each was the tool
-asserting something it had not checked:
-
-- **"Still there later" was tested with `bucket != "declining"`**, which passed a 28.7-year-old
-  receiver **0.3 years** from his own cutoff - offered as value that would last two seasons.
-  `years_to_decline` is the number that sentence actually claims, so it is now the test, and
-  it is carried on every player entry rather than only in `roster_detail`.
-- **"Scores this season" admitted anyone above zero**, padding the list to three names with a
-  33-redraft tight end. `_my_offer_pool` already separates "core piece - above replacement"
-  from "depth - a sweetener not a centerpiece"; only the first is worth restructuring around.
-  With both fixes the list is exactly the two players the manager named unprompted.
-- **`cost_note` contradicted `why_it_fits` printed beside it**, telling a reader that filling
-  an owner's *critical* need meant "persuading them to change direction". Where the owner has
-  a hole this team can fill, the trade serves his existing plan and the note now says so;
-  where there is no hole, the pivot framing is right and stays.
-
-And a fourth of the same kind: `from_owner_trades: 0` was a bare integer in the dict an agent
-reads, while only the CLI printed "NEVER TRADES". That is precisely the `{"diff": -11}`
-failure this project already documented - an unlabelled number gets a meaning invented for it -
-so a zero now carries `never_trades` explaining what it does and doesn't imply.
-
-### Why this was a tool bug and not a prompting problem
-
-Worth recording, because it cuts against the temptation to fix things in the system prompt.
-The join above was first made **by a human and an assistant sharing a very long session**,
-with every intermediate result in front of them. A single agent run does not have that. It
-calls a handful of tools, gets a handful of JSON blobs, and would have to notice unprompted
-that a stranded QB on one roster answers a critical need on another whose owner holds the
-back it wants - across three separate tool results, none of which references the others.
-
-That is exactly the reasoning a smaller or cheaper orchestrating model will not do reliably,
-and this project's stated position is that a deterministic Python check beats a prompt
-instruction every time. **If two facts have to be combined to make a recommendation
-actionable, the combining belongs in the tool.** The prompt's job is to report what the tool
-found, not to rediscover it.
-
-## Auditing the advice, not the arithmetic (`analysis/audit.py`)
-
-84 unit tests never caught a single real bug in this project. That is not a failure of the
-tests - they check that functions compute what they were written to compute, and they do.
-Every real bug was a **wrong recommendation produced by correct arithmetic**: a buy list
-burying the second-best available back beneath one producing a quarter as much, a tier whose
-bar no tight end could clear in any league, a feature returning empty for 36 consecutive
-teams, a suggestion that a manager acquire two players he already owned. Correct functions,
-indefensible output.
-
-`audit.py` checks the output instead, against **real leagues**, and every check is derived
-from a bug that actually shipped. That is the entry requirement: no speculative invariants,
-because an audit nobody trusts gets muted.
-
-| check | the bug it comes from |
-|---|---|
-| never recommends your own players | a rebuilder searching rebuilders included itself |
-| best available is surfaced | trade activity outranked value, hiding a 1,883-redraft back |
-| claims match the data | a player 0.3 years from his cliff sold as "still there in two" |
-| every window gets what applies | depth and stranded ran only in the buy branch |
-| coverage | a block empty across every team in every league is a dead feature |
-
-One check has also been *retired*: "no tier is structurally unreachable" guarded the absolute
-1.0 bar that sat above the entire TE pool. Once the bar became a per-position percentile it was
-clearable by construction, so the check could never fire - and a check that cannot fire is
-noise wearing a green light.
-
-**It had to be calibrated before it was worth anything.** The first run reported 12 problems,
-and the first six were false: it compared against every player on a rebuilding roster, so it
-"failed" on Jahmyr Gibbs, Josh Allen and Ja'Marr Chase - all cornerstones, which `_buy_path`
-deliberately never searches because no rebuilding team sells its elite young core. An audit
-calibrated against a pool the code was never meant to reach reports noise. Pointed at the
-actual candidate pool, 12 problems became 3.
-
-**And the 3 were one real bug, found on its first honest run.** For a `Push` team, "is
-declining" was the *hard first sort key* - so every declining player outranked every prime
-one regardless of production. A live team with a WR need was shown **Jauan Jennings at 70
-redraft above Chris Olave at 3,439**, a 49x gap, with the default cap of three then hiding
-Olave, Garrett Wilson and Jaylen Waddle entirely.
-
-The reasoning behind declining-first was about **price per unit of production**, which is a
-real effect and belongs in `production_per_cost` - not in an absolute ordering. Age now breaks
-ties *beneath* the thing being bought, and at equal production the declining player still wins
-because he is the cheaper asset. One change, and all three audit failures cleared.
-
-Not part of `pytest`: it needs the network, and `tests/` is free and offline by design. The
-two layers answer different questions and both are needed - the unit tests would have caught
-none of this, and the audit would catch none of the boundary conditions they guard.
-
-## Runway, not buckets, wherever a boundary decides something
-
-`age_bucket` is a **discretization**, and treating it as the answer failed three separate
-times in one day - a receiver 0.3 years from his cutoff offered as value that would "still be
-there in two"; an elite back **0.1 years** from his classified as a franchise cornerstone
-while the same player one month older would have been a sell candidate; and that same boundary
-hiding a 1.2-year starter from the conversion path on the one team already being told to
-convert. Nobody's value falls off a cliff on a birthday.
-
-`MIN_MEANINGFUL_RUNWAY = 2.0` in `team_values` is now the single definition of "has a future
-worth building on", shared by every caller that used to ask `bucket != "declining"`. Buckets
-stay for the coarse questions - what kind of value is this, how is a roster trending - where a
-category is genuinely what's wanted.
-
-**Cornerstone now routes on runway.** A cornerstone is a piece to build several seasons
-around, so the test is whether he has several seasons. Windows did not move (trajectory reads
-buckets, not cornerstones), but the reachable pool changed a lot - a pushing team's RB targets
-went from 1,850 / 1,139 / 688 redraft to **4,314 / 3,284 / 2,570**.
-
-**It overshoots at the top, and that is a real cost.** Josh Allen (10,415 dynasty, 0.8 years
-of runway) is now "sellable", along with Lamar, Jefferson and Lamb - because runway alone
-ignores magnitude, and a player 2.4x the cornerstone bar is a franchise asset whatever his
-birthday. The audit came back clean and those names surface only as *targets* for teams that
-need them, never as casual offers, so no bad recommendation results. Left as-is rather than
-adding a second tuned threshold to rescue it, but recorded as a known distortion.
-
-**What the annotation fixes instead.** The manager's own reaction to seeing Allen listed was
-that these are "reasonable but harder to get and less production value efficient" - which is
-two measurements, neither of which the buy list carried. `production_per_cost` (already
-reported by the persuasion tier) is one.
-
-The other started as `cost_share` - a player's price as a percentage of *everything* the team
-could put on the table - and that was quietly the same additive mistake this file warns about
-everywhere else. A denominator built by summing an offer pool asserts the pool can be stacked
-into one offer, and "67% of capital" reads as merely expensive rather than out of reach. It is
-now a one-against-one test instead: **does he cost more than your single biggest chip?** If he
-does, no one-for-one deal reaches him, and what it would actually take is a negotiation this
-tool does not price. Same reader question, no arithmetic the module cannot justify.
-
-### One friction vocabulary, both sides of the table
-
-Difficulty was being described three different ways for the same underlying idea:
-`from_owner_trades` printed "NEVER TRADES" on buy targets, `ask_difficulty` was a one-off
-string for a cornerstone on the sell side, `lineup_cost` was a bare number, and
-`persuasion_targets` carried the whole "they would have to change direction" case in its own
-block where nothing else could reach it. Four expressions of *how hard is this, and why*.
-
-There is now one: **`friction`, a list of `{flavor, why}`, on entries on both sides. Empty means
-easy.** Flavors rather than a difficulty score, for two reasons - they call for different
-responses, and they group, which is what makes "these are good but they're cornerstones" a
-sub-list rather than a re-read.
-
-| flavor | side | what it means |
-|---|---|---|
-| `cornerstone` | both | someone is building around him. On my side, the hardest ask I own; on theirs, expect a no rather than a price |
-| `costs_you_production` | sell | moving him drops my own lineup by a stated amount, after it refills |
-| `never_trades` | buy | that owner has never made a trade; the call may not be returned |
-| `beyond_your_best_chip` | buy | no one-for-one reaches him |
-| `needs_a_pivot` | buy | they are not a seller today, so this asks them to change direction - a wait-and-see |
-
-None of them is a price. That is the constraint that makes the vocabulary honest: every flavor
-is a fact about one player or one owner, never an arithmetic claim about a bundle.
-
-#### The missing half: why *their* player is available
-
-`value_upgrades` said who would want the player I would move and stopped there, so **a tight end
-held by a contender read exactly like one held by a seller**. The owner caught it on his own
-report: *"the fannin for kelce stuff - shiv is win now and could choose to move off the aging
-value but doesn't have to."*
-
-Every return now carries `their_reason`, and it is the same two arguments `_persuasion_targets`
-already makes - `_seller_case` and `_cliff_case` - reused rather than restated:
-
-```
-<- Sam LaPorta   (+895 production,   100 freed) from jqsimonds22
-     why they'd move him: jqsimonds22 is rebuilding - this is exactly the kind of
-     production they should be converting, so no persuasion needed.
-
-<- Travis Kelce  (+446 production, 1,905 freed) from shivvv
-     why they'd move him: Nothing about shivvv's team says seller, but their window and
-     Travis Kelce's don't line up: 26% of their production is ascending against 16%
-     declining... Keeping him may well tip this season for them, which is exactly why
-     it's a real decision for them rather than a giveaway.
-```
-
-The first is easy and carries no friction. The second carries `needs_a_pivot`, which is the
-distinction the reader wanted: same block, two very different phone calls. `_cliff_case` is
-gated on the same now-weighted bar the persuasion tier uses, because without it that argument
-asserts a player is "priced as though his remaining years are gone" about someone who may not be
-discounted at all - a claim the entry's own numbers would contradict.
-
-### Likely and unlikely are different lists, not different ranks
-
-The buy list ranks on production for a `Push` team, which is right, and that put attainability
-in permanent competition with quality - a competition quality wins by construction. Live, on a
-critical RB need:
-
-```
-Jahmyr Gibbs      10,192   BenSimonds    (cornerstone, priced above the whole roster's best chip)
-Chase Brown        4,114   spugz13       NEVER TRADES
-Breece Hall        3,747   spugz13       NEVER TRADES
-David Montgomery   2,101   spugz13       NEVER TRADES
-Jaylen Warren      2,055   jqsimonds22   4 trades
-```
-
-Read top-down that recommends four dead ends before the one realistic call. It is the same
-defect already fixed once in the depth list - *"read top-down, it recommended the least likely
-moves first"* - surviving in a second list, which is exactly the pattern CLAUDE.md warns about.
-
-Sorting differently cannot fix it, because "who is best" and "who do I ring first" are two
-questions and one order cannot answer both. So `targets` now holds only what nothing
-structural is blocking, `long_shots` holds the rest, and the cap applies per half so a blocked
-target can never displace a reachable one. Three friction flavors, each named rather than scored,
-because they call for different responses:
-
-| blocker | what it means |
-|---|---|
-| a cornerstone for that owner | they will answer and say no. Being the foundation is a price, not a veto - see the offer-pool rules - but it is a price on *their* side too |
-| costs more than your biggest single chip | no one-for-one reaches him; anything else is a package this tool cannot price |
-| that owner has never made a trade | the call may not be returned at all |
-
-The third only counts when somebody in the league *has* traded. In a league with no trade
-history a zero describes the league, not the owner, and using it as a blocker would empty the
-buy list for all twelve teams - the same reasoning behind the existing `no_trade_history` flag.
-
-The owner's independent ranking of that same RB board was *"warren and pollard are the best
-targets for me, then the montgomery situation, maybe brown and hall but they aren't as
-efficient, and he doesn't trade, Gibbs is probably just impossible because he's a cornerstone
-and I can't afford that"* - which is the split, in order, including both of Gibbs's friction reasons.
-
-`long_shots` is in `audit.py`'s `PLAYER_BLOCKS` as well as `COVERAGE_BLOCKS`: the split changes
-*placement*, not coverage, and `check_best_available_is_surfaced` asks whether the best
-available is named anywhere in the advice.
-
-The window model answers *what should this team do with the roster it has*. It had nothing
-to say about **how much rope a team has to change that roster**, and collapsing both into
-one label produced a badly wrong read.
-
-The case came from a sports-modelling data scientist describing his own team, in a league
-neither development roster resembles. His roster ranked **9th of 12 in starting production
-and 2nd of 12 in total tradeable value** (every player plus every pick). The tool labelled
-him `also-ran` / `Rebuild`, which a reader hears as "bad". His own summary was that he
-doesn't expect to win, but if the season opens well he has the assets to convert into a
-contender - an option with real value, priced at zero by the model.
-
-| team | production rank | asset rank | reading |
-|---|---|---|---|
-| dkwnsepw | 12 | **1** | convertible |
-| jwall567 | 9 | **2** | convertible |
-| ryann28 | **1** | 8 | mortgaged |
-
-The mirror falls out of the same comparison and is just as real: a team 1st in production and
-8th in assets is winning now on borrowed time with nothing left to reload from.
-
-**Not a fifth window.** `window` says what to do with the current roster; `leverage` says how
-much capacity there is to change it. One number cannot carry both, and making leverage a
-window would force it to - the same reasoning that kept `Contend` singular for a team with
-two live paths. Additive, so nothing downstream that reads `window` changes.
-
-**Tertiles, not a tuned gap** - top third on one axis and not the other, matching how
-contention and trajectory are already cut. Teams whose two ranks agree get nothing, which is
-most of them: 2 to 4 flags per 12-team league across three real leagues.
-
-**Composition is reported, not weighted (`pick_share`).** Two teams with the same
-`asset_value` are not equally convertible. A pick is **position-agnostic** - it fits any
-deal, where a surplus of young receivers needs a partner who happens to want receivers - and
-it is **value-insulated**, carrying none of the age, injury or lost-role decay a player does.
-So the same number held in picks converts more easily than the same number held in players.
-
-By *how much* is not calibratable here, and a guessed multiplier buried inside the ranking
-would be worse than an honest number printed beside it. The observed spread carries the point
-unaided: **3% to 41%** across three real leagues, with the most mortgaged contender at the
-bottom and the deepest rebuild at the top. The owner's own two teams sit at 4% and 10%, which
-is his unprompted "I don't even have my future first" appearing as a measurement.
-
-**Picks are priced flat here, deliberately.** `owned_picks` can price a pick by the window of
-the team it originated from, and the window is what this measure helps describe - letting
-that in would make the label feed its own input.
-
-Independent validation across the other two leagues: it flagged the owner's own teams as
-`mortgaged` in both, matching his unprompted "I'm already all in at this point", and flagged
-a rival as `convertible` that he had separately described as able to push now but more
-efficiently next season.
-
-## Rebuilding rosters, and five things only a stranger's league exposed
-
-Both development leagues are win-now teams owned by the same manager. Running a third
-league - a rebuilding roster, read by someone who models sports for a living - broke five
-things at once, four of which had shipped earlier the same day. Worth recording as a
-method: **the bugs live in the states your own data never enters.**
-
-### 1. Stranded production (`roster_needs.stranded_starters`)
-
-The roster held **four startable quarterbacks in superflex with two QB-capable slots**. Its
-QB3 priced at 4,880 of current production sat on the bench while a receiver producing 420
-started - and that QB3 alone out-produced the team's entire starting RB room by more than
-three times. Every number was already computed. Nothing put them next to each other, so he
-appeared as an ordinary trade chip in a list sorted by dynasty value.
-
-`stranded_starters` returns bench players producing at least `STRANDED_MULTIPLE` (2.0x) what
-the **weakest starter** does, while every slot they're eligible for is held by someone better.
-Their entire value to this roster is what they fetch - true in every window: a contender
-converts one into the position it's short at, a rebuilder into futures.
-
-It immediately found the same shape on a league already examined all session: the owner's
-own QB3, whom he had independently named as his second-biggest trade piece.
-
-**The 2.0x bar replaced "beats the weakest starter", and the framing it replaced was wrong
-in a way worth recording.** This was documented as a *capacity, not quality* test - "surplus
-because the lineup physically cannot field them." That distinction doesn't exist. `best_lineup`
-is optimal, so **every** bench player is out of it through some mix of capacity and quality,
-and "he'd be starting if a slot allowed it" is true of the entire bench. It separates nothing.
-
-What made the QB3 worth his own block was the *size* of the idle production, not the fact of
-being blocked. Reading it as capacity mislabelled a live roster: dez in XFL 2 starts Kenny
-Gainwell at 643 in a **dedicated RB slot**, and DK Metcalf at 944 was called "the most
-valuable thing you own that you cannot use" on the strength of clearing that bar - a bar no
-receiver could ever contest, since only an RB can take that slot. Metcalf was 122 behind the
-last flex body: ordinary depth, and `would_start_if_one_out` is where he belongs. Tyler
-Shough at 3,380 behind two better QBs, 5.3x the lineup floor, is the real thing. The two live
-cases sit either side of 2.0x by a long way, so the constant isn't doing delicate work.
-
-The printed line now states the multiple and the eligibility fact instead of asserting "no
-slot left for another WR", which was never checked - and is false for a WR in a league with
-three flex slots.
-
-### 2. Sell lists sorted by dynasty value
-
-The same bug fixed for buy targets earlier that day, untouched on the selling side. A
-31-year-old QB priced at **1.36x** current-to-dynasty - the market paying for this season and
-writing off the rest, on a team with no this-season - ranked *below* a 25-year-old receiver
-who is exactly what a rebuild should keep. `situational` now sorts by that ratio, which is
-`_persuasion_targets`' buy-side signal read from the selling side. Unpriced players sort
-last: unknown, not zero.
-
-### 3. Advice that contradicted the roster
-
-`window_note` told a team with **0% declining production** and an empty sell list to "sell
-what's declining while it still has value." Keyed on the window, not on the roster it was
-describing - the tell of a template. `REBUILD_NOTHING_DECLINING` covers the young-rebuild
-case, and the teams most likely to hit it are the ones furthest into a rebuild.
-
-### 4. Depth and stranded never ran for rebuilders
-
-Both were computed inside the buy branch, and `Rebuild` returns before it. The team with the
-**worst RB room in its league** and six qualifying cheap bodies available got neither. Both
-now run before the window dispatch.
-
-Cheap depth is arguably worth *more* to a rebuilder, which the original placement had exactly
-backwards: a moonshot back is one injury from being a real asset and costs a late pick to
-hold. That is a rebuilding team's cheapest source of upside.
-
-### 5. `_depth_adds` recommended the team its own players
-
-It searched every rebuilding roster including the asking team's. Invisible until the asking
-team was itself a rebuilder - a state neither development league could produce.
-
-### Unpriced replacements (`roster_needs.replacement_is_unpriced`)
-
-Not a rebuild issue, but found the same way. Exposure said losing this roster's TE cost
-3,848 - **100%** of its TE production - with a rostered NFL tight end behind him carrying
-`redraft_value = None`, which the arithmetic reads as zero. Redraft coverage runs out around
-the 30th player at a position while dynasty rosters keep going, so this is structural on deep
-rosters: **80 of 153 receivers** in that league's pool have no redraft price at all. The
-figure is unanswerable rather than wrong, and the note now says which.
-
-## Depth as a third state (`roster_needs.would_start_if_one_out`, `_depth_adds`)
-
-Needs are binary - a position is a hole or it's fine - and that left depth invisible. A team
-starting **five** receivers (3 dedicated + 2 flex) and one starting three look identical at
-WR once both are filled, though only one is a single absence from an empty slot. Byes are
-certain and injuries close to it, so a body who steps straight in has real value at a
-nominal price, and nothing in the model could say so.
-
-**Measured by refilling, not by counting.** `would_start_if_one_out` removes the *weakest*
-current starter at the candidate's position - the marginal lineup spot, the same choice
-`_injury_drop` makes - adds the candidate, and refills optimally so flex eligibility is
-respected. Counting bodies cannot distinguish the two WR rooms above; a real refill can.
-
-### Better holdings than what you start (`find_value_upgrades`)
-
-Which single holding beats one of my starters at his own position, for **less** dynasty value?
-Candidates come from every roster in the league **including my own bench**, because "who is a
-better thing to own" does not care where he currently sits - that changes only the action, and a
-man already mine needs no trade at all. Three `kind`s, described in the table under "Three
-kinds" below; costing less in dynasty value is required by all of them, which is what stops
-this collapsing into "go get someone better" - the buy path's question.
-
-#### This absorbed `find_efficiency_swaps`, which was mostly unreachable
-
-That function asked the same question *within* one roster - a starter against my own bench -
-and was deleted after the coverage audit reported it empty. The measurement, before deleting:
-across 12 Push/Contend teams in three leagues, **~160 same-position starter/bench pairs and
-zero qualifying swaps**. The cause is not a threshold, it is the search space. Within a single
-position dynasty and redraft value are tightly correlated, so a bench player who retains the
-production is priced about the same and frees nothing. The best near-misses say it plainly:
-
-| pair | production retained | value freed |
-|---|---|---|
-| Mark Andrews → Jake Ferguson | 96% | **−343** (Ferguson costs *more*) |
-| Chuba Hubbard → Rico Dowdle | 91% | +171 (bar is 300) |
-| Kenny Gainwell → J.K. Dobbins | 92% | +59 |
-
-Its own docstring's flagship case had rotted the same way: C.J. Stroud against Sam Darnold,
-documented as "within 1.5% this season", now reads **84%** retained. The example was true when
-written and the market moved out from under it - the drift this document keeps recording, aged
-into rather than typed in.
-
-Asked against eleven other rosters instead of one bench, the identical question finds hundreds.
-Eleven rosters is simply a big enough pool.
-
-**But the search space was only half the problem, and the measurement said so.** Across full
-rosters (not `sellable + tradeable_surplus`, which excluded cornerstones) there are 673
-same-position starter/bench pairs in three leagues and exactly **two** qualify - and both sat
-on windows the Push/Contend gate excluded. So the one live case the function existed for was
-unreachable twice over:
-
-> `BradTheInhaler` [Middling] starts a tight end producing **353** while **T.J. Hockenson**
-> produces **331** on his own bench for **1,293 less** dynasty value.
-
-That is the shape the owner described wanting - *"we WOULD want to promote a backup like
-Darnold to Stroud and sell Stroud for more value if it was going to retain most of our starting
-production"* - so the bench is now a candidate source inside `find_value_upgrades` rather than a
-separate function. Where a player sits does not change whether he is a better thing to own; it
-changes only the action, and a man already yours needs no trade at all.
-
-**Own-bench returns are never truncated.** `RETURNS_PER_MOVE` capped the shortlist by production
-gained, and a bench conversion ranks last on that axis *by construction* - which silently
-deleted the Hockenson finding behind four better external returns. The free option cannot be
-what the cap removes, so own-bench entries are listed first regardless of how small the
-production line looks.
-
-#### Three kinds, because -994 and -47 are not the same decision
-
-`MIN_PRODUCTION_RETAINED` was 0.90 with a comment claiming the production given up would be
-"close to noise". A relative bar is not close to noise once the scale is large: at 0.90 the
-band admitted **Josh Allen → Lamar Jackson at −994 production**. Swept across three leagues:
-
-| bar | entries in the band | largest production given up |
-|---|---|---|
-| 0.90 | 76 | −994 |
-| 0.95 | 36 | −409 |
-| 0.97 | 19 | −200 |
-| 0.98 | 16 | −118 |
-
-Tightening to 0.98 was the first answer and it was too clever by half, because the Allen trade
-is *real*: giving up 994 of quarterback production to free 3,159 in dynasty value is a
-defensible play for a team with no clock. What was wrong was not the bar but calling one thing
-by another's name. So both bars stay and the label carries the distinction:
-
-| `kind` | retained | what it is |
-|---|---|---|
-| `upgrade` | > 100% | strictly better on both axes. Nothing to tune |
-| `value_decision` | ≥ `NOISE_RETAINED` (0.98) | lineup effectively unchanged; the gain is the value released |
-| `conversion` | ≥ `MIN_PRODUCTION_RETAINED` (0.90) | real production given up for real value. **Suppressed for `Push`** - a closing window needs the points |
-
-Below 0.90 the loss stops being a conversion and is simply a worse team. Live counts: 310
-upgrades, 48 conversions, 16 value decisions. The rule that fires rarely is the one whose bar
-is right - if the two narrow bands started producing volume, they would be wrong again.
-
-**Same-position pairs only**, because the redraft and dynasty scales are not normalized to
-each other (McCaffrey runs 4,345 dynasty against 6,505 redraft while a mid-tier back runs 2x
-the other way) and only a same-position comparison cancels that out.
-
-**One line per upgradeable starter, not a ranked list with a cap.** The finding is
-two-dimensional - production gained *and* value freed - and ranking on either axis hides
-winners on the other. Sorted by production and capped at six, it dropped the exact swap that
-roster's owner had already identified himself: a tight end worth **+233** of production but
-the largest value release on the board at **1,073**. Keyed by the starter being replaced, it
-answers the question actually being asked - *which of my starters can I do better than, and by
-whom* - and needs no cap, since the lineup bounds it.
-
-**It prices nothing.** One player against one player is the whole claim. Value is not additive
-across players, so there is no package here - see "discovery tool, not a fairness calculator"
-above. Candidates are usually older, which is *why* they are cheap, so the note tells the
-reader to weigh the age against their own timeline before paying.
-
-**Which bar makes someone "only depth" depends on what the asking team is doing**, and it is
-the same two-metric split `replacement_thresholds` documents: *filling a lineup is a redraft
-question, holding a lottery ticket is a dynasty one.*
-
-| asking team | bar | why |
-|---|---|---|
-| Push / Contend / Middling | replacement-level **production** (`start_thresholds`) | above it he is a real fix, not insurance |
-| Rebuild | the **dynasty** trade-value floor (`trade_thresholds`) | production now is beside the point - the value is a body who inherits a job and *becomes* sellable (`DEPTH_NOTE_REBUILD`) |
-
-Testing dynasty value for a lineup-filler answered a question nobody asked. David Montgomery
-- 2,145 dynasty, 1,779 redraft against RB replacement of 1,708 - was filed "never worth a
-real asset" on a roster whose second starting RB produces **633**. He is a +1,146 upgrade to
-the weakest slot in that lineup, and calling him insurance was simply wrong. The roster's
-owner made the call on the split: "when trying to fill your roster it should be redraft value
-... rebuilding teams don't care about filling roster yet."
-
-The case that forced this list into existence missed the bar by **3 dynasty points** on a
-roster its owner described as two deep.
-
-**Against the full threshold, not `clears_relevance_floor`** - fixed after a live spot check.
-The relevance floor is *tiered*: a production-priced player clears it at **half**. Testing it
-here therefore opened a crack between the two lists instead of partitioning them. On the
-roster with XFL 2's second-worst RB room, Tony Pollard (1,493) and Jaylen Warren (1,948) both
-cleared half of RB's 2,576 and were dropped as "the buy path already owns him" - while
-`_buy_path`'s `max_per_position` cap of three ranked them 4th and 5th on production and never
-showed them either. The cheapest and most obviously gettable help in the league was invisible
-in both lists. The team's owner named those two players unprompted as what he expected to see
-first, which is how it was caught; the same cap that once hid Chris Olave for being *prime*
-was hiding these two for being *cheap*.
-
-This mattered more than one roster: `depth_adds` carried **22** entries across all three
-leagues before the fix and **213** after, against a ceiling of 216 (`DEPTH_LIMIT` of 6 x 36
-teams). It had been a near-dead feature. Near-saturation is acceptable here precisely because
-the tier is weak by design - six cheap insurance bodies per team is a menu, not a
-recommendation - but it is the reason the note leads with "DEPTH, NOT NEEDS".
-
-Deliberately a *weak* signal. `DEPTH_NOTE` tells the caller not to overpay, because the
-failure mode is paying a real asset for insurance, and the tier is capped at
-`DEPTH_LIMIT = 6` and sorted cheapest first - at this level price is the entire point.
-
-The live results are the validation. In one league the tool returns nothing for its owner,
-correctly: the candidate he had in mind is *fifth* at his position behind two bench players
-who outproduce him, so he would never see the field. In his other league - the one he
-independently described as "one injury away from disaster" - it returns two backup
-quarterbacks in a superflex format. Different answers from the same rule, both matching what
-the manager already believed.
-
-One limit, stated because it is the obvious next question: this models **one** absence. A
-thin room whose players are individually injury-prone is a different risk, and that needs
-the per-player injury history logged under future work.
-
-### `is_starter` is a claim about value, not intent (`starter_caveat`)
-
-The value-derived lineup marks a best-eleven for every team, including one openly tanking -
-where the "starter" is just its least-bad player at that position. Left unsaid, a buy target
-reads as "you'd have to prise away someone he's relying on", which inverts the actual
-conversation: those are precisely the players a rebuilder most wants to turn into picks.
-Buy targets who start for a `Rebuild` team now carry `starter_caveat` saying so. Presentation
-only - no logic reads `is_starter` differently, because as a *value* claim it was never wrong.
-
-### Both paths for a contender still rising (`_conversion_candidates`)
-
-The tilt that decides whether *another* team's aging starter is gettable decides the same
-thing about your own. A contender whose production is still tilting ascending has two live
-plays, and reporting only one is a false choice:
-
-- **Stack** - buy more current production. It already has the strongest lineup, so the
-  marginal win is cheaper for it than for anyone else, and nothing is given up on.
-- **Convert** - move the aging starters into value that matches the seasons the rest of the
-  roster is built for.
-
-`window` is deliberately **not** made plural for these teams. Making it a list was the more
-"honest-looking" option and the wrong one: a window says *whether* a team competes, and this
-one competes on either path - the choice is about how. Plural windows would also have
-touched `_buy_path`, `_pivot_path`, the agent prompt, the MCP tool description and an eval
-asserting the exact string, to express something none of them are asking about. So the block
-is additive, exactly like the `Middling` push/pivot split it copies.
-
-It reuses `_cliff_case` rather than reimplementing the test. If the rest of the league is
-told a manager's 32-year-old RB is the one piece worth calling about, that manager must be
-told the same thing in the same terms - two rules would eventually disagree, and the
-disagreement would surface as the tool contradicting itself between two questions.
-
-**And it drifted into exactly that.** When `_cliff_case` was corrected so the now-premium bar
-picks a clause instead of gating the case, this mirror kept the gate - a short-runway starter
-who wasn't top-decile now-priced was pitched to eleven other managers and never named on his
-own manager's report. Fixed by applying the same rule end to end: the relevance floor decides
-who is worth calling about (the persuasion tier already required it, the mirror didn't), the
-cliff case decides whether the argument exists, and the bar picks only which sentence
-describes the price - "priced for this season" vs. "not discounted, this is about whose
-window he fits".
-
-On the live league this fires for one team, listing the two players its owner had already
-identified by eye as the ones to consider moving.
-
-### Last season's results (`prior_season.py`)
-
-The current record is useless in the preseason (everyone is 0-0), which is why record was
-written off entirely - but the *previous* season is finished and sitting there:
-`get_season_chain` walks `previous_league_id`, the prior league carries final
-`wins`/`losses`/`fpts`, and `winners_bracket` names the champion.
-
-Nothing in the current-season data separates the two contenders holding elite aging RBs
-convincingly - trajectory splits them only -3 to -11. Last season adds the missing reason:
-
-| | 2025 | points for | trajectory | verdict |
-|---|---|---|---|---|
-| rjl22 | **won the title** (10-4) | **2,260 - most in the league** | steady | not surfaced |
-| kierankieran | 9th (5-9) | 1,864 | falling | surfaced, *and* "this core hasn't won" |
-
-Last season's role here is now purely additive. It supplies the second sentence of
-kierankieran's case - a team that missed with the roster it still has is more open than the
-standings suggest - and it no longer *stops* anything, since the champion veto it used to
-power was removed in favour of the window tilt above.
-
-**Gated on measured roster continuity**, because a result describes a *roster*. Matched by
-`owner_id` across the season chain and measured on current starting production, this league
-retains 83-100%, and both teams above return 10 of 10 starters at 100%. That will not hold
-generally - continuity is near-total because this is a dynasty preseason before the rookie
-draft, and is zero by construction in redraft - so `MIN_CONTINUITY` is a required gate even
-though it currently never fires. Its exact value (0.6) is an uncalibrated judgment call:
-there is no observed case near the boundary.
-
-**Deliberately kept out of the window classification.** "This manager just won and will run
-it back" is a behavioural inference about a person, not a fact about a roster. It belongs
-in how a suggestion is ranked and framed, never in whether a team is a contender - that is
-measured, and stays measured.
-
-- **Choosing a lane should account for how many others have chosen it.** Contending is
-  worth more when almost nobody else is contending, and rebuilding is worth more when you
-  own your pick and last place is uncontested. Both are supply effects the current model
-  can't see: `contention` and `trajectory` are measured per team, but the *value* of a
-  window depends on the league-wide distribution of windows. Related: `Middling` teams are
-  **optional** sellers, not motivated ones - they can pivot if the price is right but have
-  no need to, which should raise what they'd demand rather than putting them in the same
-  bucket as a committed rebuilder.
-- **Playoff spots are in the Sleeper settings and unused.** `league["settings"]` carries
-  the number of playoff teams, which is the real definition of "in contention" - being 6th
-  of 12 means something very different in a 6-team playoff than a 4-team one. Mid-season
-  this changes the advice materially: a team close to the last spot should usually try to
-  sneak in *without* mortgaging the future, because making the playoffs at all buys a real
-  chance at the title. Needs the *current* season to have started before it can gate live
-  advice.
-- **Team window classification ignores actual win/loss record entirely.** A team
-  that's mathematically out of playoff contention can't really be "Win-Now" for the
-  current season no matter how its age composition reads - record should gate the
-  classification, especially as the season progresses (early-season record is small-
-  sample noise, late-season record is close to decisive). Matters most for Middling
-  teams, which are exactly the ones `trade_targets.py` now shows *both* the push and
-  pivot path for - record is the natural signal to eventually pick one instead of
-  always showing both. The data already exists - `roster["settings"]` has `wins`/`losses`/`ties`/`fpts`,
-  already being pulled, just not used for this - but the logic can't be meaningfully
-  built or validated until games are actually being played (every team is 0-0 in the
-  current offseason data). Revisit once the season starts.
-- **"Starter" is a live snapshot, not a true intended lineup.** Sleeper's `starters`
-  field reflects whatever the current week's lineup happens to be, which is especially
-  unreliable in the preseason before Week 1 lineups are set, and doesn't account for
-  injury. A real fix needs injury/health data to define "starter" as "most current
-  production, healthy" rather than whatever Sleeper's snapshot says - not built yet.
-- **No injury-timeline awareness for trade strategy**, a distinct idea from the point
-  above: injury duration should flip trade direction depending on team state. A player
-  out for the season is a buy-low for a Rebuilding team (this year's absence doesn't
-  matter to them, dynasty value recovers) and a sell for a Win-Now team (dead weight
-  for the year they're actually trying to win, regardless of long-term value). A
-  short-term injury is different again - it's a depth-need signal for a Win-Now team
-  (cover the gap at that position while they're out) rather than a buy/sell trigger.
-  `nflreadpy.load_injuries()` is already in the same nflverse toolchain we use for
-  contracts/usage stats, so the data source exists - not built yet.
-- **Future draft picks are valued as a flat round average, not by the owning team's
-  likely draft slot.** FantasyCalc prices the *upcoming* draft class at exact slots
-  (e.g. "2026 Pick 1.01" is worth roughly 3x "2026 Pick 1.12"), but picks further out
-  are valued as one flat number per round because the slot isn't determined yet. That
-  flat number is a real distortion: a bad team's own future 1st is worth more than a
-  good team's, because a worse record means an earlier, more valuable slot. Not
-  corrected yet - would need each team's current-season production trajectory as an
-  input to estimate where their pick is likely to land.
-- **TE-premium leagues get standard-scoring TE values, undervaluing TEs relative to
-  their actual worth there.** See "Format detection" above - FantasyCalc's API has no
-  TE-premium parameter to feed at all, and a manually-guessed correction multiplier
-  isn't a real fix without data to calibrate it against. No path forward until
-  FantasyCalc adds format support, or a different value source is found for this
-  specific case.
-- **No offensive-line-quality signal.** PFF has no consumer API (enterprise/B2B only)
-  and its ToS restricts subscription data to personal, non-commercial use - reproducing
-  it here would be the same problem as KeepTradeCut/OverTheCap. nflverse already gives
-  us free, legitimate adjacent options worth exploring instead: `load_pfr_advstats`
-  (Pro Football Reference advanced stats), `load_nextgen_stats` (the NFL's own tracking
-  data), `load_ftn_charting` (FTN Fantasy's charting data).
-- **A small slice of rostered players have no FantasyCalc value at all** (15/342 = 4.4%
-  in a real check), silently treated as worth 0. Mostly free agents with no current NFL
-  team (`team=None` in Sleeper's data) - reasonable to treat as ~0 value - but a few
-  (e.g. Tyler Conklin, active on an NFL roster) are a genuine small coverage gap in
-  FantasyCalc's dataset, not something on our end to fix. Low impact given the size, not
-  corrected.
-- **~29% of active skill-position (QB/RB/WR/TE) contracts don't join to a Sleeper ID**,
-  concentrated almost entirely in the most recent rookie class (checked directly - every
-  high-value miss was a 2025/2026 rookie). The nflverse ID crosswalk lags behind the
-  newest draft class. Low impact for the features that exist today (contract-outlier
-  detection only cares about *declining* players, and rookies are never declining), but
-  would matter if a future feature needed rookie contract/team-control data.
-- **No manager skill / luck analytics** - from the original project brief ("manager
-  score stuff"), not built yet. This is actually several distinct, harder problems
-  bundled under one label, each needing different data we don't have:
-  - **Lineup efficiency** ("optimal lineup %" - did they start their actual best
-    scoring options each week, or leave points on the bench). Buildable in-season from
-    Sleeper's own weekly matchup data (`/league/{id}/matchups/{week}`, already know the
-    shape from `transactions`) - no new data source needed, just needs games played.
-  - **Schedule luck** (wins vs. what their points-for would earn against an average
-    schedule) - same data source, same in-season-only constraint.
-  - **Trade/waiver grading** (did their moves net positive value) - the hard one. Needs
-    dynasty *value at the time of the transaction*, not current value, since value
-    drifts. We only ever query FantasyCalc's current snapshot - there's no historical
-    value store, so grading a trade from three months ago accurately isn't possible
-    without starting to snapshot values now for future retroactive grading.
-  - **Draft grading** (did they beat ADP) - ties to the original brief's separate ADP
-    idea (comparing Sleeper ADP against actual outcome/production). Needs ADP data not
-    yet pulled, plus the same "value over time" problem as trade grading.
-  All of it is meaningless in the current offseason data regardless (no games played,
-  nothing to grade) - revisit once the season starts, and start snapshotting values
-  now if trade/waiver grading is wanted later, since that one can't be reconstructed
-  retroactively.
-- **No handcuff / backup-RB-injury-upside concept.** A backup RB can have near-zero
-  current value and then become a startable asset overnight if the starter ahead of him
-  is hurt - RBs have this dynamic more cleanly than other positions (a backfield is
-  often a clean 1-2 hierarchy, not a committee). Right now a $200-value backup RB is
-  indistinguishable in our system from an actually-bad player worth $200 for good
-  reason, when he might really be a legitimate speculative hold. Two distinct use
-  cases, not one:
-  - **Speculative buy-low**: identifying handcuffs at all as a "worth stashing beyond
-    what raw value suggests" category, for `waiver_wire.py` and `tradeable_surplus`
-    both - a pure "is this better than my worst player" or "is this above replacement
-    level" comparison would correctly call most handcuffs replaceable-level and miss
-    the point of holding one.
-  - **Self-insurance for a Win-Now team**: deliberately rostering *your own* valuable
-    RB's direct backup to hedge against losing him - a distinct trade rationale
-    ("insure this asset") that's different from any buy/sell/upside framing we have
-    today, and only makes sense for a team that already owns the starter in question.
-  Data source exists and needs no new dependency: `nflreadpy.load_depth_charts()`
-  (same nflverse toolchain already used for contracts/usage stats) has `team` +
-  `pos_rank` per player - joinable via the same `gsis_id` crosswalk already built in
-  `nflverse_ids.py`. Not built yet.
-- **Rule 2 (call check_league_format, then stop on "unsupported") isn't perfectly
-  reliable either - a full eval run caught it calling get_team_state anyway on a
-  redraft league, something that had passed every prior run.** Re-ran the same case 3x
-  immediately after and it passed all 3, so this reads as low-frequency model noise, not
-  a regression from the mutual-swaps/no-trade-history changes made alongside it -
-  confirmed by isolating and re-running just that one case rather than assuming either
-  way. Not fixed with a Python-layer check the way rule 6 was, deliberately: rule 6 was
-  failing close to consistently before its fix, this failed once in several runs, and
-  building another generate-then-verify guardrail for every prompt rule regardless of
-  its actual failure rate is exactly the kind of scope creep to avoid. Worth revisiting
-  if it starts failing more often, not before.
-- ~~**Mutual win-now-to-win-now swaps.**~~ Built, then deleted - see "Deleted: mutual
-  win-now swaps" above. It was package math, which this project has no way to price, and the
-  right answer to the underlying question turned out to be `find_value_upgrades` comparing one
-  holding against one holding.
-- ~~**Fresh/undifferentiated leagues read as noisy Win-Now/Rebuilding labels.**~~
-  Resolved - see the "No trade history" flag under "Team window classification" above.
-- ~~**No conversation memory - the agent is single-turn.**~~ Resolved - see
-  "Conversation sessions and UI" above (`agent/sessions.py`). Kept as a pointer rather
-  than deleted because the *sequencing* call is the interesting part: this was
-  deliberately deferred until a UI existed, on the grounds that the right shape of
-  session handling depends on what the client turns out to be. That held up - the final
-  design (client-generated session ids, so an expired session degrades to a new
-  conversation instead of an error) is a direct consequence of knowing the client was a
-  browser tab.
-- **Window *length* isn't modelled - only window direction.** A team that's comfortably
-  the best roster in its league can afford players who won't fall off immediately,
-  stretching contention across several seasons rather than maximising one. A team that's
-  barely contending can't - it has to buy the cheapest current production it can find and
-  accept the cliff afterwards. Both currently read as "Win-Now" and get identical advice.
-  This is a real distinction and a luxury most teams don't have, which is exactly why the
-  tool shouldn't hand it out uniformly.
-
-  Hard for a specific reason: it needs a measure of *how far ahead* a team is, not just
-  which direction it leans. Starter-value rank is a weak proxy (rank 1 of 12 could be a
-  runaway or a coin flip), and the honest version probably needs the season record plus
-  some notion of the gap to the next-best roster - the same in-season data the
-  record-based limitations above are waiting on. Deliberately not half-built: a
-  confident-sounding "you can afford to stay good for three years" derived from a
-  starter-value rank would be exactly the kind of unfounded claim this project keeps
-  finding and removing.
-- **Future analyst agent: real statistical projections, social sentiment, and
-  sportsbook data.** Not scoped or started - a bigger idea than a single heuristic,
-  bundling several distinct new capabilities, each with its own data-source question
-  not yet checked:
-  - **Statistical projections** - actual weekly/season point forecasting, not just
-    dynasty trade value. `nflreadpy` (already in the stack for contracts/usage roles)
-    also exposes play-by-play and weekly stats, so the raw data likely doesn't need a
-    new source - the modeling approach does.
-  - **Social sentiment (e.g. Twitter/X)** - beat-reporter injury news, snap-count
-    hints, hype/sentiment as a leading signal ahead of official stats. Real, unchecked
-    constraint: X's API has gotten materially more restrictive and expensive since the
-    ownership change - free-tier read access is small-volume - so this needs a real
-    pricing/access check before assuming it's buildable at all, not just a "figure it
-    out later."
-  - **Sportsbook data** - Vegas win totals, player props, over/unders as a signal for
-    team strength or usage projections. Likely more viable than X: several odds APIs
-    (e.g. The Odds API) have a usable free tier, but not yet verified against this
-    project's actual needs (coverage, rate limits, real cost past free tier).
-  Same discipline as everywhere else in this project applies before building any of
-  these: check what the data source actually costs and covers first, don't assume,
-  and don't guess at a modeling approach without real data to validate it against.
+Sleeper exposes no trade block, so realized trade counts across the league's full season
+chain are the proxy for "will this owner engage". A zero is only informative when someone
+ELSE in the league has traded (`Board.others_have_traded`), and never about the asking
+team itself. Activity is a flag and a last-resort tiebreak, never a ranking - sorting on
+it once hid the second-best production available behind an active trader's scraps.
+
+## Trade target matching (`analysis/trade_targets/`)
+
+A **discovery tool, not a fairness calculator**: it finds who to call, never whether a
+package is fair - value-summing treats five bench pieces as a stud, and a real
+calculator needs weekly-production VORP modelling this project doesn't have. Split by
+surface: `board` (league facts + shared vocabulary), `counterparty` (why the other side
+moves), `buy`, `pivot`, `upgrades`, `report` (the audited printer), with `find_targets`
+composing per window - buy for Push/Contend, pivot for Rebuild, both for Middling.
+
+### Shared vocabulary (`board.py`)
+
+- **`Board`**: every league-wide fact, built once per report. The asking team stays an
+  argument.
+- **`_sells_him` - seller-ness is a property of the (owner, player) pair**, not the team.
+  A Rebuild team sells everything; a RISING Middling team sells exactly its aging pieces
+  (`years_to_decline < INSIDE_FINAL_YEAR` - the seller's own edge, not the buyer's
+  horizon, which on the RB curve would put a rising team's whole backfield up for sale).
+  Treating seller-ness as a team fact hid the best win-now RB reachable by a team whose
+  critical need was RB. The pivot path applies the mirror: a rising middling team's
+  YOUNG value is excluded from acquire targets, because accumulating it IS its plan.
+- **`friction`** - one {flavor, why} vocabulary on both sides of the table; an empty
+  list means easy. Buy side: `cornerstone`, `beyond_your_best_chip` (above the asking
+  team's biggest SINGLE chip - the only comparison this project can make),
+  `never_trades`, `needs_a_pivot`. Sell side: `cornerstone`, `costs_you_production`
+  (the lineup notices only outside the noise band). Flavors, not a score, because they
+  call for different responses and because lists group by them. None is a price.
+- **`_best_chip`**: max single value in a pool - "out of reach" always means above one
+  piece, never above a sum.
+- Noise bands: `NOISE_RETAINED = 0.98` / `NOISE_BAND` - two prices inside the band are
+  the same price, both axes, both directions (one-sided use made findings flicker
+  between refreshes and called +0.12% a lineup upgrade).
+
+### Value basis and the relevance floor
+
+`team_state.VALUE_BASIS` maps bucket -> what a price is made of (declining=production,
+prime=mixed, ascending=upside), with `value_basis()` overriding to "production" inside
+the player's final year - the bucket is only the sign. One mapping feeds buy-side price
+notes, sell-side give-up cost, and `clears_relevance_floor`: production/mixed value must
+clear HALF the positional replacement level, upside a QUARTER (its appeal is priced
+lower; both fractions calibrated against real named chips). One floor across the whole
+codebase - waivers reuse it rather than inventing another.
+
+### The buy path (`buy.py`)
+
+- **Offer pool** (`_my_offer_pool`): bench sellable + young surplus + any starter the
+  bench covers for free (`production_lost_without == 0`) + ascending starters for Push
+  only (a closing window exists to spend future value; prime/declining starters ARE the
+  production and stay protected). Never a position the team itself needs. A starter's
+  `lineup_cost` is stated with WHO backfills (`backfill_for`) - a cost, never a veto.
+  Tiered by value over replacement (below-replacement depth is "real but discounted, a
+  sweetener" - not zero, injuries and byes are real), with `pick_equivalent` for feel.
+  Friction sorts last so the reader's eye lands on moves the owner hasn't ruled out.
+- **Targets**: `sellable` players from teams passing `_sells_him`, at positions of
+  need, worst-shaped need first (`NEED_PRIORITY`), with a weakest-starter upgrade bar at
+  `weak` needs (count-shaped needs have an empty slot - any relevant body helps, and
+  sub-weakest entries are labelled DEPTH rather than hidden). Ranked on the metric the
+  window is buying: production for Push (declining breaks ties - the price-per-unit
+  argument is a tiebreak, not an absolute ordering that once put 70 redraft above
+  3,439), value otherwise, activity last.
+- **Reachable vs long shots are different LISTS, not different ranks** - attainability
+  must not compete with quality for one ordering ("who do I ring first" is not "who is
+  best"). The cap applies per half so a blocked name never displaces a reachable one.
+- **Picks**: `picks_to_trade_away` for buyers (currency, not production - a first
+  becomes a rookie, the opposite of what a contender needs), `picks_to_acquire` for the
+  pivot (a contender's future 1st is worth strictly more to the rebuilder asking).
+- **Depth adds** (`_depth_adds`): cheap bodies on rebuilding rosters who'd start for
+  this team if one starter were out. The "only depth" bar depends on the asking window -
+  redraft (replacement production) when filling a lineup, dynasty when holding lottery
+  tickets (`DEPTH_NOTE_REBUILD`: a body who inherits a job becomes sellable) -
+  deliberately NOT `clears_relevance_floor`, whose tiered fractions opened a crack that
+  hid players from both lists at once. Whether he also beats the weakest starter is
+  stated per line.
+
+### The counterparty (`counterparty.py`)
+
+- **`_seller_case`** (team-level): the roster is falling (quoted with its
+  league-relative trajectory rank - "falling" is a tertile, and it once asserted decline
+  off a two-point gap), or this core missed the playoffs with >= 60% continuity
+  (`prior_season` - last season is only allowed to describe the roster that produced
+  it).
+- **`_cliff_case`** (player-level): the owner's window and the player's don't line up -
+  a starter inside `MIN_MEANINGFUL_RUNWAY` on a roster tilting ascending (absolute
+  tilt). Runway, not bucket: measured across three leagues, runway-qualifying starters
+  are a strict superset (24 both / 30 runway-only / 0 bucket-only). The now-premium bar
+  picks the price SENTENCE (discounted to harvest vs pure window mismatch), never
+  whether the case exists - as a gate it turned existence on the fourth decimal place.
+  Team case COMPOSES with the player case rather than silencing the more actionable one.
+  Deliberately no replacement-behind-him check (that is the owner's side of the table)
+  and no champion veto (the tilt rejects an aging contender on its merits).
+- **`_why_they_would_move_him`**: rebuilding = already selling; otherwise the two cases
+  above; otherwise the honest "nothing says seller". `never_trades` overrides all three -
+  evidence about what an owner does beats arguments about what he should want.
+- **`_counterparty_fit`**: what I hold that THIS owner wants - a positional hole I can
+  fill (`fills_a_hole: True`, the single definition behind the `needs_a_pivot` flavor,
+  which once had two definitions disagreeing about the same player in one run), or a
+  rising roster starting aging players, which wants now-and-later value (above
+  replacement, real current price, not past his own cliff; runway RANKS the pool and
+  the claim softens when the nearest offer is inside the two-season bar - the bar
+  decides what the sentence claims, not whether the entry exists). Annotation, not
+  ranking.
+- **`wanted_by`**: who wants a player this team is moving - a positional need he would
+  actually improve (`_would_actually_help` - a need is not the same as wanting THIS
+  player), or a falling roster short of ascending value at any position.
+- **Persuasion tier** (`_persuasion_targets`): aging production held by non-sellers -
+  the tier the buy path structurally cannot see, and where the best production usually
+  sits. Sourced from `sellable` (not the cornerstone-gated `win_now_core`), runway
+  defines the tier, the relevance floor and the weakest-starter bar apply at every need
+  level, `_sells_him` pairs are excluded (they're the buy path's job), ranked by
+  production per unit of cost - the cheapest name is often better than the biggest,
+  because the market discounts age the buyer isn't paying for. Implausible sellers are
+  excluded, not ranked last.
+
+### Better holdings and the mirror (`upgrades.py`)
+
+- **`find_value_upgrades`**: which single holding beats one of my starters at his own
+  position for less dynasty value - one player against one at the same position, the
+  only pairing where the two scales cancel; candidates from every roster INCLUDING my
+  own bench (an `already_mine` return needs no trade and is never capped away).
+  Organised as MOVES around the starter being replaced (matched against the weakest
+  starter he beats), each with `wanted_by`, `their_reason`, `priced_for` (rank-based -
+  a relative measure prints a relative claim), and a `kind`: `upgrade` (clears the
+  noise band both ways), `value_decision` (lineup unchanged - the value released is the
+  whole gain), `conversion` (down to `MIN_PRODUCTION_RETAINED` 0.90, real production
+  sold for real value - never shown to Push). `MIN_VALUE_FREED` (300) keeps churn out.
+  This absorbed a within-roster swap finder whose one live case its own window gate made
+  unreachable (~160 same-position pairs measured, zero qualifying - within a position
+  the two prices correlate, so retention usually frees nothing).
+- **`_conversion_candidates`**: `_cliff_case` pointed at your own roster - the same rule
+  the league is handed about you, end to end (it drifted into two rules once: the mirror
+  kept a gate the cliff case had dropped, so a starter was pitched to eleven managers
+  while absent from his own report). Floor decides who is worth calling about, cliff
+  decides whether the argument exists, bar picks the price sentence.
+
+### The pivot path (`pivot.py`)
+
+Sell lists split by runway (urgent vs situational - splitting on bucket once filed the
+most valuable asset on a rebuilding roster under "no urgency"), situational ordered most
+now-weighted first (a seller converts present into future). Cornerstones are IN the
+lists, tagged (`CORNERSTONE_SELL`, keyed by `committed`): for a committed team the
+hardest defined move; for a Middling team converting the core IS the choice of
+direction, stated as a decision, never an instruction. `sell_clock_note` differs the
+same way - urgency for a committed seller, the cost of waiting for a Middling one (one
+report once carried both claims about the same eight players). Acquire targets get the
+buy path's full treatment (floor, friction, per-position cap, cleanest first,
+rising-middling owners excluded); the shared "why any of these owners would sell youth"
+lives once in `ACQUIRE_NOTE`. Picks print BEFORE the empty-acquire guard - an early
+return once hid the cleaner currency exactly when it was the whole plan.
+
+### Deleted: mutual win-now swaps
+
+Removed outright with `find_surplus`/`league_surplus` and its MCP tool: it was package
+math (summing both sides and declaring 0.6 "balance" comparable), and this project has
+no tool that can price a package. Supply above replacement equals demand by construction
+(measured exactly: 24/24, 24/24, 36/36, 12/12), so it returned nothing for 36
+consecutive team-reads before the deeper objection landed. Replaced by nothing, on
+purpose - `find_value_upgrades` and `depth_adds` answer the real questions one player at
+a time, and agent rule 8 says the rest is a negotiation the tool cannot price.
+
+### Validated foundations
+
+- Multi-hop traded picks resolve correctly: `traded_picks` is a denormalized
+  current-owner view, confirmed against chronological transactions.
+- Usage-role tags on all 18 rostered tagged players match real-world knowledge.
+
+## Waiver wire (`analysis/waiver_wire.py`)
+
+Same relevance floor as everywhere else. Surfaces an available player who beats a
+team's worst rostered player at the position, or fills a real count-shaped need.
+Correctly finds ~nothing in deep 12-team dynasty leagues today; it is the baseline a
+future news/sentiment signal would check against ("is he actually available, who needs
+him"). FAAB tracked per team.
+
+## Prior season (`analysis/prior_season.py`)
+
+Walks `previous_league_id` for final standings and the bracket. Exists for one job:
+whether a non-seller could be talked into selling ("this core hasn't won"). Gated on
+`MIN_CONTINUITY` (0.6 of current starting production carried over) so a result can only
+describe the roster that produced it; keyed by owner_id because roster_ids don't cross
+league boundaries. Deliberately kept OUT of the window classification - "he just won and
+will run it back" is an inference about a person, which belongs in how an ask is framed,
+not in whether a team is measured as contending.
+
+## Player availability (`sources/injuries.py`)
+
+Miss rates measured from nflverse weekly rosters + injury reports over three completed
+seasons: **QB 0.107, TE 0.177, WR 0.195, RB 0.200** of roster weeks - QBs miss half as
+often as skill players. Rules that make the number honest:
+
+- A missed week = injury reserve, injury inactive, or `Out` (Questionable/Doubtful are
+  uncertainty, not absence; IR weeks appear on the weekly report only 5% of the time, so
+  the report alone undercounts the absences that matter most).
+- **Suspension is not fragility**: reserve codes classified empirically by how often each
+  co-occurs with the injury report (R40/R30/R06 at 0% = suspended/left squad), kept as an
+  ALLOWLIST so unknown codes count as not-injury - understating beats calling a healthy
+  suspension fragile. Suspended weeks leave numerator AND denominator, surfaced
+  separately as `weeks_suspended`.
+- Denominator = weeks actually on an NFL roster (a flat 17 rates a player who wasn't in
+  the league as durable); practice-squad weeks excluded; `MIN_SEASONS = 2` so rookies
+  read None-for-unknown rather than 0.000-for-durable; pooled over player-weeks, not
+  averaged over players, because the question is what happens to a lineup slot.
+
+## Recurring defect families, and the guards (`analysis/audit.py`)
+
+Every real bug here was a wrong recommendation produced by correct arithmetic. The
+families, named so the next instance is recognized rather than re-patched:
+
+1. **Two currencies conflated** - dynasty value answering a current-season question
+   (found five separate times: league ranking, lineup ranking, needs thresholds, buy
+   ordering, the efficiency comparison).
+2. **Bugs are labels, not math** - prose drifting from the code it describes (a
+   docstring claiming a capacity test the code never performed; "urgency" stamped on a
+   list whose mode was optional; an absolute claim printed from a relative measure).
+   The threshold decides what the sentence CLAIMS, never whether the entry exists:
+
+   | gate | what it excluded | now |
+   |---|---|---|
+   | `_cliff_case` on the premium bar | a ratio of 0.8790 against a bar of 0.8790 | case stands on runway; the sentence says whether a discount exists |
+   | `_holding_kind` on strictly-less value | 3,619 vs 3,616 for +535 of production | `NOISE_BAND`, both axes |
+   | `_counterparty_fit` on runway | pieces at 1.6 and 0.3 years unofferable | runway ranks; only past-the-cliff drops |
+
+3. **Hard breakpoints on continuous measures** - 24% of starters sit within one year of
+   the 2.0 runway bar, and `years_to_decline` itself degrades to position defaults when
+   nflverse flaps. Fixed for ages (runway everywhere a boundary decides), and STILL OPEN
+   at the core: the window tertiles flip a team's whole identity when a value refresh
+   nudges one rank. The next behavioral fix.
+4. **Computed, attached, rendered by nothing** - six live instances in one module.
+   Guarded by `check_everything_computed_is_printed` (renders through `_print_report`
+   and greps); note it CANNOT catch an early return that skips a populated block.
+5. **One player described two ways** - incompatible claims across blocks, or one flavor
+   computed from two rules. Guarded by `check_one_player_is_not_described_two_ways`.
+6. **An unlabelled number gets a meaning invented for it** - a bare `{"diff": -11}` was
+   narrated as games underperformed in the preseason. Numbers ship with the sentence
+   that interprets them; what every entry shares goes in the block note, only what
+   varies rides on the line (the repeat-per-entry mistake has been made three times in
+   one day).
+
+`audit.py` runs the checks against real leagues (the failures were all shaped by real
+distributions), every check derives from a shipped bug (a noisy audit gets muted), plus
+a coverage table where a block empty across every team in every league is a dead
+feature - it has retired two features. Not in pytest: it needs the network.
+
+**Spot-check techniques that outperform reading top-down**: render the whole result as a
+grid and check by quadrant (finds contradictions BETWEEN blocks), and run the same
+report twice and diff (a value refresh reshuffles whatever sits on a threshold). Most
+real finds came from a human reading output and saying "that doesn't make sense".
+
+## The agent stack (`agent/`)
+
+**MCP server** (`mcp_server.py`): thin wrappers over validated modules, stdio, no new
+logic. Every tool returns a dict at top level (the installed SDK splits a bare list into
+one content block per item). `mcp.tool` is wrapped once so every result carries
+`data_gap` when a feed degraded - a tool added later cannot forget it. Tool docstrings
+carry only what the model must know BEFORE reading a result; the block notes in the
+payload are the per-block instructions (three copies of the same prose had begun to
+drift). Validated through a real MCP client (`test_mcp_server.py`), because a server
+that starts fine can still misshape output.
+
+**Agent** (`agent.py`): Haiku via `ClaudeSDKClient`, guardrails SDK-enforced rather than
+requested - `tools` restricted to exactly the 7 MCP tools (which is what excludes
+built-ins, verified by a live prompt-injection attempt that had no tool to reach),
+`max_turns=8`, `max_budget_usd=$0.50/question`, `setting_sources=[]` (the SDK otherwise
+ships this repo's CLAUDE.md on every call - a measured 38% input-token cut). The system
+prompt carries the doctrine no single tool result states (five principles: pick an end,
+two currencies, age is a distance, value is not additive, a trade needs a counterparty)
+plus numbered rules, each added for an observed failure.
+
+**The grounding check is the pattern worth keeping**: prompt rules are probabilistic,
+so rule 6 (only name offerable players as trade-aways) is enforced by
+generate-then-verify - `_banned_trade_names` recomputes the real offerable set from the
+same Python the tools ran (`offerable_names` is the one shared definition across modes),
+`_trade_violations` fires only on a banned name sharing a line with trade-action
+language and no negation (the blunt version fired on every roster description; the
+negation skip can miss "don't trade X, but do trade Y", accepted - a false positive
+costs money and contradicts correct advice, a miss costs one ungrounded name), one
+retry naming EVERY violation (naming one fixed one and left the other). **Fixes that
+live in data hold; fixes that live in a prompt leak** - every durable correction went
+into a field, a note on a field, or a deterministic check. Rules with rare failures
+(stop-on-error, non-dynasty refusal) deliberately do NOT get their own verify machinery;
+building it for every rule regardless of failure rate is scope creep.
+
+**Sessions** (`sessions.py`): a live client per client-supplied session id (idle TTL,
+LRU cap of 2 - each session holds two subprocesses against a 2 GiB container, per-session
+lock so concurrent turns can't interleave). Never shared between callers - the
+context-leak trap. Fixes three measured things at once: no conversation memory, the
+~4,700-token prompt-cache prefix re-CREATED at 1.25x on every fresh client (a persistent
+session re-reads at 0.1x, ~92% off the prefix per follow-up), and the MCP data cache
+living in the per-client subprocess. `cost_delta` exists because
+`ResultMessage.total_cost_usd` is cumulative per client - billing the running total
+would have drained the daily budget twice as fast as real spend.
+
+**Cost anatomy (measured layer by layer)**: bare SDK floor 136 tokens; our system prompt
++683; MCP framing + 7 tool schemas +1,876. ~65% of the baseline is our own content, so
+dropping the Agent SDK for the raw API would save ~a hundred tokens - if it is ever
+replaced it should be for control, not cost. Tool results are small once
+`get_team_state` takes `owner_name` (unfiltered was ~7,846 tokens and made the model
+fall back to re-deriving windows from roster_detail - the fix was a filter, not a
+prompt). Haiku needs a 4,096+ token cacheable block before caching activates at all.
+
+**HTTP API + budget** (`api.py`, `budget.py`): plain FastAPI, `/ask` calling the same
+`run_query` as CLI and evals. The daily ceiling is what makes a public endpoint safe -
+two ceilings (dollars + a request-count backstop, since a failed call reports
+`cost_usd: None`), in-process with no database because `max-instances=1` +
+`concurrency=1` make a counter exact (and this workload is memory-heavy, not
+horizontal). Check-then-record can overshoot by at most one call ($0.50). Those Cloud
+Run flags are load-bearing and live in the workflow, not console click-state.
+
+**Container + CI/CD**: five real build failures recorded in git history; the durable
+lessons - pin every dependency (an unpinned `mcp` resolved to a version where `FastMCP`
+moved, and the resulting ModuleNotFoundError reached the user as the agent CONFIDENTLY
+CONFABULATING an answer with zero tools: a system that confabulates instead of crashing
+is worse than one that crashes, so `/diagnostics` spawns the MCP server and reports its
+stderr, and stays), run as non-root (the CLI refuses bypassPermissions as root), Node
+22+ for the CLI transport, secrets from Secret Manager never the image. Deploys gate on
+tests via `workflow_run` (checking `conclusion` and `head_sha`); auth is Workload
+Identity Federation pinned to this repo and `refs/heads/main` - no long-lived key; the
+runtime identity holds exactly one permission (`secretAccessor` on the one secret) so
+the blast radius of the inherent CD risk is one prepaid API balance. CI excludes evals
+(paid) and the MCP protocol test (live third-party APIs); no API key reaches the
+workflow, so a test that silently starts needing one fails loudly.
+
+**Observability** (`observability.py`): one JSON line per run - question, outcome,
+latency, turns, cost, token/cache breakdown, leagues, format tier, tool errors
+(captured from `ToolResultBlock`, the structured signal for a failed call) - to stdout
+always (Cloud Run pipes it to Cloud Logging; the container filesystem is tmpfs, so a
+file-only log dies with the instance) and a local file off-cloud. One `try/finally`
+around all of `run_query`, variables initialized before the `try`.
+
+**Tests** (102+, offline, ~2s): assert the boundaries the heuristics turn on plus
+regression guards for every real bug. Verified they bite (breaking a constant fails
+tests). **Evals** (`evals.py`, 9 cases, real API calls): deliberately few, each guarding
+a distinct observed failure mode. A failing eval is not automatically an agent
+regression - read the failing output first (three separate times the eval itself was
+wrong: a stale assertion after a design change, a word-list match on model phrasing, and
+a premise that inverts when nflverse role tags are unreachable - that one now checks its
+premise and says PREMISE GONE before spending an API call). Known flake signature: a
+prompt-rule case failing once and passing 3/3 on isolated re-run is model noise, not a
+regression.
+
+**Hosting - decided: Google Cloud Run.** Best technical fit (a real container - the
+agent spawns subprocesses, so edge functions are out), one built-in HTTPS endpoint,
+larger permanent free tier than Lambda (whose common API Gateway pairing is not free),
+and the AWS keyword match wasn't worth the extra services since postings treat clouds
+as interchangeable.
+
+## Frontend (`agent/static/index.html`)
+
+One static page, vanilla JS, no build step. League data renders directly from
+`GET /api/league/{id}` rather than being recited by the model - the analysis layer
+already computes it exactly, and recitation is where confabulation creeps in. The agent
+is reserved for reasoning. Client-generated session ids, so an expired session degrades
+to a new conversation rather than an error.
+
+## Known limitations / backlog
+
+Measured or confirmed, none urgent, kept so nobody re-derives them:
+
+- **Window tertile instability** - the hard-breakpoint family applied to the core
+  labels; a value refresh can flip a window between runs. The next behavioral fix
+  (distance-from-boundary or hysteresis).
+- **`redraft_value` is a trade price, not a weekly projection**, and the difference has
+  a direction: prices bake in positional scarcity, so `fill_lineup` is biased toward
+  TEs in flex slots, and the redraft tail collapses to a floor below ~the 30th player
+  at a position (a rostered WR at 1 is a price, not a forecast), which effectively caps
+  the persuasion tier at the top ~30 per position. A real projections source is the
+  single highest-value external addition - it also closes the PPR gap.
+- **The market's own age curve could calibrate `AGE_CURVE`**: cornerstone-share by age
+  shows a WR cliff at 28 (ours says 29 - possibly a year late; 13 cornerstones, none
+  28+), while the apparent TE cliff at 27 was an artifact of a four-player cell (Kittle
+  at 32.9 is the 11th most valuable TE - the curve stays 30). Cornerstone value is
+  decline TIMES remaining years and survivorship-biased, so the general version needs a
+  bigger pool tracked across seasons.
+- **The market refuses our rushing-QB discount on Josh Allen** (10,415 at 29.5, 7.1
+  carries/game; our curve gives him 1.5 years) - `dual_threat_qb` absorbs most of this,
+  but an elite thrower-and-runner forced onto the rushing curve may still be underrated.
+- **`ascending` rebuild flavor needs a quality floor** (see Team windows).
+- **`starting_production` is misnamed** (see the axis section).
+- **`miss_rate` is attached to players who could never play**; `would_start_if_one_out`
+  could gate it. Depth is not weighted by injury risk (needs severity/duration by injury
+  type - a real modelling exercise, deliberately not half-built). Availability is
+  binary; playing-hurt has no state.
+- **The relevance floor ignores league size/roster depth** and cannot be calibrated from
+  three same-shape leagues.
+- **A rebuild's timeline isn't checked against its own core's runway** - a roster built
+  on two 28-year-old QBs cannot afford a three-year teardown; nothing computes when a
+  rebuilding core expires.
+- **Record, playoff spots, and window LENGTH are unmodelled** - all waiting on games
+  being played. Lane supply too: contending is worth more when nobody else is, and a
+  Middling team is an optional seller who should price above a committed one.
+- **House rules live outside the API** (see Format support) - expect more of these.
+- **Handcuff/backup-upside concept not built** (depth charts exist in nflverse);
+  O-line quality (PFF is closed; nflverse alternatives unexplored); ~4.4% of rostered
+  players carry no FantasyCalc value (treated as 0); ~29% of skill contracts don't join
+  to a Sleeper ID, almost all newest rookies.
+- **Manager skill/luck analytics** (lineup efficiency, schedule luck, trade/waiver
+  grading, draft grading) need in-season data - and trade grading needs value AT
+  TRANSACTION TIME, so start snapshotting values before wanting it.
+- **Future analyst signals** (projections, X/Twitter sentiment, sportsbook lines): X's
+  API pricing needs a real check before assuming buildable; odds APIs have usable free
+  tiers, unverified against actual needs.
+- **LOGIC.md is invisible to the agent.** Reasoning reaches it via block notes and tool
+  docstrings only. Cheapest next step: a comparative field on the team row (gap to the
+  best lineup and whether that team is rising - "you cannot out-wait him" is currently
+  an inference nothing prompts). The full version is this file as a queryable MCP
+  resource, which needs chunking design.

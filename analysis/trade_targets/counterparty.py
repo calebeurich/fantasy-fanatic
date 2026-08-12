@@ -1,6 +1,6 @@
 """The other side of the table: why an owner who isn't selling might still move a player,
 who would want a player this team is moving, and the persuasion tier built on both.
-History: LOGIC.md, "Persuasion targets" and "Joining facts the tool already had".
+History: LOGIC.md, "The counterparty".
 """
 
 from .. import team_state, roster_needs
