@@ -1144,9 +1144,12 @@ def _holder(owner, window, trajectory, players, asc=20, dec=30):
             "sellable": players, "tradeable_surplus": []}
 
 
-def _aging(name, value, redraft, pos="RB"):
+def _aging(name, value, redraft, pos="RB", runway=-1.0):
+    """`years_to_decline` is on every real `classify` entry and was missing here, which let the
+    persuasion gate's runway branch pass unconditionally (a missing value reads as 0, i.e. on a
+    clock). Third fixture this session found to be thinner than production data."""
     return {"name": name, "position": pos, "value": value, "redraft_value": redraft,
-            "bucket": "declining", "is_starter": True}
+            "bucket": "declining", "is_starter": True, "years_to_decline": runway}
 
 
 def _prior(finish, champion=False, made_playoffs=True, continuity=1.0):
@@ -1215,13 +1218,17 @@ def test_persuasion_bar_is_relative_to_the_players_own_position():
     every tight end in every league while looking like an ordinary strictness setting.
 
     Real pair, identical ratio, opposite verdicts: a 36.9-year-old TE at 0.83 is top-decile
-    now-weighted for a TE, while an RB at the same 0.83 is unremarkable."""
+    now-weighted for a TE, while an RB at the same 0.83 is unremarkable.
+
+    Aimed at the CLIFF path, which is where the bar lives now that runway defines the tier -
+    so the holder is rising and has won, leaving `_cliff_case` as the only way in and the bar
+    as the only thing deciding."""
     te = _aging("Kelce", 1810, 1504, pos="TE")   # 0.83 - clears the 0.81 TE bar
     rb = _aging("Jacobs", 2770, 2300)            # 0.83 - misses the 1.05 RB bar
     needs = {"RB": NEED_RB["RB"], "TE": NEED_RB["RB"]}
-    holder = _holder("kk", "Push", "falling", [te, rb])
+    holder = _holder("kk", "Contend", "rising", [te, rb], asc=30, dec=15)
     out = trade_targets._persuasion_targets(
-        ME, [holder], needs, {"RB": 100, "TE": 100}, {}, {"kk": _prior(9, made_playoffs=False)}, BARS)
+        ME, [holder], needs, {"RB": 100, "TE": 100}, {}, {"kk": _prior(3)}, BARS)
     assert [t["name"] for t in out] == ["Kelce"]
 
 
@@ -1311,15 +1318,24 @@ def test_persuasion_ranks_by_production_per_cost_not_by_value():
     assert out[0]["production_per_cost"] > out[1]["production_per_cost"]
 
 
-def test_persuasion_skips_players_who_are_not_age_discounted():
-    """Asking a non-seller only makes sense for production the market prices *down* for
-    seasons you aren't buying. Below 1.0x you'd pay a future premium to a team that
-    doesn't want to sell - the worst of both."""
-    holder = _holder("kk", "Push", "falling",
-                     [_aging("Premium", 4000, 2800), _aging("Discounted", 3000, 4000)])
+def test_the_persuasion_tier_is_defined_by_runway_not_by_the_price_ratio():
+    """It is "aging production held by a non-seller", and the project's canonical test for aging
+    is the clock - the same `MIN_MEANINGFUL_RUNWAY` correction already made in `classify` and
+    `_pivot_path`. Gating on the price ratio instead got it wrong in both directions on live
+    data: Travis Etienne (27.6, runway -0.6, a +1,578 upgrade on the asking team's RB2) was
+    unreachable at ratio 0.85 against a 1.05 bar, while dropping the bar admitted Bijan Robinson
+    and Ashton Jeanty with 2.5 and 4.3 years of runway left.
+
+    Both players here have a team reason to listen, so runway is the only thing separating them
+    - and their ratios point the OPPOSITE way to the verdict, which is the whole point."""
+    holder = _holder("kk", "Push", "falling", [
+        _aging("OnAClock", 3000, 2000, runway=-0.6),       # ratio 0.67, well under the 1.05 bar
+        _aging("YearsLeft", 3000, 4000, runway=3.0),       # ratio 1.33, comfortably over it
+    ])
     out = trade_targets._persuasion_targets(
         ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)}, BARS)
-    assert [t["name"] for t in out] == ["Discounted"]
+    assert [t["name"] for t in out] == ["OnAClock"], (
+        "the clock decides, and the richer ratio does not rescue a player with years left")
 
 
 def test_persuasion_ignores_last_season_when_the_roster_turned_over():

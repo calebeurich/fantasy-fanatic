@@ -810,7 +810,16 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
             if need["level"] == "weak" and player["redraft_value"] <= need["weakest_starter"]:
                 continue
             ratio = player["redraft_value"] / player["value"]
-            if ratio < premium_bars.get(pos, float("inf")):
+            # **Runway defines this tier, not the price ratio.** It is "aging production held by
+            # a non-seller", and the project's canonical test for aging is the clock, not a
+            # market ratio - the same `MIN_MEANINGFUL_RUNWAY` correction already made in
+            # `classify` and `_pivot_path`. Gating on the ratio instead let age in by accident
+            # in both directions: Travis Etienne (27.6, runway -0.6, a +1,578 upgrade on the
+            # asking team's RB2) was unreachable at 0.85 against a 1.05 bar, while dropping the
+            # bar alone admitted Bijan Robinson and Ashton Jeanty with 2.5 and 4.3 years left.
+            # The bar keeps `_cliff_case`'s "priced as though his remaining years are gone"
+            # sentence honest, which is a different job and where it now lives.
+            if (player.get("years_to_decline") or 0) >= MIN_MEANINGFUL_RUNWAY:
                 continue
             # The team's reason if it has one, otherwise a mismatch between the owner's
             # window and this player's. A team-level trajectory is an average, and an
@@ -819,7 +828,18 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
             # starting a 32-year-old RB the market prices at 1.54x. Without a per-player
             # fallback that name is unreachable, because the team gate rejects the whole
             # roster before any player on it is examined.
-            why = team_why or _cliff_case(player, other, ratio)
+            # **The now-premium bar belongs to the cliff argument, not to the tier.** It gated
+            # every candidate before `team_why` was even consulted, and `_seller_case` makes no
+            # claim about pricing - "their roster is falling" and "this core hasn't won with
+            # them" are facts about the TEAM. Only `_cliff_case` asserts a player is "priced as
+            # though his remaining years are gone", and that is the sentence the bar keeps
+            # honest. Live cost of the over-gate: Travis Etienne, a 27.6-year-old declining
+            # starter on a Middling team that missed the playoffs at 4-10 with 94% of the same
+            # roster, produces 2,221 - a +1,578 upgrade on the asking team's RB2 and more than
+            # double its best listed target - was unreachable at ratio 0.85 against a 1.05 bar,
+            # while his own teammate Achane qualified at exactly 1.05 off the same team case.
+            why = team_why or (_cliff_case(player, other, ratio)
+                               if ratio >= premium_bars.get(pos, float("inf")) else None)
             if why is None:
                 continue
             fit = _counterparty_fit(other, (needs_by_owner_id or {}).get(other["owner_id"], {}),
