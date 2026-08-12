@@ -54,6 +54,7 @@ import sys
 from sources import sleeper, fantasycalc
 from . import trade_activity
 from .team_values import (age_bucket, years_to_decline, MIN_MEANINGFUL_RUNWAY,
+                          INSIDE_FINAL_YEAR,
                           get_players_with_roles, rank_map,
                           owned_picks, pick_capital,
                           split_starters_bench, tertile)
@@ -88,14 +89,18 @@ def value_basis(entry: dict) -> str:
     year further on read "low - value is mostly already-realized production". Nothing about
     those two prices differs in kind.
 
-    A player inside `MIN_MEANINGFUL_RUNWAY` of his cutoff is on a clock - that is the
-    project-wide definition, and `classify`'s own sell list already draws it there - so his value
-    is production. Above it, the bucket answers as before.
+    A player inside his final year (`INSIDE_FINAL_YEAR`) is at his own edge, so what you pay for
+    him is production. Above that, the bucket answers as before.
+
+    **Not `MIN_MEANINGFUL_RUNWAY`.** That 2.0 is a buyer's planning horizon, and borrowing it
+    here priced Zach Charbonnet - 25.6, 1,684 of dynasty value for 434 of production, a ratio of
+    **0.26** - as "production-priced", because the RB curve is (24, 27) and two years of runway
+    means any RB over 25. One year keeps Metcalf at 0.3 and drops Charbonnet back to upside.
 
     Deliberately does NOT touch `MIN_RELEVANCE_FRACTION`, where `production` and `mixed` are both
     0.5, so this changes what the two pricing labels say and nothing about who clears the floor."""
     runway = entry.get("years_to_decline")
-    if runway is not None and runway < MIN_MEANINGFUL_RUNWAY:
+    if runway is not None and runway < INSIDE_FINAL_YEAR:
         return "production"
     return VALUE_BASIS[entry["bucket"]]
 

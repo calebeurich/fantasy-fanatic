@@ -2353,14 +2353,18 @@ What the team-level test hid, on one roster:
 |---|---|---|---|---|---|
 | James Cook | kbmckenna (Middling/**rising**, 47% asc / 0% dec) | 6,027 | 1.21x | invisible, then a "harder ask" | **top buy target**, +5,389 over the weakest RB started |
 | Travis Etienne | bigbuttboi (Middling/**rising**, 55% / 8%) | 2,186 | 0.84x | "harder ask" | 2nd buy target, +1,548 |
-| RJ Harvey | bergenjay (Middling, rising) | 865 | 0.43x | "harder ask" | 4th buy target, +227 |
+
 
 The best win-now RB reachable by a team whose critical need is RB was unreachable because his
 owner's *label* was Middling.
 
 **The clock is what keeps it honest.** Without the runway test this would offer up the very young
 core a rising team is accumulating - so a rising Middling owner sells only players inside
-`MIN_MEANINGFUL_RUNWAY` of their own cutoff. `_persuasion_targets` skips the same pairs, since
+`INSIDE_FINAL_YEAR` of their own cutoff. Same correction as `value_basis` below and found the same
+way: borrowing the buyer's 2.0 horizon put **RJ Harvey** in the buy list - 25.5 years old, 2,032 of
+dynasty value for 865 of production - as a man his owner was selling, when he is a player a rising
+team builds *with*. Caleb's read was immediate: *"Harvey does not make sense for me to trade
+for."* `_persuasion_targets` skips the same pairs, since
 that tier is for owners who have to be talked into it and these no longer do; without that they
 appeared as a target and a harder ask at once, which
 `check_one_player_is_not_described_two_ways` now catches.
@@ -2378,10 +2382,16 @@ boundary", and reading the sign alone priced **DK Metcalf, 0.3 years from his cl
 along read *"low - value is mostly already-realized production"*. Nothing about those two prices
 differs in kind.
 
-`value_basis(entry)` returns `production` for anyone inside `MIN_MEANINGFUL_RUNWAY` of his cutoff -
-the project-wide definition of being on a clock, which `classify`'s own sell list already uses -
-and falls back to the bucket above it. Metcalf and Jalen Nailor (1.5) moved to production-priced;
-Malik Washington (3.4), Tyler Shough (7.1) and Lamar Jackson (4.4) correctly did not.
+`value_basis(entry)` returns `production` for anyone inside `INSIDE_FINAL_YEAR` of his cutoff and
+falls back to the bucket above it.
+
+**It first used `MIN_MEANINGFUL_RUNWAY` and that was wrong**, which is worth recording because the
+two thresholds look interchangeable and are not. 2.0 is a *buyer's planning horizon*. Whether a
+player is at his own edge right now is a nearer question, and the position curves are not the same
+width: **RB is (24, 27)**, so two years of runway means *any RB over 25*. That priced Zach
+Charbonnet - 25.6, 1,684 of dynasty value for 434 of production, a ratio of **0.26** - as
+"production-priced", which is the opposite of true. One year keeps Metcalf at 0.3 and returns
+Charbonnet to upside.
 
 It deliberately does not touch `MIN_RELEVANCE_FRACTION`, where `production` and `mixed` are both
 0.5 - so this changes what the two pricing labels *say* and nothing about who clears the floor.

@@ -65,6 +65,18 @@ AGE_CURVE_OVERRIDES = {
 # how is a roster trending - where a category is genuinely what's wanted.
 MIN_MEANINGFUL_RUNWAY = 2.0
 
+# Inside his final year before the curve turns - a much nearer question than the two-season
+# planning horizon above, and the two must not be confused. 2.0 is what a BUYER is planning
+# around; this is whether the player is at his own edge right now.
+#
+# The distinction matters because the position curves are not the same width. RB is (24, 27),
+# so "2.0 years of runway" means *any RB over 25* - and reusing the buyer's horizon for the
+# nearer question therefore said a rising team was selling RJ Harvey at 25.5 (2,032 of dynasty
+# value for 865 of production, a player you build WITH) and that Zach Charbonnet at 25.6 was
+# "production-priced" on a ratio of 0.26. One year keeps James Cook at 0.1 and DK Metcalf at
+# 0.3, who really are at their edge.
+INSIDE_FINAL_YEAR = 1.0
+
 # A "declining" player still on a multi-year deal is a weaker sell than the age curve
 # alone suggests - a team is still paying for the role, not just letting it expire.
 #

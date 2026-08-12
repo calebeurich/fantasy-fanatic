@@ -15,7 +15,7 @@ from . import team_state, roster_needs, trade_activity, prior_season
 from .league import context
 from .team_values import (owned_picks, pick_equivalent, now_premium_bar, age_bucket,
                           priced_for, ordinal,
-                          MIN_MEANINGFUL_RUNWAY)
+                          MIN_MEANINGFUL_RUNWAY, INSIDE_FINAL_YEAR)
 
 # Same VALUE_BASIS classification (team_state.py) drives both sides of a trade, just
 # phrased for who's on which side of it.
@@ -190,6 +190,8 @@ MIN_RUNWAY_FOR_LATER = MIN_MEANINGFUL_RUNWAY
 SWAP_ELIGIBLE_WINDOWS = ("Push", "Contend", "Middling")
 
 
+
+
 def _others(states: list[dict], me: dict, window_test) -> list[dict]:
     """Every team but this one whose window passes `window_test`.
 
@@ -233,11 +235,12 @@ def _sells_him(other: dict, player: dict) -> bool:
 
     The clock is what keeps this honest: a rising team's young core is emphatically NOT for
     sale, and without the runway test this would offer Cook's owner up for his own ascending
-    players."""
+    players. `INSIDE_FINAL_YEAR` rather than `MIN_MEANINGFUL_RUNWAY`, because 2.0 years is a
+    buyer's planning horizon and on the RB curve it means "any RB over 25"."""
     if other["window"] == "Rebuild":
         return True
     return (other["window"] == "Middling" and other.get("trajectory") == "rising"
-            and (player.get("years_to_decline") or 0) < MIN_MEANINGFUL_RUNWAY)
+            and (player.get("years_to_decline") or 0) < INSIDE_FINAL_YEAR)
 
 
 def STILL_COMPETING(window: str) -> bool:
