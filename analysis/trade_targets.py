@@ -8,6 +8,7 @@ Smoke test: python -m analysis.trade_targets <league_id> <owner_name>
 """
 
 import sys
+from dataclasses import dataclass, field
 
 from sources import fantasycalc
 
@@ -234,6 +235,40 @@ NOISE_BAND = 1 - NOISE_RETAINED
 MIN_RUNWAY_FOR_LATER = MIN_MEANINGFUL_RUNWAY
 
 
+@dataclass
+class Board:
+    """Every league-wide fact the trade paths read, derived once per `find_targets` call.
+
+    These used to be threaded through every function by hand - `_buy_path` took twelve
+    parameters, eleven of them facts about the league rather than the asking team - and two
+    of them were re-derived inline at five and three call sites. One object, built once, so
+    a new league-wide fact is a new field instead of a new parameter on six signatures.
+    Everything here describes the league; facts about the asking team stay arguments."""
+    ctx: object = None                                    # LeagueContext, when available
+    states: list = field(default_factory=list)            # team_state.classify_league rows
+    needs_by_owner_id: dict = field(default_factory=dict)
+    thresholds: dict = field(default_factory=dict)        # dynasty trade-relevance floor
+    premium_bars: dict = field(default_factory=dict)      # team_values.now_premium_bar
+    trade_counts: dict = field(default_factory=dict)
+    prior: dict = field(default_factory=dict)             # prior_season.results
+    pick_values: dict = field(default_factory=dict)
+    picks_by_owner: dict = field(default_factory=dict)
+
+    def others_have_traded(self, me_owner_id: str) -> bool:
+        """Whether a counterparty's zero trade count means anything. `never_trades` is only
+        ever a fact about a counterparty, so the asking team's own count is excluded: if I am
+        the only person in the league who has traded, everyone else's zero describes the
+        league, not them."""
+        return any(n for oid, n in self.trade_counts.items() if oid != me_owner_id)
+
+
+def _best_chip(entries: list[dict]) -> dict | None:
+    """The biggest SINGLE thing a team could put on the table. One player against one player
+    is the only comparison this project can make, so 'out of reach' means above this - never
+    above a sum, which would imply value is additive across players."""
+    return max(entries or [], key=lambda e: e["value"], default=None)
+
+
 def _others(states: list[dict], me: dict, window_test) -> list[dict]:
     """Every team but this one whose window passes `window_test`.
 
@@ -412,8 +447,7 @@ def _buy_friction(player: dict, other: dict, best_chip: dict | None, trades: int
     return {"friction": friction}
 
 
-def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict],
-                   pick_values: dict[str, int] | None = None,
+def _my_offer_pool(me: dict, board: Board, needs: dict[str, dict],
                    covered: dict[str, float] | None = None,
                    backfills: dict[str, dict] | None = None) -> list[dict]:
     """What you could realistically offer: bench value that isn't elite enough to be a
@@ -454,6 +488,7 @@ def _my_offer_pool(me: dict, thresholds: dict[str, float], needs: dict[str, dict
     # because the preseason lineup listed only one QB - and the fix was a `projected` set
     # of names threaded through five functions. Fixing the flag at its source deleted all
     # of that.
+    thresholds, pick_values = board.thresholds, board.pick_values
     covered = covered or {}
     backfills = backfills or {}
 
@@ -577,8 +612,7 @@ def _would_actually_help(player: dict, roster: dict, ctx) -> bool:
     return not theirs or (player.get("redraft_value") or 0) > min(theirs)
 
 
-def wanted_by(player: dict, me_roster: dict, states: list[dict],
-              needs_by_owner_id: dict, ctx=None) -> list[dict]:
+def wanted_by(player: dict, me_roster: dict, board: Board) -> list[dict]:
     """Which other owners would want THIS player, and in one line why.
 
     Lifted to module level so `find_value_upgrades` and the stranded block share one
@@ -593,6 +627,7 @@ def wanted_by(player: dict, me_roster: dict, states: list[dict],
     league - needed no tight end and no running back. He needed youth, at 4% ascending
     against 40% declining and 11th of 12 in dynasty value, and this function could not say
     so, because it only knew about needs."""
+    ctx, states, needs_by_owner_id = board.ctx, board.states, board.needs_by_owner_id
     rosters_by_owner = {r["owner_id"]: r for r in ctx.rosters} if ctx else {}
     wanting = []
     for other in states:
@@ -672,10 +707,8 @@ def _upgrade_note(kind: str, produced: float, replaced: dict, freed: float, mine
             f"wrong one if you are pushing. {action}")
 
 
-def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: set[str],
-                        trade_counts: dict[str, int], needs_by_owner_id: dict,
-                        window: str = "Contend", prior: dict | None = None,
-                        premium_bars: dict[str, float] | None = None,
+def find_value_upgrades(me_roster: dict, board: Board, my_starters: set[str],
+                        window: str = "Contend",
                         already_surfaced: set[str] | None = None,
                         my_offers: list[dict] | None = None) -> list[dict]:
     """Which single holding beats one of my starters at his own position, for less dynasty
@@ -724,6 +757,9 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
     ranking on either axis hides winners on the other: sorted by production and capped at six,
     it dropped the exact swap this roster's owner had already named, a tight end worth +233 of
     production but the largest value release on the board at 1,073."""
+    ctx, states, trade_counts = board.ctx, board.states, board.trade_counts
+    needs_by_owner_id, prior, premium_bars = (board.needs_by_owner_id, board.prior,
+                                              board.premium_bars)
     # Rank within position on each scale, which is what decides whether a starter is really
     # upside-priced - see `team_values.priced_for` for why the raw ratio cannot answer it.
     pricing = priced_for(ctx.players)
@@ -734,9 +770,7 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
             mine_by_pos.setdefault(info["position"], []).append(info)
 
     by_owner_id = {s["owner_id"]: s for s in states}
-    # Self excluded: `never_trades` is only ever a fact about a counterparty.
-    others_have_traded = any(n for oid, n in trade_counts.items()
-                             if oid != me_roster["owner_id"])
+    others_have_traded = board.others_have_traded(me_roster["owner_id"])
     upgrades = []
     for roster in ctx.rosters:
         other = by_owner_id.get(roster["owner_id"])
@@ -828,7 +862,7 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
             "bucket": profile["bucket"],
             "now_share": round(produced / mine["value"], 2) if mine["value"] else None,
             **({"priced_for": pricing[pid]} if pid in pricing else {}),
-            "wanted_by": wanted_by(profile, me_roster, states, needs_by_owner_id, ctx),
+            "wanted_by": wanted_by(profile, me_roster, board),
             "returns": returns,
             "best_gain": returns[0]["production_gained"],
         })
@@ -920,10 +954,7 @@ def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict]) -> 
     return None
 
 
-def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds: dict[str, float],
-                        trade_counts: dict[str, int], prior: dict[str, dict],
-                        premium_bars: dict[str, float],
-                        needs_by_owner_id: dict | None = None,
+def _persuasion_targets(me: dict, board: Board, my_needs: dict,
                         my_offers: list[dict] | None = None) -> list[dict]:
     """Aging production held by teams that **aren't sellers yet** but could be talked into
     it - the tier `_buy_path` structurally cannot see, because it only searches `Rebuild`
@@ -952,10 +983,13 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
        and the league's best team. Listing them would put unattainable names at the top and
        make the feature worse than no feature.
     """
+    states, thresholds, trade_counts = board.states, board.thresholds, board.trade_counts
+    prior, premium_bars, needs_by_owner_id = (board.prior, board.premium_bars,
+                                              board.needs_by_owner_id)
     # Same two counterparty facts the buy list checks. `my_offers` is already passed in for the
     # `you_could_offer` join, so the biggest single chip is a field read, not a new argument.
-    best_chip = max(my_offers or [], key=lambda e: e["value"], default=None)
-    others_have_traded = any(n for oid, n in trade_counts.items() if oid != me["owner_id"])
+    best_chip = _best_chip(my_offers)
+    others_have_traded = board.others_have_traded(me["owner_id"])
     plausible = []
     for other in _others(states, me, NOT_SELLER):  # sellers are the normal buy path's job
         team_why = _seller_case(other, prior.get(other["owner_id"]))
@@ -1088,9 +1122,8 @@ DEPTH_NOTE_REBUILD = (
 DEPTH_LIMIT = 6
 
 
-def _depth_adds(me_roster: dict, ctx, states: list[dict], filling_lineup: bool,
-                my_starters: set[str], already: set[str],
-                trade_counts: dict[str, int] | None = None) -> list[dict]:
+def _depth_adds(me_roster: dict, board: Board, filling_lineup: bool,
+                my_starters: set[str], already: set[str]) -> list[dict]:
     """Cheap bodies on rebuilding rosters who would start for me if one player above them
     went down. The complement of `_buy_path`, not an extension of it.
 
@@ -1123,12 +1156,11 @@ def _depth_adds(me_roster: dict, ctx, states: list[dict], filling_lineup: bool,
     # includes itself, and the first live run cheerfully advised its owner to acquire two
     # players he already had. It only surfaced once the *asking* team was a rebuilder, which
     # is exactly the case neither of the development leagues could produce.
+    ctx, states, trade_counts = board.ctx, board.states, board.trade_counts
     rebuilders = {s["owner_id"]: s["owner"] for s in states
                   if s["window"] == "Rebuild" and s["owner_id"] != me_roster["owner_id"]}
     states_by_id = {s["owner_id"]: s for s in states}
-    trade_counts = trade_counts or {}
-    others_have_traded = any(n for oid, n in trade_counts.items()
-                             if oid != me_roster["owner_id"])
+    others_have_traded = board.others_have_traded(me_roster["owner_id"])
     metric = "redraft_value" if filling_lineup else "value"
     bars = ctx.start_thresholds if filling_lineup else ctx.trade_thresholds
     bar_label = "replacement-level production" if filling_lineup else "the trade-value floor"
@@ -1195,8 +1227,7 @@ def _depth_adds(me_roster: dict, ctx, states: list[dict], filling_lineup: bool,
     return adds[:DEPTH_LIMIT]
 
 
-def _conversion_candidates(me: dict, premium_bars: dict[str, float],
-                           thresholds: dict[str, float]) -> list[dict]:
+def _conversion_candidates(me: dict, board: Board) -> list[dict]:
     """`_cliff_case` turned around and pointed at your own roster: the aging starters whose
     remaining seasons don't reach the ones your roster is built for.
 
@@ -1211,10 +1242,10 @@ def _conversion_candidates(me: dict, premium_bars: dict[str, float],
     for player in me["sellable"]:
         if not (player.get("redraft_value") and player.get("value")):
             continue
-        if not team_state.clears_relevance_floor(player, thresholds):
+        if not team_state.clears_relevance_floor(player, board.thresholds):
             continue
         ratio = player["redraft_value"] / player["value"]
-        discounted = ratio >= premium_bars.get(player["position"], float("inf"))
+        discounted = ratio >= board.premium_bars.get(player["position"], float("inf"))
         if not _cliff_case(player, me, ratio, discounted=discounted):
             continue
         note = (f"Still starting for you and still producing, but priced at {ratio:.2f}x his "
@@ -1322,16 +1353,13 @@ def _cliff_case(player: dict, other: dict, ratio: float, discounted: bool = True
             f"rather than a giveaway.")
 
 
-def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds: dict[str, float],
-              trade_counts: dict[str, int], max_per_position: int,
-              pick_values: dict[str, int] | None = None,
+def _buy_path(me: dict, board: Board, max_per_position: int,
               my_picks: list[dict] | None = None,
-              prior: dict[str, dict] | None = None,
-              premium_bars: dict[str, float] | None = None,
               covered: dict[str, float] | None = None,
               backfills: dict[str, dict] | None = None) -> dict:
     """The push case: fill needs with sellable value from Rebuilding teams."""
-    my_needs = needs_by_owner_id.get(me["owner_id"], {})
+    states, thresholds, trade_counts = board.states, board.thresholds, board.trade_counts
+    my_needs = board.needs_by_owner_id.get(me["owner_id"], {})
     # Worst-shaped need first (roster_needs.NEED_PRIORITY): a position you can't field at
     # all outranks one you can field but only badly. A real recommendation should exhaust
     # the urgent gap before suggesting upgrades somewhere merely mediocre.
@@ -1345,16 +1373,9 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
     # One player against one player is the only comparison available, so that is the test:
     # a target priced above your best chip cannot be reached by any single-piece deal, and
     # what it would actually take is a negotiation this tool does not price.
-    my_pool = _my_offer_pool(me, thresholds, my_needs, pick_values, covered, backfills)
-    best_chip = max(my_pool, key=lambda e: e["value"], default=None)
-
-    # `never_trades` is only ever a fact about a COUNTERPARTY - the asking team's own trade
-    # history says nothing about whether it can sell, and the app's user may well have never
-    # traded. So exclude self from the "does a zero mean anything here" test too: if I am the
-    # only person in the league who has traded, everyone else's zero describes the league, and
-    # counting it would turn every target in the league into a long shot.
-    others_have_traded = any(count for owner_id, count in trade_counts.items()
-                             if owner_id != me["owner_id"])
+    my_pool = _my_offer_pool(me, board, my_needs, covered, backfills)
+    best_chip = _best_chip(my_pool)
+    others_have_traded = board.others_have_traded(me["owner_id"])
 
     targets, long_shots = [], []
     for pos in ordered_positions:
@@ -1458,8 +1479,7 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         result["long_shot_note"] = LONG_SHOT_NOTE
 
     # Sellers-only search misses the best available production - see _persuasion_targets.
-    stretch = _persuasion_targets(me, states, my_needs, thresholds, trade_counts, prior or {},
-                                  premium_bars or {}, needs_by_owner_id, result["my_offers"])
+    stretch = _persuasion_targets(me, board, my_needs, result["my_offers"])
     if stretch:
         result["persuasion_targets"] = stretch[:max_per_position * 2]
         result["persuasion_note"] = PERSUASION_NOTE
@@ -1476,11 +1496,10 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
     return result
 
 
-def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trade_counts: dict[str, int],
-                picks_by_owner: dict[int, list[dict]] | None = None,
+def _pivot_path(me: dict, board: Board,
                 stranded: list[dict] | None = None, committed: bool = True,
-                my_roster: dict | None = None, needs_by_owner_id: dict | None = None,
-                ctx=None, max_per_position: int = 5) -> dict:
+                my_roster: dict | None = None,
+                max_per_position: int = DEFAULT_MAX_PER_POSITION) -> dict:
     """The sell case: cash in declining/non-core value for youth from teams that
     don't need it, same logic a Rebuilding team uses.
 
@@ -1507,6 +1526,7 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     # Caught by `case_sells_on_runway_not_age`: the agent was asked which of five QBs to trade
     # and could not weigh Jalen Hurts (4.0 years of runway) against Justin Herbert (5.6),
     # because the tool never listed him. It led with Jared Goff at 6.2 instead.
+    states, thresholds, trade_counts = board.states, board.thresholds, board.trade_counts
     real_sellable = [e for e in me["sellable"]
                      if team_state.clears_relevance_floor(e, thresholds)]
 
@@ -1529,8 +1549,7 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
         never joined here. `wanted_by` is the same helper `value_upgrades` and `stranded` use."""
         if my_roster is None:
             return entries
-        return [{**e, "wanted_by": wanted_by(e, my_roster, states, needs_by_owner_id or {}, ctx)}
-                for e in entries]
+        return [{**e, "wanted_by": wanted_by(e, my_roster, board)} for e in entries]
 
     sell_candidates = with_buyers(tagged([e for e in real_sellable if on_a_clock(e)]))
     situational = with_buyers(tagged([e for e in real_sellable if not on_a_clock(e)]))
@@ -1548,8 +1567,8 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     # cap, no friction, no reason that owner would part with him. Every one of those exists on
     # the buy side and none of it reached here, which is what "the rebuild path is the untested
     # one" looks like in practice.
-    others_have_traded = any(n for oid, n in trade_counts.items() if oid != me["owner_id"])
-    best_chip = max(real_sellable, key=lambda e: e["value"], default=None)
+    others_have_traded = board.others_have_traded(me["owner_id"])
+    best_chip = _best_chip(real_sellable)
     by_position = {}
     for other in _others(states, me, NOT_SELLER):
         # **The mirror of `_sells_him`, and the premise fails on exactly one kind of team.** This
@@ -1591,10 +1610,10 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     # *shouldn't* want them are the contenders - a Win-Now team's future 1st is worth
     # more to a rebuilder than to its owner. Listed with who holds it and how often that
     # owner actually trades, same as player targets.
-    if picks_by_owner:
+    if board.picks_by_owner:
         pick_targets = []
         for other in _others(states, me, NOT_SELLER):
-            for pick in picks_by_owner.get(other["roster_id"], []):
+            for pick in board.picks_by_owner.get(other["roster_id"], []):
                 pick_targets.append({
                     **pick, "from_owner": other["owner"],
                     "from_owner_trades": trade_counts.get(other["owner_id"], 0),
@@ -1607,25 +1626,35 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     return result
 
 
-def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAULT_MAX_PER_POSITION) -> dict:
+def _build_board(league_id: str) -> Board:
     states = team_state.classify_league(league_id)
-    needs_by_owner_id = roster_needs.league_needs(league_id)
     ctx = context(league_id)
-    thresholds = ctx.trade_thresholds
-    # Per-position, because dynasty and redraft are unnormalized scales whose relationship
-    # differs by position - see team_values.now_premium_bar for why an absolute bar is a bug.
-    premium_bars = now_premium_bar(ctx.players, NOW_PREMIUM_PERCENTILE)
-    trade_counts = trade_activity.get_trade_counts(league_id)
-    prior = prior_season.results(league_id)
     pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.num_teams,
                                               ctx.fmt["ppr"], ctx.fmt["is_dynasty"])
-    # Keyed on the window, which is where a pick's slot actually comes from: how good the
-    # originating team finishes. Contending teams pick late, rebuilders early.
+    # Picks keyed on the window, which is where a pick's slot actually comes from: how good
+    # the originating team finishes. Contending teams pick late, rebuilders early.
     strategy_by_roster = {r["roster_id"]: r["window"] for r in states}
-    picks_by_owner = owned_picks(league_id, int(ctx.league["season"]),
-                                 ctx.league["settings"]["draft_rounds"],
-                                 [r["roster_id"] for r in ctx.rosters], pick_values,
-                                 strategy_by_roster)
+    return Board(
+        ctx=ctx,
+        states=states,
+        needs_by_owner_id=roster_needs.league_needs(league_id),
+        thresholds=ctx.trade_thresholds,
+        # Per-position, because dynasty and redraft are unnormalized scales whose relationship
+        # differs by position - see team_values.now_premium_bar for why an absolute bar is a bug.
+        premium_bars=now_premium_bar(ctx.players, NOW_PREMIUM_PERCENTILE),
+        trade_counts=trade_activity.get_trade_counts(league_id),
+        prior=prior_season.results(league_id),
+        pick_values=pick_values,
+        picks_by_owner=owned_picks(league_id, int(ctx.league["season"]),
+                                   ctx.league["settings"]["draft_rounds"],
+                                   [r["roster_id"] for r in ctx.rosters], pick_values,
+                                   strategy_by_roster),
+    )
+
+
+def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAULT_MAX_PER_POSITION) -> dict:
+    board = _build_board(league_id)
+    ctx, states = board.ctx, board.states
 
     me = ctx.pick_owner(owner_query, states)
 
@@ -1648,7 +1677,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     # starting-lineup needs with proven vets - it wants to sell what age value it has
     # left and stockpile youth/picks instead. Buy-target-by-need only makes sense for
     # a team actually trying to win now.
-    my_picks = picks_by_owner.get(me["roster_id"], [])
+    my_picks = board.picks_by_owner.get(me["roster_id"], [])
 
     # Depth applies in every window - it used to be computed inside the buy branch only, so a
     # Rebuild team got none of it, and cheap bodies are arguably worth MORE to a rebuilder
@@ -1664,7 +1693,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         entry = by_name.get(info["name"], {"name": info["name"], "position": info["position"],
                                            "value": info["value"],
                                            "redraft_value": info.get("redraft_value")})
-        wanted = wanted_by(entry, my_roster, states, needs_by_owner_id, ctx)
+        wanted = wanted_by(entry, my_roster, board)
         floor = weakest["redraft_value"] or 0
         stranded.append({**entry, "blocked_by": info["position"],
                          "wanted_by": wanted,
@@ -1710,8 +1739,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         # someone who is. Every other window can buy production, including Middling, whose
         # whole push half is about whether to.
         if me["window"] != "Rebuild":
-            upgrades = find_value_upgrades(my_roster, ctx, states, my_starters, trade_counts,
-                                           needs_by_owner_id, me["window"], prior, premium_bars,
+            upgrades = find_value_upgrades(my_roster, board, my_starters, me["window"],
                                            surfaced, buy_side.get("my_offers"))
             if upgrades:
                 result["value_upgrades"] = upgrades
@@ -1723,8 +1751,8 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
                 # Eight live cases across three leagues, Kenny Gainwell on two rosters at once.
                 surfaced |= {u["name"] for m in upgrades for u in m["returns"]
                              if not u.get("already_mine")}
-        depth = _depth_adds(my_roster, ctx, states, me["window"] != "Rebuild",
-                            my_starters, surfaced, trade_counts)
+        depth = _depth_adds(my_roster, board, me["window"] != "Rebuild",
+                            my_starters, surfaced)
         if depth:
             result["depth_adds"] = depth
             result["depth_note"] = (DEPTH_NOTE_REBUILD if me["window"] == "Rebuild"
@@ -1733,9 +1761,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
 
     if me["window"] == "Rebuild":
         return with_extras({"me": me, "mode": "rebuild",
-                            **_pivot_path(me, states, thresholds, trade_counts, picks_by_owner,
-                                          stranded, my_roster=my_roster,
-                                          needs_by_owner_id=needs_by_owner_id, ctx=ctx,
+                            **_pivot_path(me, board, stranded, my_roster=my_roster,
                                           max_per_position=max_per_position)})
 
     if me["window"] == "Middling":
@@ -1747,18 +1773,13 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         timing = (MIDDLING_TIMING_NOTE_RISING if me["trajectory"] == "rising"
                   else MIDDLING_TIMING_NOTE)
         return with_extras({"me": me, "mode": "middling", "timing_note": timing,
-                "push": _buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
-                                  max_per_position, pick_values, my_picks, prior,
-                                  premium_bars, covered, backfills),
-                "pivot": _pivot_path(me, states, thresholds, trade_counts, picks_by_owner,
-                                     stranded, committed=False, my_roster=my_roster,
-                                     needs_by_owner_id=needs_by_owner_id, ctx=ctx,
+                "push": _buy_path(me, board, max_per_position, my_picks, covered, backfills),
+                "pivot": _pivot_path(me, board, stranded, committed=False,
+                                     my_roster=my_roster,
                                      max_per_position=max_per_position)})
 
     result = {"me": me, "mode": "buy",
-              **_buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
-                          max_per_position, pick_values, my_picks, prior,
-                          premium_bars, covered, backfills)}
+              **_buy_path(me, board, max_per_position, my_picks, covered, backfills)}
 
     result = with_extras(result)
     if stranded:
@@ -1769,7 +1790,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     # whichever path it takes, so the label is right either way and only the tactics differ.
     # Making `window` plural here would have been the more "honest" shape and the wrong one:
     # it reads as a decision about whether to compete, which this team has already made.
-    conversions = _conversion_candidates(me, premium_bars, thresholds)
+    conversions = _conversion_candidates(me, board)
     if conversions:
         result["choice_note"] = CONTEND_CHOICE_NOTE
         result["conversion_candidates"] = conversions

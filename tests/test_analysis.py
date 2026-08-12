@@ -336,6 +336,11 @@ class _Ctx:
         return self._starters.get(roster["owner_id"], set())
 
 
+def _board(ctx=None, states=None, **kw):
+    """A trade_targets.Board with only the fields a test cares about set."""
+    return trade_targets.Board(ctx=ctx, states=states or [], **kw)
+
+
 def _upgrade_fixture():
     players = {
         "mine": {"name": "Pricey", "position": "TE", "value": 3515, "redraft_value": 1811},
@@ -360,7 +365,7 @@ def test_value_upgrade_requires_beating_a_starter_on_both_axes():
     """More production AND less dynasty value. A player who is better but pricier is a
     normal buy target, not this - the whole point is that it costs nothing to prefer him."""
     ctx, me, states = _upgrade_fixture()
-    moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, {})
+    moves = trade_targets.find_value_upgrades(me, _board(ctx, states, trade_counts={"them": 3}), {"mine"})
     assert [m["move_off"] for m in moves] == ["Pricey"]
     assert [u["name"] for u in moves[0]["returns"]] == ["Cheaper"], (
         "Lateral is pricier, Worse produces less")
@@ -387,7 +392,7 @@ def test_the_three_kinds_are_labelled_by_how_much_production_survives():
                            "redraft_value": 1813}    # +0.11%, frees 515
     for pid in ("noise", "convert", "hair"):
         ctx.rosters[1]["players"].append(pid)
-    moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, {})
+    moves = trade_targets.find_value_upgrades(me, _board(ctx, states, trade_counts={"them": 3}), {"mine"})
     by_name = {u["name"]: u for u in moves[0]["returns"]}
 
     assert by_name["Cheaper"]["kind"] == "upgrade"
@@ -421,8 +426,8 @@ def test_every_return_says_why_its_owner_would_part_with_him():
     states.append(holder)
 
     moves = trade_targets.find_value_upgrades(
-        me, ctx, states, {"mine"}, {"them": 3, "holder": 3}, {}, "Push",
-        prior=None, premium_bars={"TE": 0.5})
+        me, _board(ctx, states, trade_counts={"them": 3, "holder": 3},
+                   premium_bars={"TE": 0.5}), {"mine"}, "Push")
     by_name = {u["name"]: u for u in moves[0]["returns"]}
 
     assert "no persuasion needed" in by_name["Cheaper"]["their_reason"], (
@@ -444,11 +449,11 @@ def test_a_pushing_team_is_never_offered_a_conversion():
     ctx.rosters[1]["players"].append("convert")
 
     contending = trade_targets.find_value_upgrades(
-        me, ctx, states, {"mine"}, {"them": 3}, {}, "Contend")
+        me, _board(ctx, states, trade_counts={"them": 3}), {"mine"}, "Contend")
     assert "Convert" in [u["name"] for u in contending[0]["returns"]]
 
     pushing = trade_targets.find_value_upgrades(
-        me, ctx, states, {"mine"}, {"them": 3}, {}, "Push")
+        me, _board(ctx, states, trade_counts={"them": 3}), {"mine"}, "Push")
     assert "Convert" not in [u["name"] for u in pushing[0]["returns"]]
 
 
@@ -469,7 +474,7 @@ def test_a_better_holding_already_on_my_own_bench_leads_and_is_never_capped():
         ctx.rosters[1]["players"].append(pid)
 
     returns = trade_targets.find_value_upgrades(
-        me, ctx, states, {"mine"}, {"them": 3}, {}, "Contend")[0]["returns"]
+        me, _board(ctx, states, trade_counts={"them": 3}), {"mine"}, "Contend")[0]["returns"]
     assert returns[0]["name"] == "MyBench", "the no-trade option leads"
     assert returns[0]["already_mine"] and returns[0]["from_owner"] == "your own bench"
     assert len(returns) == trade_targets.RETURNS_PER_MOVE + 1, (
@@ -483,7 +488,7 @@ def test_a_near_equal_swap_that_frees_almost_nothing_is_churn():
     ctx.players["churn"] = {"name": "Churn", "position": "TE",
                             "value": 3400, "redraft_value": 1800}  # 99.4%, frees only 115
     ctx.rosters[1]["players"].append("churn")
-    moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, {})
+    moves = trade_targets.find_value_upgrades(me, _board(ctx, states, trade_counts={"them": 3}), {"mine"})
     assert "Churn" not in [u["name"] for u in moves[0]["returns"]]
 
 
@@ -495,7 +500,7 @@ def test_value_upgrades_skip_players_with_no_redraft_price():
     ctx.players["prospect"] = {"name": "Prospect", "position": "TE",
                                "value": 900, "redraft_value": None}
     ctx.rosters[1]["players"].append("prospect")
-    moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, {})
+    moves = trade_targets.find_value_upgrades(me, _board(ctx, states, trade_counts={"them": 3}), {"mine"})
     assert "Prospect" not in [u["name"] for u in moves[0]["returns"]]
 
 
@@ -510,7 +515,7 @@ def test_value_upgrades_are_organised_around_the_player_being_moved():
     me["players"].append("mine2")
     ctx.rosters[1]["players"].append("rb")
     moves = trade_targets.find_value_upgrades(
-        me, ctx, states, {"mine", "mine2"}, {"them": 3}, {})
+        me, _board(ctx, states, trade_counts={"them": 3}), {"mine", "mine2"})
     assert [m["move_off"] for m in moves] == ["Pricey2", "Pricey"], (
         "both starters represented, ordered by their best available gain")
 
@@ -531,7 +536,7 @@ def test_value_upgrade_names_who_would_want_the_player_being_moved():
     needs = {"them": {"TE": {"level": "critical", "rank": 12}},
              "needy": {"TE": {"level": "critical", "rank": 11}}}
 
-    moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, needs)
+    moves = trade_targets.find_value_upgrades(me, _board(ctx, states, trade_counts={"them": 3}, needs_by_owner_id=needs), {"mine"})
     assert [w["owner"] for w in moves[0]["wanted_by"]] == ["needy"]
     assert moves[0]["wanted_by"][0]["need_level"] == "critical"
     assert "short at TE" in moves[0]["wanted_by"][0]["why"]
@@ -547,11 +552,11 @@ def test_a_falling_roster_wants_ascending_value_at_any_position():
               {"owner_id": "falling", "owner": "falling", "window": "Middling",
                "ascending_pct": 4, "declining_pct": 40}]
 
-    wants = trade_targets.wanted_by(young, me_roster, states, {})
+    wants = trade_targets.wanted_by(young, me_roster, _board(None, states))
     assert [w["owner"] for w in wants] == ["falling"], "no positional need, wants youth"
     assert "falling roster" in wants[0]["why"] and wants[0]["need_level"] is None
 
-    assert trade_targets.wanted_by(old, me_roster, states, {}) == [], (
+    assert trade_targets.wanted_by(old, me_roster, _board(None, states)) == [], (
         "a falling roster has no special appetite for another declining player")
 
 
@@ -585,7 +590,7 @@ def test_a_positional_need_is_not_the_same_as_wanting_this_player():
     needs = {"stocked": {"QB": {"level": "critical"}},
              "desperate": {"QB": {"level": "critical"}}}
 
-    wants = trade_targets.wanted_by(players["weak"], {"owner_id": "me"}, states, needs, ctx)
+    wants = trade_targets.wanted_by(players["weak"], {"owner_id": "me"}, _board(ctx, states, needs_by_owner_id=needs))
     assert [w["owner"] for w in wants] == ["desperate"], (
         "both are short at QB; only one of them he actually improves")
 
@@ -621,7 +626,7 @@ def test_offer_pool_protects_starters_who_are_actually_producing():
 
     offered = trade_targets._my_offer_pool({"sellable": [starter, bench], "tradeable_surplus": [],
                                             "window": "Push"},
-                                           thresholds, needs={})
+                                           _board(thresholds=thresholds), needs={})
     names = [e["name"] for e in offered]
     assert "QB3" in names, "bench depth at this value should be offerable"
     assert "QB2" not in names, "a prime starter is current production, not surplus"
@@ -641,7 +646,7 @@ def test_a_cornerstone_is_askable_and_tagged_rather_than_hidden():
 
     offered = trade_targets._my_offer_pool(
         {"sellable": [rock, producing], "tradeable_surplus": [], "window": "Contend"},
-        thresholds, needs={})
+        _board(thresholds=thresholds), needs={})
     by_name = {e["name"]: e for e in offered}
     assert "Rock" in by_name, "a cornerstone must be askable"
     assert "Producing" not in by_name, "an ordinary producing starter is still protected"
@@ -662,7 +667,7 @@ def test_an_offer_says_who_backfills_and_what_the_trade_off_is():
           "starting_production": 38467}
 
     offers = trade_targets._my_offer_pool(
-        me, thresholds, needs={}, covered={"Cheap": 122.0},
+        me, _board(thresholds=thresholds), needs={}, covered={"Cheap": 122.0},
         backfills={"Cheap": {"name": "Backup", "position": "WR", "redraft_value": 944}})
     entry = offers[0]
     assert entry["backfill"]["name"] == "Backup"
@@ -693,7 +698,7 @@ def test_a_cornerstone_is_in_the_pivot_sell_lists_tagged_by_direction():
              "bucket": "declining", "years_to_decline": 0.5, "is_starter": True}
     me = {"sellable": [rock, aging], "owner_id": "me", "roster_id": 1}
 
-    out = trade_targets._pivot_path(me, [], {"WR": 0}, {})
+    out = trade_targets._pivot_path(me, _board(thresholds={"WR": 0}))
     assert [e["name"] for e in out["sell_candidates"]] == ["Aging"]
     assert [e["name"] for e in out["situational"]] == ["Rock"], "the core must be surfaced"
     assert [f["flavor"] for f in out["situational"][0]["friction"]] == ["cornerstone"]
@@ -701,7 +706,7 @@ def test_a_cornerstone_is_in_the_pivot_sell_lists_tagged_by_direction():
     assert "hardest ask" in out["situational"][0]["friction"][0]["why"], (
         "a team that has picked its direction is being told this is a hard move")
 
-    undecided = trade_targets._pivot_path(me, [], {"WR": 0}, {}, committed=False)
+    undecided = trade_targets._pivot_path(me, _board(thresholds={"WR": 0}), committed=False)
     assert "IS the choice" in undecided["situational"][0]["friction"][0]["why"], (
         "for a middling team converting the core is not one move among others, it is the "
         "decision - which is the thing most worth surfacing to them")
@@ -725,9 +730,9 @@ def test_offer_pool_lets_a_push_team_offer_an_ascending_starter():
     covered = {"Rising": 420.0, "Producing": 380.0, "Free": 0.0}
     roster = {"sellable": [rising, producing, free], "tradeable_surplus": []}
 
-    pushing = trade_targets._my_offer_pool({**roster, "window": "Push"}, thresholds,
+    pushing = trade_targets._my_offer_pool({**roster, "window": "Push"}, _board(thresholds=thresholds),
                                            needs={}, covered=covered)
-    contending = trade_targets._my_offer_pool({**roster, "window": "Contend"}, thresholds,
+    contending = trade_targets._my_offer_pool({**roster, "window": "Contend"}, _board(thresholds=thresholds),
                                               needs={}, covered=covered)
 
     assert sorted(e["name"] for e in pushing) == ["Free", "Rising"]
@@ -999,8 +1004,8 @@ def test_win_now_buyer_sees_production_priced_targets_first():
         ],
     }
     need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12}
-    out = trade_targets._buy_path(me, [seller], {"me": {"WR": need}}, thresholds,
-                                  trade_counts={}, max_per_position=5)
+    out = trade_targets._buy_path(me, _board(None, [seller], needs_by_owner_id={"me": {"WR": need}},
+                                       thresholds=thresholds), max_per_position=5)
     assert [t["name"] for t in out["targets"]][0] == "AgingGuy", \
         "declining (production-priced) should outrank higher-value prime for a Win-Now buyer"
 
@@ -1031,8 +1036,9 @@ def test_unreachable_targets_are_split_out_rather_than_ranked_below():
         ]},
     ]
     need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12}
-    out = trade_targets._buy_path(me, sellers, {"me": {"RB": need}}, thresholds,
-                                  trade_counts={"active": 4}, max_per_position=5)
+    out = trade_targets._buy_path(me, _board(None, sellers, needs_by_owner_id={"me": {"RB": need}},
+                                       thresholds=thresholds, trade_counts={"active": 4}),
+                            max_per_position=5)
 
     assert [t["name"] for t in out["targets"]] == ["Gettable"], (
         "only the one with nothing structural in the way belongs on the buy list")
@@ -1061,8 +1067,9 @@ def test_no_trade_history_anywhere_does_not_block_every_target():
     need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12}
 
     def run(trade_counts):
-        return trade_targets._buy_path(me, [seller], {"me": {"RB": need}}, {"RB": 100},
-                                       trade_counts=trade_counts, max_per_position=5)
+        return trade_targets._buy_path(me, _board(None, [seller], needs_by_owner_id={"me": {"RB": need}},
+                                       thresholds={"RB": 100}, trade_counts=trade_counts),
+                            max_per_position=5)
 
     nobody = run({})
     assert [t["name"] for t in nobody["targets"]] == ["Available"]
@@ -1094,7 +1101,7 @@ def test_offers_are_tiered_by_value_over_replacement_not_raw_value():
           "tradeable_surplus": [
               {"name": "Filler", "position": "RB", "value": 947, "bucket": "ascending", "is_starter": False},
           ]}
-    offers = trade_targets._my_offer_pool(me, thresholds, needs={})
+    offers = trade_targets._my_offer_pool(me, _board(thresholds=thresholds), needs={})
     by_name = {e["name"]: e for e in offers}
     assert by_name["Real"]["tier"].startswith("core piece")
     assert by_name["Filler"]["tier"].startswith("depth")
@@ -1160,8 +1167,8 @@ def test_rebuilder_is_pointed_at_picks_held_by_contenders():
         2: [{"pick": "2027 1st", "value": 2853, "round": 1, "season": 2027, "originally": 2}],
         3: [{"pick": "2027 1st", "value": 2853, "round": 1, "season": 2027, "originally": 3}],
     }
-    out = trade_targets._pivot_path(states[0], states, thresholds={}, trade_counts={"win": 5},
-                                    picks_by_owner=picks)
+    out = trade_targets._pivot_path(states[0], _board(None, states, trade_counts={"win": 5},
+                                                picks_by_owner=picks))
     owners = [p["from_owner"] for p in out["picks_to_acquire"]]
     assert owners == ["Contender"], "only contenders' picks are realistic targets"
 
@@ -1171,7 +1178,7 @@ def test_rebuilder_pick_targets_are_empty_without_pick_data():
     'this team has no picks available'."""
     me = {"owner_id": "me", "roster_id": 1, "owner": "me",
           "window": "Rebuild", "sellable": [], "tradeable_surplus": []}
-    out = trade_targets._pivot_path(me, [me], thresholds={}, trade_counts={}, picks_by_owner=None)
+    out = trade_targets._pivot_path(me, _board(None, [me]))
     assert "picks_to_acquire" not in out
 
 
@@ -1181,8 +1188,8 @@ def test_offer_pool_never_includes_a_position_the_team_needs():
     me = {"sellable": [{"name": "W", "position": "WR", "value": 900, "is_starter": False, "bucket": "prime"}],
           "tradeable_surplus": []}
     thresholds = {"WR": 100}
-    assert trade_targets._my_offer_pool(me, thresholds, needs={}) != []
-    assert trade_targets._my_offer_pool(me, thresholds, needs={"WR": "critical"}) == []
+    assert trade_targets._my_offer_pool(me, _board(thresholds=thresholds), needs={}) != []
+    assert trade_targets._my_offer_pool(me, _board(thresholds=thresholds), needs={"WR": "critical"}) == []
 
 
 # ------------------------------------------------------------------- league format
@@ -1280,7 +1287,8 @@ def test_persuasion_excludes_an_aging_contender_whose_own_window_is_now():
     holder = _holder("aging", "Contend", "steady", [_aging("Stud", 4000, 6000)],
                      asc=21, dec=23)
     out = trade_targets._persuasion_targets(
-        ME, [holder], NEED_RB, {"RB": 100}, {}, {"aging": _prior(1, champion=True)}, BARS)
+        ME, _board(states=[holder], thresholds={"RB": 100},
+                   prior={"aging": _prior(1, champion=True)}, premium_bars=BARS), NEED_RB)
     assert out == []
 
 
@@ -1295,7 +1303,8 @@ def test_persuasion_surfaces_a_cliff_player_when_the_owners_window_outlasts_him(
     holder = _holder("young", "Contend", "steady", [_aging("Stud", 4000, 6000)],
                      asc=26, dec=16)
     out = trade_targets._persuasion_targets(
-        ME, [holder], NEED_RB, {"RB": 100}, {}, {"young": _prior(3)}, BARS)
+        ME, _board(states=[holder], thresholds={"RB": 100},
+                   prior={"young": _prior(3)}, premium_bars=BARS), NEED_RB)
     assert [t["name"] for t in out] == ["Stud"]
     why = out[0]["why_they_might_listen"]
     assert "don't line up" in why and "26%" in why, "must name the mismatch, not the age"
@@ -1309,7 +1318,8 @@ def test_persuasion_cliff_ignores_a_declining_player_on_the_bench():
     benched = _aging("Benched", 4000, 6000) | {"is_starter": False}
     holder = _holder("young", "Contend", "steady", [benched], asc=26, dec=16)
     out = trade_targets._persuasion_targets(
-        ME, [holder], NEED_RB, {"RB": 100}, {}, {"young": _prior(3)}, BARS)
+        ME, _board(states=[holder], thresholds={"RB": 100},
+                   prior={"young": _prior(3)}, premium_bars=BARS), NEED_RB)
     assert out == []
 
 
@@ -1332,7 +1342,8 @@ def test_persuasion_bar_is_relative_to_the_players_own_position():
     needs = {"RB": NEED_RB["RB"], "TE": NEED_RB["RB"]}
     holder = _holder("kk", "Contend", "rising", [te, rb], asc=30, dec=15)
     out = trade_targets._persuasion_targets(
-        ME, [holder], needs, {"RB": 100, "TE": 100}, {}, {"kk": _prior(3)}, BARS)
+        ME, _board(states=[holder], thresholds={"RB": 100, "TE": 100},
+                   prior={"kk": _prior(3)}, premium_bars=BARS), needs)
     why = {t["name"]: t["why_they_might_listen"] for t in out}
     assert set(why) == {"Kelce", "Jacobs"}, "both are window mismatches on a rising holder"
     assert "priced as though his remaining years are gone" in why["Kelce"], (
@@ -1374,7 +1385,8 @@ def test_a_persuasion_target_has_to_beat_who_you_already_start():
     holder = _holder("kk", "Push", "falling", [_aging("Tracy", 1386, 255),
                                                _aging("Harvey", 2032, 865)], traj_rank=11)
     out = trade_targets._persuasion_targets(
-        ME, [holder], {"RB": need}, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)}, BARS)
+        ME, _board(states=[holder], thresholds={"RB": 100},
+                   prior={"kk": _prior(9, made_playoffs=False)}, premium_bars=BARS), {"RB": need})
     assert [t["name"] for t in out] == ["Harvey"], (
         "255 does not beat the 638 already starting there; 865 does")
 
@@ -1404,7 +1416,8 @@ def test_persuasion_includes_a_falling_contender_that_has_not_won():
     core has not delivered. That team has a real reason to listen."""
     falling = _holder("kk", "Push", "falling", [_aging("Aging", 4000, 6000)], traj_rank=11)
     out = trade_targets._persuasion_targets(
-        ME, [falling], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)}, BARS)
+        ME, _board(states=[falling], thresholds={"RB": 100},
+                   prior={"kk": _prior(9, made_playoffs=False)}, premium_bars=BARS), NEED_RB)
     assert [t["name"] for t in out] == ["Aging"]
     why = out[0]["why_they_might_listen"]
     assert "11 of 12 on trajectory" in why and "hasn't delivered" in why, (
@@ -1490,7 +1503,8 @@ def test_persuasion_ranks_by_production_per_cost_not_by_value():
     holder = _holder("kk", "Push", "falling",
                      [_aging("Taylor", 5240, 6649), _aging("Barkley", 3746, 5081)])
     out = trade_targets._persuasion_targets(
-        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)}, BARS)
+        ME, _board(states=[holder], thresholds={"RB": 100},
+                   prior={"kk": _prior(9, made_playoffs=False)}, premium_bars=BARS), NEED_RB)
     assert [t["name"] for t in out] == ["Barkley", "Taylor"], "cheaper but better ratio leads"
     assert out[0]["production_per_cost"] > out[1]["production_per_cost"]
 
@@ -1510,7 +1524,8 @@ def test_the_persuasion_tier_is_defined_by_runway_not_by_the_price_ratio():
         _aging("YearsLeft", 3000, 4000, runway=3.0),       # ratio 1.33, comfortably over it
     ])
     out = trade_targets._persuasion_targets(
-        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)}, BARS)
+        ME, _board(states=[holder], thresholds={"RB": 100},
+                   prior={"kk": _prior(9, made_playoffs=False)}, premium_bars=BARS), NEED_RB)
     assert [t["name"] for t in out] == ["OnAClock"], (
         "the clock decides, and the richer ratio does not rescue a player with years left")
 
@@ -1522,9 +1537,11 @@ def test_persuasion_ignores_last_season_when_the_roster_turned_over():
     without changing whether the player surfaces at all."""
     holder = _holder("kk", "Push", "falling", [_aging("Stud", 3000, 4500)])
     intact = trade_targets._persuasion_targets(
-        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False, continuity=1.0)}, BARS)
+        ME, _board(states=[holder], thresholds={"RB": 100},
+                   prior={"kk": _prior(9, made_playoffs=False, continuity=1.0)}, premium_bars=BARS), NEED_RB)
     turned_over = trade_targets._persuasion_targets(
-        ME, [holder], NEED_RB, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False, continuity=0.2)}, BARS)
+        ME, _board(states=[holder], thresholds={"RB": 100},
+                   prior={"kk": _prior(9, made_playoffs=False, continuity=0.2)}, premium_bars=BARS), NEED_RB)
     assert [t["name"] for t in intact] == ["Stud"] == [t["name"] for t in turned_over]
     assert "hasn't delivered" in intact[0]["why_they_might_listen"]
     assert "hasn't delivered" not in turned_over[0]["why_they_might_listen"], \
@@ -1544,8 +1561,8 @@ def test_a_contender_still_rising_is_shown_its_own_conversion_candidates():
     aging = _holder("aging", "Contend", "steady", [aging_starter], asc=21, dec=23)
     floor = {"RB": 100}
     assert [c["name"] for c in
-            trade_targets._conversion_candidates(rising, BARS, floor)] == ["Old Star"]
-    assert trade_targets._conversion_candidates(aging, BARS, floor) == []
+            trade_targets._conversion_candidates(rising, _board(premium_bars=BARS, thresholds=floor))] == ["Old Star"]
+    assert trade_targets._conversion_candidates(aging, _board(premium_bars=BARS, thresholds=floor)) == []
 
 
 def test_the_premium_bar_picks_the_conversion_sentence_not_the_list():
@@ -1558,7 +1575,7 @@ def test_the_premium_bar_picks_the_conversion_sentence_not_the_list():
     merely_mismatched = _aging("Wrong Window", 4000, 3000)  # 0.75x, under it
     me = _holder("rising", "Contend", "steady", [discounted, merely_mismatched],
                  asc=26, dec=16)
-    out = trade_targets._conversion_candidates(me, BARS, {"RB": 100})
+    out = trade_targets._conversion_candidates(me, _board(premium_bars=BARS, thresholds={"RB": 100}))
     notes = {c["name"]: c["note"] for c in out}
     assert set(notes) == {"Sell High", "Wrong Window"}
     assert "writing off the rest" in notes["Sell High"]
@@ -1573,7 +1590,7 @@ def test_conversion_candidates_apply_the_same_relevance_floor_as_the_persuasion_
     ringing about."""
     fringe = _aging("Waiver Fodder", 300, 250)
     me = _holder("rising", "Contend", "steady", [fringe], asc=26, dec=16)
-    assert trade_targets._conversion_candidates(me, BARS, {"RB": 2000}) == []
+    assert trade_targets._conversion_candidates(me, _board(premium_bars=BARS, thresholds={"RB": 2000})) == []
 
 
 def test_persuasion_never_searches_teams_that_are_already_sellers():
@@ -1581,7 +1598,8 @@ def test_persuasion_never_searches_teams_that_are_already_sellers():
     double-list the same player under a framing that says it's a hard ask."""
     seller = _holder("reb", "Rebuild", "falling", [_aging("Cheap", 3000, 4500)])
     out = trade_targets._persuasion_targets(
-        ME, [seller], NEED_RB, {"RB": 100}, {}, {"reb": _prior(12, made_playoffs=False)}, BARS)
+        ME, _board(states=[seller], thresholds={"RB": 100},
+                   prior={"reb": _prior(12, made_playoffs=False)}, premium_bars=BARS), NEED_RB)
     assert out == []
 
 
@@ -1710,11 +1728,11 @@ def test_a_middling_teams_sell_list_does_not_order_it_to_sell():
     me = {"sellable": [kelce], "owner_id": "me", "roster_id": 1}
     thresholds = {"TE": 0}
 
-    committed = trade_targets._pivot_path(me, [], thresholds, {})
+    committed = trade_targets._pivot_path(me, _board(thresholds=thresholds))
     assert committed["sell_candidates"] == [kelce]
     assert "real urgency to move it" in committed["sell_clock_note"]
 
-    optional = trade_targets._pivot_path(me, [], thresholds, {}, committed=False)
+    optional = trade_targets._pivot_path(me, _board(thresholds=thresholds), committed=False)
     assert optional["sell_candidates"] == [kelce], "the clock and the list are unchanged"
     assert "real urgency" not in optional["sell_clock_note"], \
         "told a team that may still wait that it has to sell now"
