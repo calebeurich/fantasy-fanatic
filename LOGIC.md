@@ -2314,6 +2314,32 @@ An empty list is the honest answer when nobody's aging production is on sale to 
 puts it at the top of a list sorted by ratio and makes the feature worse than nothing. What
 counts as implausible is the subtle part, and the first answer was wrong - see below.
 
+### The floor applies at every need level, not just `weak`
+
+A persuasion target has to beat who you already start. The check existed but was gated to `weak`
+needs, on the theory that at a *critical* need any body helps - which is what `depth_adds` is
+for, at a nominal price and no persuasion at all. So a critical need asked owners to change
+direction for players who would not crack the lineup: Tyrone Tracy at 255 of production against
+a weakest RB starter of 638, alongside Jordan Mason (390) and Blake Corum (581), all under a
+note promising "aging production the market discounts age on". At Tracy's **0.18x** production
+per unit of cost the market is pricing him far *above* what he produces - the exact opposite of
+the discount this block exists to harvest.
+
+This became visible only because a value refresh reshuffled the list, which is worth recording
+as a method: **run the same report twice and diff it.** Three entries turned out to be sitting
+inside noise of their thresholds -
+
+| entry | margin it lived on |
+|---|---|
+| rjl22's whole team (McCaffrey, Dowdle, Hubbard) | trajectory score of **−2**, rank 9→8, out of the bottom tertile - `falling` became `steady` and the entire counterparty vanished |
+| Rashee Rice → DeVonta Smith | Smith cost **32 less**, then 3 more, and the entry ceased to exist |
+| Tracy / Mason / Corum | newly cleared the relevance floor as thresholds moved |
+
+The tertile one is the same fragility `_seller_case`'s prose was already caught asserting past.
+A two-point gap deciding whether three players are recommended at all is not a bug in the
+tertile - it is what a league-relative measure does near a boundary - but it is the reason the
+sentence has to quote the rank rather than claim a roster is falling.
+
 ### What makes a non-seller plausible (`_seller_case`)
 
 A falling trajectory (aging out is the one thing that turns a team that isn't selling into

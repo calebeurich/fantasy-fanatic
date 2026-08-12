@@ -1308,6 +1308,22 @@ def test_persuasion_bar_is_relative_to_the_players_own_position():
     assert [t["name"] for t in out] == ["Kelce"]
 
 
+def test_a_persuasion_target_has_to_beat_who_you_already_start():
+    """The weakest-starter floor used to apply only to `weak` needs, on the theory that at a
+    critical one any body helps. Bodies are what `depth_adds` is for, at a nominal price and no
+    persuasion - so a critical need was asking an owner to change direction for players who would
+    not crack the lineup. Live, under a note promising "aging production the market discounts":
+    Tyrone Tracy at 255 against a weakest RB starter of 638, 0.18x production per unit of cost,
+    which is the market pricing him far ABOVE what he produces."""
+    need = {"level": "critical", "weakest_starter": 638, "note": "", "rank": 12, "of": 12}
+    holder = _holder("kk", "Push", "falling", [_aging("Tracy", 1386, 255),
+                                               _aging("Harvey", 2032, 865)], traj_rank=11)
+    out = trade_targets._persuasion_targets(
+        ME, [holder], {"RB": need}, {"RB": 100}, {}, {"kk": _prior(9, made_playoffs=False)}, BARS)
+    assert [t["name"] for t in out] == ["Harvey"], (
+        "255 does not beat the 638 already starting there; 865 does")
+
+
 def test_one_definition_of_needs_a_pivot_across_both_blocks():
     """`needs_a_pivot` had two definitions in one module: the persuasion tier meant "no hole of
     theirs I can fill", `_why_they_would_move_him` meant "not a rebuilder". They then printed

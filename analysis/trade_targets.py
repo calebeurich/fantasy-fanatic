@@ -864,7 +864,16 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
                 continue
             if not team_state.clears_relevance_floor(player, thresholds):
                 continue
-            if need["level"] == "weak" and player["redraft_value"] <= need["weakest_starter"]:
+            # **The floor applies at every need level, not just `weak`.** Asking an owner to
+            # change direction for a player who would not crack your lineup is not a trade, and
+            # this tier's own note promises "aging production the market discounts age on". A
+            # critical need used to skip the check on the theory that any body helps - which is
+            # what `depth_adds` is for, at a nominal price and no persuasion. Live: Tyrone Tracy
+            # at 255 of production and 0.18x production per unit of cost, listed under that note
+            # against a weakest RB starter of 638, alongside Jordan Mason (390) and Blake Corum
+            # (581). At 0.18x the market is pricing him far ABOVE what he produces - the exact
+            # opposite of the discount the block exists to harvest.
+            if player["redraft_value"] <= need["weakest_starter"]:
                 continue
             ratio = player["redraft_value"] / player["value"]
             # **Runway defines this tier, not the price ratio.** It is "aging production held by
