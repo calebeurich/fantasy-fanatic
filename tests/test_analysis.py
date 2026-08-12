@@ -413,6 +413,21 @@ def test_a_falling_roster_wants_ascending_value_at_any_position():
         "a falling roster has no special appetite for another declining player")
 
 
+def test_grounding_check_ignores_advice_not_to_trade_someone():
+    """A live run spent a retry telling the model off for advice it had given correctly:
+    "Don't trade ... or Tyler Warren" has a trade word and a non-offerable name on one line.
+    Telling someone to KEEP a cornerstone is what this rule wants."""
+    from agent import agent
+
+    banned = {"Tyler Warren", "Ghost Player"}
+    keep = "Don't trade the QBs you can actually start (Herbert, Hurts) or Tyler Warren."
+    assert agent._trade_violations(keep, banned) == []
+
+    real = "Package Ghost Player and a 2027 2nd for a starting back."
+    assert agent._trade_violations(real, banned) == ["Ghost Player"], (
+        "a genuine ungrounded suggestion still fires")
+
+
 def test_a_positional_need_is_not_the_same_as_wanting_this_player():
     """Listed four counterparties for a QB none of them would have started. He only helps a
     team whose current starter at the position produces less than he does."""

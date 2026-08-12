@@ -267,6 +267,17 @@ def _banned_trade_names(tool_calls: list[dict]) -> set[str]:
 # the same line ("you can offer...", "send X for Y", "sell candidates: X").
 TRADE_ACTION_WORDS = ("send", "offer", "trade", "sell", "give up", "package", "dangle", "swap")
 
+# ...and only if the line isn't telling the reader NOT to. "Don't trade the QBs you can
+# actually start (Herbert, Hurts) or Tyler Warren" contains a trade word and a non-offerable
+# name, and the check fired on it - spending a retry to tell the model off for advice it had
+# given correctly. It then argued back, accurately, and the exchange cost a third of the
+# answer's budget. Advising someone to KEEP a cornerstone is the behaviour this rule wants.
+#
+# Skipping the whole line can hide a real violation in "don't trade X, but do trade Y". That
+# is the right way to be wrong: this is a safety net with one retry, and a miss costs an
+# ungrounded name while a false positive costs money and contradicts a correct answer.
+NEGATION_WORDS = ("don't", "do not", "never", "not ", "keep", "hold", "avoid", "untouchable")
+
 
 def _trade_violations(text: str, banned: set[str]) -> list[str]:
     """Every banned name mentioned on a line that also contains trade-action
@@ -275,6 +286,8 @@ def _trade_violations(text: str, banned: set[str]) -> list[str]:
     violations = set()
     for line in text.splitlines():
         lower = line.lower()
+        if any(word in lower for word in NEGATION_WORDS):
+            continue
         if any(word in lower for word in TRADE_ACTION_WORDS):
             violations.update(n for n in banned if n in line)
     return sorted(violations)
