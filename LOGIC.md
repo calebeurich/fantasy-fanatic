@@ -287,10 +287,23 @@ whether waiting is free *relative to this league* is what decides push versus pi
 how `WINDOW_NOTE` has always read it. Same word, two honest meanings - which is exactly why the
 flavor is named per state (`rising` for Middling, `ascending` for Rebuilding) rather than shared.
 
-**Known limit, not fixed:** `FitzmagicsEMUs` is 23/7 and therefore `ascending` while ranking
-12th of 12 in both contention and assets. The label is true - young production is arriving - but
-it is arriving from nothing, and the flavor says nothing about scale. `asset_rank` is visible
-separately. Left alone rather than adding a third rebuild flavor for it.
+**Known bug, backlogged:** `FitzmagicsEMUs` is 23/7 and therefore `ascending`, while ranking
+12th of 12 in **both** contention and assets. The owner's read: *"that guy's team is probably
+just stalled as well since his ascending assets are just bad."* That is right, and it says what
+the defect is.
+
+`ascending_pct` is a share of **this team's own** production, so it is scale-free by
+construction: a roster whose young players are all bad still reads 23% ascending, because the
+denominator is equally bad. The ratio answers "which way is this roster tilting" and the
+`ascending` label claims something stronger - that *real* future production is arriving. On a
+team ranked last in assets, nothing real is arriving.
+
+So the flavor needs an absolute quality floor on top of the ratio, not a different ratio: are
+the ascending players actually worth something? `clears_relevance_floor` already answers exactly
+that question, position-relative and tiered by value basis, and `asset_rank` already says whether
+the war chest is real. Both exist; the flavor reads neither. Until then `stalled` is
+under-reported at the very bottom of the league, which is the least harmful direction for it to
+be wrong but is still wrong.
 
 ### Backlog: what the first real agent runs left open
 
