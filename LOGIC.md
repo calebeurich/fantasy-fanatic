@@ -316,14 +316,37 @@ and reports the market's opinion back as though it were a roster fact.
   tearing down.
 - **`Contend`** - contender that is steady or rising. Good now with no clock, so nothing
   needs buying at a premium and nothing needs selling.
-- **`Ascend`** - fringe now, rising. Both paths are shown *with the cost difference stated*
-  (`ASCEND_TIMING_NOTE`), which is the whole reason the window exists: this roster's own
-  ascending players supply next season's production for free, so pushing now pays a market
-  premium for one extra year of contention. Waiting is the cheaper default; push anyway
-  when the price is below market, when one addition closes the gap to the top, or when a
-  need is *count*-shaped - an empty starting slot costs points every week and no amount of
-  patience fills it. The old "Middling" mode handed over two lists and no basis to choose.
-- **`Rebuild`** - anything else. Sell what's declining, accumulate youth and picks.
+- **`Middling`** - middle third of the league, *either trajectory*. Both paths are shown
+  with the cost difference stated, and waiting to see how the season actually starts is
+  treated as a legitimate choice rather than an unmade decision. Trajectory sets the
+  **note**, not the window:
+  - *rising* (`MIDDLING_TIMING_NOTE_RISING`) - this roster's own ascending players supply
+    next season's production for free, so pushing now pays a market premium for one extra
+    year of contention. **Waiting is the cheaper default.**
+  - *steady or falling* (`MIDDLING_TIMING_NOTE`) - nothing arrives for free, so waiting
+    does not lower the price of contending; what it buys is **information**, and a few weeks
+    of real results settle whether this team is closer than the standings say. Pivot if the
+    season opens badly, while the aging production still prices well.
+
+  Either way: push when the price is below market, or when a need is *count*-shaped - an
+  empty starting slot costs points every week and no amount of patience fills it.
+- **`Rebuild`** - bottom third in current production. Sell what's declining, accumulate
+  youth and picks.
+
+**`Rebuild` stopped being the else branch**, which is what this window was renamed for.
+Previously only `fringe` **and** `rising` reached the both-paths window, so a middle-of-the-
+league team that merely wasn't rising fell through to `Rebuild` and was told to sell. In XFL
+2 the team that hit it was **3rd of 12 in total dynasty value** by this project's own
+`team_values`, 5th overall on an outside dynasty site, average age 26.0, holding the best QB
+room in the league - and `team_state` called it "not in contention and not rising fast enough
+to change that." The owner's framing is the rule now: *in dynasty you are either winning now
+or rebuilding, and if you are in the middle you should see the options in both directions and
+be free to wait on how the season starts.*
+
+Renamed from `Ascend` rather than kept, because routing falling teams into a window called
+*Ascend* is a label asserting something the data denies - the failure mode this document
+records over and over. The name "Middling" is not new; it is what the pre-two-axis model
+called this tier, and comments in `trade_targets.py` never stopped using it.
 
 Downstream routing follows the window rather than a parallel vocabulary: `prefer_production`
 and `find_efficiency_swaps` are **Push-only** (converting future premium into capital only
@@ -2000,7 +2023,7 @@ instructing the model to be careful.
 
 Extended from Push-only to **Push and Contend**, since the mechanic means different things
 depending on whether there is a clock (`SWAP_FRAMING`): a closing window converts future
-premium into capital, while a healthy contender is taking profit with no urgency. Ascend
+premium into capital, while a healthy contender is taking profit with no urgency. Middling
 and Rebuild still want the premium this converts away.
 
 Also corrected: swaps were suppressed at *any* need position. That is right for
@@ -2770,7 +2793,7 @@ question, holding a lottery ticket is a dynasty one.*
 
 | asking team | bar | why |
 |---|---|---|
-| Push / Contend / Ascend | replacement-level **production** (`start_thresholds`) | above it he is a real fix, not insurance |
+| Push / Contend / Middling | replacement-level **production** (`start_thresholds`) | above it he is a real fix, not insurance |
 | Rebuild | the **dynasty** trade-value floor (`trade_thresholds`) | production now is beside the point - the value is a body who inherits a job and *becomes* sellable (`DEPTH_NOTE_REBUILD`) |
 
 Testing dynasty value for a lineup-filler answered a question nobody asked. David Montgomery
@@ -2840,7 +2863,7 @@ plays, and reporting only one is a false choice:
 one competes on either path - the choice is about how. Plural windows would also have
 touched `_buy_path`, `_pivot_path`, the agent prompt, the MCP tool description and an eval
 asserting the exact string, to express something none of them are asking about. So the block
-is additive, exactly like the `Ascend` push/pivot split it copies.
+is additive, exactly like the `Middling` push/pivot split it copies.
 
 It reuses `_cliff_case` rather than reimplementing the test. If the rest of the league is
 told a manager's 32-year-old RB is the one piece worth calling about, that manager must be
@@ -2887,7 +2910,7 @@ measured, and stays measured.
   worth more when almost nobody else is contending, and rebuilding is worth more when you
   own your pick and last place is uncontested. Both are supply effects the current model
   can't see: `contention` and `trajectory` are measured per team, but the *value* of a
-  window depends on the league-wide distribution of windows. Related: `Ascend` teams are
+  window depends on the league-wide distribution of windows. Related: `Middling` teams are
   **optional** sellers, not motivated ones - they can pivot if the price is right but have
   no need to, which should raise what they'd demand rather than putting them in the same
   bucket as a committed rebuilder.

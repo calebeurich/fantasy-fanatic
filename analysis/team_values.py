@@ -266,7 +266,7 @@ def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty:
 # A pick's slot depends on how good the team it *originally* belongs to turns out to be,
 # so a window maps to a rough draft position. FantasyCalc publishes Early/Mid/Late prices
 # for the next class, which is exactly this distinction already priced by the market.
-WINDOW_TO_PICK_TIER = {"Rebuild": "Early", "Ascend": "Mid", "Contend": "Late", "Push": "Late"}
+WINDOW_TO_PICK_TIER = {"Rebuild": "Early", "Middling": "Mid", "Contend": "Late", "Push": "Late"}
 
 
 def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list[int],

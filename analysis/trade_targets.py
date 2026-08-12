@@ -29,11 +29,17 @@ OFFER_GIVE_UP_COST = {
     "upside": "high - real future value you won't get back",
 }
 
-# The choice an Ascend team is actually facing, stated rather than left implicit. Showing
+# The choice a Middling team is actually facing, stated rather than left implicit. Showing
 # both paths without it - which is what the old "Middling" mode did - hands over two lists
-# and no basis for choosing between them, when the whole reason this window exists is that
-# one of them is cheaper.
-ASCEND_TIMING_NOTE = (
+# and no basis for choosing between them.
+#
+# **Two versions, because the middle tier is no longer only rising teams.** The original text
+# is an argument for patience built entirely on the roster supplying next season's production
+# by itself. Handed to a falling team it contradicted its own window note two lines above -
+# "pushing later will not be cheaper than pushing now" followed immediately by "waiting is the
+# cheaper default" - which is the drift this file keeps producing when one string is written
+# for one case and then reused for another.
+MIDDLING_TIMING_NOTE_RISING = (
     "TIMING: both paths are shown because both are live, but they cost differently. "
     "Pushing now means buying current production at market price - and this roster's own "
     "ascending players are scheduled to supply that production next season for free, so a "
@@ -42,6 +48,17 @@ ASCEND_TIMING_NOTE = (
     "piece), when the gap to the top team is small enough that one addition closes it, or "
     "when a need is count-shaped rather than quality-shaped - an empty starting slot costs "
     "points every week and no amount of patience fills it."
+)
+
+MIDDLING_TIMING_NOTE = (
+    "TIMING: both paths are shown because both are live, and neither is free. This roster is "
+    "not scheduled to improve on its own, so waiting does not lower the price of contending - "
+    "it just spends a season. What waiting does buy is information: a few weeks of real "
+    "results settle whether this team is closer to the top than the standings currently say, "
+    "and that is a legitimate reason to hold. Push when the price is below market (a seller "
+    "who has to move a piece) or when a need is count-shaped rather than quality-shaped - an "
+    "empty starting slot costs points every week and no amount of patience fills it. Pivot if "
+    "the season opens badly, while the aging production still prices well."
 )
 
 # The same mechanic means different things depending on whether there's a clock.
@@ -134,7 +151,7 @@ MIN_VALUE_FREED = 300
 MIN_RUNWAY_FOR_LATER = MIN_MEANINGFUL_RUNWAY
 
 # Windows where a team is still trying to field a winning lineup this season.
-SWAP_ELIGIBLE_WINDOWS = ("Push", "Contend", "Ascend")
+SWAP_ELIGIBLE_WINDOWS = ("Push", "Contend", "Middling")
 
 
 def _others(states: list[dict], me: dict, window_test) -> list[dict]:
@@ -500,7 +517,7 @@ def _depth_adds(me_roster: dict, ctx, states: list[dict], filling_lineup: bool,
     it is the two-metric split `roster_needs.replacement_thresholds` documents: filling a
     lineup is a *redraft* question, holding a lottery ticket is a *dynasty* one.
 
-    - Filling a lineup (Push/Contend/Ascend): above replacement-level **production** and he
+    - Filling a lineup (Push/Contend/Middling): above replacement-level **production** and he
       is a real fix, not insurance. David Montgomery - 2,145 dynasty, 1,779 redraft against
       RB replacement of 1,708 - was filed as "never worth a real asset" on a roster whose
       second starting RB produces 633. He is a +1,146 upgrade to the weakest slot in that
@@ -737,7 +754,7 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         # have no reason to prefer aging players.
         # Only a *closing* window justifies preferring aging production. A `Contend`
         # team is good and not declining, so it has no reason to buy the shorter asset,
-        # and an `Ascend` team least of all.
+        # and an `Middling` team least of all.
         # Trade history is a *flag*, not a ranking. It used to sort ahead of value, which
         # meant how often an owner trades decided which players you were shown: a real
         # league's #1 RB recommendation produced 738 redraft, from the most active trader,
@@ -790,7 +807,7 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
         result["picks_to_trade_away"] = my_picks
     # Only meaningful for a team actually trying to win now - a rebuilding team wants
     # the future premium it would be selling.
-    # Push and Contend both, for different reasons - see SWAP_FRAMING. Not Ascend or
+    # Push and Contend both, for different reasons - see SWAP_FRAMING. Not Middling or
     # Rebuild: those want the future premium this converts away.
     #
     # Worth knowing what this does NOT catch. It requires a replacement already on the
@@ -1013,13 +1030,15 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
                             **_pivot_path(me, states, thresholds, trade_counts, picks_by_owner,
                                           stranded)})
 
-    if me["window"] == "Ascend":
+    if me["window"] == "Middling":
         # Hasn't committed to a direction - show what pushing looks like AND what
         # pivoting looks like, rather than silently picking one. Whichever path
         # actually makes sense usually depends on something we don't have yet (the
         # season record - a Middling team two games out of a playoff spot should push,
         # one that's clearly out should pivot even mid-season) - logged in LOGIC.md.
-        return with_extras({"me": me, "mode": "ascend", "timing_note": ASCEND_TIMING_NOTE,
+        timing = (MIDDLING_TIMING_NOTE_RISING if me["trajectory"] == "rising"
+                  else MIDDLING_TIMING_NOTE)
+        return with_extras({"me": me, "mode": "middling", "timing_note": timing,
                 "push": _buy_path(me, states, needs_by_owner_id, thresholds, trade_counts,
                                   max_per_position, pick_values, my_picks, prior,
                                   premium_bars, covered),
@@ -1142,7 +1161,7 @@ def offerable_names(result: dict) -> set[str]:
     that check never has to re-derive the mode-specific logic above itself."""
     if result["mode"] == "rebuild":
         return {e["name"] for e in result["sell_candidates"] + result["situational"]}
-    if result["mode"] == "ascend":
+    if result["mode"] == "middling":
         return ({e["name"] for e in result["push"]["my_offers"]}
                 | {e["name"] for e in result["pivot"]["sell_candidates"] + result["pivot"]["situational"]})
     return {e["name"] for e in result["my_offers"]}
@@ -1174,7 +1193,7 @@ def _needs_summary(needs: dict) -> str:
 
 
 def _print_push(push: dict, extras: dict) -> None:
-    """`extras` is the top-level result, which is where `depth_adds` lives - for Ascend,
+    """`extras` is the top-level result, which is where `depth_adds` lives - for Middling,
     `push` is only the pushing half and doesn't carry it."""
     for pos, entry in push["needs"].items():
         print(f"  need at {pos}: {entry['note']}")
@@ -1222,8 +1241,8 @@ def _print_report(result: dict) -> None:
         print(f"{me['owner']}: Rebuilding{tank_note} - playing for future value, not starting-lineup needs")
         _print_pivot(me, result)
         _print_depth(result)
-    elif result["mode"] == "ascend":
-        print(f"{me['owner']}: Ascend - can push now or arrive cheaper next season")
+    elif result["mode"] == "middling":
+        print(f"{me['owner']}: {me['window']} - both directions are open")
         print(f"  {me['window_note']}")
         print(f"\n  {result['timing_note']}")
         print(f"\n-- if pushing (needs: {_needs_summary(result['push']['needs'])}) --")
@@ -1274,7 +1293,7 @@ def main(league_id: str, owner_query: str = None, max_per_position: int = DEFAUL
     if owner_query:
         result = find_targets(league_id, owner_query, max_per_position)
         _print_report(result)
-        if result["mode"] in ("buy", "ascend"):
+        if result["mode"] in ("buy", "middling"):
             print()
             _print_swaps(find_mutual_swaps(league_id, owner_query)["swaps"])
         return

@@ -26,10 +26,13 @@ The four windows and what separates them:
               so waiting costs value. Buy production, spend picks.
 - `Contend` - contender that is steady or rising. Good now with no clock, so there is no
               reason to pay a premium for anything.
-- `Ascend`  - fringe now, rising. Can push, but its own ascending players supply next
-              season's production for free; pushing now means paying a premium for what
-              patience delivers. Both paths are shown with that cost stated.
-- `Rebuild` - anything else. Sell what is declining, accumulate youth and picks.
+- `Middling`- in the middle of the league, either trajectory. In dynasty you are winning
+              now or rebuilding; in between, both paths are shown and waiting to see how
+              the season starts is a legitimate choice. Trajectory sets the *note*, not the
+              window: a rising roster gets next season's production for free, a falling one
+              does not, so patience is only free for one of them.
+- `Rebuild` - bottom-third in current production. Sell what is declining, accumulate youth
+              and picks.
 
 **Owning your own next 1st is a constraint on the pivot option, not a fourth tier.**
 Tanking only pays if you hold the pick your bad season earns; without it, a losing season
@@ -70,12 +73,24 @@ MIN_RELEVANCE_FRACTION = {"production": 0.5, "mixed": 0.5, "upside": 0.25}
 
 
 def window_for(contention: str, trajectory: str) -> str:
-    """The two axes collapsed into what the team should actually do."""
+    """The two axes collapsed into what the team should actually do.
+
+    **The middle tier is a window, not a leftover.** In dynasty you are winning now or
+    rebuilding; a team in between should see both directions and is entitled to wait and
+    see how the season starts. `Rebuild` used to be the else branch, so a `fringe` team that
+    merely wasn't *rising* fell into it - and the one team in a real league that hit that
+    case was 3rd of 12 in total dynasty value, 5th on an outside dynasty site, average age
+    26.0, with the best QB room in the league. Telling it to sell what's declining was
+    advice for a roster it didn't have.
+
+    Trajectory no longer decides whether the middle tier gets both paths. It still decides
+    what that team is *told*, in `WINDOW_NOTE` - rising means patience is free, falling
+    means waiting costs something."""
     if contention == "contender":
         # Good now. The only question is whether there's a clock on it.
         return "Push" if trajectory == "falling" else "Contend"
-    if contention == "fringe" and trajectory == "rising":
-        return "Ascend"
+    if contention == "fringe":
+        return "Middling"
     return "Rebuild"
 
 
@@ -210,14 +225,26 @@ WINDOW_NOTE = {
              "value. Being decent now is itself the argument against tearing down."),
     "Contend": ("Top-third in current production and not declining, so there's no clock. "
                 "Nothing needs to be bought at a premium, and nothing needs selling."),
-    "Ascend": ("Not top-third yet, but the roster rises on its own - your own ascending "
-               "players supply next season's production for free. Pushing now means "
-               "paying a market premium for what patience delivers, so both paths are "
-               "shown: push only where the price is right, otherwise keep accumulating."),
+    "Middling": ("In the middle of the league and not committed in either direction - which "
+                 "is a position, not an unmade decision. Both paths are shown because either "
+                 "is defensible from here, and waiting to see how the season actually starts "
+                 "is a legitimate choice. What this roster does not have is the free option a "
+                 "rising one gets: it is not supplying next season's production by itself, so "
+                 "pushing later will not be cheaper than pushing now."),
     "Rebuild": ("Not in contention this season and not rising fast enough to change that. "
                 "Sell what's declining while it still has value, and accumulate youth "
                 "and picks."),
 }
+
+# A rising middling team has something the others don't - its own ascending players deliver
+# next season's production at no cost - so patience is genuinely free and a push has to clear
+# a higher bar. Same window and the same two paths, a different reason to prefer waiting.
+MIDDLING_RISING = (
+    "Not top-third yet, but the roster rises on its own - your own ascending players supply "
+    "next season's production for free. Pushing now means paying a market premium for what "
+    "patience delivers, so both paths are shown: push only where the price is right, "
+    "otherwise keep accumulating."
+)
 
 # The Rebuild line above assumes there is something declining to sell, and on a young
 # rebuilding roster there isn't. A real team read "sell what's declining" with **0% of its
@@ -234,7 +261,7 @@ REBUILD_NOTHING_DECLINING = (
 
 
 def window_note(window: str, contention_rank: int, num_teams: int, pct_of_best: int,
-                asc_pct: int, dec_pct: int) -> str:
+                asc_pct: int, dec_pct: int, trajectory: str = "steady") -> str:
     """The measurements that produced the window, in words, alongside it.
 
     Same rule that `roster_needs` follows and for the same reason: an unlabelled number
@@ -242,8 +269,12 @@ def window_note(window: str, contention_rank: int, num_teams: int, pct_of_best: 
     a bare `{"diff": -11}` and the model reliably described teams as "below their expected
     win total" or "underperforming by 25 points" - neither of which exists, least of all
     in a preseason with no games played."""
-    lead = (REBUILD_NOTHING_DECLINING if window == "Rebuild" and dec_pct == 0
-            else WINDOW_NOTE[window])
+    if window == "Rebuild" and dec_pct == 0:
+        lead = REBUILD_NOTHING_DECLINING
+    elif window == "Middling" and trajectory == "rising":
+        lead = MIDDLING_RISING
+    else:
+        lead = WINDOW_NOTE[window]
     return (f"{lead} Current starting production ranks {contention_rank} of "
             f"{num_teams} ({pct_of_best}% of the league's best lineup); {asc_pct}% of that "
             f"production comes from ascending players and {dec_pct}% from declining ones. "
@@ -402,7 +433,8 @@ def classify_league(league_id: str) -> list[dict]:
         row["trajectory_rank"] = t_rank
         row["window"] = window
         row["window_note"] = window_note(window, c_rank, num_teams, row["pct_of_best"],
-                                         row["ascending_pct"], row["declining_pct"])
+                                         row["ascending_pct"], row["declining_pct"],
+                                         trajectory)
         row["next_first_note"] = next_first_note(row["owns_next_first"], window)
 
         # What a team could *become*, alongside what it currently is. Additive, and not a

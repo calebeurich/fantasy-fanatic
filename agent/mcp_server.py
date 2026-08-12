@@ -52,9 +52,11 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
 
       Push    - contender whose roster declines if it waits. Buy production, spend picks.
       Contend - contender that is steady or rising. No clock; don't pay premiums.
-      Ascend  - fringe now but rising. Can push, but its own young players supply next
-                season's production for free, so pushing costs a premium. Both paths.
-      Rebuild - anything else. Sell decline, accumulate youth and picks.
+      Middling- middle of the league, either trajectory. Both paths are shown and waiting
+                to see how the season starts is legitimate. `window_note` says whether
+                patience is free here: only a rising roster supplies next season's
+                production by itself.
+      Rebuild - bottom-third in current production. Sell decline, accumulate youth/picks.
 
     Every row carries `window_note`, which states the measurements behind the label
     (rank, % of the league's best lineup, ascending/declining shares). Use that wording -
@@ -115,7 +117,7 @@ def get_roster_needs(league_id: str) -> dict:
 def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3) -> dict:
     """Trade recommendations for one team, shaped by its window (see get_team_state):
     buy targets for Push/Contend, sell and acquire targets for Rebuild, or BOTH paths
-    (labeled push/pivot) for Ascend. An Ascend result also carries "timing_note",
+    (labeled push/pivot) for Middling. A Middling result also carries "timing_note",
     explaining why the two paths cost differently - surface that reasoning rather than
     just listing both sets of names.
 

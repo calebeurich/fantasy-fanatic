@@ -41,7 +41,7 @@ PLAYER_BLOCKS = ("targets", "acquire_targets", "depth_adds", "persuasion_targets
 
 
 def _blocks(result: dict) -> dict:
-    """An Ascend result nests its buy side under `push`; flatten so checks read one shape."""
+    """A Middling result nests its buy side under `push`; flatten so checks read one shape."""
     merged = dict(result)
     merged.update(result.get("push", {}))
     return merged

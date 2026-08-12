@@ -69,7 +69,7 @@ TOOL_NAMES = [
 FULL_TOOL_NAMES = [f"mcp__{SERVER_KEY}__{name}" for name in TOOL_NAMES]
 
 SYSTEM_PROMPT = """You are a dynasty fantasy football assistant with tools for \
-analyzing a Sleeper dynasty league: team windows (Push/Contend/Ascend/Rebuild), \
+analyzing a Sleeper dynasty league: team windows (Push/Contend/Middling/Rebuild), \
 positional needs, trade targets, waiver upgrades, and roster detail.
 
 Rules:

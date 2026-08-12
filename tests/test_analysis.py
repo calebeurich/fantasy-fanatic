@@ -316,16 +316,33 @@ def test_trajectory_measures_current_production_not_dynasty_value():
 
 
 def test_window_needs_both_axes_not_either_one():
-    """The whole point of the two-axis model: neither axis alone determines the answer.
-    A falling roster is Push if it can compete and Rebuild if it can't; a fringe roster is
-    Ascend if rising and Rebuild if not."""
+    """Contention decides *which* windows are on the table; trajectory picks between them
+    only at the top. A falling roster is Push if it can compete and Rebuild if it can't."""
     assert team_state.window_for("contender", "falling") == "Push"
     assert team_state.window_for("contender", "rising") == "Contend"
     assert team_state.window_for("contender", "steady") == "Contend"
-    assert team_state.window_for("fringe", "rising") == "Ascend"
-    assert team_state.window_for("fringe", "falling") == "Rebuild"
     assert team_state.window_for("also-ran", "rising") == "Rebuild", (
         "young and genuinely bad is still a rebuild - being young doesn't make you close")
+
+
+def test_middle_of_the_league_is_a_window_not_a_leftover():
+    """Rebuild used to be the else branch, so a fringe team that merely wasn't rising fell
+    into it and was told to sell. The live case was 3rd of 12 in total dynasty value with
+    the league's best QB room. In dynasty you are winning now or rebuilding - in between,
+    you see both directions and may wait on how the season starts."""
+    for trajectory in ("rising", "steady", "falling"):
+        assert team_state.window_for("fringe", trajectory) == "Middling"
+
+
+def test_middling_note_promises_free_patience_only_when_actually_rising():
+    """Middling shows both paths regardless, but only a rising roster gets next season's
+    production for free - claiming that for a falling one is the label lying about the
+    data printed in the same sentence."""
+    rising = team_state.window_note("Middling", 6, 12, 74, 39, 0, trajectory="rising")
+    falling = team_state.window_note("Middling", 7, 12, 71, 8, 14, trajectory="falling")
+    assert "for free" in rising
+    assert "for free" not in falling
+    assert "will not be cheaper" in falling
 
 
 def test_offer_pool_protects_starters_who_are_actually_producing():
@@ -483,7 +500,7 @@ def test_offerable_names_covers_every_find_targets_mode():
     a mode returning an empty set would silently ban every player on the roster."""
     buy = {"mode": "buy", "my_offers": [{"name": "A"}]}
     rebuild = {"mode": "rebuild", "sell_candidates": [{"name": "B"}], "situational": [{"name": "C"}]}
-    ascend = {"mode": "ascend",
+    ascend = {"mode": "middling",
                 "push": {"my_offers": [{"name": "D"}]},
                 "pivot": {"sell_candidates": [{"name": "E"}], "situational": [{"name": "F"}]}}
     assert trade_targets.offerable_names(buy) == {"A"}
