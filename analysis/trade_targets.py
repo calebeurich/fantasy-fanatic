@@ -1124,8 +1124,17 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
                 # reports - without it an elite player and a cheap one look equivalent.
                 ratio = ((player.get("redraft_value") or 0) / player["value"]
                          if player.get("value") else None)
+                # What he beats YOUR weakest starter at the position by, which is the bar the
+                # asking manager actually has: *"my replacement is Gainwell's redraft value, not
+                # whatever that other number is."* League replacement level (the 24th-best RB in
+                # the pool) answers "would he start somewhere in this league" - a different
+                # question, and the wrong one for a team whose own RB2 produces 643. It was
+                # already computed and sitting in the need entry, shown only on depth lines.
+                over_weakest = ((player.get("redraft_value") or 0) - need["weakest_starter"]
+                                if need.get("weakest_starter") is not None else None)
                 pos_targets.append({"position": pos, "need_level": need["level"],
                                      "need_note": need["note"],
+                                     "over_weakest_starter": over_weakest,
                                      "production_per_cost": round(ratio, 2) if ratio else None,
                                      **_buy_friction(player, other, best_chip,
                                                      trade_counts.get(other["owner_id"], 0),
@@ -1486,7 +1495,9 @@ def _print_push(push: dict, extras: dict) -> None:
         for t in push["targets"]:
             trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "no trades yet"
             price_note = BUY_PRICE_NOTE[team_state.VALUE_BASIS[t["bucket"]]]
-            print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}) from "
+            beats = ("" if t.get("over_weakest_starter") is None else
+                     f", {t['over_weakest_starter']:+,} vs your weakest {t['position']} starter")
+            print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}{beats}) from "
                   f"{t['from_owner']} - need: {t['need_level']} - {trade_note}")
     else:
         print("no reachable targets found (no needs, no Rebuilding team is selling there, or "
@@ -1495,7 +1506,9 @@ def _print_push(push: dict, extras: dict) -> None:
         print("\nlong shots (real fits, but something is in the way - see why on each):")
         for t in push["long_shots"]:
             price_note = BUY_PRICE_NOTE[team_state.VALUE_BASIS[t["bucket"]]]
-            print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}) from "
+            beats = ("" if t.get("over_weakest_starter") is None else
+                     f", {t['over_weakest_starter']:+,} vs your weakest {t['position']} starter")
+            print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}{beats}) from "
                   f"{t['from_owner']} - need: {t['need_level']}")
             for f in t["friction"]:
                 print(f"      - [{f['flavor']}] {f['why']}")
