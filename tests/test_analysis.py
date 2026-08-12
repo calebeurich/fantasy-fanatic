@@ -514,7 +514,11 @@ def test_value_upgrade_names_who_would_want_the_player_being_moved():
                                   "value": 400, "redraft_value": 300}
     ctx.rosters.append({"owner_id": "needy", "players": ["their_scrub"]})
     ctx._starters["needy"] = {"their_scrub"}
-    states.append({"owner_id": "needy", "owner": "needy", "window": "Push"})
+    # Same trajectory fields `_upgrade_fixture` carries and for the same reason: every real
+    # `classify_league` row has them, and `_counterparty_fit` now reads them on this path to
+    # decide whether an ask is a fit or a pivot.
+    states.append({"owner_id": "needy", "owner": "needy", "window": "Push",
+                   "trajectory": "steady", "ascending_pct": 10, "declining_pct": 10})
     needs = {"them": {"TE": {"level": "critical", "rank": 12}},
              "needy": {"TE": {"level": "critical", "rank": 11}}}
 
@@ -1302,6 +1306,26 @@ def test_persuasion_bar_is_relative_to_the_players_own_position():
     out = trade_targets._persuasion_targets(
         ME, [holder], needs, {"RB": 100, "TE": 100}, {}, {"kk": _prior(3)}, BARS)
     assert [t["name"] for t in out] == ["Kelce"]
+
+
+def test_one_definition_of_needs_a_pivot_across_both_blocks():
+    """`needs_a_pivot` had two definitions in one module: the persuasion tier meant "no hole of
+    theirs I can fill", `_why_they_would_move_him` meant "not a rebuilder". They then printed
+    opposite verdicts about the same player in the same run - Travis Kelce on Paulyt101 read
+    "nearer a fit than a pitch" in one block and "asks them to change direction" in the other.
+
+    `_counterparty_fit`'s `fills_a_hole` is the single test. Asserted on the function that used
+    to invent its own answer, both ways round."""
+    other = {"owner_id": "kk", "owner": "kk", "window": "Contend", "trajectory": "falling",
+             "trajectory_rank": 11, "of_teams": 12, "ascending_pct": 20, "declining_pct": 30}
+    player = _aging("Vet", 3000, 4000)
+    fits = trade_targets._why_they_would_move_him(player, other, None, BARS, fills_a_hole=True)
+    pivots = trade_targets._why_they_would_move_him(player, other, None, BARS, fills_a_hole=False)
+    assert [f["flavor"] for f in fits["friction"]] == [], (
+        "an owner with a hole this roster can fill is taking a trade that serves his own plan")
+    assert [f["flavor"] for f in pivots["friction"]] == ["needs_a_pivot"]
+    assert fits["their_reason"] == pivots["their_reason"], (
+        "why they'd listen is a fact about their team and must not move with the pivot flavor")
 
 
 def test_persuasion_includes_a_falling_contender_that_has_not_won():

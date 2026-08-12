@@ -2351,6 +2351,54 @@ calls in.
 written - the same defect as `stranded`, `depth_adds`, `cost_note`, and `you_could_offer` before
 it. That is now five instances of *computed, attached, never rendered* in one module.
 
+### One concept, two definitions (`fills_a_hole`)
+
+`needs_a_pivot` was being computed by two different rules in the same module:
+
+| | definition | verdict on Kelce/Paulyt101 |
+|---|---|---|
+| `_persuasion_targets` | no hole of theirs I can fill | `False` - "nearer a fit than a pitch" |
+| `_why_they_would_move_him` | the owner is not a rebuilder | `True` - "asks them to change direction" |
+
+Same player, same owner, same run, opposite advice two blocks apart. This is exactly the failure
+CLAUDE.md describes - one concept re-expressed slightly differently in two places - and it was
+invisible because each block reads correctly on its own.
+
+`_counterparty_fit` is now the single test and returns `fills_a_hole` as **data**. Both callers
+read it; `_why_they_would_move_him` takes it as an argument rather than guessing, because whether
+a trade serves the counterparty's plan is a fact about *my* roster against theirs, not about the
+player. That also retired a string sniff: `is_fit` was recovered by testing `"need at" in
+why_it_fits`, a label test standing in for the thing itself.
+
+**The nesting trap underneath it.** A Middling result nests its whole buy side under `push` while
+`value_upgrades` stays at the top level, so the upgrade block was handed `result["my_offers"]` -
+absent - and computed `fills_a_hole` from an EMPTY offer pool for every Middling team in every
+league. Six of the nine live contradictions were that, not the definition mismatch. Anything read
+from one side and used by the other has to look in both places.
+
+### Cross-block contradiction is now audited (`check_one_player_is_not_described_two_ways`)
+
+Three instances between three different pairs of lists, which is what makes it a check rather
+than a third patch:
+
+| player | said to be | and also | cause |
+|---|---|---|---|
+| Pollard, Warren | live targets at a critical need | cheap depth, "never worth a real asset" | two lists testing different metrics |
+| Montgomery, Stevenson | long shots, "call may not be returned" | cheap depth | `long_shots` split out of `targets`, exclusion set not updated |
+| Gainwell (two rosters) | cheap depth | a better thing to own than a starter | upgrades never deduped at all |
+
+The rule is one direction: **the buy path is primary, and no other buy-side block re-derives a
+name it already printed.** For a player at a need position the buy entry already carries
+`over_weakest_starter` - the same comparison the upgrade block would make - plus the need level,
+so nothing is lost. The one live case: Tony Pollard as a critical-need RB buy *and* as the return
+for a 638-production bench RB, worth +54 of production and 6% of that RB's value.
+
+That last entry was also **unstable**, which is its own argument for dropping it. Dez owns two
+interchangeable ~640 RBs (Gainwell 643, Dobbins 638); which one is the weakest starter flips as
+FantasyCalc values jitter between runs, so the recommendation changed identity between two reads
+minutes apart. A suggestion that names a different player each time it runs is noise regardless
+of how the arithmetic checks out.
+
 ### Why a team-level test wasn't enough (`_cliff_case`)
 
 A trajectory is an average, and an average hides the individual. The league's **best** team

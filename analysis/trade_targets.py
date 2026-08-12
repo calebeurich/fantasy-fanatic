@@ -253,7 +253,8 @@ def _friction(flavor: str, why: str) -> dict:
 
 
 def _why_they_would_move_him(player: dict, other: dict, prior: dict | None,
-                             premium_bars: dict[str, float], never_trades: bool = False) -> dict:
+                             premium_bars: dict[str, float], never_trades: bool = False,
+                             fills_a_hole: bool = False) -> dict:
     """Whether the OTHER owner has a reason to part with this player - the half that was
     missing. `value_upgrades` said who would want the player I'd move and stopped there, so a
     tight end held by a contender read exactly like one held by a seller.
@@ -268,7 +269,15 @@ def _why_they_would_move_him(player: dict, other: dict, prior: dict | None,
     three are arguments about what an owner *should* want; this one is evidence about what he
     actually does. Reading only the window, this said "no persuasion needed" about a player
     whose owner has never made a trade - while the same report's long-shot list said the call
-    might not be returned at all. One report, one player, opposite claims."""
+    might not be returned at all. One report, one player, opposite claims.
+
+    **`fills_a_hole` is what decides the pivot, and it has to come from the caller** because
+    it is a fact about *my* roster against theirs, not about this player. This used to tag
+    `needs_a_pivot` on any non-rebuilder, while `_persuasion_targets` defined the same flavor
+    as "no hole of theirs I can fill" - two definitions of one named concept in one module.
+    They then disagreed in print about the same player in the same run: Travis Kelce on
+    Paulyt101 read `needs_a_pivot: False` / "nearer a fit than a pitch" in the persuasion
+    block and `needs_a_pivot` in the upgrade block. `_counterparty_fit` is the single test."""
     if never_trades:
         base = (f"{other['owner']} is rebuilding and should be converting exactly this"
                 if other["window"] == "Rebuild" else
@@ -289,19 +298,17 @@ def _why_they_would_move_him(player: dict, other: dict, prior: dict | None,
     cliff = (_cliff_case(player, other, ratio)
              if ratio >= (premium_bars or {}).get(player["position"], float("inf")) else None)
     case = _seller_case(other, (prior or {}).get(other["owner_id"])) or cliff
+    serves_their_plan = [_friction(
+        "needs_a_pivot", f"{other['owner']} has no hole you can fill, so this asks him to "
+                         f"change direction rather than take a fair offer - a wait-and-see, "
+                         f"not a call you make once")] if not fills_a_hole else []
     if case:
-        return {"their_reason": case,
-                "friction": [_friction("needs_a_pivot",
-                                       f"{other['owner']} is not a seller today, so this asks "
-                                       f"them to change direction rather than take a fair "
-                                       f"offer - a wait-and-see, not a call you make once")]}
+        return {"their_reason": case, "friction": serves_their_plan}
     return {"their_reason": (f"Nothing about {other['owner']}'s team says seller, and their "
                              f"window does not argue for moving him either. They could do it "
                              f"and have no reason to, so this needs them to want your side "
                              f"more than they want him."),
-            "friction": [_friction("needs_a_pivot",
-                                   f"{other['owner']} has no reason to sell him at all - the "
-                                   f"least likely of these to happen")]}
+            "friction": serves_their_plan}
 
 
 def _buy_friction(player: dict, other: dict, best_chip: dict | None, trades: int,
@@ -581,7 +588,9 @@ def _upgrade_note(kind: str, produced: float, replaced: dict, freed: float, mine
 def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: set[str],
                         trade_counts: dict[str, int], needs_by_owner_id: dict,
                         window: str = "Contend", prior: dict | None = None,
-                        premium_bars: dict[str, float] | None = None) -> list[dict]:
+                        premium_bars: dict[str, float] | None = None,
+                        already_surfaced: set[str] | None = None,
+                        my_offers: list[dict] | None = None) -> list[dict]:
     """Which single holding beats one of my starters at his own position, for less dynasty
     value? Candidates come from every roster in the league INCLUDING my own bench, because
     "who is a better thing to own" does not care where he currently sits - only the action
@@ -648,6 +657,11 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
             continue
         mine_side = roster["owner_id"] == me_roster["owner_id"]
         their_starters = ctx.starters_for(roster)
+        # Whether an ask is a fit or a pivot is a fact about the OWNER, not about each player,
+        # so it is resolved once per roster off the same `_counterparty_fit` the persuasion
+        # tier uses rather than re-decided per candidate.
+        hole = bool((_counterparty_fit(other, (needs_by_owner_id or {}).get(roster["owner_id"], {}),
+                                      my_offers or []) or {}).get("fills_a_hole"))
         for pid in roster["players"] or []:
             # My own starters are what's being compared against; my own BENCH is a live
             # candidate, and the cheapest one there is - no trade required, just a lineup
@@ -656,6 +670,13 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
                 continue
             info = ctx.players.get(pid)
             if not info:
+                continue
+            # The buy path already named him, at a position it knows this roster needs, and it
+            # says the more useful thing: what he beats the weakest starter there by, plus the
+            # need level. Re-deriving him here as "a better thing to own" is the same call in
+            # weaker words. Live: Tony Pollard as a critical-need RB buy AND as the return for
+            # a 638-production bench RB, worth +54 of production and 6% of his value.
+            if not mine_side and info["name"] in (already_surfaced or set()):
                 continue
             produced = info.get("redraft_value") or 0
             kinds = {}
@@ -686,7 +707,8 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
                                              info.get("usage_role"))},
                        other, prior, premium_bars,
                        never_trades=others_have_traded
-                       and not trade_counts.get(other["owner_id"], 0))),
+                       and not trade_counts.get(other["owner_id"], 0),
+                       fills_a_hole=hole)),
             }
             # A counterparty's trade history is meaningless for a player already on my roster,
             # and `_with_trade_note` would stamp him "NEVER TRADES" off my own zero count.
@@ -753,6 +775,10 @@ def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict]) -> 
     if offers:
         positions = sorted({e["position"] for e in offers})
         return {"you_could_offer": [e["name"] for e in offers[:3]],
+                # The one fact that decides whether an ask is a fit or a pivot, so it is
+                # returned as data. Callers used to recover it by sniffing `why_it_fits` for the
+                # substring "need at" - a label test standing in for the thing itself.
+                "fills_a_hole": True,
                 "why_it_fits": (f"{other['owner']} has a "
                                 f"{their_needs[positions[0]]['level']} need at "
                                 f"{'/'.join(positions)}, which you can fill from your own "
@@ -780,6 +806,7 @@ def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict]) -> 
                       key=lambda e: (bool(e.get("friction")), -(e.get("redraft_value") or 0)))
         if both:
             return {"you_could_offer": [e["name"] for e in both[:3]],
+                    "fills_a_hole": False,
                     "why_it_fits": (f"{other['owner']} has no positional hole, so there is "
                                     f"nothing to fill - but his roster is tilting ascending "
                                     f"({other['ascending_pct']}% against "
@@ -878,7 +905,7 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
             # three leagues reading as hard-but-unlabelled. It is not one difficulty either:
             # `cost_note` below already splits "he has a hole you fill" from a real pivot ask,
             # and the friction reuses that split rather than restating it.
-            is_fit = bool(fit and "need at" in (fit.get("why_it_fits") or ""))
+            is_fit = bool(fit and fit.get("fills_a_hole"))
             friction = _buy_friction(player, other, best_chip,
                                      trade_counts.get(other["owner_id"], 0),
                                      others_have_traded)["friction"]
@@ -902,7 +929,7 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
                     f"plans. He is still not shopping {player['name']}, so you are opening "
                     f"the conversation and should expect to pay something for that, but this "
                     f"is nearer a fit than a pitch."
-                    if fit and "need at" in (fit.get("why_it_fits") or "") else
+                    if is_fit else
                     f"{other['owner']} is not currently a seller, so this is a conversation "
                     f"rather than a fit: acquiring {player['name']} means persuading them to "
                     f"change direction, which is a commitment on their part and prices above "
@@ -1448,17 +1475,38 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
         # cleared one and failed the other, so they came back in both lists at once: named as
         # live targets at a critical need, and simultaneously as bodies "never worth a real
         # asset". `already` existed for this and was being handed an empty set.
-        surfaced = {t["name"] for t in result.get("targets") or []}
-        surfaced |= {t["name"] for t in (result.get("push") or {}).get("targets") or []}
+        # `long_shots` was split out of `targets` and this set was not updated with it, so
+        # David Montgomery and Rhamondre Stevenson came back as long shots ("the call may not
+        # be returned at all") AND as cheap depth ("worth a late pick") in one report. Any
+        # list the buy path prints counts as surfaced, whichever of them it landed in.
+        def buy_names(block: dict) -> set[str]:
+            return {t["name"] for key in ("targets", "long_shots")
+                    for t in block.get(key) or []}
+
+        # A Middling result nests its whole buy side under `push` while `value_upgrades` stays at
+        # the top, so anything read from one and used by the other has to look in both places.
+        # Reading only the top level handed the upgrade block an EMPTY offer pool for every
+        # Middling team, which made `_counterparty_fit` find no fit and tag `needs_a_pivot` on
+        # asks the persuasion block was calling straight fits.
+        buy_side = result.get("push") or result
+        surfaced = buy_names(result) | buy_names(buy_side)
         # Not for a rebuilder: "strictly better to hold if you're winning now" is advice for
         # someone who is. Every other window can buy production, including Middling, whose
         # whole push half is about whether to.
         if me["window"] != "Rebuild":
             upgrades = find_value_upgrades(my_roster, ctx, states, my_starters, trade_counts,
-                                           needs_by_owner_id, me["window"], prior, premium_bars)
+                                           needs_by_owner_id, me["window"], prior, premium_bars,
+                                           surfaced, buy_side.get("my_offers"))
             if upgrades:
                 result["value_upgrades"] = upgrades
                 result["value_upgrade_note"] = VALUE_UPGRADE_NOTE
+                # Same contradiction, third pair of lists: depth calls a player "below
+                # replacement, never worth a real asset" while the upgrade block calls him a
+                # better thing to own than a current starter. Both can be arithmetically true
+                # when the starter is dreadful, and reading them together tells you nothing.
+                # Eight live cases across three leagues, Kenny Gainwell on two rosters at once.
+                surfaced |= {u["name"] for m in upgrades for u in m["returns"]
+                             if not u.get("already_mine")}
         depth = _depth_adds(my_roster, ctx, states, me["window"] != "Rebuild",
                             my_starters, surfaced, trade_counts)
         if depth:

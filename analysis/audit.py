@@ -144,6 +144,43 @@ def check_claims_match_the_data(league_id, ctx, results) -> list[str]:
     return problems
 
 
+def check_one_player_is_not_described_two_ways(league_id, ctx, results) -> list[str]:
+    """The same player may not appear in two blocks that say incompatible things about him.
+    Three live instances of this, each between a different pair of lists, which is what makes it
+    worth a check rather than a third patch:
+
+    - Tony Pollard and Jaylen Warren as live targets at a critical need AND as cheap depth
+      "never worth a real asset".
+    - David Montgomery and Rhamondre Stevenson as long shots ("the call may not be returned")
+      AND as cheap depth, because `long_shots` was split out of `targets` and the exclusion set
+      was not updated with it.
+    - Kenny Gainwell, on two rosters at once, as cheap depth AND as a better thing to own than
+      a current starter.
+
+    Plus the same flavor computed twice from different rules: Travis Kelce read `needs_a_pivot:
+    False` in the persuasion block and `needs_a_pivot` in the upgrade block, same run."""
+    problems = []
+    for owner, result in results.items():
+        blocks = _blocks(result)
+        returns = {u["name"]: u for m in blocks.get("value_upgrades") or []
+                   for u in m["returns"] if not u.get("already_mine")}
+        buy_side = {e["name"] for key in ("targets", "long_shots") for e in _entries(result, key)}
+        for entry in _entries(result, "depth_adds"):
+            if entry["name"] in buy_side or entry["name"] in returns:
+                problems.append(f"{owner}: {entry['name']} is cheap depth 'never worth a real "
+                                f"asset' and also a real target elsewhere in the same report")
+        for entry in _entries(result, "persuasion_targets"):
+            them = returns.get(entry["name"])
+            if them is None:
+                continue
+            tagged = any(f["flavor"] == "needs_a_pivot" for f in them.get("friction") or [])
+            if tagged != entry["needs_a_pivot"]:
+                problems.append(f"{owner}: {entry['name']} needs_a_pivot is "
+                                f"{entry['needs_a_pivot']} in persuasion and {tagged} in the "
+                                f"upgrade block - one concept, two answers")
+    return problems
+
+
 def check_every_window_gets_what_applies(league_id, ctx, results) -> list[str]:
     """Blocks that apply in every window must be computed in every window. Live: depth and
     stranded were computed inside the buy branch, which `Rebuild` returns before - so the team
@@ -164,6 +201,7 @@ CHECKS = [
     check_best_available_is_surfaced,
     check_no_tier_is_structurally_unreachable,
     check_claims_match_the_data,
+    check_one_player_is_not_described_two_ways,
     check_every_window_gets_what_applies,
 ]
 
