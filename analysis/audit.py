@@ -1,21 +1,10 @@
 """Recommendation audits: does the advice make sense, given data we agree is correct?
 
-**Why this exists, and why the 84 unit tests weren't it.** Every real bug found in this
-project was a *wrong recommendation produced by correct arithmetic* - a buy list that buried
-the second-best available back beneath a player producing a quarter as much, a tier whose bar
-no tight end could clear in any league, a feature that returned empty for 36 consecutive
-teams, a suggestion that a manager acquire two players he already owned. The unit tests
-passed through all of it, because they check that functions compute what they were written to
-compute. These check whether the output is *defensible*, which is a different question and
-the one that kept being answered wrong.
-
-Every check below is derived from a bug that actually shipped. That is the entry
-requirement - no speculative invariants, because an audit nobody trusts gets muted.
-
-They run against **real leagues**, deliberately. The failures here were all shaped by real
-distributions (a replacement bar that equals demand by construction, redraft prices that
-collapse below the 30th player at a position); a synthetic fixture drawn to make a rule pass
-cannot contain them.
+Every real bug here was a wrong recommendation produced by correct arithmetic, which unit
+tests pass straight through - these check whether the output is *defensible*. Two rules
+keep it trustworthy: every check derives from a bug that actually shipped (no speculative
+invariants - a noisy audit gets muted), and checks run against real leagues, because the
+failures were all shaped by real distributions no synthetic fixture would contain.
 
 Not part of `pytest`: this needs the network, and `tests/` is free and offline by design.
 
@@ -80,12 +69,9 @@ def check_best_available_is_surfaced(league_id, ctx, results) -> list[str]:
     states = team_state.classify_league(league_id)
     for owner, result in results.items():
         me = ctx.roster_for(owner)
-        # **What the buy path can actually see**, not every player on a rebuilding roster.
-        # The first version of this check compared against whole rosters and immediately
-        # "failed" on Jahmyr Gibbs, Josh Allen and Ja'Marr Chase - all cornerstones, which
-        # `_buy_path` deliberately never searches because no rebuilding team is selling its
-        # elite young core. An audit calibrated against a pool the code was never meant to
-        # reach reports noise, and a noisy audit gets muted.
+        # Compared against what the buy path can actually see (sellable, not whole
+        # rosters) - an audit calibrated against a pool the code was never meant to reach
+        # reports noise, and a noisy audit gets muted.
         for position, need in _blocks(result).get("needs", {}).items():
             if need["level"] not in ("critical", "top-heavy"):
                 continue  # a quality need wants an upgrade, which has its own bar
@@ -130,20 +116,11 @@ def check_claims_match_the_data(league_id, ctx, results) -> list[str]:
 
 
 def check_one_player_is_not_described_two_ways(league_id, ctx, results) -> list[str]:
-    """The same player may not appear in two blocks that say incompatible things about him.
-    Three live instances of this, each between a different pair of lists, which is what makes it
-    worth a check rather than a third patch:
-
-    - Tony Pollard and Jaylen Warren as live targets at a critical need AND as cheap depth
-      "never worth a real asset".
-    - David Montgomery and Rhamondre Stevenson as long shots ("the call may not be returned")
-      AND as cheap depth, because `long_shots` was split out of `targets` and the exclusion set
-      was not updated with it.
-    - Kenny Gainwell, on two rosters at once, as cheap depth AND as a better thing to own than
-      a current starter.
-
-    Plus the same flavor computed twice from different rules: Travis Kelce read `needs_a_pivot:
-    False` in the persuasion block and `needs_a_pivot` in the upgrade block, same run."""
+    """The same player may not appear in two blocks that say incompatible things about him -
+    a live target who is also "never worth a real asset", a long shot doubling as cheap
+    depth, or one flavor computed from two rules (`needs_a_pivot` disagreed about Kelce in
+    one run). Three live instances between three different pairs of lists made this a check
+    rather than a fourth patch."""
     problems = []
     for owner, result in results.items():
         blocks = _blocks(result)
@@ -167,15 +144,10 @@ def check_one_player_is_not_described_two_ways(league_id, ctx, results) -> list[
 
 
 def check_everything_computed_is_printed(league_id, ctx, results) -> list[str]:
-    """A block attached to the result and rendered by nothing. **Six instances of this in one
-    module**, each shipping silently because the data was right and only the CLI was blind:
-    `stranded`, `depth_adds`, `you_could_offer`, `cost_note`, `persuasion_note`, and friction on
-    value-upgrade returns - the last of which made a Kelce who needs his owner to change
-    direction read like a straight swap.
-
-    Checked by rendering the report and looking for each entry's name and each note's opening
-    words in the output, which is the only way to catch it: every unit test passes on a block
-    that never reaches a human."""
+    """A block attached to the result and rendered by nothing - six live instances in one
+    module, each shipping silently because the data was right and only the CLI was blind.
+    Checked by rendering the report and looking for entry names and note openings, the only
+    way to catch it. NOTE: cannot catch an early `return` that skips a populated block."""
     problems = []
     for owner, result in results.items():
         buffer = io.StringIO()

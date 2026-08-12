@@ -1,50 +1,21 @@
-"""Each team's strategic window, from two measured axes rather than age alone.
+"""Each team's strategic window, from two measured axes cut into league tertiles:
+**contention** (the lineup's total REDRAFT value, ranked - dynasty value prices future
+years that score nothing this season) and **trajectory** (ascending minus declining share
+of that production).
 
-**Contention** - can this team compete *this season*? Its starting lineup's total
-**redraft** value, ranked against the league. **Trajectory** - where does the roster go on
-its own? Ascending minus declining share of that same current production. Both are cut
-into league tertiles (`team_values.tertile`), so nothing here is a hardcoded constant that
-only fits one league.
+THREE states, each with flavors - `state` is the base to reason with, `window` the flavor
+most of the codebase keys on:
 
-**This replaced an age-only model plus two patches.** The old classifier read Win-Now /
-Middling / Rebuilding purely off the age split, then bolted on `is_thin` ("bottom-third
-starter value with barely any cornerstones") and `is_loaded` ("top-third but reads
-Rebuilding") to override the answers age got wrong. Both patches were crude proxies for a
-missing contention axis, and measuring contention properly subsumes them - two special
-cases deleted, one honest axis added.
+- **Contending** - top third in current production. Only the clock splits the flavors:
+  `Push` if falling (waiting costs value), `Contend` if not (never pay a premium).
+- **Middling** - the middle, either trajectory. Both paths are shown; trajectory sets the
+  note, because patience is only free for a rising roster.
+- **Rebuilding** - bottom third. Sell what is declining, accumulate youth and picks.
 
-**And the old contention proxy was the recurring bug in this project one more time.** It
-ranked the league by *dynasty* starter value, which prices future years that score no
-points this season. Measured on two real leagues, swapping to redraft moved teams four and
-five places: one team sat 8th of 12 in dynasty value and 4th in current production - old,
-but genuinely close, and being told it was mid-pack. Its mirror ranked 2nd in dynasty and
-6th in production: a young roster whose price is mostly potential.
-
-**THREE states, each with flavors.** `state` is the base and is the thing to reason with;
-`window` is the flavor and is what most of this codebase keys on for historical reasons.
-Keeping them apart matters: four peer `window` labels read as four base states, and that
-misreading has now cost both a reader and this file's own author the model.
-
-- **Contending** - top third in current production. Two flavors, and only the clock
-  separates them: `Push` if the roster is falling (waiting costs value - buy production,
-  spend picks) and `Contend` if it is steady or rising (no clock, so never pay a premium).
-- **Middling** - middle of the league, either trajectory. In dynasty you are winning now or
-  rebuilding; in between, both paths are shown and waiting to see how the season starts is
-  legitimate. Trajectory sets the *note*, not the state: a rising roster gets next season's
-  production free, a falling one does not, so patience is only free for one of them.
-- **Rebuilding** - bottom third in current production. Sell what is declining, accumulate
-  youth and picks.
-
-What makes a trade easy is one comparison across those states: **contending and rebuilding
-complement each other in both directions** (one spares future years, the other spares
-production now), same-state pairs do not, and a Middling team is a "maybe" until it picks a
-side. `NOT_SELLER`/`_sells_him` in `trade_targets` is that comparison.
-
-**Owning your own next 1st is a constraint on the pivot option, not a fourth tier.**
-Tanking only pays if you hold the pick your bad season earns; without it, a losing season
-buys nothing. That does not change the window (a rebuild is still a rebuild - you acquire
-young assets by trade rather than by finishing last), so it ships as a note rather than
-another label.
+Contending and rebuilding complement each other in both directions; same-state pairs do
+not; a Middling team is a "maybe" until it picks a side (`_sells_him` in trade_targets).
+Owning your own next 1st is a constraint on the pivot, not a fourth tier. History and the
+models this replaced: LOGIC.md, "Team windows".
 
 Smoke test: python -m analysis.team_state <league_id>
 """
@@ -80,25 +51,11 @@ MIN_RELEVANCE_FRACTION = {"production": 0.5, "mixed": 0.5, "upside": 0.25}
 
 
 def value_basis(entry: dict) -> str:
-    """Is this player's price about production already delivered, or about seasons still to come?
-
-    **`bucket` is only the SIGN of `years_to_decline`** - both come from the same age against the
-    same cutoff, and `age_bucket`'s own docstring says it "throws away the distance to the
-    boundary". Reading the sign alone priced DK Metcalf, **0.3 years** from his cliff, as
-    `prime` -> `mixed` -> "moderate - some future value baked in too", while Dallas Goedert one
-    year further on read "low - value is mostly already-realized production". Nothing about
-    those two prices differs in kind.
-
-    A player inside his final year (`INSIDE_FINAL_YEAR`) is at his own edge, so what you pay for
-    him is production. Above that, the bucket answers as before.
-
-    **Not `MIN_MEANINGFUL_RUNWAY`.** That 2.0 is a buyer's planning horizon, and borrowing it
-    here priced Zach Charbonnet - 25.6, 1,684 of dynasty value for 434 of production, a ratio of
-    **0.26** - as "production-priced", because the RB curve is (24, 27) and two years of runway
-    means any RB over 25. One year keeps Metcalf at 0.3 and drops Charbonnet back to upside.
-
-    Deliberately does NOT touch `MIN_RELEVANCE_FRACTION`, where `production` and `mixed` are both
-    0.5, so this changes what the two pricing labels say and nothing about who clears the floor."""
+    """Is this player's price about production already delivered, or seasons still to come?
+    A player inside his final year is at his own edge whatever his bucket says (the bucket
+    is only the sign of `years_to_decline`); above that the bucket answers.
+    `INSIDE_FINAL_YEAR`, not the buyer's two-season horizon - on the RB curve that horizon
+    would call any back over 25 production-priced. Does not touch the relevance floor."""
     runway = entry.get("years_to_decline")
     if runway is not None and runway < INSIDE_FINAL_YEAR:
         return "production"
@@ -106,19 +63,10 @@ def value_basis(entry: dict) -> str:
 
 
 def window_for(contention: str, trajectory: str) -> str:
-    """The two axes collapsed into what the team should actually do.
-
-    **The middle tier is a window, not a leftover.** In dynasty you are winning now or
-    rebuilding; a team in between should see both directions and is entitled to wait and
-    see how the season starts. `Rebuild` used to be the else branch, so a `fringe` team that
-    merely wasn't *rising* fell into it - and the one team in a real league that hit that
-    case was 3rd of 12 in total dynasty value, 5th on an outside dynasty site, average age
-    26.0, with the best QB room in the league. Telling it to sell what's declining was
-    advice for a roster it didn't have.
-
-    Trajectory no longer decides whether the middle tier gets both paths. It still decides
-    what that team is *told*, in `WINDOW_NOTE` - rising means patience is free, falling
-    means waiting costs something."""
+    """The two axes collapsed into what the team should do. The middle tier is a window,
+    not a leftover - `Rebuild` used to be the else branch, and told a fringe team with the
+    league's best QB room to sell decline it didn't have. Trajectory decides only what the
+    middle tier is told (`WINDOW_NOTE`), never which paths it sees."""
     if contention == "contender":
         # Good now. The only question is whether there's a clock on it.
         return "Push" if trajectory == "falling" else "Contend"
@@ -127,11 +75,8 @@ def window_for(contention: str, trajectory: str) -> str:
     return "Rebuild"
 
 
-# There are THREE states, not four. `window` has always returned four labels, and `window_for`
-# knows better - its own comment reads "Good now. The only question is whether there's a clock on
-# it" - so Push and Contend are two flavors of ONE state, exactly as rising/falling are flavors
-# of Middling. Returning four peer labels made a reader (and the author of this file) count four
-# base states and lose the model. `state` is the base; `window` stays the flavor.
+# Three states, not four: Push and Contend are flavors of ONE state, and four peer labels
+# made readers count four. `state` is the base; `window` stays the flavor.
 STATE = {"Push": "Contending", "Contend": "Contending",
          "Middling": "Middling", "Rebuild": "Rebuilding"}
 
@@ -149,46 +94,28 @@ FLAVOR_NOTE = {
 
 def flavor_for(window: str, trajectory: str, leverage: str | None,
                ascending_pct: float = 0, declining_pct: float = 0) -> str:
-    """The sub-flavor of the state, from fields already computed. Every one of these has been
-    described in LOGIC.md for a while and none was ever labelled, so the flavor column repeated
-    the state for two of the three - which is how a documented distinction stays invisible.
-
-    Contending: the clock is the only flavor that matters, which is what `window` already
-    encodes. Otherwise `convertible` wins - a weak lineup on a top-third war chest is not
-    described by its trajectory - and below that it is trajectory, named for the state, because
-    "rising" means *patience is free* to a Middling team and *the plan is working* to a
-    rebuilding one."""
+    """The sub-flavor of the state, from fields already computed. For Contending the clock
+    is the flavor (`window` already encodes it); `convertible` outranks trajectory
+    everywhere else, because a weak lineup on a top-third war chest is not described by
+    its trajectory."""
     if window in ("Push", "Contend"):
         return window
     if leverage == "convertible":
         return "convertible"
     if window == "Rebuild":
-        # **Absolute, not the tertile**, and this is the one place the two genuinely differ.
-        # "Is the rebuild working" is a question about this roster, not about its rank: young
-        # production is either arriving faster than the rest is aging out, or it isn't.
-        # BartolosHeroes is 40% ascending against 3% declining and lands in the MIDDLE tertile
-        # only because that league is full of ascending rebuilds - so the tertile called it
-        # "steady" and this called it "stalled", i.e. "nothing arriving and nothing to convert",
-        # about the clearest working rebuild on the board. The label has to be true of the
-        # roster it names.
+        # Absolute, not the tertile: "is the rebuild working" is about this roster, not its
+        # rank - a league full of ascending rebuilds once made the tertile call the clearest
+        # working rebuild "stalled".
         return "ascending" if ascending_pct > declining_pct else "stalled"
-    # Middling keeps the tertile, because there the question really is comparative - whether
-    # waiting is free *relative to this league* is what decides between pushing and pivoting,
-    # and `WINDOW_NOTE` has always read it that way.
+    # Middling keeps the tertile: whether waiting is free RELATIVE TO THIS LEAGUE is what
+    # decides between pushing and pivoting.
     return trajectory
 
 
 def next_first_note(owns_next_first: bool, window: str) -> str:
-    """What not owning your own next 1st actually means, which depends entirely on the
-    window - shipped as a bare boolean it got read as universally bad. A live run told a
-    contender it was "concerning" and to "reclaim a first-round pick", in the same answer
-    that correctly advised spending picks aggressively. Having spent that pick is the
-    window working as intended.
-
-    For a rebuilder it's a genuine constraint rather than a blemish: tanking only pays if
-    you hold the pick your bad season earns. Without it the pivot has no consolation
-    prize, so the only route to young assets is trading for them. Both real leagues here
-    have several teams in this spot, including two of the same manager's."""
+    """What not owning your own next 1st means, which depends entirely on the window: a
+    real constraint for a rebuilder (tanking pays nothing), the window working as intended
+    for a contender. As a bare boolean it got read as universally bad."""
     if owns_next_first:
         return "Owns its own next 1st."
     if window == "Rebuild":
@@ -214,20 +141,10 @@ def clears_relevance_floor(entry: dict, thresholds: dict[str, float]) -> bool:
 
 def classify(roster: dict, players: dict[str, dict], threshold: float,
              starter_ids: set[str]) -> dict:
-    """One roster's raw measurements. The league-relative parts - ranks, tiers, and the
-    window they imply - are added by `classify_league`, which is the only place that can
-    see the rest of the league.
-
-    `starter_ids` is the value-derived lineup (`LeagueContext.starters`), not Sleeper's
-    current-week snapshot, and both the trajectory buckets and every entry's `is_starter`
-    flag come from it.
-
-    **Trajectory is measured on current production, not dynasty value.** The question is
-    "will my lineup get better or worse on its own", so the currency has to be the one
-    that scores points. Dynasty value would double-count the effect it's trying to
-    measure: ascending players are *priced* on the growth being asked about, so weighting
-    by it inflates the ascending share of every young roster and reports the market's
-    opinion back as if it were a roster fact."""
+    """One roster's raw measurements; the league-relative parts are added by
+    `classify_league`. `starter_ids` is the value-derived lineup. Trajectory is measured
+    on current production, not dynasty value - dynasty prices the growth being asked
+    about, so weighting by it would report the market's opinion back as a roster fact."""
     all_ids = roster["players"] or []
 
     buckets = {"ascending": 0, "prime": 0, "declining": 0, "unknown": 0}
@@ -245,26 +162,14 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
         info = players.get(pid)
         if info is None:
             continue
-        # bucket: lets trade_targets.py flag "production-priced" (declining) vs
-        # "upside-priced" (prime) buys - a prime player's dynasty value bakes in
-        # future growth a win-now buyer doesn't need, so it costs more per unit of
-        # current production than a declining player's value does.
-        # is_starter: a valuable-but-non-cornerstone starter (e.g. your QB2) isn't
-        # real surplus even though it clears the sellable bar - only bench value at
-        # this tier is safely offerable without weakening your actual lineup.
-        # redraft_value / future_premium (see team_values.get_players_with_roles) let a
-        # win-now team see what it's actually paying for: two players can produce the
-        # same this season while one costs far more in dynasty value. Carried through so
-        # trade_targets and the agent can reason about that, instead of ranking by
-        # dynasty value alone and never noticing.
+        # Both currencies plus the age fields ride on every entry so downstream pricing
+        # never has to re-derive them - bucket for the kind of value, years_to_decline for
+        # the distance the bucket throws away.
         entry = {"name": info["name"], "position": info["position"], "value": info["value"],
                  "redraft_value": info.get("redraft_value"),
                  "is_starter": pid in starter_ids}
         bucket = age_bucket(info["position"], info["age"], info.get("usage_role"))
         entry["bucket"] = bucket
-        # The distance to the decline cutoff, not just which side of it he's on. `bucket`
-        # alone called a receiver four months from declining "prime", and a caller reading
-        # that as "has a future" offered him as a piece that would "still be there later".
         entry["years_to_decline"] = years_to_decline(info["position"], info["age"],
                                                      info.get("usage_role"))
         if info["value"] < threshold:
@@ -277,23 +182,15 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
             elif bucket in ("prime", "declining"):
                 sellable.append(entry)
             continue
-        # **Runway, not bucket.** A cornerstone is a piece to build the next several seasons
-        # around, so the test is whether he has several seasons - not which side of a birthday
-        # he sits on. Live: an elite back 0.1 years from his cutoff was a cornerstone and
-        # therefore unreachable, while the same player one month older would have been a sell
-        # candidate; another at 1.2 years sat on the one team the tool was already telling to
-        # convert aging production, invisible to that path. Both are exactly who a contender
-        # should be asking about.
+        # Runway, not bucket: a cornerstone is a piece with several seasons, not a side of
+        # a birthday. And a cornerstone stays in `sellable` - the hardest ask is a price,
+        # not a veto, and leaving him out made the best piece on a roster unaskable.
         if (entry["years_to_decline"] or 0) < MIN_MEANINGFUL_RUNWAY:
             win_now_core.append(entry)
             sellable.append(entry)  # valuable but short - still sellable, just pricier
         else:
             entry["is_cornerstone"] = True
             cornerstones.append(entry)
-            # A cornerstone is the hardest ask on the roster, which is a PRICE, not a veto.
-            # Leaving them out of `sellable` made them literally unaskable: an owner deciding
-            # what he'd move names them first and gets told to expect over-market or no.
-            # `win_now_core` above already sets the precedent of one piece in two lists.
             sellable.append(entry)
     tradeable_surplus.sort(key=lambda e: -e["value"])
     sellable.sort(key=lambda e: -e["value"])
@@ -336,11 +233,9 @@ MIDDLING_RISING = (
     "otherwise keep accumulating."
 )
 
-# The Rebuild line above assumes there is something declining to sell, and on a young
-# rebuilding roster there isn't. A real team read "sell what's declining" with **0% of its
-# production from declining players** and an empty sell list - advice keyed on the window
-# rather than on the roster it was describing, which is the tell of a template. The teams
-# most likely to hit this are the ones furthest into a rebuild, i.e. exactly the audience.
+# The Rebuild line assumes something declining to sell, and the teams furthest into a
+# rebuild - exactly the audience - have nothing. Advice has to be keyed on the roster it
+# describes, not the window label.
 REBUILD_NOTHING_DECLINING = (
     "Not in contention this season and not rising fast enough to change that. Nothing here "
     "is declining, so there is no aging value to cash in - this roster is already young. "
@@ -352,13 +247,9 @@ REBUILD_NOTHING_DECLINING = (
 
 def window_note(window: str, contention_rank: int, num_teams: int, pct_of_best: int,
                 asc_pct: int, dec_pct: int, trajectory: str = "steady") -> str:
-    """The measurements that produced the window, in words, alongside it.
-
-    Same rule that `roster_needs` follows and for the same reason: an unlabelled number
-    in a tool result gets a meaning invented for it. The predecessor of this field shipped
-    a bare `{"diff": -11}` and the model reliably described teams as "below their expected
-    win total" or "underperforming by 25 points" - neither of which exists, least of all
-    in a preseason with no games played."""
+    """The measurements that produced the window, in words, alongside it - an unlabelled
+    number in a tool result gets a meaning invented for it (a bare {"diff": -11} was once
+    narrated as games underperformed, in the preseason)."""
     if window == "Rebuild" and dec_pct == 0:
         lead = REBUILD_NOTHING_DECLINING
     elif window == "Middling" and trajectory == "rising":
@@ -400,24 +291,11 @@ LEVERAGE_NOTE = {
 
 
 def leverage(contention_rank: int, asset_rank: int, num_teams: int) -> str | None:
-    """Whether a team's convertible assets and its starting lineup tell different stories.
-
-    **The state the window model could not express.** A real rebuilding roster ranked 9th of
-    12 in starting production and **2nd** in total tradeable value - it was labelled
-    `also-ran`, which reads as "bad", when the true statement was "bad right now, holding
-    the second-largest war chest in the league". Its owner's own description was that he
-    doesn't expect to win, but if the season opens well he has the assets to convert. That
-    is an option with real value and the model priced it at zero.
-
-    Both directions come from one comparison, and the mirror is just as real: the same league
-    had a team 1st in production and 8th in assets, i.e. winning now on borrowed time with
-    nothing to reload from.
-
-    Tertiles rather than a tuned gap, matching how contention and trajectory are already
-    read - top third on one axis and not the other. This is deliberately *not* a fifth
-    window: `window` answers what a team should do with the roster it has, and this answers
-    how much rope it has to change that roster. Making it a window would force one number to
-    carry both."""
+    """Whether a team's convertible assets and its starting lineup tell different stories:
+    `convertible` (weak lineup, top-third war chest - an unspent option, not simply bad)
+    or `mortgaged` (strong lineup, little behind it). Deliberately not a fifth window -
+    `window` says what to do with this roster, leverage says how much rope there is to
+    change it."""
     if num_teams < MIN_TEAMS_FOR_LEVERAGE:
         return None
     assets_top = tertile(asset_rank, num_teams) == "top"
@@ -439,19 +317,12 @@ def classify_league(league_id: str) -> list[dict]:
     threshold = cornerstone_threshold(players)
     rosters, owner_names = ctx.rosters, ctx.owner_names
 
-    # Win-Now/Middling/Rebuilding reads a team's *current* age composition, but real
-    # dynasty identity is built through trades over time - a fresh league (or one that
-    # just hasn't traded yet) hasn't had the chance to actually differentiate, so the
-    # labels are at their least meaningful right when a league is newest. Zero trades
-    # in the league's whole history is a clean, directly-knowable proxy for "hasn't
-    # differentiated yet" - simpler and more honest than trying to detect "low
-    # separation" from the age-diff numbers themselves without real fresh-league data
-    # on hand to calibrate a threshold against.
+    # Dynasty identity is built through trades, so a league with zero in its history
+    # hasn't differentiated yet and the labels are at their least reliable - said with a
+    # flag rather than guessed from the numbers.
     no_trade_history = sum(trade_activity.get_trade_counts(league_id).values()) == 0
 
-    # Tanking for a better pick only helps a team if it still owns its own next 1st -
-    # if that pick's already been traded away, playing for a worse record just hands
-    # the upside to whoever holds it.
+    # Tanking only pays if the team still owns its own next 1st.
     next_season = int(league["season"]) + 1
     traded_picks = sleeper.get_traded_picks(league_id)
     lost_own_first = {
@@ -459,10 +330,9 @@ def classify_league(league_id: str) -> list[dict]:
         if p["round"] == 1 and int(p["season"]) == next_season and p["owner_id"] != p["roster_id"]
     }
 
-    # Everything this team could put on the table: every player it owns plus every pick.
-    # Priced WITHOUT `strategy_by_roster`, deliberately - that argument prices a pick by the
-    # window of the team it originated from, and the window is what this measure is about to
-    # help describe. Letting it in would make the label feed its own input.
+    # Pick capital priced WITHOUT `strategy_by_roster`: that argument prices a pick by the
+    # originating team's window, and the window is what this measure helps produce -
+    # letting it in would make the label feed its own input.
     pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.fmt["num_teams"],
                                               ctx.fmt["ppr"], ctx.fmt["is_dynasty"])
     capital = pick_capital(owned_picks(league_id, int(league["season"]),
@@ -484,14 +354,9 @@ def classify_league(league_id: str) -> list[dict]:
             "roster_value": roster_value,
             "pick_capital": capital.get(roster["roster_id"], 0),
             "asset_value": roster_value + capital.get(roster["roster_id"], 0),
-            # How much of the war chest is in picks. **Reported, not weighted.** Picks
-            # convert more easily than players of equal price - position-agnostic, so they
-            # fit any deal instead of needing a positionally-matched counterparty, and
-            # insulated from the age, injury and role decay a player carries. By *how much*
-            # is not something this project can calibrate, and a guessed multiplier buried
-            # inside the ranking would be worse than an honest number printed beside it. The
-            # observed spread is wide enough to matter unaided: 3% to 41% across three real
-            # leagues, with the most mortgaged contender at the bottom of it.
+            # How much of the war chest is in picks - the liquid, position-agnostic part.
+            # Reported, not weighted: by how much a pick converts more easily is nothing
+            # this project can calibrate, and an honest number beats a guessed multiplier.
             "pick_share": round(100 * capital.get(roster["roster_id"], 0)
                                 / (roster_value + capital.get(roster["roster_id"], 0)))
             if roster_value + capital.get(roster["roster_id"], 0) else 0,
@@ -500,9 +365,8 @@ def classify_league(league_id: str) -> list[dict]:
             **result,
         })
 
-    # Two independent rankings over the same rosters. `starter_value` (dynasty) is still
-    # reported because "what is my roster worth" is a real question - but it is no longer
-    # what decides the window, because it prices future seasons.
+    # `starter_value` (dynasty) is still reported - "what is my roster worth" is a real
+    # question - but the window is decided by current production only.
     num_teams = len(rows)
     contention_rank = rank_map({r["owner_id"]: r["starting_production"] for r in rows})
     asset_rank = rank_map({r["owner_id"]: r["asset_value"] for r in rows})

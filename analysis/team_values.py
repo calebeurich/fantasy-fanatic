@@ -13,34 +13,11 @@ AGE_CURVE = {
     "TE": (25, 30),
 }
 
-# Role-based overrides (see player_roles.py). Mobile QBs lean on athleticism, so their
-# decline pulls forward; receiving-down RBs age more like WRs, so theirs pushes back; and a
-# *good* pocket passer trades on arm talent and processing, which hold far longer than legs.
-#
-# The QB spread is now 31 / 34 / 38 rather than 31 / 34, after a sports-modelling data
-# scientist argued the pocket end was too pessimistic - that a genuine pocket passer can hold
-# value to nearly 40, so the gap between the two archetypes is much wider than three years.
-# That is the only constant in this project changed on an outside opinion, and it was changed
-# because the data backed it: over three seasons the top passing-EPA tier is Goff, Purdy,
-# Stafford, Burrow and Mahomes, all pocket throwers, and the tag is earned by measured
-# production rather than reputation.
-#
-# 38, not 40. The claim under test is that these players hold *dynasty trade value*, and a
-# 39-year-old quarterback is priced on one more season however well he is playing - the curve
-# should turn before the market does, not with it.
-#
-# **`dual_threat_qb` exists because the rushing discount assumed a QB has nothing to fall back
-# on.** A quarterback who runs *and* throws at an elite level does: when the legs go he is
-# still a good passer, so he should not be marked down like one whose game is only mobility.
-# The two are visibly different in the same data - over three seasons Allen posts 6.05 passing
-# EPA per game and Lamar 5.25, both clearing the elite-passer bar, while Hurts sits at 2.99
-# with the heaviest carry rate of the three.
-#
-# Its cutoff is 34, which is simply the default QB curve - the point is the *absence* of a
-# discount, not a new bonus, and saying so with a named tag beats leaving it implicit in an
-# untagged player. Not 38: their value still leans on mobility, so they should not be priced
-# like a pure pocket passer either. That the market pays 10,415 for a 29.5-year-old Allen -
-# while the old curve gave him 1.5 years of runway - is the disagreement this resolves.
+# Role overrides on the curve (see player_roles.py). Mobility-dependent QBs decline
+# earlier; a dual threat keeps the default because elite passing survives the legs; a
+# pocket passer holds value far longer (38, not 40 - the curve should turn before the
+# market does); receiving-down RBs age more like WRs. Tags are earned by measured usage,
+# not reputation - LOGIC.md, "The QB curve by archetype".
 AGE_CURVE_OVERRIDES = {
     "rushing_qb": (26, 32),
     "dual_threat_qb": (26, 34),
@@ -48,43 +25,20 @@ AGE_CURVE_OVERRIDES = {
     "pass_catching_rb": (24, 29),
 }
 
-# How many seasons before his own decline cutoff a player needs for his future to be worth
-# anything to a plan. **The single definition of "has a future"**, shared by every caller that
-# used to ask `bucket != "declining"` instead.
-#
-# `age_bucket` is a *discretization* of a continuous thing, and treating it as the answer
-# failed three separate times in one day: a receiver 0.3 years from his cutoff offered as
-# value that would "still be there in two"; an elite back 0.1 years from his read as a
-# franchise cornerstone while an identical player one month older would have been a sell
-# candidate; and the same boundary hiding a short-runway starter from the conversion path.
-# Nobody's value falls off a cliff on a birthday - the buckets are a convenience for talking
-# about age, and `years_to_decline` is the quantity underneath them.
-#
-# Two seasons because that is the horizon the claims actually make ("still there later", "a
-# piece to build on"). Buckets are kept for the coarse questions - what kind of value is this,
-# how is a roster trending - where a category is genuinely what's wanted.
+# The single definition of "has a future": seasons before his own decline cutoff, the
+# horizon claims like "still there later" actually make. Buckets are only a discretization
+# of this - nobody's value falls off a cliff on a birthday - so anywhere a boundary decides
+# something, use the runway (LOGIC.md, "Runway, not buckets").
 MIN_MEANINGFUL_RUNWAY = 2.0
 
-# Inside his final year before the curve turns - a much nearer question than the two-season
-# planning horizon above, and the two must not be confused. 2.0 is what a BUYER is planning
-# around; this is whether the player is at his own edge right now.
-#
-# The distinction matters because the position curves are not the same width. RB is (24, 27),
-# so "2.0 years of runway" means *any RB over 25* - and reusing the buyer's horizon for the
-# nearer question therefore said a rising team was selling RJ Harvey at 25.5 (2,032 of dynasty
-# value for 865 of production, a player you build WITH) and that Zach Charbonnet at 25.6 was
-# "production-priced" on a ratio of 0.26. One year keeps James Cook at 0.1 and DK Metcalf at
-# 0.3, who really are at their edge.
+# Inside his final year: is the player at his own edge right now. Distinct from the buyer's
+# two-season horizon above because curves differ in width - on the RB (24, 27) curve "under
+# 2.0 of runway" means any RB over 25, which is a seller test gone wrong.
 INSIDE_FINAL_YEAR = 1.0
 
-# A "declining" player still on a multi-year deal is a weaker sell than the age curve
-# alone suggests - a team is still paying for the role, not just letting it expire.
-#
-# Years alone doesn't measure that, and reading them as if they did printed "contract-secure:
-# J.K. Dobbins (2yr/$0.0M gtd)" - a line that refutes itself. 461 of 1,695 active contracts
-# guarantee nothing at all, 44 of them with 2+ years left, and at ~$1M APY those are
-# veteran-minimum deals a team walks away from for free. Guaranteed money is the part that
-# binds a team to the role, so the flag requires both.
+# A declining-by-age player is contract-secure only with years AND guaranteed money - 461
+# of 1,695 active contracts guarantee nothing, and those are deals a team walks away from
+# for free.
 SECURE_YEARS_REMAINING = 2
 
 # How many future draft classes to count as pick capital. Beyond this, picks are too
@@ -109,26 +63,11 @@ def age_bucket(position: str, age: float | None, role: str | None = None) -> str
 
 
 def years_to_decline(position: str, age: float | None, role: str | None = None) -> float | None:
-    """How long until this player reaches his curve's decline cutoff. Negative once past it.
-
-    `age_bucket` answers "what is he now" and throws away the distance to the boundary, which
-    is the number a dynasty seller actually wants. Two quarterbacks can both read `prime` and
-    be in completely different situations, and on one live roster they were:
-
-        Justin Herbert   28.4  rushing_qb      2.6 years left
-        Jalen Hurts      28.0  rushing_qb      3.0
-        Jared Goff       31.8  pocket_passer   6.2
-
-    The tool's sell list ranked Goff first, because it ranks on how now-weighted the market's
-    price is - which is a real signal and a different question. A domain expert reading the
-    same roster said sell Hurts and keep Goff: the older man throws from the pocket and has
-    twice the runway, and the market has not priced the rushing decline. Both answers are
-    defensible; only one of them was computable before this.
-
-    Deliberately **not** folded into any existing sort. Two orderings competing inside one
-    list is how `_buy_path` ended up ranking trade activity above value. This is reported so
-    a caller can weigh runway against price, and it is the input the rebuild-timeline work
-    needs: a roster whose core turns in three years cannot run a four-year teardown."""
+    """How long until this player reaches his curve's decline cutoff; negative once past it.
+    The distance `age_bucket` throws away, and the number a seller wants: Goff at 31.8 has
+    6.2 years (pocket passer) while Hurts at 28.0 has 4.0, so age ordering inverts runway
+    ordering. Reported rather than folded into any sort - two orderings inside one list is a
+    documented failure mode here."""
     if age is None:
         return None
     if role in AGE_CURVE_OVERRIDES:
@@ -181,24 +120,11 @@ PRICED_FOR_GAP = 0.10
 
 
 def priced_for(players: dict[str, dict]) -> dict[str, dict]:
-    """Per player, whether the market prices him for LATER, for NOW, or the same on both -
-    from his *rank within his position* on each scale rather than from `redraft / value`.
-
-    **The ratio cannot answer this and the rank can.** Dynasty prices ~400 players and redraft
-    ~200, so half the pool has no redraft price at all and the ratio decays toward zero going
-    down the board: measured medians are QB 0.36, RB 0.05, WR 0.00, TE 0.00. A threshold of 1.0
-    is therefore nowhere near neutral, and it mislabelled 111 entries against 32 - calling Kenny
-    Gainwell (26, a backup at dynasty #37 / redraft #33) "upside-priced, only 0.39 of his price
-    is production", and Travis Kelce at 36 the same thing.
-
-    Tested against ten players whose answer is known, rank gets all ten right where the ratio
-    gets six wrong, in both directions: Fannin (TE #6 dyn / #10 red) reads `later`, Kelce (#17 /
-    #9) and Pollard (#41 / #32) read `now`, and Smith-Njigba, Jeanty and Lamar Jackson - elite on
-    both boards - read `aligned` where the ratio called all three upside-priced.
-
-    Only players priced on both scales get a verdict; `None` for the rest, which is correct
-    rather than a gap - "priced for now or later" is meaningless for someone with no now price,
-    and those players sit below every relevance floor anyway."""
+    """Per player, whether the market prices him for LATER, NOW, or the same on both - from
+    his rank within his position on each scale, because the raw redraft/dynasty ratio decays
+    toward zero down the board and 1.0 is nowhere near neutral (LOGIC.md, "the
+    dynasty/redraft measure"). Players missing either price get no verdict, which is
+    correct: "priced for now or later" is meaningless without a now price."""
     out = {}
     for pos in {p["position"] for p in players.values()}:
         pool = {pid: p for pid, p in players.items()
@@ -220,32 +146,10 @@ def priced_for(players: dict[str, dict]) -> dict[str, dict]:
 
 def now_premium_bar(players: dict[str, dict], percentile: float = 0.9) -> dict[str, float]:
     """Per position, the `redraft_value / value` cutoff at `percentile` of that position's
-    pool - i.e. how now-weighted a player's price has to be to be extreme *for his position*.
-
-    **This must be per-position; an absolute cutoff is a bug.** Dynasty and redraft are two
-    unnormalized scales whose relationship differs sharply by position. Measured across the
-    whole pool of one real league:
-
-    | pos | p10 | median | p90 | max |
-    |-----|-----|--------|-----|-----|
-    | QB  | 0.26| 0.97   | 1.31| 1.60|
-    | RB  | 0.07| 0.49   | 1.05| 1.54|
-    | TE  | 0.03| 0.25   | 0.81| 1.01|
-    | WR  | 0.03| 0.37   | 0.89| 1.07|
-
-    A single 1.25 bar is not "strict for TEs" - it is *unreachable* for TEs and WRs, whose
-    entire pools top out at 1.01 and 1.07. It silently restricts any rule using it to QBs
-    and RBs. `find_value_upgrades` documents making this exact mistake once already and
-    solved it by comparing pairwise within a position; this is the same fix for a rule that
-    has only one player to look at, so it needs the position's distribution instead of a
-    partner. Ranked against his own position, a 36.9-year-old TE at 0.83 raw is the second
-    most now-weighted declining starter in the league, not a rounding error below the bar.
-
-    A percentile, not a tuned constant, so it recalibrates with the market and with format -
-    the same reasoning behind the league tertiles in `team_state`. It cannot by itself say
-    "nobody qualifies", since ~10% of each position always clears it; that is deliberate.
-    This measures *shape* only. Whether a player is worth having at all is an absolute
-    question already answered upstream by `team_state.clears_relevance_floor`."""
+    pool - how now-weighted a price has to be to be extreme FOR HIS POSITION. Per-position
+    because the two scales' relationship differs sharply by position (an absolute bar once
+    sat above the entire TE pool - LOGIC.md, "The bar has to be per-position"). Measures
+    shape only; whether a player is worth having is `clears_relevance_floor`'s question."""
     bars = {}
     for player in players.values():
         if player.get("redraft_value") and player.get("value"):
@@ -284,22 +188,16 @@ def find_outliers(player_ids: list[str], players: dict[str, dict], contract_data
 def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty: bool,
                            tep_tier: str = "none") -> dict[str, dict]:
     players = fantasycalc.get_players(num_qbs, num_teams, ppr, is_dynasty, tep_tier)
-    # nflverse ships from a GitHub release host, and a 503 there took down every command in
-    # this project - `python -m analysis.team_state`, the audit, the agent, all of it. A usage
-    # role is an OVERRIDE on the age curve and absent means "no adjustment", which most players
-    # already are, so the tool can run without one.
-    #
-    # It must not run QUIETLY without one. The runway gap between a pocket passer (6.2 years at
-    # 31.8) and a running quarterback (4.0 at 28.0) is precisely what decided a real
-    # recommendation here, and falling back to position defaults would change that advice
-    # invisibly. So: degrade, and say so on stderr.
+    # A usage role is an override on the age curve and absent means "no adjustment", so an
+    # nflverse outage degrades rather than crashes - but never QUIETLY, because the role
+    # curves have reversed a real recommendation. stderr reaches the author; `degraded`
+    # reaches the answer.
     try:
         roles = player_roles.get_roles()
     except Exception as e:
         print(f"WARNING: usage roles unavailable ({type(e).__name__}) - age curves fall back to "
               f"position defaults this run, so runway is less accurate for quarterbacks and "
               f"pass-catching backs. Advice that turns on WHO to sell may differ.", file=sys.stderr)
-        # stderr reaches the author; `degraded` reaches the ANSWER. See sources/degraded.py.
         degraded.record("usage roles", "every age curve fell back to its position default, so "
                                       "runway is less precise for quarterbacks and pass-catching "
                                       "backs")
@@ -308,30 +206,11 @@ def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty:
         if player_id in players:
             players[player_id]["usage_role"] = role
 
-    # Redraft values from the same API with one flipped parameter - free, and previously
-    # unused. Dynasty value prices *current production plus future years*; redraft prices
-    # current production alone. The ratio between them is the share of a player's price
-    # that's future potential, which is exactly what a win-now team is overpaying for.
-    #
-    # Real case that motivated this: a superflex team's QB2 (C.J. Stroud, dynasty 3,288,
-    # redraft 2,744, premium 1.20) and QB3 (Sam Darnold, dynasty 2,735, redraft 2,704,
-    # premium 1.01) produce within 1.5% of each other *this season*, but Stroud costs 553
-    # more in trade value. For a win-now roster that's arbitrage - sell the premium, keep
-    # the production. Ranking by dynasty value alone can't see it.
-    #
-    # Deliberately NOT exposing a dynasty/redraft *ratio*. A first version did, and it
-    # was the `diff` mistake again: 1.0 reads as neutral, but the measured median ratio
-    # across the 200 players in both pools is 2.22 (p10 0.93, p90 18.1). So a 2.01 looked
-    # like "100% future premium" while actually sitting *below* typical - it flagged
-    # production-oriented veterans as speculative assets. Raw redraft_value is
-    # unambiguous (a price on a known scale, both pools topping out near 10,400);
-    # comparisons are made pairwise within a position by find_value_upgrades, where the
-    # skew cancels.
-    #
-    # Coverage is partial by nature of the source: redraft carries ~200 players against
-    # dynasty's ~400, since deep dynasty-only assets (rookies, prospects) have no redraft
-    # market. Missing entries get redraft_value=None and future_premium=None rather than a
-    # fabricated number - callers must handle absence, not silently treat it as zero.
+    # Redraft values: same API, one flipped parameter. Dynasty prices production plus
+    # future years; redraft prices production alone - the two currencies everything
+    # downstream reasons with. Raw values only, never a ratio (unnormalized scales -
+    # LOGIC.md). Coverage is ~200 redraft against ~400 dynasty, so missing entries get
+    # None, which callers must treat as unknown rather than zero.
     if is_dynasty:
         # Same tep_tier: a TE-premium league scores TEs higher this season too, so the
         # redraft pull needs the adjustment as much as the dynasty one does.
@@ -351,30 +230,11 @@ WINDOW_TO_PICK_TIER = {"Rebuild": "Early", "Middling": "Mid", "Contend": "Late",
 def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list[int],
                 pick_values: dict[str, int],
                 strategy_by_roster: dict[int, str] | None = None) -> dict[int, list[dict]]:
-    """The individual future picks each roster currently owns, not just a total.
-
-    `pick_capital` already resolves ownership through trades but sums it into one number,
-    which is enough for "who has draft capital" and useless for "what could actually
-    change hands". Trade suggestions need the picks themselves: a rebuilding team wants
-    to *acquire* them, a win-now team should be willing to *spend* them, and neither
-    conversation can happen against a single aggregate.
-
-    **Priced by the original owner's window where possible.** A "2028 1st" is not one
-    thing: a rebuilding team's first is an early pick, a contender's is a late one, and
-    the market prices that difference at nearly 2x (2027 1st: Early 4,487 / Mid 2,955 /
-    Late 2,263, against a flat 2,853). What decides it is how good the team the pick
-    *originally* belongs to turns out to be - not who currently holds it - so a contender
-    who acquired a rebuilder's first is holding an early pick and should be valued as
-    such. `strategy_by_roster` supplies each roster's effective_strategy for that lookup.
-
-    Only the *next* class has Early/Mid/Late prices published, which is the honest limit:
-    a team's window is a reasonable guide to where it finishes next season, and a poor
-    one two years out. Later picks keep the flat round value, and every pick records
-    `slot_basis` so the distinction is visible rather than implied.
-
-    Same two-year horizon as `pick_capital` (FUTURE_DRAFT_YEARS) - beyond that, picks are
-    too speculative to price and dynasty managers rarely deal that far out.
-    """
+    """The individual future picks each roster currently owns, priced by the ORIGINAL
+    owner's window where the market publishes tiers (a rebuilder's 1st is an early pick
+    whoever holds it, and Early/Late differ by nearly 2x). Only the next class has tiered
+    prices - a window predicts next season's finish, not the one after - so later picks
+    keep the flat round value and every pick records `slot_basis` saying which it got."""
     traded = sleeper.get_traded_picks(league_id)
     traded_map = {(int(t["season"]), t["round"], t["roster_id"]): t["owner_id"] for t in traded}
 
@@ -412,17 +272,9 @@ def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list
 
 
 def pick_equivalent(value: float, pick_values: dict[str, int]) -> str | None:
-    """The draft pick a player's value is closest to, e.g. "about a 2027 3rd (Late)".
-
-    Exists because a raw number is hard to feel. Told that a bench piece is "worth 947",
-    nobody knows whether that's a real asset; told it's "about a 2027 3rd", every dynasty
-    manager immediately does - and the honest read of a low-value depth player is closer
-    to a late pick than to a piece a trade is built around. FantasyCalc prices picks on
-    the same scale as players, so this is a lookup, not a model.
-
-    Future classes are priced as flat round averages (see get_pick_values), so the match
-    is approximate by nature - hence "about".
-    """
+    """The draft pick a player's value is closest to - "about a 2027 3rd" is legible where
+    "worth 947" is not. A lookup on FantasyCalc's own pick prices, not a model, and
+    approximate by nature since future classes are flat round averages."""
     if not pick_values or value <= 0:
         return None
     name, _ = min(pick_values.items(), key=lambda kv: abs(kv[1] - value))
@@ -431,15 +283,9 @@ def pick_equivalent(value: float, pick_values: dict[str, int]) -> str | None:
 
 def split_starters_bench(roster: dict, players: dict[str, dict],
                          starter_ids: set[str]) -> tuple[int, int]:
-    """Dynasty value of the lineup vs the bench.
-
-    `starter_ids` comes from `LeagueContext.starters` (value-derived), never from
-    Sleeper's `roster["starters"]`. This function used to read that snapshot, and its
-    output is what ranks the entire league (`team_state.starter_value_rank`), which in
-    turn drives `is_thin`/`is_loaded` and therefore `effective_strategy` - the label every
-    downstream decision branches on. The snapshot is whatever the current week's lineup
-    happens to be: in a real superflex league it listed one QB, and for one team only 8
-    of 10 slots were set at all."""
+    """Dynasty value of the lineup vs the bench. `starter_ids` is the value-derived lineup
+    (`LeagueContext.starters`), never Sleeper's current-week snapshot - see
+    roster_needs.projected_starters."""
     all_ids = roster["players"] or []
     starter_value = sum(players[pid]["value"] for pid in starter_ids if pid in players)
     bench_value = sum(players[pid]["value"] for pid in all_ids if pid in players and pid not in starter_ids)
@@ -447,13 +293,8 @@ def split_starters_bench(roster: dict, players: dict[str, dict],
 
 
 def pick_capital(owned: dict[int, list[dict]]) -> dict[int, int]:
-    """Total future pick value per roster_id, from `owned_picks`.
-
-    This used to be a second full copy of the traded-pick resolution loop, differing from
-    `owned_picks` only in summing flat round values instead of returning the picks
-    themselves. Two implementations of "who owns which future picks" meant two numbers for
-    draft capital could disagree - and once `owned_picks` learned to price by the
-    originating team's window, they did. Summing the same list is the one answer."""
+    """Total future pick value per roster_id - a sum over `owned_picks`, deliberately not
+    a second implementation of pick ownership, so the two numbers can never disagree."""
     return {rid: sum(p["value"] for p in picks) for rid, picks in owned.items()}
 
 

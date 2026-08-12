@@ -1,36 +1,15 @@
-"""One shared league context, built once and reused.
+"""One shared league context, built once and reused - the single place to add a field,
+and the single place that knows which similar-looking concept is which:
 
-Every analysis module used to open with the same four lines - fetch the league, describe
-the format, derive num_qbs, load the player pool - in `roster_detail`, `roster_needs`,
-`team_state`, `team_values` and `waiver_wire`. That's the duplication CLAUDE.md warns
-about, and it had already cost real effort: adding `redraft_value` to the player pool
-meant finding every one of those sites, and `find_targets` had grown an eight-line
-preamble that fetched the league twice.
+**Two slot concepts:** `needs_slots` folds SUPER_FLEX into an extra QB ("how many must I
+own"); `lineup_dedicated` + `lineup_flex` model the real lineup ("who actually starts").
 
-Caching (`sources/cache.py`) already made the repetition cheap, so this is a
-maintainability fix rather than a performance one - the point is that there's now a
-single place to add a field, and a single place that knows which of the several
-similar-looking slot and threshold concepts is which.
+**Two threshold concepts:** `start_thresholds` (redraft - can he start?) and
+`trade_thresholds` (dynasty - is he a real chip?). Conflating them once marked a team
+with three startable WRs as critically short.
 
-**Two slot concepts, deliberately both kept:**
-- `needs_slots` folds SUPER_FLEX into an extra QB. Right for "how many of this position
-  must I own", which is what replacement level and positional needs are asking.
-- `lineup_dedicated` + `lineup_flex` model the real lineup, where SUPER_FLEX takes any
-  position and FLEX slots exist at all. Right for "who actually starts".
-
-**Two threshold concepts, likewise:**
-- `start_thresholds` (redraft): can this player start? A current-production question.
-- `trade_thresholds` (dynasty): is this a real trade chip? A value question.
-  Conflating these made a team with three startable WRs read as critically short - see
-  LOGIC.md's "Positional needs".
-
-**One starter concept, deliberately only one.** `starters` is the single answer to "who
-is in this team's lineup", derived from value and the league's own slots. Sleeper's
-`roster["starters"]` is a snapshot of whatever the current week's lineup happens to be,
-which is meaningless in the preseason - in this league it listed one QB for a superflex
-team and eight starters for a ten-slot lineup. That was known and fixed on one code path
-while three others kept reading the snapshot, including the one computing the starter
-value the whole league is ranked by. Now nothing reads it.
+**One starter concept:** `starters`, value-derived. Nothing reads Sleeper's current-week
+snapshot, which is meaningless in the preseason.
 """
 
 from dataclasses import dataclass, field

@@ -37,29 +37,11 @@ def dedicated_slots(roster_positions: list[str]) -> dict[str, int]:
 
 def replacement_thresholds(players: dict[str, dict], slots: dict[str, int], num_teams: int,
                            metric: str) -> dict[str, float]:
-    """Replacement level per position: the Nth-best player, N = every starting slot in
-    the league at that position.
-
-    **Replacement level is a win-now lens.** "Is there a startable player here" is only
-    the operative question for a team trying to field the best lineup it can this season.
-    A rebuilding team isn't shopping above replacement level at all - it's accumulating
-    ascending value and picks, and `find_targets` routes it to the pivot path for exactly
-    that reason. Read a rebuilder's positional needs as "what a contending version of this
-    roster would be short of", not a to-do list.
-
-    **`metric` is required, deliberately.** It used to default to `"value"` here while
-    `_usable_by_position` defaulted to `"redraft_value"` - two functions that have to
-    agree, shipping opposite defaults, in a file whose central documented bug is exactly
-    that conflation. Callers now have to say which question they're asking.
-
-    "Can I field a lineup?" is about *current production* (`redraft_value`); "is this a
-    real trade chip?" is about *dynasty value*. Using dynasty value for the first was
-    badly wrong:
-    it asks whether a player beats the 36th-most-*valuable* WR, a pool full of young
-    prospects priced on upside, rather than the 36th-best current producer. Measured on
-    a real league the gap is 2.5x at WR (2,126 vs 855) and 3.2x at TE (2,013 vs 630),
-    which marked a team with three startable WRs and two startable TEs as *critical* at
-    both."""
+    """Replacement level per position: the Nth-best player, N = every starting slot in the
+    league at that position. A win-now lens - read a rebuilder's needs as what a contending
+    version of the roster would be short of. `metric` is required because the two questions
+    use different currencies: "can I field a lineup" is redraft, "is this a trade chip" is
+    dynasty, and conflating them is this file's central documented bug."""
     thresholds = {}
     for pos, starters_needed in slots.items():
         pos_values = sorted((info.get(metric) for info in players.values()
@@ -74,17 +56,9 @@ def replacement_thresholds(players: dict[str, dict], slots: dict[str, int], num_
 
 def _usable_by_position(roster: dict, players: dict[str, dict], thresholds: dict[str, float],
                         metric: str, starters: set[str] | None = None) -> dict[str, list[dict]]:
-    """Every rostered player at each position that clears this league's replacement level,
-    best to worst. Used by `assess_positions` to count how many startable bodies a team has.
-
-    **Sorted by the same metric it filters on**, which was once a real bug: it filtered on
-    redraft value and sorted on dynasty value, so a caller taking the top N as "the starters"
-    and the rest as spare could keep a pricier prospect over a better current producer. Two
-    metrics inside one ordering is the conflation `replacement_thresholds` documents at length.
-
-    It used to be shared with a `find_surplus` that answered "is he spare to *me*"; that was
-    deleted with the mutual-swap engine it fed - see LOGIC.md on why bundling spare depth is a
-    question this project has no tool to price.""" 
+    """Every rostered player at each position clearing this league's replacement level,
+    best to worst - sorted by the same metric it filters on, because two metrics inside
+    one ordering is the currency conflation again."""
     by_pos = {pos: [] for pos in POSITIONS}
     for pid in roster["players"] or []:
         info = players.get(pid)
@@ -98,50 +72,28 @@ def _usable_by_position(roster: dict, players: dict[str, dict], thresholds: dict
     return by_pos
 
 
-# A group can rank mid-table and still be badly short in absolute terms, because
-# positional distributions are skewed - TE especially. In a real league the 8th-best TE
-# room (648) was 39% of the league median (1,667) and 10% of the best (6,670); rank alone
-# called that "average". Half the league's median production from a position means giving
-# up roughly a full starter's worth of scoring against a typical opponent every week,
-# which is a real need regardless of where it happens to sort.
+# A group can rank mid-table and still be badly short in absolute terms (positional
+# distributions are skewed, TE especially) - half the median production is a starter's
+# worth of scoring given up weekly, wherever it sorts.
 WEAK_VS_MEDIAN = 0.5
 
-# Below this, "bottom tertile" and "league median" describe a sample too small to carry
-# either meaning - in a 1-team league every rank is simultaneously first and last, which
-# made the naive tertile test call *every* position weak. Quality simply isn't assessed
-# there; the count test stands alone and a shortage falls back to `critical`, rather than
-# emitting a confident label derived from nothing. `format_support` already flags leagues
-# under 8 teams as degraded for the same underlying reason.
+# Below this, tertiles and medians describe a sample too small to mean anything, so
+# quality isn't assessed and a shortage falls back to `critical` rather than a confident
+# label derived from nothing.
 MIN_TEAMS_FOR_QUALITY = 4
 
 # Which shortage to go fix first. A position you can't field at all outranks one you can
 # field badly.
 NEED_PRIORITY = {"critical": 0, "top-heavy": 1, "weak": 2}
 
-# How far above the weakest starter a bench player has to produce before holding him is a
-# problem in its own right rather than ordinary depth. Doubling him is the line: a body
-# marginally better than your worst starter is the first man up when someone misses a week,
-# which is what depth IS, while one producing twice over is carrying a starter's worth of
-# scoring that the lineup never collects. The two live cases sit either side of it by a long
-# way - a blocked QB at 5.3x, a flex receiver at 1.5x - so the exact figure is not doing
-# delicate work.
+# A bench player marginally better than the worst starter is ordinary depth; one producing
+# double is a starter's worth of scoring the lineup never collects. The live cases sit at
+# 5.3x and 1.5x, so the exact figure is not doing delicate work.
 STRANDED_MULTIPLE = 2.0
 
-# **Everything in this module is a win-now measurement**, and about a third of any league is
-# not playing that game. `replacement_thresholds` has always said so in its docstring - "read
-# a rebuilder's positional needs as what a contending version of this roster would be short
-# of, not a to-do list" - and nothing in the output ever said it, so the tool reported a
-# deliberate allocation as a hole.
-#
-# The live case: a manager who stacks receivers and tight ends on purpose (cheaper than QB,
-# and value-insulated compared to RB) and stays light at running back knowingly, because RB
-# value decays fastest. The tool called his RB room `critical`. It is not wrong about the
-# lineup - it is answering a question he isn't asking.
-#
-# Two things flip for a rebuilding team, not one. A *need* becomes descriptive rather than
-# prescriptive. And *exposure* stops being a risk at all: a team not playing for this season
-# loses nothing it wants when a starter goes down, so presenting high exposure as a concern
-# is not merely mistimed, it is backwards.
+# Everything in this module is a win-now measurement, and a third of any league is not
+# playing that game - so a rebuilder's entries carry this note. Two things flip for them:
+# a need becomes descriptive, and exposure stops being a risk at all.
 REBUILD_LENS = (
     "NOT A TO-DO. This team is rebuilding, so it is not trying to field the best lineup it "
     "can this season. Read this as what a CONTENDING version of this roster would be short "
@@ -174,26 +126,11 @@ def _starting_group(roster: dict, players: dict[str, dict], slots: dict[str, int
 
 def _injury_drop(roster: dict, players: dict[str, dict], pos: str, starters: set[str],
                  dedicated: dict[str, int], flex: list[tuple[str, ...]]) -> float | None:
-    """Production this lineup loses if its *weakest* starter at `pos` goes down - computed
-    by removing them and **refilling the lineup optimally**, not by looking up the next
-    player at the same position.
-
-    The refill matters because flex slots exist. A QB lost from a SUPER_FLEX is replaced by
-    the best remaining player of *any* position, not by the team's QB3 - so a superflex
-    team with two good QBs and a cheap third is not as exposed as a same-position reading
-    claims, which is exactly how the format is meant to be built. Same for FLEX: an injured
-    RB3 can be covered by a WR.
-
-    The marginal starter is the right one to price. If a team starts four RBs and its RB1
-    is hurt, everyone shuffles up and what actually enters the lineup is the best bench
-    option - so the loss is the value of the *last* lineup spot, not of the star.
-
-    **This is the magnitude if it happens, not an expected loss.** Injury rates differ by
-    position - QBs go down less often than RBs - and nothing here models that, so a large
-    QB number and an equal RB number are not equally worrying. See LOGIC.md.
-
-    Returns None when nothing is started at the position, which is a *need*, not exposure.
-    """
+    """Production lost if the WEAKEST starter at `pos` goes down, by removing him and
+    refilling the lineup optimally - flex slots mean the replacement can come from any
+    eligible position, and the marginal lineup spot is what everyone shuffling up actually
+    exposes. Magnitude if it happens, not an expected loss. None when nothing is started
+    there, which is a need, not exposure."""
     mine = [p for p in starters if p in players and players[p]["position"] == pos]
     if not mine:
         return None
@@ -210,32 +147,11 @@ def weakest_starter(players: dict[str, dict], starters: set[str]) -> str | None:
 
 
 def stranded_starters(roster: dict, players: dict[str, dict], starters: set[str]) -> list[str]:
-    """Player ids of bench players producing multiples of what this lineup's weakest starter
-    does. The most valuable thing a roster owns that it cannot use.
-
-    **The case this was missing is the whole reason superflex exists as a format.** A real
-    rebuilding roster held four startable quarterbacks with two QB-capable slots. Its QB3
-    priced at 4,880 of current production sat on the bench while the team started a receiver
-    producing 420 - and QB3 alone out-produced its entire starting RB room by more than
-    three times. Every number needed to see that was already computed; nothing put them
-    next to each other, so the tool listed him as an ordinary trade chip.
-
-    **This is a magnitude test, and it is not "capacity, not quality" however tempting that
-    framing is.** The lineup is chosen optimally, so *every* bench player is out of it by
-    some mix of the two, and "he'd be starting if a slot allowed it" is true of the whole
-    bench - it separates nothing. What made that QB3 worth its own block is the size of the
-    idle production, not the fact of being blocked.
-
-    Merely clearing the weakest starter isn't enough, because that starter is usually in a
-    *dedicated* slot no one else can take. A live example: a roster starting an RB at 643
-    was told its 944 receiver was the most valuable thing it couldn't use, while a 3,380
-    quarterback sat behind two better ones on the same bench. The receiver was 122 behind
-    the last flex body - ordinary depth, and `would_start_if_one_out` is where he belongs.
-    `STRANDED_MULTIPLE` is what keeps the two apart.
-
-    What survives is genuinely unusable, which means its entire value to *this* roster is
-    what it fetches - true regardless of window: a contender converts one into the position
-    it's short at, a rebuilder into futures."""
+    """Bench players producing multiples of the weakest starter - the most valuable thing
+    a roster owns that it cannot use (a superflex QB3, say). A magnitude test, not
+    "capacity vs quality": every bench player is blocked by some mix of the two, and what
+    makes an entry is the size of the idle production, kept apart from ordinary depth by
+    `STRANDED_MULTIPLE`."""
     weakest = weakest_starter(players, starters)
     if weakest is None:
         return []
@@ -249,23 +165,11 @@ def stranded_starters(roster: dict, players: dict[str, dict], starters: set[str]
 def would_start_if_one_out(roster: dict, players: dict[str, dict], candidate_id: str,
                            starters: set[str], dedicated: dict[str, int],
                            flex: list[tuple[str, ...]]) -> bool:
-    """Would adding this player put him in the lineup once one starter above him is out?
-
-    The mirror of `production_lost_without`, and the missing half of how this project talks
-    about rosters. Needs are binary - a position is a hole or it isn't - and that leaves
-    depth invisible, because a player who doesn't crack the lineup today reads as worth
-    nothing. He isn't: byes are certain and injuries are close to it, so a body who steps
-    straight in when someone goes down has real value at a nominal price.
-
-    "One starter out" rather than "any player out" keeps it honest. Simulated by removing
-    the *weakest* current starter at his position - the marginal lineup spot, same choice
-    `_injury_drop` makes and for the same reason - and refilling optimally, so flex
-    eligibility is respected. A team starting five receivers has a very different sixth-WR
-    picture from one starting three, and only a real refill can tell them apart.
-
-    Deliberately says nothing about price. Whether he's worth acquiring is a separate
-    judgement and an easy one to get wrong in the expensive direction, which is why callers
-    are expected to pair this with "don't overpay" rather than treat it as a need."""
+    """Would adding this player put him in the lineup once ONE starter above him is out?
+    Depth as a third state, since binary needs leave it invisible. Simulated by removing
+    the weakest current starter at his position and refilling optimally, so flex
+    eligibility is respected. Says nothing about price - callers pair this with "don't
+    overpay", never a need."""
     position = players[candidate_id]["position"] if candidate_id in players else None
     if position is None:
         return False
@@ -281,16 +185,9 @@ def would_start_if_one_out(roster: dict, players: dict[str, dict], candidate_id:
 def replacement_is_unpriced(roster: dict, players: dict[str, dict], pos: str,
                             starters: set[str], dedicated: dict[str, int],
                             flex: list[tuple[str, ...]]) -> bool:
-    """Whether the player who would enter the lineup after an absence at `pos` has **no
-    redraft price at all**, which makes the drop-off above an upper bound rather than a
-    measurement.
-
-    Redraft coverage runs out well before dynasty rosters do - roughly the top 30 at a
-    position - so a genuine backup can carry `redraft_value = None`, which the arithmetic
-    then treats as zero. A live roster reported "losing your TE costs 3,848", i.e. **100%**
-    of its TE production, with a rostered NFL tight end sitting behind him unpriced. The
-    figure isn't so much wrong as unanswerable, and saying so beats implying the bench is
-    empty - especially since deep dynasty rosters are exactly where this happens."""
+    """Whether the replacement after an absence at `pos` has no redraft price at all,
+    which makes the drop-off an upper bound rather than a measurement - redraft coverage
+    runs out well before dynasty rosters do, and saying so beats implying an empty bench."""
     mine = [p for p in starters if p in players and players[p]["position"] == pos]
     if not mine:
         return False
@@ -303,13 +200,9 @@ def replacement_is_unpriced(roster: dict, players: dict[str, dict], pos: str,
 def production_lost_without(roster: dict, players: dict[str, dict], player_id: str,
                             starters: set[str], dedicated: dict[str, int],
                             flex: list[tuple[str, ...]]) -> float:
-    """Current production this lineup loses if `player_id` is gone and the lineup refills
-    optimally. Zero means the roster covers him from the bench for free.
-
-    Shared deliberately. This began as the guts of `_injury_drop`, and the question turns
-    out to be the same one two callers were asking in opposite directions: "how bad is it if
-    I lose him" and "can I afford to trade him away". Answering it twice would guarantee the
-    two eventually disagreed about the same player on the same roster."""
+    """Current production lost if `player_id` is gone and the lineup refills optimally;
+    zero means the bench covers him for free. One function because "how bad is losing him"
+    and "can I afford to trade him" are the same question asked from opposite directions."""
 
     def produced(ids):
         return sum(players[p].get("redraft_value") or 0 for p in ids if p in players)
@@ -321,13 +214,9 @@ def production_lost_without(roster: dict, players: dict[str, dict], player_id: s
 
 def backfill_for(roster: dict, players: dict[str, dict], player_id: str, starters: set[str],
                  dedicated: dict[str, int], flex: list[tuple[str, ...]]) -> dict | None:
-    """WHO steps into the lineup if `player_id` leaves - which is the reason
-    `production_lost_without` is small whenever it is small, and the reason was missing. A
-    starter shown as costing 122 of production reads as an arbitrary number; "122, because DK
-    Metcalf takes the FLEX at 944" is the actual argument for moving him.
-
-    The highest-producing promotion when a departure cascades through flex slots: that is the
-    player who directly replaces him, and the rest is the lineup reshuffling behind."""
+    """WHO steps into the lineup if `player_id` leaves - the reason
+    `production_lost_without` is small whenever it is small. The highest-producing
+    promotion is the direct replacement; the rest is the lineup reshuffling behind."""
     without = {**roster, "players": [p for p in (roster["players"] or []) if p != player_id]}
     promoted = projected_starters(without, players, dedicated, flex) - starters
     entries = [players[p] for p in promoted if p in players]
@@ -343,54 +232,21 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                      starters: dict[str, set[str]] | None = None,
                      lineup: tuple[dict, list] | None = None,
                      position_rates: dict[str, float] | None = None) -> dict[str, dict[str, dict]]:
-    """Every roster's standing at every position, keyed owner_id -> position.
-
-    **Why this replaced a bare count.** The old rule was purely "how many players clear
-    replacement level": fewer than the starting slots = critical, exactly = thin. Measured
-    against a real 12-team superflex league, that rule was close to *inverted*:
-
-    - The team with the **2nd-best WR room in the league** (13,141 of starting production,
-      Nacua + Nabers) read `critical` at WR, because its WR3 sat below the bar.
-    - The team with the **10th-best WR room** (6,308) read as having no WR need at all,
-      because four players cleared a low bar (794) by a little.
-    - One team was told it was "thin at WR" - where it ranked a perfectly ordinary 7th of
-      12 - while its genuinely bad positions, QB (9th) and TE (8th, at 39% of the league
-      median), were reported as fine. In a superflex league, no less.
-
-    Replacement level answers "can this player start", which is a floor. It cannot answer
-    "is this group good", and a floor test applied to a quality question passes teams that
-    are merely numerous and fails teams that are merely top-heavy.
-
-    So each position now carries both readings, and the level names the shape of the
-    problem rather than its severity alone:
+    """Every roster's standing at every position, keyed owner_id -> position. Count and
+    quality are separate problems with opposite fixes, so the level names the SHAPE of the
+    problem:
 
     - `critical`   - can't field the slots AND the group is weak. A real hole.
-    - `top-heavy`  - can't field the slots, but what's there is good. Wants *bodies*;
-                     the stars are already in place.
-    - `weak`       - can field the slots, but the group is bottom-tertile or under
-                     `WEAK_VS_MEDIAN` of the league median. Wants an *upgrade*, not depth.
-                     This is the case that had no representation at all before.
-    - `ok`         - neither. Notably includes "middle of the league with no star", which
-                     is not a need; it's an average position, and calling it one sent
-                     teams shopping for problems they didn't have.
+    - `top-heavy`  - can't field the slots, but what's there is good. Wants bodies.
+    - `weak`       - slots fillable, group bottom-tertile or under `WEAK_VS_MEDIAN` of the
+                     median. Wants an upgrade, not depth.
+    - `ok`         - neither; middle-of-the-league with no star is not a need.
 
-    **Injury exposure is measured but is deliberately NOT a need.** `drop_if_injured` is
-    how much production this team loses if its last starter at the position goes down,
-    ranked against the league. It is a separate axis from "is my starting lineup short or
-    weak", and folding it in would tell a perfectly healthy team it has four problems.
-
-    It exists because replacement level cannot express depth at all. `start_thresholds` is
-    the Nth-best player leaguewide where N is every starting slot in the league, so by
-    construction only about enough players clear it to fill everyone's lineups - measured
-    on two real leagues, 10 of 12 teams had *zero* startable bench, which is an artifact of
-    the definition rather than a fact about their rosters. A manager who is genuinely one
-    injury from disaster could not be told so. Drop-off sidesteps the bar entirely by
-    asking about magnitude instead of counting bodies.
-
-    Numbers ship with the sentence that interprets them, for the reason documented on
-    `team_state.window_note`: an unlabelled number in a tool result gets a meaning
-    invented for it.
-    """
+    Injury exposure (`drop_if_injured`, ranked) is measured but is deliberately NOT a
+    need - it is a separate axis, and the drop-off sidesteps the replacement bar, which by
+    construction leaves almost nobody with "startable bench". Numbers ship with the
+    sentence that interprets them. Why the bare count this replaced was nearly inverted:
+    LOGIC.md, "Count vs quality"."""
     groups = {r["owner_id"]: _starting_group(r, players, slots) for r in rosters}
     usable = {r["owner_id"]: _usable_by_position(r, players, thresholds, "redraft_value")
               for r in rosters}
@@ -452,13 +308,9 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                 entry["exposure_rank"] = drop_rank[owner_id]
                 entry["exposure"] = {"top": "high", "middle": "typical", "bottom": "low"}[
                     tertile(drop_rank[owner_id], len(drop_rank))]
-                # The likelihood half. This note used to end by warning that rates differ
-                # by position and weren't modelled, which told a reader the number was
-                # incomparable across positions without giving them any way to compare it.
-                # Measured over three seasons of weekly rosters, QBs miss about 11% of
-                # their weeks against 19% for RBs - so the same drop-off at the two
-                # positions is genuinely not the same problem, and now it can be said with
-                # a number instead of a disclaimer.
+                # The likelihood half: QBs miss ~11% of their weeks against ~19% for RBs,
+                # so an equal drop at two positions is not the same problem - said with a
+                # number instead of a disclaimer.
                 rate = position_rates.get(pos) if position_rates else None
                 likelihood = (
                     f" Likelihood: {pos}s have missed {rate:.0%} of their roster weeks over "
@@ -517,13 +369,9 @@ def _position_note(pos: str, level: str, count: int, required: int, total: float
 
 
 def needs_only(assessed: dict[str, dict]) -> dict[str, dict]:
-    """The not-`ok` positions from one roster's assessment.
-
-    There is deliberately no single-roster `find_needs` any more. Quality is measured
-    against the rest of the league, so a per-roster entry point would have had to either
-    take the league as an argument anyway or quietly degrade to a 1-of-1 ranking - and a
-    function that silently answers a different question than the one asked is how the old
-    count-only rule survived as long as it did."""
+    """The not-`ok` positions from one roster's assessment. Deliberately no single-roster
+    entry point exists: quality is league-relative, and a per-roster version would quietly
+    degrade to a 1-of-1 ranking."""
     return {pos: entry for pos, entry in assessed.items() if entry["level"] != "ok"}
 
 
@@ -554,43 +402,13 @@ def lineup_slots(roster_positions: list[str]) -> tuple[dict[str, int], list[tupl
 
 def projected_starters(roster: dict, players: dict[str, dict], slots: dict[str, int],
                        flex: list[tuple[str, ...]] | None = None) -> set[str]:
-    """**Player ids** of the players a team would actually start, derived from value and
-    the league's own slot counts. The single definition of "starter" in this project -
-    `LeagueContext.starters` calls it once per roster and everything else reads that.
-
-    Ids rather than names: names were used originally because the entries this is matched
-    against carry names, but that meant every consumer had to be handed the set and do a
-    string comparison, and two players can share a name. With ids, `_usable_by_position`
-    and `team_state.classify` can stamp `is_starter` on entries as they build them, and
-    the callers just read that field - which deleted the `projected` argument that had
-    been threaded through five functions.
-
-    Deliberately *not* Sleeper's `starters` field. That reflects whatever the current
-    week's lineup happens to be, which is meaningless before Week 1 - in a real
-    superflex league (2 QB slots) the snapshot listed exactly one QB as a starter, so
-    the team's obvious QB2 (C.J. Stroud, ascending, 3,288 value) was classed as bench
-    and offered up as spare parts. In superflex especially, a second QB is among the
-    most valuable things on a roster, not dead weight.
-
-    **Ranked by redraft value, not dynasty value.** A lineup is purely "who scores most
-    this week", which is what redraft prices measure; dynasty value governs who you keep
-    or trade, not who you start. Ranking by dynasty put the wrong player in the lineup -
-    a real league showed a TE whose bench alternative produced *102%* of his current
-    output, i.e. the better current player was sitting. This holds for every window, not
-    just Win-Now: a rebuilding team still starts its best scorers.
-
-    Players with no redraft price sort last. That's safe rather than lossy: redraft
-    covers the top ~200, and the highest-dynasty rostered player missing one across a
-    real 12-team league was 1,350 - far below every positional replacement level, so
-    nobody actually startable is affected.
-
-    **Flex slots are filled properly**, which matters more than it sounds. A real league
-    runs QB 1 / RB 2 / WR 3 / TE 1 / FLEX 2 / SUPER_FLEX 1 - so a team with three
-    excellent RBs starts all three (two at RB, one at FLEX), and a superflex QB2 occupies
-    the SUPER_FLEX. Modelling only dedicated slots claimed 8 starters where there are 10
-    and treated the third RB as spare parts. Dedicated slots fill first, then flex, most
-    restrictive first so a SUPER_FLEX doesn't take a player only a narrower FLEX could use.
-    """
+    """Player ids a team would actually start - the single definition of "starter" in
+    this project (`LeagueContext.starters` calls it once; everything else reads that).
+    Not Sleeper's snapshot, which is whatever the current week's lineup happens to be and
+    once classed a superflex QB2 as spare parts. Ranked by redraft value (a lineup is "who
+    scores most this week", in every window; missing prices sort last, safely below every
+    replacement level), with flex slots filled properly - dedicated first, then flex, most
+    restrictive first."""
     return {pid for _, pid in fill_lineup(roster, players, slots, flex)}
 
 
@@ -600,18 +418,10 @@ _FLEX_NAME = {positions: name for name, positions in FLEX_ELIGIBILITY.items()}
 
 def fill_lineup(roster: dict, players: dict[str, dict], slots: dict[str, int],
                 flex: list[tuple[str, ...]] | None = None) -> list[tuple[str, str]]:
-    """The lineup as `[(slot_label, player_id)]` - the same fill `projected_starters`
-    returns, but keeping *which slot* each player occupies.
-
-    That detail is the whole answer to "what happens if X goes down", because the visible
-    effect is players moving between slots, not just one name disappearing. On a real
-    roster, losing the RB2 slides the FLEX back into RB2 and pulls a *tight end* into the
-    vacated FLEX - which is not what the manager expected (he assumed a WR) and is
-    correct, since FLEX takes RB/WR/TE and the bench TE outproduced the bench WR.
-
-    Exposed as a tool precisely so the model never has to work this out itself. Filling
-    flex slots is a small optimisation problem with a deterministic answer, and asking an
-    LLM to do it in prose is the kind of thing it will confidently get subtly wrong."""
+    """The lineup as `[(slot_label, player_id)]` - `projected_starters` keeping which slot
+    each player occupies, which is the whole answer to "what happens if X goes down".
+    Exposed as a tool so the model never fills flex slots in prose, which it gets subtly
+    wrong (a vacated FLEX correctly went to a tight end, not the assumed WR)."""
     by_pos: dict[str, list[tuple[float, str]]] = {pos: [] for pos in POSITIONS}
     for pid in roster["players"] or []:
         info = players.get(pid)
