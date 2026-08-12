@@ -2435,6 +2435,25 @@ It deliberately does not touch `MIN_RELEVANCE_FRACTION`, where `production` and 
 That is the fourth place `bucket` was standing in for a runway, after `classify`, `_pivot_path`
 and `_cliff_case`.
 
+### A relative measure must not print an absolute claim (`priced_for`)
+
+`priced_for` compares a player's two RANKS inside his own position pool, so it answers *"is the
+market pricing him more for later than it prices other RBs"* - not *"does his price contain future
+value"*. The `aligned` branch printed the second: **"no future premium to harvest"**.
+
+That contradicted the offer pool two blocks above, on the same player in the same report.
+TreVeyon Henderson, 23.8 with **3.2 years of runway** and an `ascending` bucket, read:
+
+- offer pool (`value_basis`, age-derived): *"high - real future value you won't get back"*
+- value upgrades (`priced_for`, rank-derived): *"no future premium to harvest"*
+
+Both measures were right and answering different questions; the sentence was wrong. It now reads
+*"priced like the rest of his position (15th of 56 at RB in dynasty against 18th in redraft) - he
+may still be young, this says only that the market is not paying him a premium other RBs don't
+get."* Caleb spotted it from the recommendation alone: *"It tells me to move off henderson in
+league 2?"* - the advice is actually sound for a Push team (Derrick Henry is +2,397 of production
+for 449 *less* dynasty value), which is why only the label needed fixing.
+
 ### Hard breakpoints on continuous measures
 
 A recurring shape rather than three separate bugs. A threshold gets used as a *gate*, so two
@@ -2450,10 +2469,10 @@ more.
 | gate | what it excluded | now |
 |---|---|---|
 | `_cliff_case` on `now_premium_bar` | DeVonta Smith, ratio **0.8790** against a WR bar of **0.8790** | the case stands on runway; the sentence says whether a discount exists |
-| `_holding_kind` on strictly-less value | Smith at **3,619** against Rice at **3,616**, for +535 of production | `VALUE_NOISE`, the same band as `NOISE_RETAINED` on the other axis |
+| `_holding_kind` on strictly-less value | Smith at **3,619** against Rice at **3,616**, for +535 of production | `NOISE_BAND`, the same 2% read on the other axis |
 | `_counterparty_fit` on `MIN_RUNWAY_FOR_LATER` | CeeDee Lamb at **1.6**, DK Metcalf at **0.3** | runway ranks the pool; only past-his-cliff is dropped |
 
-`VALUE_NOISE` applies to the `upgrade` kind only. Where the released value is the entire point -
+`NOISE_BAND` applies to the `upgrade` kind only on the value side. Where the released value is the entire point -
 `value_decision`, `conversion` - it has to actually be released, and `MIN_VALUE_FREED` says how
 much. A negative `value_freed` also needs prose: "costs -3 less in dynasty value" is not a
 sentence, so an upgrade inside the band reads "same dynasty price".

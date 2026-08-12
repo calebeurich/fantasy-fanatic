@@ -379,12 +379,21 @@ def test_the_three_kinds_are_labelled_by_how_much_production_survives():
                             "redraft_value": 1790}   # 98.8%, frees 515
     ctx.players["convert"] = {"name": "Convert", "position": "TE", "value": 2500,
                               "redraft_value": 1700}  # 93.9%, frees 1015
-    for pid in ("noise", "convert"):
+    # The mirror of `Noise`, and the case that was missing: `NOISE_RETAINED` caught noise on the
+    # way DOWN and nothing caught it on the way UP, so a live return worth +3 of 2,572 (+0.12%)
+    # was called "strictly the better holding for a team trying to win now". The lineup does not
+    # move at +3; the finding is the value freed.
+    ctx.players["hair"] = {"name": "Hair", "position": "TE", "value": 3000,
+                           "redraft_value": 1813}    # +0.11%, frees 515
+    for pid in ("noise", "convert", "hair"):
         ctx.rosters[1]["players"].append(pid)
     moves = trade_targets.find_value_upgrades(me, ctx, states, {"mine"}, {"them": 3}, {})
     by_name = {u["name"]: u for u in moves[0]["returns"]}
 
     assert by_name["Cheaper"]["kind"] == "upgrade"
+    assert by_name["Hair"]["kind"] == "value_decision", (
+        "producing 0.11% MORE is the same lineup, not a lineup upgrade - the noise band has to "
+        "work in both directions or `upgrade` claims a gain nobody would notice")
     assert by_name["Noise"]["kind"] == "value_decision"
     assert "not a lineup upgrade" in by_name["Noise"]["note"]
     assert by_name["Convert"]["kind"] == "conversion"

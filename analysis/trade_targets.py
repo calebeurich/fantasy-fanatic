@@ -188,16 +188,22 @@ UPGRADE_KIND_TAG = {
 # below this it's churn, not arbitrage.
 MIN_VALUE_FREED = 300
 
-# The same noise band as NOISE_RETAINED, read on the value axis instead of the production one.
-# Two prices this close are the same price, and requiring *strictly* less made a real finding
-# flicker in and out between value refreshes: DeVonta Smith at 3,619 against Rashee Rice at
-# 3,616 produces 535 more this season for a price identical to three decimal places, and the
-# entry existed or didn't depending on which side of Rice he landed that hour.
+# NOISE_RETAINED as a band rather than a floor, so the same 2% means the same thing on both
+# axes and in both directions. Three separate near-miss bugs came from having it on one side
+# only:
 #
-# Only the `upgrade` kind gets the band. Where the released value is the entire point
-# (`value_decision`, `conversion`) it has to actually be released, and MIN_VALUE_FREED says
-# how much.
-VALUE_NOISE = 1 - NOISE_RETAINED
+# - **Value axis.** Requiring *strictly* less dynasty value made a real finding flicker between
+#   refreshes: DeVonta Smith at 3,619 against Rashee Rice at 3,616 produces 535 more this season
+#   for a price identical to three decimal places.
+# - **Production axis, gains.** `NOISE_RETAINED` caught noise when production DROPPED and nothing
+#   caught it when production rose, so Jaylen Waddle at **+3 of 2,572 (+0.12%)** was called
+#   "strictly the better holding for a team trying to win now". The lineup does not move at +3;
+#   the finding is the 408 of dynasty value freed, which is what `value_decision` already says.
+#
+# Only `upgrade` gets the band on the value side: where the released value is the entire point
+# (`value_decision`, `conversion`) it has to actually be released, and MIN_VALUE_FREED says how
+# much.
+NOISE_BAND = 1 - NOISE_RETAINED
 
 # "Still there later" is the same question `team_state` asks of a cornerstone, so it uses the
 # same answer - see team_values.MIN_MEANINGFUL_RUNWAY.
@@ -612,10 +618,15 @@ def _holding_kind(produced: float, costs: float, mine: dict) -> str | None:
 
     Not costing MORE in dynasty value is required by all three - that is what keeps this from
     collapsing into "go buy someone better", which is the buy path's question. For `upgrade`
-    that allows `VALUE_NOISE`, because two prices inside the noise band are the same price and
-    a strict comparison made a real finding flicker between refreshes."""
+    that allows `NOISE_BAND`, because two prices inside the band are the same price and a strict
+    comparison made a real finding flicker between refreshes.
+
+    **`upgrade` also has to CLEAR the band on production, not merely exceed it.** A gain of +3
+    against 2,572 is not a better lineup, it is the same lineup, and calling it "strictly the
+    better holding" while `value_decision` sat unused said something false about a real trade."""
     mine_produced = mine.get("redraft_value") or 0
-    if produced > mine_produced and costs <= mine["value"] * (1 + VALUE_NOISE):
+    if (produced > mine_produced * (1 + NOISE_BAND)
+            and costs <= mine["value"] * (1 + NOISE_BAND)):
         return "upgrade"
     if costs >= mine["value"]:
         return None
@@ -633,7 +644,7 @@ def _upgrade_note(kind: str, produced: float, replaced: dict, freed: float, mine
               f"he is already yours." if mine_side else
               f"{replaced['name']} becomes depth rather than a starter.")
     if kind == "upgrade":
-        # `freed` can now be very slightly negative - VALUE_NOISE admits an upgrade priced inside
+        # `freed` can now be very slightly negative - NOISE_BAND admits an upgrade priced inside
         # the noise band, and "costs -3 less" is not a sentence.
         price = (f"costs {freed:,} less in dynasty value" if freed > 0 else
                  f"costs the same in dynasty value, inside the {abs(freed):,} that separates them")
@@ -1791,8 +1802,11 @@ def _print_push(push: dict, extras: dict) -> None:
                   f"{t['from_owner']} [{t['sells_because']}] - need: {t['need_level']} - "
                   f"{trade_note}{kind}")
     else:
-        print("no reachable targets found (no needs, no Rebuilding team is selling there, or "
-              "everything available is a long shot below)")
+        # "...a long shot below" pointed at a block that isn't always there. On a team with no
+        # needs both lists are empty and the sentence referred the reader to nothing.
+        why = ("everything available is a long shot, listed below" if push.get("long_shots")
+               else "no need for the buy path to fill in the first place")
+        print(f"no reachable targets found ({why})")
     if push.get("long_shots"):
         print("\nlong shots (real fits, but something is in the way - see why on each):")
         for t in push["long_shots"]:
@@ -1877,8 +1891,18 @@ def _print_value_upgrades(result: dict) -> None:
             pricing = (f"already now-priced - {ordinal(pf['dynasty_rank'])} in dynasty against "
                        f"{ordinal(pf['redraft_rank'])} in redraft, so his price is this season")
         else:
-            pricing = (f"priced the same on both boards ({ordinal(pf['dynasty_rank'])} dynasty / "
-                       f"{ordinal(pf['redraft_rank'])} redraft) - no future premium to harvest")
+            # **Relative measure, so the claim has to be relative.** `priced_for` compares a
+            # player's two RANKS inside his own position pool, which answers "is the market
+            # pricing him more for later than it prices other RBs" - not "does his price contain
+            # future value". Read as the latter it contradicted the offer pool two blocks above,
+            # on the same player in the same report: TreVeyon Henderson, 23.8 with 3.2 years of
+            # runway, was listed as "high - real future value you won't get back" and here as
+            # "no future premium to harvest". Both measures were right; this sentence was not.
+            pricing = (f"priced like the rest of his position ({ordinal(pf['dynasty_rank'])} of "
+                       f"{pf['of']} at {m['position']} in dynasty against "
+                       f"{ordinal(pf['redraft_rank'])} in redraft) - he may still be young, this "
+                       f"says only that the market is not paying him a premium other "
+                       f"{m['position']}s don't get")
         print(f"  move off {m['move_off']} ({m['position']}, {m['value']:,} dynasty / "
               f"{m['redraft_value']:,} this season - {pricing}):")
         if m["wanted_by"]:
