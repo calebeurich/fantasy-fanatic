@@ -23,6 +23,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from mcp.server.fastmcp import FastMCP
 
 from analysis import format_support, team_state, roster_needs, trade_targets, waiver_wire, roster_detail
+from sources import sleeper
+
+
+def _lineup_note(fmt: dict) -> str:
+    """How many of each position this league actually starts, in words, so an answer can't
+    contradict the format it is reasoning about."""
+    if fmt["is_superflex"]:
+        return (f"SUPERFLEX: {fmt['num_qbs']} QB slots start every week. A second and even "
+                f"third quarterback is a startable asset here, not a backup, and QBs are the "
+                f"scarcest commodity in the format - price them accordingly.")
+    return (f"{fmt['num_qbs']} QB slot starts each week (not superflex), so a backup "
+            f"quarterback is worth little to anyone.")
 
 mcp = FastMCP("fantasy-fanatic")
 
@@ -58,6 +70,19 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
                 production by itself.
       Rebuild - bottom-third in current production. Sell decline, accumulate youth/picks.
 
+    Also returns `lineup`, the league's actual starting requirements. Read it before saying
+    anything about how many players at a position a team can start or how spare a backup is.
+
+    **Every player entry carries `years_to_decline`, and it decides WHO to sell.** Age alone
+    does not: this project's own curves give a 31.8-year-old pocket passer 6.2 years and a
+    28.0-year-old running quarterback 4.0, because they decline for different reasons. Sort
+    by that number, never by age, when choosing which of several similar players to move -
+    and note it cuts across the lists. A `cornerstone` with the fewest years left is often the
+    right sale for a rebuilding team even though he is not in `sell_candidates`, because he
+    fetches the most now and fits the timeline least. Both a human expert and an earlier run
+    of this agent got this backwards on the same roster, recommending the older man be traded
+    while the numbers said keep him.
+
     Every row carries `window_note`, which states the measurements behind the label
     (rank, % of the league's best lineup, ascending/declining shares). Use that wording -
     do NOT describe these as records, wins, or points scored; no games have been played.
@@ -76,10 +101,17 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
     teams = team_state.classify_league(league_id)
     if owner_name:
         teams = [t for t in teams if owner_name.lower() in t["owner"].lower()]
+    # The lineup shape ships with every team, not only from check_league_format. A live run
+    # called check_league_format, got superflex, and still wrote "three QBs in a league that
+    # only starts one" a few hundred tokens later - then built its whole recommendation on
+    # that. Format read once at the top of a conversation does not survive to the point where
+    # it matters; attached to the roster it is being reasoned about, it does.
+    from analysis.league import context
+    fmt = sleeper.describe_format(context(league_id).league)
     # Wrapped in a dict rather than returned as a bare list - this MCP SDK version
     # splits a top-level list return into one content block per item instead of one
     # JSON array, which is fragile to rely on. A dict always serializes as one block.
-    return {"teams": teams}
+    return {"teams": teams, "lineup": _lineup_note(fmt)}
 
 
 @mcp.tool()

@@ -17,6 +17,10 @@ from .agent import run_query, _trade_violations
 DYNASTY_LEAGUE = "1315386978904084480"    # XFL 2, superflex dynasty. Owner: "Where's the Lamb Sauce???"
 DYNASTY_LEAGUE_2 = "1319727865188593664"  # [Insert Sh*t League Name Here], superflex dynasty. Owner: "Picken Flowers"
 REDRAFT_LEAGUE = "1323741311471194112"    # Tangy Football, redraft - the `unsupported` fixture. Owner: "Blue Balls"
+# Not the owner's league - a friend's, already in audit.py's DEFAULT_LEAGUES. Here because it
+# holds the roster that produced two live failures at once: a superflex format the agent
+# contradicted, and a QB pair whose runway ordering is the reverse of their age ordering.
+FRIENDS_LEAGUE = "1313999558660857856"    # God Bless The Plug (Die Nasty), superflex dynasty
 
 
 def _tool_names(result: dict) -> list[str]:
@@ -138,6 +142,59 @@ async def case_malformed_league_graceful() -> None:
     print(f"case_malformed_league_graceful: PASS (${result['cost_usd']:.4f}, {result['num_turns']} turns)")
 
 
+async def case_respects_the_starting_lineup_format() -> None:
+    """Live failure: the agent called check_league_format, got superflex, and a few hundred
+    tokens later wrote "three QBs in a league that only starts one" - then built its whole
+    recommendation on that. Format read once at the top of a conversation does not survive
+    to where it matters, so `get_team_state` now ships the lineup shape with every roster."""
+    result = await run_query(
+        f"For Sleeper league {FRIENDS_LEAGUE}, jwall567 is carrying several quarterbacks. "
+        "How many can he actually start, and what should he do with the rest?",
+        verbose=False,
+    )
+    text = result["text"].lower()
+    assert not any(p in text for p in ("only starts one", "only start one", "starts one qb",
+                                       "start one qb", "only one qb")), \
+        f"claimed a superflex league starts one QB: {result['text']}"
+    assert "superflex" in text or "two qb" in text or "2 qb" in text, \
+        f"never established the lineup format: {result['text']}"
+    print(f"case_respects_the_starting_lineup_format: PASS (${result['cost_usd']:.4f}, "
+          f"{result['num_turns']} turns)")
+
+
+async def case_sells_on_runway_not_age() -> None:
+    """The failure that cost this roster the right answer twice - once from the agent and
+    once from a human reading the same tools. Goff is 31.8 with 6.2 years to decline (pocket
+    passer); Hurts is 28.0 with 4.0 (running quarterback). Both recommended trading Goff,
+    the OLDER man, because age is the intuitive proxy and `years_to_decline` is the real one.
+
+    Asserted as a relationship rather than a required name: if the answer names Goff as
+    something to move, it has to have considered Hurts too, since that is the comparison the
+    numbers force."""
+    from analysis import team_state
+    cornerstones = next(t["cornerstones"] for t in team_state.classify_league(FRIENDS_LEAGUE)
+                        if t["owner"] == "jwall567")
+    runway = {c["name"]: c["years_to_decline"] for c in cornerstones}
+    assert runway.get("Jalen Hurts", 99) < runway.get("Justin Herbert", 0), \
+        "fixture drift: Hurts is no longer the shortest-runway cornerstone"
+
+    result = await run_query(
+        f"For Sleeper league {FRIENDS_LEAGUE}, jwall567 is rebuilding and has too many "
+        "quarterbacks. Which one should he trade and why?",
+        verbose=False,
+    )
+    # "Hurts appears anywhere in the text" is too weak an assertion, and a live run proved
+    # it: the answer led with "Trade 1: Ship Jared Goff" and mentioned Hurts only in a list
+    # of the roster's QBs and again among the keepers, never weighing him as the sale. Both
+    # names have to appear in *trade-action* lines, which is the comparison being tested.
+    if _trade_violations(result["text"], {"Jared Goff"}):
+        assert _trade_violations(result["text"], {"Jalen Hurts"}), (
+            "recommended moving the older QB without weighing the one with less runway "
+            f"as a sale at all: {result['text']}")
+    print(f"case_sells_on_runway_not_age: PASS (${result['cost_usd']:.4f}, "
+          f"{result['num_turns']} turns)")
+
+
 CASES = [
     case_team_window,
     case_non_dynasty_refusal,
@@ -146,6 +203,8 @@ CASES = [
     case_topic_scope_refusal,
     case_grounded_trade_chips,
     case_malformed_league_graceful,
+    case_respects_the_starting_lineup_format,
+    case_sells_on_runway_not_age,
 ]
 
 
