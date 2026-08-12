@@ -20,19 +20,25 @@ five places: one team sat 8th of 12 in dynasty value and 4th in current producti
 but genuinely close, and being told it was mid-pack. Its mirror ranked 2nd in dynasty and
 6th in production: a young roster whose price is mostly potential.
 
-The four windows and what separates them:
+**THREE states, each with flavors.** `state` is the base and is the thing to reason with;
+`window` is the flavor and is what most of this codebase keys on for historical reasons.
+Keeping them apart matters: four peer `window` labels read as four base states, and that
+misreading has now cost both a reader and this file's own author the model.
 
-- `Push`    - contender whose roster is falling. The window is open and closing on its own,
-              so waiting costs value. Buy production, spend picks.
-- `Contend` - contender that is steady or rising. Good now with no clock, so there is no
-              reason to pay a premium for anything.
-- `Middling`- in the middle of the league, either trajectory. In dynasty you are winning
-              now or rebuilding; in between, both paths are shown and waiting to see how
-              the season starts is a legitimate choice. Trajectory sets the *note*, not the
-              window: a rising roster gets next season's production for free, a falling one
-              does not, so patience is only free for one of them.
-- `Rebuild` - bottom-third in current production. Sell what is declining, accumulate youth
-              and picks.
+- **Contending** - top third in current production. Two flavors, and only the clock
+  separates them: `Push` if the roster is falling (waiting costs value - buy production,
+  spend picks) and `Contend` if it is steady or rising (no clock, so never pay a premium).
+- **Middling** - middle of the league, either trajectory. In dynasty you are winning now or
+  rebuilding; in between, both paths are shown and waiting to see how the season starts is
+  legitimate. Trajectory sets the *note*, not the state: a rising roster gets next season's
+  production free, a falling one does not, so patience is only free for one of them.
+- **Rebuilding** - bottom third in current production. Sell what is declining, accumulate
+  youth and picks.
+
+What makes a trade easy is one comparison across those states: **contending and rebuilding
+complement each other in both directions** (one spares future years, the other spares
+production now), same-state pairs do not, and a Middling team is a "maybe" until it picks a
+side. `IS_SELLER`/`NOT_SELLER` in `trade_targets` is that comparison.
 
 **Owning your own next 1st is a constraint on the pivot option, not a fourth tier.**
 Tanking only pays if you hold the pick your bad season earns; without it, a losing season
@@ -92,6 +98,57 @@ def window_for(contention: str, trajectory: str) -> str:
     if contention == "fringe":
         return "Middling"
     return "Rebuild"
+
+
+# There are THREE states, not four. `window` has always returned four labels, and `window_for`
+# knows better - its own comment reads "Good now. The only question is whether there's a clock on
+# it" - so Push and Contend are two flavors of ONE state, exactly as rising/falling are flavors
+# of Middling. Returning four peer labels made a reader (and the author of this file) count four
+# base states and lose the model. `state` is the base; `window` stays the flavor.
+STATE = {"Push": "Contending", "Contend": "Contending",
+         "Middling": "Middling", "Rebuild": "Rebuilding"}
+
+FLAVOR_NOTE = {
+    "Push": "on a clock - the roster declines if you wait",
+    "Contend": "no clock - good now and not declining",
+    "convertible": "weak lineup, top-third war chest - an unspent option, not simply bad",
+    "rising": "patience is free - next season's production is already here",
+    "falling": "waiting costs something - this roster does not improve on its own",
+    "steady": "flat - neither arriving nor aging out on its own",
+    "ascending": "the rebuild is working - young production is arriving",
+    "stalled": "nothing arriving and nothing to convert - genuinely stuck",
+}
+
+
+def flavor_for(window: str, trajectory: str, leverage: str | None,
+               ascending_pct: float = 0, declining_pct: float = 0) -> str:
+    """The sub-flavor of the state, from fields already computed. Every one of these has been
+    described in LOGIC.md for a while and none was ever labelled, so the flavor column repeated
+    the state for two of the three - which is how a documented distinction stays invisible.
+
+    Contending: the clock is the only flavor that matters, which is what `window` already
+    encodes. Otherwise `convertible` wins - a weak lineup on a top-third war chest is not
+    described by its trajectory - and below that it is trajectory, named for the state, because
+    "rising" means *patience is free* to a Middling team and *the plan is working* to a
+    rebuilding one."""
+    if window in ("Push", "Contend"):
+        return window
+    if leverage == "convertible":
+        return "convertible"
+    if window == "Rebuild":
+        # **Absolute, not the tertile**, and this is the one place the two genuinely differ.
+        # "Is the rebuild working" is a question about this roster, not about its rank: young
+        # production is either arriving faster than the rest is aging out, or it isn't.
+        # BartolosHeroes is 40% ascending against 3% declining and lands in the MIDDLE tertile
+        # only because that league is full of ascending rebuilds - so the tertile called it
+        # "steady" and this called it "stalled", i.e. "nothing arriving and nothing to convert",
+        # about the clearest working rebuild on the board. The label has to be true of the
+        # roster it names.
+        return "ascending" if ascending_pct > declining_pct else "stalled"
+    # Middling keeps the tertile, because there the question really is comparative - whether
+    # waiting is free *relative to this league* is what decides between pushing and pivoting,
+    # and `WINDOW_NOTE` has always read it that way.
+    return trajectory
 
 
 def next_first_note(owns_next_first: bool, window: str) -> str:
@@ -438,6 +495,7 @@ def classify_league(league_id: str) -> list[dict]:
         row["trajectory"] = trajectory
         row["trajectory_rank"] = t_rank
         row["window"] = window
+        row["state"] = STATE[window]
         row["window_note"] = window_note(window, c_rank, num_teams, row["pct_of_best"],
                                          row["ascending_pct"], row["declining_pct"],
                                          trajectory)
@@ -447,6 +505,10 @@ def classify_league(league_id: str) -> list[dict]:
         # fifth window - see `leverage`.
         row["asset_rank"] = asset_rank[row["owner_id"]]
         row["leverage"] = leverage(c_rank, row["asset_rank"], num_teams)
+        # After `leverage`, because `convertible` outranks trajectory as the flavor.
+        row["flavor"] = flavor_for(window, trajectory, row["leverage"],
+                                   row["ascending_pct"], row["declining_pct"])
+        row["flavor_note"] = FLAVOR_NOTE[row["flavor"]]
         row["leverage_note"] = (
             LEVERAGE_NOTE[row["leverage"]].format(
                 asset_rank=row["asset_rank"], contention_rank=c_rank, num_teams=num_teams,
@@ -464,7 +526,7 @@ def main(league_id: str) -> None:
     print(f"{league_name} - team windows:")
     if rows and rows[0]["no_trade_history"]:
         print("  (no trades in this league's history yet - labels below are less reliable this early)")
-    print(f"  {'#':>2} {'owner':18} {'window':8} {'production':>10} {'%best':>5} "
+    print(f"  {'#':>2} {'owner':18} {'state':11} {'flavor':12} {'production':>10} {'%best':>5} "
           f"{'asc/dec':>9}  {'dynasty':>8} {'rk':>3}")
     for row in rows:
         tank_note = "" if row["owns_next_first"] else "  [no next 1st]"
@@ -472,7 +534,8 @@ def main(league_id: str) -> None:
         # exactly where the old age-only model was wrong, and it's the difference between
         # "old and bad" and "old and close".
         dyn_rank = sorted(rows, key=lambda r: -r["starter_value"]).index(row) + 1
-        print(f"  {row['contention_rank']:2} {row['owner'][:18]:18} {row['window']:8} "
+        print(f"  {row['contention_rank']:2} {row['owner'][:18]:18} "
+              f"{row['state'][:11]:11} {row['flavor']:12} "
               f"{row['starting_production']:10,} {row['pct_of_best']:4}% "
               f"{row['ascending_pct']:4}/{row['declining_pct']:<4} "
               f"{row['starter_value']:8,} {dyn_rank:3}{tank_note}")

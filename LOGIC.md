@@ -239,6 +239,59 @@ Three steps, cheapest first, none built:
   picture instead of a summary, and where the document and the agent cannot drift apart.
   Needs chunking that survives this file's length, which is the actual design work.
 
+### Three states, and the flavors are now computed
+
+`window` has always returned four labels - `Push`, `Contend`, `Middling`, `Rebuild` - and the
+model has always been three states. `window_for`'s own comment says so (*"Good now. The only
+question is whether there's a clock on it"*), and shipping four peer labels still cost both a
+reader and this file's author the model in the same conversation. `state` is now the base and
+`window` stays the flavor:
+
+| state | flavors | wants | can spare |
+|---|---|---|---|
+| **Contending** | `Push` (clock) / `Contend` (none) | production now | future years - youth, picks |
+| **Middling** | `rising` / `falling` / `steady` / `convertible` | information; can go either way | nothing freely |
+| **Rebuilding** | `ascending` / `stalled` / `convertible` | future years | production now |
+
+And the flavors are derived from fields that already existed - `trajectory` and `leverage` -
+rather than being new computation. They had been described here for a while and labelled
+nowhere, so the flavor column repeated the state for two of the three states. That is how a
+documented distinction stays invisible.
+
+**`convertible` outranks trajectory**, because a weak lineup on a top-third war chest is not
+described by which way it happens to be tilting. Live: `jwall567` (contention 9, assets 3) and
+`dkwnsepw` (contention 11, assets 2) - the case that opened this whole thread.
+
+#### The rebuild flavor has to be absolute, and this is the one place that matters
+
+`ascending` vs `stalled` was first derived from the trajectory *tertile*, and it immediately
+produced a false label. `BartolosHeroes` is **40% ascending against 3% declining** and lands in
+the middle tertile only because its league is full of ascending rebuilds - so the tertile said
+"steady" and the flavor said `stalled`, whose note reads *"nothing arriving and nothing to
+convert - genuinely stuck"*, about the clearest working rebuild on the board.
+
+"Is the rebuild working" is a question about the roster, not about its rank, so it is
+`ascending_pct > declining_pct`. Checked against every rebuilding team in all three leagues,
+including the two this document already named as stalled:
+
+| team | asc/dec | flavor |
+|---|---|---|
+| BartolosHeroes | 40/3 | `ascending` (was wrongly `stalled`) |
+| tchoezin | 87/0 | `ascending` |
+| spugz13 | 9/12 | `stalled` |
+| jqsimonds22 | 18/20 | `stalled` |
+| HiThirstylmDad | 9/9 | `stalled` - a tie is nothing arriving |
+
+**Middling deliberately keeps the tertile.** There the question genuinely is comparative:
+whether waiting is free *relative to this league* is what decides push versus pivot, which is
+how `WINDOW_NOTE` has always read it. Same word, two honest meanings - which is exactly why the
+flavor is named per state (`rising` for Middling, `ascending` for Rebuilding) rather than shared.
+
+**Known limit, not fixed:** `FitzmagicsEMUs` is 23/7 and therefore `ascending` while ranking
+12th of 12 in both contention and assets. The label is true - young production is arriving - but
+it is arriving from nothing, and the flavor says nothing about scale. `asset_rank` is visible
+separately. Left alone rather than adding a third rebuild flavor for it.
+
 ### Backlog: what the first real agent runs left open
 
 Three live runs against a friend's league, at ~$0.04 each. Two failures were fixed at the

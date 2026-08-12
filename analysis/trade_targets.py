@@ -1047,6 +1047,14 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
     my_pool = _my_offer_pool(me, thresholds, my_needs, pick_values, covered)
     best_chip = max(my_pool, key=lambda e: e["value"], default=None)
 
+    # `never_trades` is only ever a fact about a COUNTERPARTY - the asking team's own trade
+    # history says nothing about whether it can sell, and the app's user may well have never
+    # traded. So exclude self from the "does a zero mean anything here" test too: if I am the
+    # only person in the league who has traded, everyone else's zero describes the league, and
+    # counting it would turn every target in the league into a long shot.
+    others_have_traded = any(count for owner_id, count in trade_counts.items()
+                             if owner_id != me["owner_id"])
+
     targets, long_shots = [], []
     for pos in ordered_positions:
         need = my_needs[pos]
@@ -1073,7 +1081,7 @@ def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds:
                                      "production_per_cost": round(ratio, 2) if ratio else None,
                                      **_buy_friction(player, other, best_chip,
                                                      trade_counts.get(other["owner_id"], 0),
-                                                     any(trade_counts.values())),
+                                                     others_have_traded),
                                      **_with_trade_note(player, other, trade_counts)})
         # Window fit before raw value. A Win-Now buyer wants *current production*, and
         # this project's own pricing model says declining players are "production-priced"
@@ -1464,7 +1472,7 @@ def _print_report(result: dict) -> None:
         _print_pivot(me, result)
         _print_depth(result)
     elif result["mode"] == "middling":
-        print(f"{me['owner']}: {me['window']} - both directions are open")
+        print(f"{me['owner']}: {me['state']} ({me['flavor']}) - both directions are open")
         print(f"  {me['window_note']}")
         print(f"\n  {result['timing_note']}")
         print(f"\n-- if pushing (needs: {_needs_summary(result['push']['needs'])}) --")
@@ -1472,7 +1480,7 @@ def _print_report(result: dict) -> None:
         print("\n-- if pivoting --")
         _print_pivot(me, result["pivot"])
     else:
-        print(f"{me['owner']}: {me['window']}, needs: {_needs_summary(result['needs'])}")
+        print(f"{me['owner']}: {me['state']} ({me['flavor']}), needs: {_needs_summary(result['needs'])}")
         print(f"  {me['window_note']}")
         _print_push(result, result)
 

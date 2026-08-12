@@ -266,6 +266,36 @@ def test_window_needs_both_axes_not_either_one():
         "young and genuinely bad is still a rebuild - being young doesn't make you close")
 
 
+def test_there_are_three_states_and_the_window_is_a_flavor_of_one():
+    """`window` returns four labels and there are three states - Push and Contend are one
+    state with a clock question, exactly as rising/falling are flavors of Middling. Shipping
+    four peer labels made both a reader and this file's author count four base states."""
+    assert team_state.STATE["Push"] == team_state.STATE["Contend"] == "Contending"
+    assert len(set(team_state.STATE.values())) == 3
+
+
+def test_a_rebuild_flavor_is_absolute_because_the_label_makes_a_claim():
+    """The one place a tertile and the honest answer diverge. BartolosHeroes is 40% ascending
+    against 3% declining and lands in the MIDDLE trajectory tertile only because its league is
+    full of ascending rebuilds - so the tertile said "steady" and the flavor said `stalled`,
+    i.e. "nothing arriving and nothing to convert", about the clearest working rebuild on the
+    board. "Is the rebuild working" is a question about the roster, not its rank.
+
+    Middling deliberately keeps the tertile: there the question really is comparative, since
+    whether waiting is free *relative to this league* is what decides push versus pivot."""
+    assert team_state.flavor_for("Rebuild", "steady", None, 40, 3) == "ascending"
+    assert team_state.flavor_for("Rebuild", "rising", None, 9, 12) == "stalled", (
+        "and it works the other way too - a flattering tertile cannot make a rebuild ascending")
+    assert team_state.flavor_for("Rebuild", "steady", None, 9, 9) == "stalled", (
+        "nothing arriving is stalled, ties included")
+    assert team_state.flavor_for("Middling", "steady", None, 40, 3) == "steady"
+    # `convertible` outranks trajectory: a weak lineup on a top-third war chest is not
+    # described by which way it happens to be tilting.
+    assert team_state.flavor_for("Rebuild", "steady", "convertible", 40, 3) == "convertible"
+    assert team_state.flavor_for("Push", "falling", "convertible", 0, 40) == "Push", (
+        "a contender's flavor is the clock, whatever its asset base says")
+
+
 class _Ctx:
     """Minimal LeagueContext stand-in for find_value_upgrades."""
     def __init__(self, players, rosters, starters):
@@ -919,18 +949,35 @@ def test_unreachable_targets_are_split_out_rather_than_ranked_below():
 
 
 def test_no_trade_history_anywhere_does_not_block_every_target():
-    """A zero trade count only says something about an owner when somebody in the league has
-    traded. In a fresh league it describes the LEAGUE, and treating it as a blocker would empty
-    the buy list for all twelve teams at once."""
+    """A zero trade count only says something about an owner when SOMEBODY ELSE in the league
+    has traded. In a fresh league it describes the league, and treating it as friction would
+    empty the buy list for all twelve teams at once.
+
+    `never_trades` is only ever a fact about a counterparty - the asking team's own history
+    says nothing about whether it can sell, and the app's user may well have never traded. So
+    my own trades don't make another owner's zero meaningful either: the third case here is a
+    league where I am the only person who has ever traded."""
     me = {"owner_id": "me", "window": "Push", "sellable": [], "tradeable_surplus": []}
     seller = {"owner_id": "them", "owner": "them", "window": "Rebuild", "sellable": [
         {"name": "Available", "position": "RB", "value": 2000, "redraft_value": 2000,
          "bucket": "declining", "is_starter": False}]}
     need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12}
-    out = trade_targets._buy_path(me, [seller], {"me": {"RB": need}}, {"RB": 100},
-                                  trade_counts={}, max_per_position=5)
-    assert [t["name"] for t in out["targets"]] == ["Available"]
-    assert not out.get("long_shots")
+
+    def run(trade_counts):
+        return trade_targets._buy_path(me, [seller], {"me": {"RB": need}}, {"RB": 100},
+                                       trade_counts=trade_counts, max_per_position=5)
+
+    nobody = run({})
+    assert [t["name"] for t in nobody["targets"]] == ["Available"]
+    assert not nobody.get("long_shots")
+
+    only_me = run({"me": 6})
+    assert [t["name"] for t in only_me["targets"]] == ["Available"], (
+        "my own trading does not make their zero informative")
+
+    someone_else = run({"me": 6, "third": 2})
+    assert not someone_else.get("targets"), "now the zero means something"
+    assert [f["flavor"] for f in someone_else["long_shots"][0]["friction"]] == ["never_trades"]
 
 
 def test_offers_are_tiered_by_value_over_replacement_not_raw_value():
