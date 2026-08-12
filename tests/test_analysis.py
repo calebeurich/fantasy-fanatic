@@ -1542,8 +1542,38 @@ def test_a_contender_still_rising_is_shown_its_own_conversion_candidates():
     aging_starter = _aging("Old Star", 4000, 6000)
     rising = _holder("rising", "Contend", "steady", [aging_starter], asc=26, dec=16)
     aging = _holder("aging", "Contend", "steady", [aging_starter], asc=21, dec=23)
-    assert [c["name"] for c in trade_targets._conversion_candidates(rising, BARS)] == ["Old Star"]
-    assert trade_targets._conversion_candidates(aging, BARS) == []
+    floor = {"RB": 100}
+    assert [c["name"] for c in
+            trade_targets._conversion_candidates(rising, BARS, floor)] == ["Old Star"]
+    assert trade_targets._conversion_candidates(aging, BARS, floor) == []
+
+
+def test_the_premium_bar_picks_the_conversion_sentence_not_the_list():
+    """The mirror of the `_cliff_case` correction: other managers are told about a
+    short-runway starter whether or not the market discounts him - the bar only changes
+    which clause describes the price - so his own manager has to hear the same names.
+    Before this, a starter at 0.75x (below the RB bar of 1.05) was pitched to the league
+    and absent from his own report."""
+    discounted = _aging("Sell High", 4000, 6000)          # 1.50x, over the 1.05 RB bar
+    merely_mismatched = _aging("Wrong Window", 4000, 3000)  # 0.75x, under it
+    me = _holder("rising", "Contend", "steady", [discounted, merely_mismatched],
+                 asc=26, dec=16)
+    out = trade_targets._conversion_candidates(me, BARS, {"RB": 100})
+    notes = {c["name"]: c["note"] for c in out}
+    assert set(notes) == {"Sell High", "Wrong Window"}
+    assert "writing off the rest" in notes["Sell High"]
+    assert "not discounted" in notes["Wrong Window"], \
+        "an undiscounted price must not be described as a premium to harvest"
+
+
+def test_conversion_candidates_apply_the_same_relevance_floor_as_the_persuasion_tier():
+    """These are the names the persuasion tier shows the rest of the league, and it floors
+    them on `clears_relevance_floor` first - a 300-value declining body is not a call anyone
+    makes. The mirror has to use the same floor or the two lists disagree about who is worth
+    ringing about."""
+    fringe = _aging("Waiver Fodder", 300, 250)
+    me = _holder("rising", "Contend", "steady", [fringe], asc=26, dec=16)
+    assert trade_targets._conversion_candidates(me, BARS, {"RB": 2000}) == []
 
 
 def test_persuasion_never_searches_teams_that_are_already_sellers():

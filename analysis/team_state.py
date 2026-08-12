@@ -38,7 +38,7 @@ misreading has now cost both a reader and this file's own author the model.
 What makes a trade easy is one comparison across those states: **contending and rebuilding
 complement each other in both directions** (one spares future years, the other spares
 production now), same-state pairs do not, and a Middling team is a "maybe" until it picks a
-side. `IS_SELLER`/`NOT_SELLER` in `trade_targets` is that comparison.
+side. `NOT_SELLER`/`_sells_him` in `trade_targets` is that comparison.
 
 **Owning your own next 1st is a constraint on the pivot option, not a fourth tier.**
 Tanking only pays if you hold the pick your bad season earns; without it, a losing season

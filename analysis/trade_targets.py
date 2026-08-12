@@ -233,11 +233,6 @@ NOISE_BAND = 1 - NOISE_RETAINED
 # same answer - see team_values.MIN_MEANINGFUL_RUNWAY.
 MIN_RUNWAY_FOR_LATER = MIN_MEANINGFUL_RUNWAY
 
-# Windows where a team is still trying to field a winning lineup this season.
-SWAP_ELIGIBLE_WINDOWS = ("Push", "Contend", "Middling")
-
-
-
 
 def _others(states: list[dict], me: dict, window_test) -> list[dict]:
     """Every team but this one whose window passes `window_test`.
@@ -247,11 +242,6 @@ def _others(states: list[dict], me: dict, window_test) -> list[dict]:
     `== "Rebuild"` in one path and `!= "Rebuild"` in the one right below it. Naming it makes
     the direction of each search explicit at the call site."""
     return [o for o in states if o["owner_id"] != me["owner_id"] and window_test(o["window"])]
-
-
-def IS_SELLER(window: str) -> bool:
-    """Rebuilding teams - the ones actually trying to move current value."""
-    return window == "Rebuild"
 
 
 def NOT_SELLER(window: str) -> bool:
@@ -288,11 +278,6 @@ def _sells_him(other: dict, player: dict) -> bool:
         return True
     return (other["window"] == "Middling" and other.get("trajectory") == "rising"
             and (player.get("years_to_decline") or 0) < INSIDE_FINAL_YEAR)
-
-
-def STILL_COMPETING(window: str) -> bool:
-    """Teams trying to field a winning lineup this season."""
-    return window in SWAP_ELIGIBLE_WINDOWS
 
 
 def _with_trade_note(entry: dict, other: dict, trade_counts: dict[str, int]) -> dict:
@@ -1210,24 +1195,38 @@ def _depth_adds(me_roster: dict, ctx, states: list[dict], filling_lineup: bool,
     return adds[:DEPTH_LIMIT]
 
 
-def _conversion_candidates(me: dict, premium_bars: dict[str, float]) -> list[dict]:
+def _conversion_candidates(me: dict, premium_bars: dict[str, float],
+                           thresholds: dict[str, float]) -> list[dict]:
     """`_cliff_case` turned around and pointed at your own roster: the aging starters whose
     remaining seasons don't reach the ones your roster is built for.
 
-    Deliberately the same rule read from the other side, not a second heuristic. If the
-    league's other managers are told your 32-year-old RB is the one piece worth calling you
-    about, you should be told the same thing about him, in the same terms - two rules would
-    guarantee they eventually disagreed."""
-    return [{**player,
-             "production_per_cost": round(player["redraft_value"] / player["value"], 2),
-             "note": (f"Still starting for you and still producing, but priced at "
-                      f"{player['redraft_value'] / player['value']:.2f}x his own trade "
-                      f"value - the market is paying for this season and writing off the "
-                      f"rest, which is the season your roster is least short of.")}
-            for player in me["sellable"]
-            if player.get("redraft_value") and player.get("value")
-            and player["redraft_value"] / player["value"] >= premium_bars.get(player["position"], float("inf"))
-            and _cliff_case(player, me, player["redraft_value"] / player["value"])]
+    Deliberately the same rule read from the other side, not a second heuristic - and it had
+    drifted into two: `_cliff_case` was corrected so the now-premium bar picks one clause
+    instead of gating the case, and this mirror kept the gate, so a short-runway starter who
+    wasn't top-decile now-priced was pitched to eleven other managers and never named here.
+    Same rule again: the relevance floor decides who is worth calling about (as the
+    persuasion tier already required), the cliff case decides whether the argument exists,
+    and the bar decides only which sentence describes the price."""
+    out = []
+    for player in me["sellable"]:
+        if not (player.get("redraft_value") and player.get("value")):
+            continue
+        if not team_state.clears_relevance_floor(player, thresholds):
+            continue
+        ratio = player["redraft_value"] / player["value"]
+        discounted = ratio >= premium_bars.get(player["position"], float("inf"))
+        if not _cliff_case(player, me, ratio, discounted=discounted):
+            continue
+        note = (f"Still starting for you and still producing, but priced at {ratio:.2f}x his "
+                f"own trade value - the market is paying for this season and writing off the "
+                f"rest, which is the season your roster is least short of."
+                if discounted else
+                f"Still starting for you and still producing, and not discounted for it "
+                f"({ratio:.2f}x his own trade value) - so the case is about whose window he "
+                f"fits: his remaining seasons aren't the ones the rest of this roster is "
+                f"built for.")
+        out.append({**player, "production_per_cost": round(ratio, 2), "note": note})
+    return out
 
 
 def _seller_case(other: dict, prior: dict | None) -> str | None:
@@ -1770,7 +1769,7 @@ def find_targets(league_id: str, owner_query: str, max_per_position: int = DEFAU
     # whichever path it takes, so the label is right either way and only the tactics differ.
     # Making `window` plural here would have been the more "honest" shape and the wrong one:
     # it reads as a decision about whether to compete, which this team has already made.
-    conversions = _conversion_candidates(me, premium_bars)
+    conversions = _conversion_candidates(me, premium_bars, thresholds)
     if conversions:
         result["choice_note"] = CONTEND_CHOICE_NOTE
         result["conversion_candidates"] = conversions

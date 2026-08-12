@@ -331,9 +331,13 @@ the ratio gets six wrong, in both directions:
 | Lamar Jackson (QB3 dyn / QB2 red) | now 1.30 | **aligned** | rank |
 
 And the **median gap is 0% at every position**, which the ratio never managed - so zero is
-genuinely neutral and no per-position bar is needed. That is the real prize: `now_premium_bar`,
-`NOW_PREMIUM_PERCENTILE` and `check_no_tier_is_structurally_unreachable` all exist to defuse the
-ratio's distortion, and can go once nothing absolute is left to guard. Known limit: a band on the
+genuinely neutral and no per-position bar is needed. That was overstated when first recorded:
+`now_premium_bar` still does a real job - it picks the *sentence* about a player's price in
+`_cliff_case` and `_conversion_candidates` (discounted to harvest vs. a pure window mismatch) -
+so it stays until something rank-based replaces that clause too.
+`check_no_tier_is_structurally_unreachable` IS gone: a percentile bar is clearable by
+construction (~10% of every position always clears), so the check could never fire once the
+absolute bar it guarded was deleted. Known limit: a band on the
 gap is still a constant, and because a rank move is 3.4% of a 29-man TE pool against 1.3% of a
 75-man WR pool, ±10% catches 20% of QBs and 55% of TEs. Smaller than the ratio's distortion, not
 zero.
@@ -3105,10 +3109,14 @@ because an audit nobody trusts gets muted.
 |---|---|
 | never recommends your own players | a rebuilder searching rebuilders included itself |
 | best available is surfaced | trade activity outranked value, hiding a 1,883-redraft back |
-| no tier is structurally unreachable | an absolute 1.0 bar sat above the entire TE pool |
 | claims match the data | a player 0.3 years from his cliff sold as "still there in two" |
 | every window gets what applies | depth and stranded ran only in the buy branch |
 | coverage | a block empty across every team in every league is a dead feature |
+
+One check has also been *retired*: "no tier is structurally unreachable" guarded the absolute
+1.0 bar that sat above the entire TE pool. Once the bar became a per-position percentile it was
+clearable by construction, so the check could never fire - and a check that cannot fire is
+noise wearing a green light.
 
 **It had to be calibrated before it was worth anything.** The first run reported 12 problems,
 and the first six were false: it compared against every player on a rebuilding roster, so it
@@ -3591,6 +3599,15 @@ It reuses `_cliff_case` rather than reimplementing the test. If the rest of the 
 told a manager's 32-year-old RB is the one piece worth calling about, that manager must be
 told the same thing in the same terms - two rules would eventually disagree, and the
 disagreement would surface as the tool contradicting itself between two questions.
+
+**And it drifted into exactly that.** When `_cliff_case` was corrected so the now-premium bar
+picks a clause instead of gating the case, this mirror kept the gate - a short-runway starter
+who wasn't top-decile now-priced was pitched to eleven other managers and never named on his
+own manager's report. Fixed by applying the same rule end to end: the relevance floor decides
+who is worth calling about (the persuasion tier already required it, the mirror didn't), the
+cliff case decides whether the argument exists, and the bar picks only which sentence
+describes the price - "priced for this season" vs. "not discounted, this is about whose
+window he fits".
 
 On the live league this fires for one team, listing the two players its owner had already
 identified by eye as the ones to consider moving.

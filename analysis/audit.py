@@ -110,23 +110,6 @@ def check_best_available_is_surfaced(league_id, ctx, results) -> list[str]:
     return problems
 
 
-def check_no_tier_is_structurally_unreachable(league_id, ctx, results) -> list[str]:
-    """A per-position bar has to be clearable at every position. Live: an absolute 1.0 on
-    redraft/dynasty sat *above the entire tight end pool*, whose maximum is 1.01, so the
-    persuasion tier was closed to tight ends in every league for reasons no reader could
-    see."""
-    problems = []
-    bars = trade_targets.now_premium_bar(ctx.players, trade_targets.NOW_PREMIUM_PERCENTILE)
-    for position, bar in bars.items():
-        best = max((p["redraft_value"] / p["value"] for p in ctx.players.values()
-                    if p["position"] == position and p.get("redraft_value") and p.get("value")),
-                   default=0)
-        if best < bar:
-            problems.append(f"no {position} in the pool can clear its own bar "
-                            f"({bar:.2f}); the best is {best:.2f}")
-    return problems
-
-
 def check_claims_match_the_data(league_id, ctx, results) -> list[str]:
     """A note may not assert something the entry's own fields contradict. Live: a player 0.3
     years from his decline cutoff was offered as value that would "still be there in two",
@@ -230,7 +213,6 @@ def check_every_window_gets_what_applies(league_id, ctx, results) -> list[str]:
 CHECKS = [
     check_never_recommends_your_own_players,
     check_best_available_is_surfaced,
-    check_no_tier_is_structurally_unreachable,
     check_claims_match_the_data,
     check_one_player_is_not_described_two_ways,
     check_everything_computed_is_printed,
