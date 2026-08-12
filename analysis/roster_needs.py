@@ -630,9 +630,18 @@ def league_assessment(league_id: str) -> dict[str, dict[str, dict]]:
     including the positions that are fine - `league_needs` is the filtered view."""
     from .league import context
     ctx = context(league_id)
+    # Second unguarded nflverse dependency, found the same way as the first: a GitHub outage
+    # took the whole audit down. Miss rates are the *likelihood* half of the exposure note and
+    # `assess_positions` already treats them as optional, so passing None omits that sentence -
+    # honest, where crashing is not.
+    try:
+        rates = injuries.position_miss_rates()
+    except Exception as e:
+        print(f"WARNING: injury miss rates unavailable ({type(e).__name__}) - exposure notes "
+              f"state magnitude without likelihood this run.", file=sys.stderr)
+        rates = None
     return assess_positions(ctx.rosters, ctx.players, ctx.needs_slots, ctx.start_thresholds,
-                            ctx.starters, (ctx.lineup_dedicated, ctx.lineup_flex),
-                            injuries.position_miss_rates())
+                            ctx.starters, (ctx.lineup_dedicated, ctx.lineup_flex), rates)
 
 
 def league_needs(league_id: str) -> dict[str, dict]:

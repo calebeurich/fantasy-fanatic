@@ -14,6 +14,7 @@ from sources import fantasycalc
 from . import team_state, roster_needs, trade_activity, prior_season
 from .league import context
 from .team_values import (owned_picks, pick_equivalent, now_premium_bar, age_bucket,
+                          priced_for, ordinal,
                           MIN_MEANINGFUL_RUNWAY)
 
 # Same VALUE_BASIS classification (team_state.py) drives both sides of a trade, just
@@ -618,6 +619,9 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
     ranking on either axis hides winners on the other: sorted by production and capped at six,
     it dropped the exact swap this roster's owner had already named, a tight end worth +233 of
     production but the largest value release on the board at 1,073."""
+    # Rank within position on each scale, which is what decides whether a starter is really
+    # upside-priced - see `team_values.priced_for` for why the raw ratio cannot answer it.
+    pricing = priced_for(ctx.players)
     mine_by_pos = {}
     for pid in my_starters:
         info = ctx.players.get(pid)
@@ -705,6 +709,7 @@ def find_value_upgrades(me_roster: dict, ctx, states: list[dict], my_starters: s
             "value": mine["value"], "redraft_value": produced,
             "bucket": profile["bucket"],
             "now_share": round(produced / mine["value"], 2) if mine["value"] else None,
+            **({"priced_for": pricing[pid]} if pid in pricing else {}),
             "wanted_by": wanted_by(profile, me_roster, states, needs_by_owner_id, ctx),
             "returns": returns,
             "best_gain": returns[0]["production_gained"],
@@ -1631,11 +1636,23 @@ def _print_value_upgrades(result: dict) -> None:
     print("\nbetter things to own than what you start now (more or equal production, less "
           "value tied up):")
     for m in result["value_upgrades"]:
-        # "only 0.52 of his price is now" is the point for an upside-priced starter and
-        # nonsense above 1.0, where the market is already paying for the present.
-        pricing = (f"upside-priced, only {m['now_share']} of his dynasty price is production now"
-                   if (m["now_share"] or 0) < 1 else
-                   f"already now-priced at {m['now_share']}, so this is a straight upgrade")
+        # Rank on each scale, not the raw ratio. `now_share < 1.0` labelled 111 entries
+        # "upside-priced" against 32 the other way, including Smith-Njigba at 0.88 and Jeanty
+        # at 0.89 - elite on both boards - and Kenny Gainwell, a 26-year-old backup with no
+        # upside to sell, at 0.39. See `team_values.priced_for`.
+        pf = m.get("priced_for")
+        if not pf:
+            pricing = "no redraft price, so how he is priced cannot be read"
+        elif pf["priced_for"] == "later":
+            pricing = (f"UPSIDE-PRICED - {ordinal(pf['dynasty_rank'])} at {m['position']} in "
+                       f"dynasty against {ordinal(pf['redraft_rank'])} in redraft, so moving him "
+                       f"sells future years you are not playing for")
+        elif pf["priced_for"] == "now":
+            pricing = (f"already now-priced - {ordinal(pf['dynasty_rank'])} in dynasty against "
+                       f"{ordinal(pf['redraft_rank'])} in redraft, so his price is this season")
+        else:
+            pricing = (f"priced the same on both boards ({ordinal(pf['dynasty_rank'])} dynasty / "
+                       f"{ordinal(pf['redraft_rank'])} redraft) - no future premium to harvest")
         print(f"  move off {m['move_off']} ({m['position']}, {m['value']:,} dynasty / "
               f"{m['redraft_value']:,} this season - {pricing}):")
         if m["wanted_by"]:

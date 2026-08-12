@@ -16,7 +16,7 @@ Run: python -m pytest tests/ -q
 
 import pytest
 
-from analysis import roster_needs, team_state, trade_targets
+from analysis import roster_needs, team_state, team_values, trade_targets
 from sources import fantasycalc, sleeper
 from analysis.team_values import AGE_CURVE, age_bucket, years_to_decline
 
@@ -254,6 +254,37 @@ def test_trajectory_measures_current_production_not_dynasty_value():
     assert result["ascending_pct"] == 50 and result["declining_pct"] == 50
     assert result["trajectory_score"] == 0, "equal production means a flat trajectory"
     assert result["starting_production"] == 2000
+
+
+def test_priced_for_reads_rank_on_each_scale_not_the_raw_ratio():
+    """The ratio cannot answer "is he priced for now or later" and rank can. Dynasty prices ~400
+    players against redraft's ~200, so the ratio decays toward zero down the board - measured
+    medians QB 0.36, RB 0.05, WR 0.00, TE 0.00 - and a threshold of 1.0 mislabelled 111 live
+    entries against 32.
+
+    Four players at one position, ratios chosen so the ratio verdict is WRONG for three of them:
+    the two elite names have near-identical ratios to the aging one and the marginal one, and
+    only their ranks separate them."""
+    players = {
+        # elite on both boards - the ratio calls this "upside-priced" at 0.88
+        "elite":    {"name": "Elite", "position": "WR", "value": 8800, "redraft_value": 7700},
+        # young: much better in dynasty than redraft
+        "young":    {"name": "Young", "position": "WR", "value": 6000, "redraft_value": 1000},
+        # aging: better in redraft than dynasty despite a ratio under 1.0
+        "aging":    {"name": "Aging", "position": "WR", "value": 1800, "redraft_value": 1500},
+        # marginal: tiny ratio, but ranked the same on both - the Pollard/Gainwell case
+        "marginal": {"name": "Marginal", "position": "WR", "value": 1500, "redraft_value": 600},
+        "nopricing": {"name": "Prospect", "position": "WR", "value": 900, "redraft_value": None},
+    }
+    out = team_values.priced_for(players)
+    verdict = {players[k]["name"]: v["priced_for"] for k, v in out.items()}
+
+    assert verdict["Elite"] == "aligned", "1st on both boards is not upside-priced at 0.88"
+    assert verdict["Young"] == "later"
+    assert verdict["Aging"] == "now", "better in redraft than dynasty, whatever the ratio says"
+    assert verdict["Marginal"] == "aligned", "a small ratio at the bottom is depth, not upside"
+    assert "nopricing" not in out, "no redraft price means no verdict, not a zero"
+    assert out["aging"]["dynasty_rank"] == 3 and out["aging"]["redraft_rank"] == 2
 
 
 def test_window_needs_both_axes_not_either_one():

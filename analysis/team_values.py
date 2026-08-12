@@ -159,6 +159,53 @@ def rank_map(scores: dict, high_is_first: bool = True) -> dict:
     return {key: i for i, key in enumerate(order, start=1)}
 
 
+# How far apart a player's two positional ranks must sit, as a share of his position's pool,
+# before the two markets are saying different things about him. The median gap is 0% at every
+# position - which is the property the raw ratio never had - so zero is genuinely neutral here
+# and no per-position bar is needed. Known limit: a one-rank move is 3.4% of a 29-man TE pool
+# against 1.3% of a 75-man WR pool, so this labels a larger share of tight ends than
+# quarterbacks. Smaller than the ratio's distortion, not zero.
+PRICED_FOR_GAP = 0.10
+
+
+def priced_for(players: dict[str, dict]) -> dict[str, dict]:
+    """Per player, whether the market prices him for LATER, for NOW, or the same on both -
+    from his *rank within his position* on each scale rather than from `redraft / value`.
+
+    **The ratio cannot answer this and the rank can.** Dynasty prices ~400 players and redraft
+    ~200, so half the pool has no redraft price at all and the ratio decays toward zero going
+    down the board: measured medians are QB 0.36, RB 0.05, WR 0.00, TE 0.00. A threshold of 1.0
+    is therefore nowhere near neutral, and it mislabelled 111 entries against 32 - calling Kenny
+    Gainwell (26, a backup at dynasty #37 / redraft #33) "upside-priced, only 0.39 of his price
+    is production", and Travis Kelce at 36 the same thing.
+
+    Tested against ten players whose answer is known, rank gets all ten right where the ratio
+    gets six wrong, in both directions: Fannin (TE #6 dyn / #10 red) reads `later`, Kelce (#17 /
+    #9) and Pollard (#41 / #32) read `now`, and Smith-Njigba, Jeanty and Lamar Jackson - elite on
+    both boards - read `aligned` where the ratio called all three upside-priced.
+
+    Only players priced on both scales get a verdict; `None` for the rest, which is correct
+    rather than a gap - "priced for now or later" is meaningless for someone with no now price,
+    and those players sit below every relevance floor anyway."""
+    out = {}
+    for pos in {p["position"] for p in players.values()}:
+        pool = {pid: p for pid, p in players.items()
+                if p["position"] == pos and p.get("value") and p.get("redraft_value")}
+        if not pool:
+            continue
+        dyn = rank_map({pid: p["value"] for pid, p in pool.items()})
+        red = rank_map({pid: p["redraft_value"] for pid, p in pool.items()})
+        for pid in pool:
+            gap = (red[pid] - dyn[pid]) / len(pool)
+            out[pid] = {
+                "dynasty_rank": dyn[pid], "redraft_rank": red[pid], "of": len(pool),
+                "gap": round(gap, 3),
+                "priced_for": ("later" if gap > PRICED_FOR_GAP else
+                               "now" if gap < -PRICED_FOR_GAP else "aligned"),
+            }
+    return out
+
+
 def now_premium_bar(players: dict[str, dict], percentile: float = 0.9) -> dict[str, float]:
     """Per position, the `redraft_value / value` cutoff at `percentile` of that position's
     pool - i.e. how now-weighted a player's price has to be to be extreme *for his position*.
