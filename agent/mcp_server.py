@@ -8,6 +8,7 @@ section for why that keeps this phase pure plumbing with no new risk surface.
 Run: python -m agent.mcp_server
 """
 
+import functools
 import sys
 from pathlib import Path
 
@@ -23,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from mcp.server.fastmcp import FastMCP
 
 from analysis import format_support, team_state, roster_needs, trade_targets, waiver_wire, roster_detail
-from sources import sleeper
+from sources import sleeper, degraded
 
 
 def _lineup_note(fmt: dict) -> str:
@@ -37,6 +38,41 @@ def _lineup_note(fmt: dict) -> str:
             f"quarterback is worth little to anyone.")
 
 mcp = FastMCP("fantasy-fanatic")
+
+_tool = mcp.tool
+
+
+def _with_data_gaps(fn):
+    """Attach `data_gap` to any tool result computed while a reference feed was unreachable.
+
+    **Graceful degradation that only reaches stderr is invisible to the person asking.** Both
+    nflverse call sites already fall back rather than crash and both warn on stderr, which serves
+    the author running the CLI and nobody else - a friend asking the agent sees a confident answer
+    and no warning at all. It is not a cosmetic gap: with usage roles missing, every age curve
+    falls back to its position default, and on one live roster that moved Jared Goff from 6.2
+    years of runway to 2.1, inverting which quarterback a rebuilding team should trade.
+
+    Wrapped once here rather than edited into seven tools, because the next tool added would have
+    forgotten it. The note is only known AFTER a call loads players, so it is read on the way out.
+    """
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        result = fn(*args, **kwargs)
+        gap = degraded.note()
+        if gap and isinstance(result, dict):
+            return {**result, "data_gap": gap}
+        return result
+    return wrapper
+
+
+def tool_with_gaps():
+    """`@mcp.tool()` plus the degradation note, so no tool can be registered without it."""
+    def decorator(fn):
+        return _tool()(_with_data_gaps(fn))
+    return decorator
+
+
+mcp.tool = tool_with_gaps
 
 
 @mcp.tool()

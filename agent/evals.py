@@ -137,7 +137,19 @@ async def case_malformed_league_graceful() -> None:
     )
     names = _tool_names(result)
     assert names == ["mcp__fantasy_fanatic__check_league_format"], f"unexpected tool calls: {names}"
-    assert any(w in result["text"].lower() for w in ("doesn't exist", "not found", "invalid", "double-check")), \
+    # **Matched on meaning, not on a word list.** The keyword set missed a perfectly graceful
+    # answer - "doesn't appear to be valid - the Sleeper API couldn't find it. That looks like a
+    # placeholder or test ID" - purely because it said "couldn't find" rather than "not found",
+    # and a run minutes later passed on identical behaviour with different wording. An eval that
+    # reports model phrasing as a regression trains you to ignore it.
+    text = result["text"].lower()
+    says_missing = any(w in text for w in ("doesn't exist", "does not exist", "not found",
+                                           "couldn't find", "could not find", "no league",
+                                           "not a valid", "invalid", "isn't valid",
+                                           "doesn't appear to be valid"))
+    tells_user_what_to_do = any(w in text for w in ("double-check", "check the", "placeholder",
+                                                   "correct league", "valid league"))
+    assert says_missing or tells_user_what_to_do, \
         f"expected a graceful not-found explanation: {result['text']}"
     print(f"case_malformed_league_graceful: PASS (${result['cost_usd']:.4f}, {result['num_turns']} turns)")
 

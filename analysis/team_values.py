@@ -2,7 +2,7 @@
 
 import sys
 
-from sources import sleeper, fantasycalc, contracts, player_roles
+from sources import sleeper, fantasycalc, contracts, player_roles, degraded
 
 # (ascending_below, declining_at_or_above), by position. Dynasty community heuristics,
 # not a model: RBs decline earliest, QBs/TEs age gracefully.
@@ -299,6 +299,10 @@ def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty:
         print(f"WARNING: usage roles unavailable ({type(e).__name__}) - age curves fall back to "
               f"position defaults this run, so runway is less accurate for quarterbacks and "
               f"pass-catching backs. Advice that turns on WHO to sell may differ.", file=sys.stderr)
+        # stderr reaches the author; `degraded` reaches the ANSWER. See sources/degraded.py.
+        degraded.record("usage roles", "every age curve fell back to its position default, so "
+                                      "runway is less precise for quarterbacks and pass-catching "
+                                      "backs")
         roles = {}
     for player_id, role in roles.items():
         if player_id in players:

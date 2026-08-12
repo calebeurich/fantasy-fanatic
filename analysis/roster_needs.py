@@ -16,7 +16,7 @@ import sys
 
 from sources import sleeper
 
-from sources import injuries
+from sources import injuries, degraded
 from .team_values import age_bucket, rank_map, tertile
 
 POSITIONS = ["QB", "RB", "WR", "TE"]
@@ -661,6 +661,8 @@ def league_assessment(league_id: str) -> dict[str, dict[str, dict]]:
     except Exception as e:
         print(f"WARNING: injury miss rates unavailable ({type(e).__name__}) - exposure notes "
               f"state magnitude without likelihood this run.", file=sys.stderr)
+        degraded.record("injury miss rates", "exposure notes give the magnitude of losing a "
+                                            "starter without the likelihood of it happening")
         rates = None
     return assess_positions(ctx.rosters, ctx.players, ctx.needs_slots, ctx.start_thresholds,
                             ctx.starters, (ctx.lineup_dedicated, ctx.lineup_flex), rates)

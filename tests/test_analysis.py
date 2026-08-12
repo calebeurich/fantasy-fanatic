@@ -1689,3 +1689,21 @@ def test_a_middling_teams_sell_list_does_not_order_it_to_sell():
     assert "real urgency" not in optional["sell_clock_note"], \
         "told a team that may still wait that it has to sell now"
     assert "deadline" in optional["sell_clock_note"]
+
+
+def test_a_data_gap_reaches_the_tool_result_not_only_stderr():
+    """Graceful degradation that only reaches stderr is invisible to the person asking. Both
+    nflverse call sites fall back rather than crash and both warn on stderr, which serves the
+    author running the CLI and nobody else. It is not cosmetic: with usage roles missing every
+    age curve falls back to its position default, and on a live roster that moved Jared Goff from
+    6.2 years of runway to 2.1 - reversing which quarterback a rebuilding team should trade."""
+    from sources import degraded
+    degraded._MISSING.clear()
+    assert degraded.note() is None, "nothing to say when every feed loaded"
+
+    degraded.record("usage roles", "every age curve fell back to its position default")
+    note = degraded.note()
+    assert note and "usage roles" in note and "age curve" in note
+    assert "say this in your answer" in note, (
+        "the note is addressed to the model, because the reader can see it no other way")
+    degraded._MISSING.clear()
