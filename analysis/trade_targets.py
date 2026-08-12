@@ -790,6 +790,10 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
        and the league's best team. Listing them would put unattainable names at the top and
        make the feature worse than no feature.
     """
+    # Same two counterparty facts the buy list checks. `my_offers` is already passed in for the
+    # `you_could_offer` join, so the biggest single chip is a field read, not a new argument.
+    best_chip = max(my_offers or [], key=lambda e: e["value"], default=None)
+    others_have_traded = any(n for oid, n in trade_counts.items() if oid != me["owner_id"])
     plausible = []
     for other in _others(states, me, NOT_SELLER):  # sellers are the normal buy path's job
         team_why = _seller_case(other, prior.get(other["owner_id"]))
@@ -816,6 +820,15 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
                 continue
             fit = _counterparty_fit(other, (needs_by_owner_id or {}).get(other["owner_id"], {}),
                                     my_offers or [])
+            # This tier is "hard" by construction and carried no `friction` at all, so it was
+            # invisible to anything that groups or orders by difficulty - 108 entries across
+            # three leagues reading as hard-but-unlabelled. It is not one difficulty either:
+            # `cost_note` below already splits "he has a hole you fill" from a real pivot ask,
+            # and the friction reuses that split rather than restating it.
+            is_fit = bool(fit and "need at" in (fit.get("why_it_fits") or ""))
+            friction = _buy_friction(player, other, best_chip,
+                                     trade_counts.get(other["owner_id"], 0),
+                                     others_have_traded)["friction"]
             plausible.append({
                 "position": pos,
                 "need_level": need["level"],
@@ -823,6 +836,8 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
                 **_with_trade_note(player, other, trade_counts),
                 "production_per_cost": round(ratio, 2),
                 "why_they_might_listen": why,
+                "friction": friction,
+                "needs_a_pivot": not is_fit,
                 # Two different asks, and they were being described identically. Where the
                 # owner has a hole this team can fill, the trade *serves* his existing plan -
                 # calling that "persuading them to change direction" contradicted the
@@ -841,6 +856,8 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
                     f"market. Treat it as an option worth opening, not a deal that's there."
                 ),
             })
+            if not is_fit:
+                friction.append(_friction("needs_a_pivot", plausible[-1]["cost_note"]))
     plausible.sort(key=lambda t: -t["production_per_cost"])
     return plausible
 
