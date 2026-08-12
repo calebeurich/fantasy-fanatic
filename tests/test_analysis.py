@@ -1415,10 +1415,18 @@ def test_persuasion_says_what_the_other_owner_would_actually_want():
     # No hole, but rising while starting aging players - wants now-and-later value.
     rising = _holder("rising", "Contend", "steady", [], asc=26, dec=16)
     fit = trade_targets._counterparty_fit(rising, {}, offers)
-    assert fit["you_could_offer"] == ["SpareQB"], (
-        "'still there later' means runway, not bucket - a player 0.3 years from his own "
-        "decline cutoff still reads `prime`, and offering him as a lasting asset was the bug")
+    assert fit["you_could_offer"] == ["SpareQB", "AboutToTurn"], (
+        "runway RANKS this pool and no longer empties it - the long-runway piece leads, the "
+        "0.3-year one is still a real offer, and only a player past his own cliff is dropped. "
+        "Filler is excluded on being below replacement, not on his runway")
     assert "no positional hole" in fit["why_it_fits"]
+    assert "0.3 years from his own decline cutoff" in fit["why_it_fits"], (
+        "the bar decides what the sentence CLAIMS: with a 0.3-runway piece in the offer it must "
+        "not promise value 'still there in two', which that player's own number contradicts")
+
+    # Everything offered clears the bar, so the strong claim is the honest one.
+    fit = trade_targets._counterparty_fit(rising, {}, offers[:1])
+    assert "the trade he should be making anyway" in fit["why_it_fits"]
 
     # Aging into its own window with nothing to fill: no obvious fit, and say so.
     assert trade_targets._counterparty_fit(

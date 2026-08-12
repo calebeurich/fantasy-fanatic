@@ -171,6 +171,17 @@ UPGRADE_KIND_TAG = {
 # below this it's churn, not arbitrage.
 MIN_VALUE_FREED = 300
 
+# The same noise band as NOISE_RETAINED, read on the value axis instead of the production one.
+# Two prices this close are the same price, and requiring *strictly* less made a real finding
+# flicker in and out between value refreshes: DeVonta Smith at 3,619 against Rashee Rice at
+# 3,616 produces 535 more this season for a price identical to three decimal places, and the
+# entry existed or didn't depending on which side of Rice he landed that hour.
+#
+# Only the `upgrade` kind gets the band. Where the released value is the entire point
+# (`value_decision`, `conversion`) it has to actually be released, and MIN_VALUE_FREED says
+# how much.
+VALUE_NOISE = 1 - NOISE_RETAINED
+
 # "Still there later" is the same question `team_state` asks of a cornerstone, so it uses the
 # same answer - see team_values.MIN_MEANINGFUL_RUNWAY.
 MIN_RUNWAY_FOR_LATER = MIN_MEANINGFUL_RUNWAY
@@ -549,13 +560,15 @@ def _holding_kind(produced: float, costs: float, mine: dict) -> str | None:
     """Is this player a better thing to own than one of my starters at his position, and in
     which of the three senses? `None` if he isn't.
 
-    Costing less in dynasty value is required by all three - that is what keeps this from
-    collapsing into "go buy someone better", which is the buy path's question."""
+    Not costing MORE in dynasty value is required by all three - that is what keeps this from
+    collapsing into "go buy someone better", which is the buy path's question. For `upgrade`
+    that allows `VALUE_NOISE`, because two prices inside the noise band are the same price and
+    a strict comparison made a real finding flicker between refreshes."""
+    mine_produced = mine.get("redraft_value") or 0
+    if produced > mine_produced and costs <= mine["value"] * (1 + VALUE_NOISE):
+        return "upgrade"
     if costs >= mine["value"]:
         return None
-    mine_produced = mine.get("redraft_value") or 0
-    if produced > mine_produced:
-        return "upgrade"
     if not mine_produced or mine["value"] - costs < MIN_VALUE_FREED:
         return None
     retained = produced / mine_produced
@@ -570,9 +583,12 @@ def _upgrade_note(kind: str, produced: float, replaced: dict, freed: float, mine
               f"he is already yours." if mine_side else
               f"{replaced['name']} becomes depth rather than a starter.")
     if kind == "upgrade":
+        # `freed` can now be very slightly negative - VALUE_NOISE admits an upgrade priced inside
+        # the noise band, and "costs -3 less" is not a sentence.
+        price = (f"costs {freed:,} less in dynasty value" if freed > 0 else
+                 f"costs the same in dynasty value, inside the {abs(freed):,} that separates them")
         return (f"Produces {produced:,} this season against {replaced['name']}'s {theirs:,}, and "
-                f"costs {freed:,} less in dynasty value - strictly the better holding for a team "
-                f"trying to win now. {action}")
+                f"{price} - strictly the better holding for a team trying to win now. {action}")
     pct = round(produced / theirs * 100)
     if kind == "value_decision":
         return (f"Produces {produced:,} against {replaced['name']}'s {theirs:,} - {pct}% of it, so "
@@ -796,26 +812,41 @@ def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict]) -> 
         # and only the first is a piece worth restructuring a roster around. Without this the
         # list padded itself out to three names with a 33-redraft tight end, offered as value
         # that "scores this season".
+        # **Runway ranks this pool, it no longer empties it.** Requiring
+        # `>= MIN_RUNWAY_FOR_LATER` to be offered at all made a hard line out of a continuous
+        # measure, and 24% of the league's starters sit within a year of it: CeeDee Lamb at 1.6
+        # was unofferable to a rising team, and DK Metcalf at 0.3 unofferable to anyone without
+        # a positional hole, though both are real pieces a young roster would take. Past his own
+        # cliff is still excluded - there the claim would be false rather than weaker.
         both = sorted((e for e in my_offers
                        if e.get("value_over_replacement", 0) > 0
                        and (e.get("redraft_value") or 0) > 0
-                       and (e.get("years_to_decline") or 0) >= MIN_RUNWAY_FOR_LATER),
-                      # Friction last, then most current production - the same key
-                      # `_my_offer_pool` sorts by. Ranking on production alone put Lamar
-                      # Jackson at the head of "what they want from you" while the offer list
-                      # four lines above listed him LAST with two reasons not to move him.
-                      key=lambda e: (bool(e.get("friction")), -(e.get("redraft_value") or 0)))
+                       and (e.get("years_to_decline") or 0) >= 0),
+                      # Friction last, then the longest runway, then most current production.
+                      # Runway leads because it is what this branch is selling - "still there
+                      # later" - where `_my_offer_pool` sorts the same pool for a buyer of now.
+                      key=lambda e: (bool(e.get("friction")),
+                                     -(e.get("years_to_decline") or 0),
+                                     -(e.get("redraft_value") or 0)))
         if both:
-            return {"you_could_offer": [e["name"] for e in both[:3]],
+            # The bar now decides what the sentence claims. Offered a 0.3-runway receiver, it
+            # used to promise a piece "still there in two", which his own number contradicted.
+            offered = both[:3]
+            reach = min((e.get("years_to_decline") or 0) for e in offered)
+            future = (f"These carry both a current price and a future, which is the trade he "
+                      f"should be making anyway."
+                      if reach >= MIN_RUNWAY_FOR_LATER else
+                      f"These score now, but the nearest of them is {reach:.1f} years from his "
+                      f"own decline cutoff - so this is the weaker version of that trade, and "
+                      f"he should want a real future piece more than he wants these.")
+            return {"you_could_offer": [e["name"] for e in offered],
                     "fills_a_hole": False,
                     "why_it_fits": (f"{other['owner']} has no positional hole, so there is "
                                     f"nothing to fill - but his roster is tilting ascending "
                                     f"({other['ascending_pct']}% against "
                                     f"{other['declining_pct']}% declining) while he starts "
                                     f"aging players, so what he wants is value that scores "
-                                    f"this season and is still there in two. These carry both "
-                                    f"a current price and a future, which is the trade he "
-                                    f"should be making anyway.")}
+                                    f"this season and is still there in two. {future}")}
     return None
 
 
@@ -1764,9 +1795,11 @@ def _print_value_upgrades(result: dict) -> None:
             else:
                 trades = (f"{u['from_owner_trades']} trade(s)" if u["from_owner_trades"]
                           else "NEVER TRADES")
+            price = (f"{u['value_freed']:,} dynasty freed" if u["value_freed"] > 0
+                     else "same dynasty price")
             print(f"      <- {u['name']} ({u['redraft_value']:,} this season, "
-                  f"{u['production_gained']:+,} production, {u['value_freed']:,} dynasty "
-                  f"freed){UPGRADE_KIND_TAG[u['kind']]} from {u['from_owner']} - {trades}")
+                  f"{u['production_gained']:+,} production, {price})"
+                  f"{UPGRADE_KIND_TAG[u['kind']]} from {u['from_owner']} - {trades}")
             # Half the trade was missing: who wants MY guy was printed, why THEIRS would be
             # available was computed nowhere. A tight end held by a contender read exactly
             # like one held by a seller.
