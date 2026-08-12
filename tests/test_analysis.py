@@ -1296,16 +1296,23 @@ def test_persuasion_bar_is_relative_to_the_players_own_position():
     Real pair, identical ratio, opposite verdicts: a 36.9-year-old TE at 0.83 is top-decile
     now-weighted for a TE, while an RB at the same 0.83 is unremarkable.
 
-    Aimed at the CLIFF path, which is where the bar lives now that runway defines the tier -
-    so the holder is rising and has won, leaving `_cliff_case` as the only way in and the bar
-    as the only thing deciding."""
+    The bar decides one CLAUSE now, not membership. Used as a gate it made whether an owner had
+    any reason at all to move a player turn on the fourth decimal place - DeVonta Smith's 0.8790
+    against a WR bar of 0.8790 - so the mismatch argument stands on the runway and says outright
+    whether a discount is there to harvest. The per-position distinction is what must survive
+    that move, so it is asserted on the wording rather than on the list."""
     te = _aging("Kelce", 1810, 1504, pos="TE")   # 0.83 - clears the 0.81 TE bar
     rb = _aging("Jacobs", 2770, 2300)            # 0.83 - misses the 1.05 RB bar
     needs = {"RB": NEED_RB["RB"], "TE": NEED_RB["RB"]}
     holder = _holder("kk", "Contend", "rising", [te, rb], asc=30, dec=15)
     out = trade_targets._persuasion_targets(
         ME, [holder], needs, {"RB": 100, "TE": 100}, {}, {"kk": _prior(3)}, BARS)
-    assert [t["name"] for t in out] == ["Kelce"]
+    why = {t["name"]: t["why_they_might_listen"] for t in out}
+    assert set(why) == {"Kelce", "Jacobs"}, "both are window mismatches on a rising holder"
+    assert "priced as though his remaining years are gone" in why["Kelce"], (
+        "0.83 is top-decile now-weighted for a TE - there is a discount to harvest")
+    assert "not discounted for it" in why["Jacobs"], (
+        "the same 0.83 is unremarkable for an RB, and the sentence must not claim otherwise")
 
 
 def test_a_persuasion_target_has_to_beat_who_you_already_start():

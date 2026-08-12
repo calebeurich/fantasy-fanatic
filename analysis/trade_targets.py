@@ -293,11 +293,11 @@ def _why_they_would_move_him(player: dict, other: dict, prior: dict | None,
         return {"their_reason": (f"{other['owner']} is rebuilding - this is exactly the kind of "
                                  f"production they should be converting, so no persuasion needed.")}
     ratio = ((player.get("redraft_value") or 0) / player["value"]) if player.get("value") else 0
-    # Same now-weighted gate `_persuasion_targets` puts in front of `_cliff_case`. Without it
-    # that argument asserts he is "priced as though his remaining years are gone" about a player
-    # who may not be discounted at all - a claim the entry's own numbers would contradict.
-    cliff = (_cliff_case(player, other, ratio)
-             if ratio >= (premium_bars or {}).get(player["position"], float("inf")) else None)
+    # The bar decides one clause inside the case, not whether the case exists - see `_cliff_case`.
+    # Used as a gate it made the existence of any reason at all turn on the fourth decimal place.
+    cliff = _cliff_case(player, other, ratio,
+                        discounted=ratio >= (premium_bars or {}).get(player["position"],
+                                                                     float("inf")))
     case = _seller_case(other, (prior or {}).get(other["owner_id"])) or cliff
     serves_their_plan = [_friction(
         "needs_a_pivot", f"{other['owner']} has no hole you can fill, so this asks him to "
@@ -904,8 +904,8 @@ def _persuasion_targets(me: dict, states: list[dict], my_needs: dict, thresholds
             # roster, produces 2,221 - a +1,578 upgrade on the asking team's RB2 and more than
             # double its best listed target - was unreachable at ratio 0.85 against a 1.05 bar,
             # while his own teammate Achane qualified at exactly 1.05 off the same team case.
-            why = team_why or (_cliff_case(player, other, ratio)
-                               if ratio >= premium_bars.get(pos, float("inf")) else None)
+            why = team_why or _cliff_case(
+                player, other, ratio, discounted=ratio >= premium_bars.get(pos, float("inf")))
             if why is None:
                 continue
             fit = _counterparty_fit(other, (needs_by_owner_id or {}).get(other["owner_id"], {}),
@@ -1128,7 +1128,7 @@ def _seller_case(other: dict, prior: dict | None) -> str | None:
     return None
 
 
-def _cliff_case(player: dict, other: dict, ratio: float) -> str | None:
+def _cliff_case(player: dict, other: dict, ratio: float, discounted: bool = True) -> str | None:
     """Why an owner whose team looks fine might still move one aging starter: **their
     window and the player's don't line up**. Not "he's old" - old is only half of it.
 
@@ -1146,18 +1146,25 @@ def _cliff_case(player: dict, other: dict, ratio: float) -> str | None:
 
     The other two conditions keep it honest:
 
-    - **Declining and starting.** A declining player on the bench is just a bad asset, not
-      a conversation - his owner has already stopped relying on him, so there's nothing to
-      talk him out of.
-    - **Now-weighted for his own position** (`team_values.now_premium_bar`). The first
-      version of this used an absolute 1.25 on the raw ratio, which was a bug rather than a
-      strict setting: TE and WR pools top out at 1.01 and 1.07, so no TE or WR could ever
-      clear it in any league. Ranked within position instead, a 36.9-year-old TE at 0.83
-      raw is the second most now-weighted declining starter in the league.
+    - **On a clock and starting.** A player his owner has already benched is just a bad asset,
+      not a conversation - there's nothing to talk him out of.
+    - **`discounted` decides one clause, not whether the case exists.** It reports whether he
+      clears `team_values.now_premium_bar` for his own position, which is a statement about
+      *shape* - the market pricing him for now rather than later - and not about quality;
+      `clears_relevance_floor` answers that above.
 
-    Note this bar is about *shape*, not quality - it says the market prices him for now
-    rather than later, not that he's any good. "Too far gone to want" is an absolute
-    question, and `clears_relevance_floor` has already answered it above.
+    **Runway, not bucket** - the third place this same correction was needed, after
+    `team_state.classify` and `_pivot_path`. `bucket == "declining"` missed DeVonta Smith at
+    27.8 with **1.2 years** to his cutoff, reading `prime`, on a roster 47% ascending against
+    0% declining. That is the archetype this function exists for and the bucket hid it. Runway
+    turns out to be a strict superset: across three leagues, 24 starters on ascending-tilt
+    teams qualify under both tests, 30 under runway alone, and **zero** under bucket alone.
+
+    Gating the whole case on `discounted` was also wrong, and by its own logic - the bar exists
+    to keep the "priced as though his remaining years are gone" sentence honest, which is a job
+    for the sentence. Smith's ratio was 0.8790 against a WR bar of 0.8790, so whether an owner
+    had any reason at all to move him came down to a coin flip in the fourth decimal place. The
+    mismatch argument stands without a discount; it just says so.
 
     Two things this deliberately does NOT do. It doesn't check whether the owner has a
     replacement behind him - "should they do this?" is answered from their own side of the
@@ -1166,17 +1173,21 @@ def _cliff_case(player: dict, other: dict, ratio: float) -> str | None:
     existed to stop exactly the aging-contender case the tilt now rejects on its merits,
     and a title says less about whether an owner should sell than the shape of their roster
     does. A champion tilting ascending is a team that can afford to sell, trophy or not."""
-    if not (player["bucket"] == "declining" and player["is_starter"]):
+    if not (player["is_starter"]
+            and (player.get("years_to_decline") or 0) < MIN_MEANINGFUL_RUNWAY):
         return None
     if other["ascending_pct"] <= other["declining_pct"]:
         return None
+    discount = (f" He produces {ratio:.2f}x his own trade value - still starting, priced as "
+                f"though his remaining years are gone." if discounted else
+                f" He is not discounted for it ({ratio:.2f}x his own trade value), so this is "
+                f"about whose window he fits rather than a price to harvest.")
     return (f"Nothing about {other['owner']}'s team says seller, but their window and "
             f"{player['name']}'s don't line up: {other['ascending_pct']}% of their "
             f"production is ascending against {other['declining_pct']}% declining, so "
-            f"they're built for seasons he won't be part of. He produces {ratio:.2f}x his "
-            f"own trade value - still starting, priced as though his remaining years are "
-            f"gone. Keeping him may well tip this season for them, which is exactly why "
-            f"it's a real decision for them rather than a giveaway.")
+            f"they're built for seasons he won't be part of.{discount} Keeping him may well "
+            f"tip this season for them, which is exactly why it's a real decision for them "
+            f"rather than a giveaway.")
 
 
 def _buy_path(me: dict, states: list[dict], needs_by_owner_id: dict, thresholds: dict[str, float],

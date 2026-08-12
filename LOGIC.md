@@ -2340,6 +2340,28 @@ A two-point gap deciding whether three players are recommended at all is not a b
 tertile - it is what a league-relative measure does near a boundary - but it is the reason the
 sentence has to quote the rank rather than claim a roster is falling.
 
+### Runway, not bucket - the third time (`_cliff_case`)
+
+`_cliff_case` gated on `bucket == "declining"`, the same test already corrected to a runway in
+`team_state.classify` and `_pivot_path`. It missed **DeVonta Smith**: 27.8, **1.2 years** to his
+cutoff, reading `prime`, starting for a roster 47% ascending against 0% declining. That is the
+archetype the function exists for and the bucket hid it. Runway is a strict superset - across
+three leagues, 24 starters on ascending-tilt teams qualify under both tests, 30 under runway
+alone, and **zero** under bucket alone - so the switch loses nothing.
+
+It also stopped gating the case on the now-premium bar, by the bar's own logic: the bar exists to
+keep the sentence *"priced as though his remaining years are gone"* honest, which is a job for the
+sentence. As a gate, Smith's ratio of **0.8790** against a WR bar of **0.8790** meant whether his
+owner had any reason at all came down to the fourth decimal place. The mismatch argument now
+stands on the runway and states outright whether a discount is there: undiscounted names read
+*"he is not discounted for it (0.84x), so this is about whose window he fits rather than a price
+to harvest."*
+
+**What this surfaced.** James Cook - 6,027 of production at 1.21x production per unit of cost,
+the best win-now RB reachable by a team whose critical need is RB - was invisible in every run
+before this. He is `prime` by bucket with 0.1 years of runway, on a Middling/rising roster
+built for seasons he will not be part of.
+
 ### What makes a non-seller plausible (`_seller_case`)
 
 A falling trajectory (aging out is the one thing that turns a team that isn't selling into
