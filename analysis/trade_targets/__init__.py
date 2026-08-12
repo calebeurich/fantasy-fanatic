@@ -1,0 +1,192 @@
+"""Surface obvious trade fits: a team needing a position looks at what other teams can
+part with, shaped by which window each side is in. This is a discovery tool, not a
+fairness calculator - it finds *who* to call, not whether a package is fair, because
+value is not additive across players and nothing here prices a bundle.
+
+The package, by surface:
+  board.py        - the Board (league-wide facts, built once) and the shared vocabulary
+  counterparty.py - why the other side would move a player; the persuasion tier
+  buy.py          - the offer pool, the buy path, cheap depth
+  pivot.py        - the sell path: sell lists, acquire targets, picks
+  upgrades.py     - better holdings than current starters; your own conversion candidates
+  report.py       - the CLI rendering (everything computed must print - audited)
+
+Why each rule is what it is: LOGIC.md. Smoke test:
+python -m analysis.trade_targets <league_id> [owner_name] [max_per_position]
+"""
+
+from .. import roster_needs, team_state
+from .board import (Board, DEFAULT_MAX_PER_POSITION, NOISE_BAND, NOISE_RETAINED,
+                    NOW_PREMIUM_PERCENTILE, build_board, _sells_him)
+from .buy import _buy_path, _depth_adds, _my_offer_pool, DEPTH_NOTE, DEPTH_NOTE_REBUILD
+from .counterparty import (_cliff_case, _counterparty_fit, _persuasion_targets,
+                           _seller_case, _why_they_would_move_him, wanted_by)
+from .pivot import STRANDED_NOTE, _pivot_path
+from .report import _print_report
+from .upgrades import (CONTEND_CHOICE_NOTE, RETURNS_PER_MOVE, VALUE_UPGRADE_NOTE,
+                       _conversion_candidates, _holding_kind, find_value_upgrades)
+
+# The choice a Middling team is actually facing, stated rather than left implicit. Two
+# versions, because patience is only free for a rising roster - handing the rising text
+# to a falling team contradicted its own window note.
+MIDDLING_TIMING_NOTE_RISING = (
+    "TIMING: both paths are shown because both are live, but they cost differently. "
+    "Pushing now means buying current production at market price - and this roster's own "
+    "ascending players are scheduled to supply that production next season for free, so a "
+    "push is paying a premium for one extra year of contention. Waiting is the cheaper "
+    "default. Push anyway when the price is below market (a seller who has to move a "
+    "piece), when the gap to the top team is small enough that one addition closes it, or "
+    "when a need is count-shaped rather than quality-shaped - an empty starting slot costs "
+    "points every week and no amount of patience fills it."
+)
+
+MIDDLING_TIMING_NOTE = (
+    "TIMING: both paths are shown because both are live, and neither is free. This roster is "
+    "not scheduled to improve on its own, so waiting does not lower the price of contending - "
+    "it just spends a season. What waiting does buy is information: a few weeks of real "
+    "results settle whether this team is closer to the top than the standings currently say, "
+    "and that is a legitimate reason to hold. Push when the price is below market (a seller "
+    "who has to move a piece) or when a need is count-shaped rather than quality-shaped - an "
+    "empty starting slot costs points every week and no amount of patience fills it. Pivot if "
+    "the season opens badly, while the aging production still prices well."
+)
+
+
+def find_targets(league_id: str, owner_query: str,
+                 max_per_position: int = DEFAULT_MAX_PER_POSITION) -> dict:
+    board = build_board(league_id)
+    ctx = board.ctx
+
+    me = ctx.pick_owner(owner_query, board.states)
+
+    # What each of my starters actually costs to lose after the lineup refills itself
+    # (zero = the bench covers him for free), and who backfills - see buy._my_offer_pool.
+    my_roster = ctx.roster_for(owner_query)
+    my_starters = ctx.starters_for(my_roster)
+    covered = {ctx.players[pid]["name"]: roster_needs.production_lost_without(
+                   my_roster, ctx.players, pid, my_starters,
+                   ctx.lineup_dedicated, ctx.lineup_flex)
+               for pid in my_starters if pid in ctx.players}
+    backfills = {ctx.players[pid]["name"]: roster_needs.backfill_for(
+                     my_roster, ctx.players, pid, my_starters,
+                     ctx.lineup_dedicated, ctx.lineup_flex)
+                 for pid in my_starters if pid in ctx.players}
+
+    my_picks = board.picks_by_owner.get(me["roster_id"], [])
+
+    # Bench production the lineup can never collect - applies in every window.
+    stranded_ids = roster_needs.stranded_starters(my_roster, ctx.players, my_starters)
+    by_name = {e["name"]: e for e in me["sellable"] + me["tradeable_surplus"]}
+    weakest_id = roster_needs.weakest_starter(ctx.players, my_starters)
+    weakest = ctx.players[weakest_id] if weakest_id else None
+    stranded = []
+    for player_id in stranded_ids:
+        info = ctx.players[player_id]
+        entry = by_name.get(info["name"], {"name": info["name"], "position": info["position"],
+                                           "value": info["value"],
+                                           "redraft_value": info.get("redraft_value")})
+        wanted = wanted_by(entry, my_roster, board)
+        floor = weakest["redraft_value"] or 0
+        stranded.append({**entry, "blocked_by": info["position"],
+                         "wanted_by": wanted,
+                         "times_weakest": (round((info.get("redraft_value") or 0) / floor, 1)
+                                           if floor else None),
+                         "note": (f"Produces {info.get('redraft_value') or 0:,} this season against the "
+                                  f"{weakest['redraft_value'] or 0:,} of {weakest['name']} "
+                                  f"({weakest['position']}), who starts - and every "
+                                  f"{info['position']}-capable slot is held by someone better, so "
+                                  f"none of it reaches the lineup."
+                                  + (f" {len(wanted)} team(s) are short at {info['position']}: "
+                                     + ", ".join(f"{w['owner']} ({w['need_level']})" for w in wanted[:3])
+                                     + " - start there."
+                                     if wanted else
+                                     f" No team in this league currently needs a "
+                                     f"{info['position']}, so he will be hard to move at "
+                                     f"anything like his value."))})
+
+    def with_extras(result: dict) -> dict:
+        """Value upgrades and cheap depth, computed after the buy path so its output can
+        be excluded - the lists partition the space, and every list the buy path prints
+        counts as surfaced whichever of them it landed in."""
+        def buy_names(block: dict) -> set[str]:
+            return {t["name"] for key in ("targets", "long_shots")
+                    for t in block.get(key) or []}
+
+        # A Middling result nests its whole buy side under `push` while `value_upgrades`
+        # stays at the top, so anything shared between them has to look in both places.
+        buy_side = result.get("push") or result
+        surfaced = buy_names(result) | buy_names(buy_side)
+        # Not for a rebuilder: "better to hold if you're winning now" is advice for
+        # someone who is.
+        if me["window"] != "Rebuild":
+            upgrades = find_value_upgrades(my_roster, board, my_starters, me["window"],
+                                           surfaced, buy_side.get("my_offers"))
+            if upgrades:
+                result["value_upgrades"] = upgrades
+                result["value_upgrade_note"] = VALUE_UPGRADE_NOTE
+                surfaced |= {u["name"] for m in upgrades for u in m["returns"]
+                             if not u.get("already_mine")}
+        depth = _depth_adds(my_roster, board, me["window"] != "Rebuild",
+                            my_starters, surfaced)
+        if depth:
+            result["depth_adds"] = depth
+            result["depth_note"] = (DEPTH_NOTE_REBUILD if me["window"] == "Rebuild"
+                                    else DEPTH_NOTE)
+        return result
+
+    if me["window"] == "Rebuild":
+        return with_extras({"me": me, "mode": "rebuild",
+                            **_pivot_path(me, board, stranded, my_roster=my_roster,
+                                          max_per_position=max_per_position)})
+
+    if me["window"] == "Middling":
+        # Both directions are open, so show both - whichever makes sense usually depends
+        # on how the season starts, which nothing here has yet.
+        timing = (MIDDLING_TIMING_NOTE_RISING if me["trajectory"] == "rising"
+                  else MIDDLING_TIMING_NOTE)
+        return with_extras({"me": me, "mode": "middling", "timing_note": timing,
+                "push": _buy_path(me, board, max_per_position, my_picks, covered, backfills),
+                "pivot": _pivot_path(me, board, stranded, committed=False,
+                                     my_roster=my_roster,
+                                     max_per_position=max_per_position)})
+
+    result = {"me": me, "mode": "buy",
+              **_buy_path(me, board, max_per_position, my_picks, covered, backfills)}
+
+    result = with_extras(result)
+    if stranded:
+        result["stranded"] = stranded
+        result["stranded_note"] = STRANDED_NOTE
+
+    # Additive on purpose - `window` is untouched: a contender tilting ascending contends
+    # whichever path it takes, so this is a choice about HOW, not whether.
+    conversions = _conversion_candidates(me, board)
+    if conversions:
+        result["choice_note"] = CONTEND_CHOICE_NOTE
+        result["conversion_candidates"] = conversions
+    return result
+
+
+def offerable_names(result: dict) -> set[str]:
+    """Every player this team could reasonably be told to trade away, across whichever
+    path(s) its mode returned. Single source of truth for "is this a real give-up piece" -
+    agent.py's grounding check reads this instead of re-deriving the mode logic."""
+    if result["mode"] == "rebuild":
+        return {e["name"] for e in result["sell_candidates"] + result["situational"]}
+    if result["mode"] == "middling":
+        return ({e["name"] for e in result["push"]["my_offers"]}
+                | {e["name"] for e in result["pivot"]["sell_candidates"] + result["pivot"]["situational"]})
+    return {e["name"] for e in result["my_offers"]}
+
+
+def main(league_id: str, owner_query: str = None,
+         max_per_position: int = DEFAULT_MAX_PER_POSITION) -> None:
+    if owner_query:
+        _print_report(find_targets(league_id, owner_query, max_per_position))
+        return
+    # No owner given - run the whole league in one pass for eyeballing side by side.
+    owners = [row["owner"] for row in team_state.classify_league(league_id)]
+    for i, owner in enumerate(owners):
+        if i > 0:
+            print("\n" + "=" * 60 + "\n")
+        _print_report(find_targets(league_id, owner, max_per_position))
