@@ -637,6 +637,20 @@ grid and check by quadrant (finds contradictions BETWEEN blocks), and run the sa
 report twice and diff (a value refresh reshuffles whatever sits on a threshold). Most
 real finds came from a human reading output and saying "that doesn't make sense".
 
+**The suite itself was measured, not assumed** (2026-08: 30 hand-picked realistic
+mutations - resurrected shipped bugs, off-by-ones on documented boundaries, swapped
+labels). 23/30 killed on first run; each kill was exactly ONE failing test, so the suite
+has almost no redundancy and no obvious deletions. The 7 survivors shared two shapes,
+both now closed (30/30): **one-sided boundary tests** (a value weak under any bar from
+25% to 90% of the median proves nothing about where the bar sits - pin both sides), and
+**constants read only inside network orchestration** (`classify_league`'s noise bands),
+where the fix is a pure-function test that exercises the constant directly. One survivor
+was a shipped, already-fixed bug the suite would have let back in (`value_basis` using
+the buyer horizon instead of the final-year clock). Statement coverage is the wrong
+lens here: the pure-rule modules sit at 80-95% and the plumbing at 0-60% by design -
+audit covers orchestration on real leagues, evals cover agent behavior, and neither can
+pin a threshold.
+
 ## The agent stack (`agent/`)
 
 **MCP server** (`mcp_server.py`): thin wrappers over validated modules, stdio, no new

@@ -191,6 +191,16 @@ def test_a_mid_ranked_group_can_still_be_weak_in_absolute_terms():
     assert entry["startable"] == entry["slots"], "the slot is filled, so this isn't a count problem"
     assert entry["level"] == "weak", "700 against a league median of 2,850 is a real shortfall"
 
+    # The other side of the bar, which this test used to leave unpinned: 700 is weak under
+    # any bar from 25% to 90% of the median, so on its own it proves nothing about WHERE
+    # the bar sits. 55% of the median at a mid-table rank has to read `ok`.
+    rosters, players = _league({
+        "a": [("TE", 6000)], "b": [("TE", 5500)], "c": [("TE", 5000)],
+        "midling": [("TE", 1900)], "e": [("TE", 600)], "f": [("TE", 500)],
+    })
+    entry = roster_needs.assess_positions(rosters, players, slots, thresholds)["midling"]["TE"]
+    assert entry["level"] == "ok", "1,900 against a median of 3,450 is unremarkable, not weak"
+
 
 def test_quality_is_not_asserted_when_the_league_is_too_small_to_measure_it():
     """A 1-team league's rank is simultaneously first and last, which the naive tertile
@@ -403,6 +413,28 @@ def test_a_contention_edge_names_the_window_across_the_line():
     note = team_state.window_edge(_edge_row(trajectory="falling"),
                                   {"me": ("top", 300)}, {})
     assert "Push" in note
+
+
+def test_the_trajectory_band_is_in_points_and_matches_its_calibration():
+    """2, in POINTS not a share - the score crosses zero, where a relative band means
+    nothing. Calibrated: the score moved 1 point at p95 under refresh jitter, so a pair
+    2 apart is one update from swapping and a pair 3 apart is not."""
+    same = lambda a, b: a - b <= team_state.TRAJECTORY_NOISE_POINTS
+    scores = {"o1": 40, "o2": 20, "o3": 17, "o4": 5, "o5": 3, "o6": -30}
+    edges = team_state.tertile_edges(team_values.rank_map(scores), scores, 6, same)
+    assert edges == {"o4": ("bottom", 2), "o5": ("middle", 2)}, (
+        "3 points across the top line holds; 2 across the bottom line is a coin flip")
+
+
+def test_value_basis_uses_the_final_year_clock_not_the_buyer_horizon():
+    """A shipped bug the suite used to let back in: with the 2.0 buyer horizon here
+    instead of INSIDE_FINAL_YEAR, the RB curve calls any back over 25 production-priced.
+    1.5 years is inside a buyer's two-season horizon but NOT inside his own final year,
+    so the bucket answers; only past his own edge does the price become production."""
+    assert team_state.value_basis({"years_to_decline": 0.8, "bucket": "prime"}) == "production"
+    assert team_state.value_basis({"years_to_decline": 1.5, "bucket": "prime"}) == "mixed"
+    assert team_state.value_basis({"years_to_decline": 1.5, "bucket": "ascending"}) == "upside"
+    assert team_state.value_basis({"years_to_decline": None, "bucket": "declining"}) == "production"
 
 
 class _Ctx:
@@ -754,6 +786,39 @@ def test_an_offer_says_who_backfills_and_what_the_trade_off_is():
     # 122 of 38,467 leaves 99.7% standing, so it is not friction - but the trade-off line
     # still has to state the number, which is the only place it now appears.
     assert not entry["friction"]
+
+    # The other side of NOISE_RETAINED, previously unpinned: 1,600 of 38,467 (4.2%) is a
+    # hit the lineup notices, and it must arrive as friction with the share stated.
+    offers = trade_targets._my_offer_pool(
+        me, _board(thresholds=thresholds), needs={}, covered={"Cheap": 1600.0},
+        backfills={"Cheap": {"name": "Backup", "position": "WR", "redraft_value": 944}})
+    friction = offers[0]["friction"]
+    assert [f["flavor"] for f in friction] == ["costs_you_production"]
+    assert "4% of what it scores now" in friction[0]["why"]
+
+
+def test_out_of_reach_means_above_one_piece_never_a_sum():
+    """`_best_chip` is the single biggest thing a team could put on the table - one
+    player against one player is the only comparison this project can make, so it must
+    be the max, never a min or a sum."""
+    chips = [{"value": 3000}, {"value": 5000}, {"value": 800}]
+    assert trade_targets.board._best_chip(chips)["value"] == 5000
+    assert trade_targets.board._best_chip([]) is None
+
+
+def test_the_cliff_case_turns_on_meaningful_runway_and_a_real_tilt():
+    """Its own docstring's example, previously unpinned: a 1.2-year starter reads `prime`
+    by bucket AND sits past the final-year clock, so any bar tighter than
+    MIN_MEANINGFUL_RUNWAY (2.0) quietly loses him. And a flat roster (40/40) is not
+    tilting ascending - the tie means their window says nothing about his."""
+    them = {"owner": "them", "ascending_pct": 40, "declining_pct": 10}
+    receiver = {"name": "WR1", "is_starter": True, "years_to_decline": 1.2}
+    assert trade_targets.counterparty._cliff_case(receiver, them, 0.9) is not None
+    assert trade_targets.counterparty._cliff_case(
+        {**receiver, "years_to_decline": 2.0}, them, 0.9) is None, (
+        "at the bar is meaningful runway - no cliff to argue from")
+    assert trade_targets.counterparty._cliff_case(
+        receiver, {**them, "declining_pct": 40}, 0.9) is None
 
 
 def test_a_cornerstone_is_in_the_pivot_sell_lists_tagged_by_direction():
