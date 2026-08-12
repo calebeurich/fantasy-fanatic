@@ -664,11 +664,19 @@ def test_an_offer_says_who_backfills_and_what_the_trade_off_is():
     assert not entry["friction"]
 
 
-def test_a_cornerstone_stays_out_of_the_pivot_sell_lists():
-    """He is askable, but not via `situational` - that label reads "years still on them, just
-    not your long-term core", and a cornerstone is the long-term core by definition. Printing
-    him there would be a self-contradicting label, the defect class this codebase keeps
-    hitting. `my_offers` and `value_upgrades` are the surfaces that name him instead."""
+def test_a_cornerstone_is_in_the_pivot_sell_lists_tagged_by_direction():
+    """He used to be filtered OUT of these lists, because `situational` was labelled "years
+    still on them, just not your long-term core" and a cornerstone is the core by definition.
+    The label was the problem, not his presence: the exclusion's own defence was that
+    "`my_offers` and `value_upgrades` are the surfaces that name him instead", and a REBUILD
+    result has neither key - so on a rebuilding roster he appeared in no sell surface at all.
+
+    `case_sells_on_runway_not_age` is what caught it. Asked which of five QBs to trade, the
+    agent could not weigh Jalen Hurts (4.0 years of runway) against Justin Herbert (5.6),
+    because the tool never listed him - so it led with Jared Goff at 6.2.
+
+    The tag differs by direction, which is the distinction `committed` already carries: a
+    committed team is making a hard move, a middling team is making THE choice."""
     rock = {"name": "Rock", "position": "WR", "value": 6000, "redraft_value": 4000,
             "bucket": "prime", "years_to_decline": 5.0, "is_starter": True,
             "is_cornerstone": True}
@@ -678,7 +686,16 @@ def test_a_cornerstone_stays_out_of_the_pivot_sell_lists():
 
     out = trade_targets._pivot_path(me, [], {"WR": 0}, {})
     assert [e["name"] for e in out["sell_candidates"]] == ["Aging"]
-    assert out["situational"] == [], "the cornerstone must not be called 'not your core'"
+    assert [e["name"] for e in out["situational"]] == ["Rock"], "the core must be surfaced"
+    assert [f["flavor"] for f in out["situational"][0]["friction"]] == ["cornerstone"]
+    assert not out["sell_candidates"][0].get("friction"), "an ordinary sell carries none"
+    assert "hardest ask" in out["situational"][0]["friction"][0]["why"], (
+        "a team that has picked its direction is being told this is a hard move")
+
+    undecided = trade_targets._pivot_path(me, [], {"WR": 0}, {}, committed=False)
+    assert "IS the choice" in undecided["situational"][0]["friction"][0]["why"], (
+        "for a middling team converting the core is not one move among others, it is the "
+        "decision - which is the thing most worth surfacing to them")
 
 
 def test_offer_pool_lets_a_push_team_offer_an_ascending_starter():

@@ -2340,6 +2340,43 @@ A two-point gap deciding whether three players are recommended at all is not a b
 tertile - it is what a league-relative measure does near a boundary - but it is the reason the
 sentence has to quote the rank rather than claim a roster is falling.
 
+### Your own cornerstone is a sell surface too (`CORNERSTONE_SELL`)
+
+`_pivot_path` filtered cornerstones OUT of both sell lists, because `situational` was labelled
+"years still on them, just not your long-term core" and a cornerstone is the core by definition.
+The label was the problem, not his presence - and the exclusion's own defence gives it away: it
+said *"`my_offers` and `value_upgrades` are the surfaces that name him instead"*, and **a rebuild
+result has neither key**. So on a rebuilding roster a cornerstone appeared in no sell surface at
+all, which is the worst roster to hide it on: a rebuilder's only real question is which good
+player converts, and a cornerstone whose runway ends before the rebuild lands is exactly the one
+to question.
+
+Caught by an eval, not by a spot check. `case_sells_on_runway_not_age` asks which of jwall567's
+five QBs to trade; the agent could not weigh Jalen Hurts against Justin Herbert because the tool
+never listed either, so it led with Jared Goff.
+
+They are now listed with the same `friction` vocabulary the buy side uses, and **the tag differs
+by direction, which is the `committed` distinction this path already carried**:
+
+- **Committed** (a rebuild): a hard move, and coherent. *"Only sell him for what actually
+  shortens the rebuild, never for a fair price on paper."*
+- **Not committed** (Middling): not one move among others - *it IS the choice.* Converting him is
+  what committing to the future consists of; keeping him is what committing to now consists of.
+  Caleb: *"I do think that is the main choice to surface for middling teams."*
+
+### An eval premise that depended on a flaky data source
+
+The same case then kept failing for a different reason, and the failure was the eval's. Its
+premise is that Goff has MORE runway than Hurts - true only because `pocket_passer` moves Goff to
+a (26, 38) curve and `dual_threat_qb` moves Hurts to (26, 34). **With nflverse unreachable both
+fall back to the position default and the comparison inverts**: Goff 2.1 against Hurts 6.0, at
+which point naming Goff is the correct runway answer and the eval was failing the agent for being
+right.
+
+It also guarded the wrong pair - Hurts against *Herbert*, while asserting something about Hurts
+against *Goff*. Both pairs are now checked before an API call is spent, and the message names the
+likely cause rather than reporting "fixture drift" and leaving the reader to find it.
+
 ### Seller-ness belongs to the pair, not the team (`_sells_him`)
 
 `_buy_path` searched teams where `window == "Rebuild"`, which made "is this owner selling?" a

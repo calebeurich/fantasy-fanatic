@@ -172,11 +172,23 @@ async def case_sells_on_runway_not_age() -> None:
     something to move, it has to have considered Hurts too, since that is the comparison the
     numbers force."""
     from analysis import team_state
-    cornerstones = next(t["cornerstones"] for t in team_state.classify_league(FRIENDS_LEAGUE)
-                        if t["owner"] == "jwall567")
-    runway = {c["name"]: c["years_to_decline"] for c in cornerstones}
-    assert runway.get("Jalen Hurts", 99) < runway.get("Justin Herbert", 0), \
-        "fixture drift: Hurts is no longer the shortest-runway cornerstone"
+    row = next(t for t in team_state.classify_league(FRIENDS_LEAGUE) if t["owner"] == "jwall567")
+    runway = {e["name"]: e["years_to_decline"] for e in row["sellable"]}
+    # **The premise is entirely dependent on nflverse role tags, and it used to guard the wrong
+    # pair** - Hurts against Herbert, while asserting something about Hurts against GOFF. Goff
+    # only out-runways Hurts because `pocket_passer` moves him to a (26, 38) curve while
+    # `dual_threat_qb` moves Hurts to (26, 34). With roles unreachable both fall back to the
+    # position default and the comparison INVERTS - Goff 2.1 against Hurts 6.0 - at which point
+    # recommending Goff is the correct runway answer and this case fails the agent for being
+    # right. Checked before spending an API call, and named for what it almost always is.
+    for shorter, longer in (("Jalen Hurts", "Justin Herbert"), ("Jalen Hurts", "Jared Goff")):
+        assert runway.get(shorter, 99) < runway.get(longer, 0), (
+            f"PREMISE GONE, not an agent regression: this case needs {shorter} to have LESS "
+            f"runway than {longer}, and he has {runway.get(shorter)} against "
+            f"{runway.get(longer)}. Almost always means the nflverse role tags were "
+            f"unreachable, so every age curve fell back to its position default - look for "
+            f"'WARNING: usage roles unavailable' on stderr and re-run. If roles ARE available, "
+            f"it is real fixture drift and the case needs rewriting around the new numbers.")
 
     result = await run_query(
         f"For Sleeper league {FRIENDS_LEAGUE}, jwall567 is rebuilding and has too many "

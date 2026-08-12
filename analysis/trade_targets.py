@@ -84,6 +84,23 @@ CONTEND_CHOICE_NOTE = (
 # for it the clock bounds how long waiting stays free instead of ordering a sale. One string
 # so the CLI line and the agent's JSON can't drift apart the way they did on `mgibbons612`.
 SELL_CLOCK_COMMITTED = "value only goes down from here, real urgency to move it"
+
+# Selling your own cornerstone is one action with two entirely different meanings, and which
+# one applies is the `committed` distinction this path already carries. On a team that has
+# picked its direction it is a defined move - the hardest ask on the roster, but coherent. On a
+# MIDDLING team it is not a move at all, it is the choice: converting the core is what going
+# one way rather than the other consists of. That is the thing worth surfacing to a middling
+# team above everything else, so it is stated as a decision rather than as a sell instruction.
+CORNERSTONE_SELL = {
+    True: ("cornerstone - the runway this roster is built around, so expect to pay over market "
+           "or be told no if you are on the other side of it. Moveable, and the hardest ask "
+           "here: only sell him for what actually shortens the rebuild, never for a fair price "
+           "on paper"),
+    False: ("cornerstone - and for a team that has NOT picked a direction this is not one move "
+            "among others, it IS the choice. Converting him is what committing to the future "
+            "consists of; keeping him is what committing to now consists of. Decide the "
+            "direction first, then this answers itself - do not trade him to find out"),
+}
 SELL_CLOCK_OPTIONAL = (
     "value only goes down from here - so these are what waiting costs, and the deadline on "
     "deciding. This team has NOT committed to selling: the clock is a reason to pick a "
@@ -1442,20 +1459,33 @@ def _pivot_path(me: dict, states: list[dict], thresholds: dict[str, float], trad
     `team_state.classify`, which this path missed. Splitting on `bucket == "declining"` put
     Justin Jefferson - 6,828, the most valuable asset on a rebuilding roster, and 1.8 years
     from his cutoff - under "no urgency", while a 2,145 back at -2.2 read as urgent."""
-    # Cornerstones are in `sellable` because they are askable (see CORNERSTONE_ASK), but they
-    # do not belong in *these* two lists: `situational` means "years still on them, just not
-    # your long-term core", and a cornerstone is by definition the long-term core. Putting
-    # them here would print a label that contradicts itself. Where a cornerstone is genuinely
-    # the piece to move, `my_offers` and `value_upgrades` are the surfaces that say so.
+    # **Cornerstones belong here, tagged.** They used to be filtered out, on the argument that
+    # `situational` says "not your long-term core" and a cornerstone is the core, so the label
+    # would contradict itself. The label was right and the remedy was wrong: the exclusion's
+    # own justification was that "`my_offers` and `value_upgrades` are the surfaces that say
+    # so", and a REBUILD result has neither key - so on a rebuilding roster a cornerstone
+    # appeared in no sell surface at all. That is the worst roster to hide it on, because a
+    # rebuilder's only real question is which good player converts, and a cornerstone whose
+    # runway ends before the rebuild lands is exactly the one to question.
+    #
+    # Caught by `case_sells_on_runway_not_age`: the agent was asked which of five QBs to trade
+    # and could not weigh Jalen Hurts (4.0 years of runway) against Justin Herbert (5.6),
+    # because the tool never listed him. It led with Jared Goff at 6.2 instead.
     real_sellable = [e for e in me["sellable"]
-                     if team_state.clears_relevance_floor(e, thresholds)
-                     and not e.get("is_cornerstone")]
+                     if team_state.clears_relevance_floor(e, thresholds)]
 
     def on_a_clock(e):
         return (e["years_to_decline"] or 0) < MIN_MEANINGFUL_RUNWAY
 
-    sell_candidates = [e for e in real_sellable if on_a_clock(e)]
-    situational = [e for e in real_sellable if not on_a_clock(e)]
+    def tagged(entries: list[dict]) -> list[dict]:
+        """One `friction` vocabulary on the sell side too - the same flavor and shape the buy
+        path uses, so "hard to move" reads identically whichever direction it is written in."""
+        return [e if not e.get("is_cornerstone") else
+                {**e, "friction": [_friction("cornerstone", CORNERSTONE_SELL[committed])]}
+                for e in entries]
+
+    sell_candidates = tagged([e for e in real_sellable if on_a_clock(e)])
+    situational = tagged([e for e in real_sellable if not on_a_clock(e)])
     # Most now-weighted first, not most valuable first. A seller is converting present into
     # future, so the right order is how much of a player's price is present - the same
     # `redraft / dynasty` reading `_persuasion_targets` buys on, read from the selling side.
@@ -1680,12 +1710,23 @@ def offerable_names(result: dict) -> set[str]:
 
 
 def _print_pivot(me: dict, pivot: dict) -> None:
-    sell = ", ".join(e["name"] for e in pivot["sell_candidates"]) or "none"
-    print(f"sell candidates (under {MIN_MEANINGFUL_RUNWAY:g} years before decline): {sell}")
+    def names(entries: list[dict]) -> str:
+        # A cornerstone's friction is the whole reason he is listed, so it prints inline with
+        # the name rather than being data nobody renders.
+        return ", ".join(e["name"] + (" [CORNERSTONE]" if e.get("friction") else "")
+                         for e in entries) or "none"
+
+    print(f"sell candidates (under {MIN_MEANINGFUL_RUNWAY:g} years before decline): "
+          f"{names(pivot['sell_candidates'])}")
     print(f"  {pivot['sell_clock_note']}")
-    situational = ", ".join(e["name"] for e in pivot["situational"]) or "none"
-    print(f"situational pieces (years still on them, just not your long-term core - take a fair "
-          f"offer, no urgency): {situational}")
+    # This list used to be labelled "just not your long-term core", which was true only because
+    # cornerstones were filtered out of it - and filtering them out hid the one decision a
+    # rebuilding or middling team most needs to see.
+    print(f"pieces with years still on them, most now-weighted first - your cornerstones "
+          f"included and tagged: {names(pivot['situational'])}")
+    for e in pivot["sell_candidates"] + pivot["situational"]:
+        for f in e.get("friction") or []:
+            print(f"  - {e['name']}: {f['why']}")
     if not pivot["acquire_targets"]:
         print("no obvious acquire targets found")
         return
