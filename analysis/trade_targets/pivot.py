@@ -26,13 +26,28 @@ SELL_CLOCK_OPTIONAL = (
 CORNERSTONE_SELL = {
     True: ("cornerstone - the runway this roster is built around, so expect to pay over market "
            "or be told no if you are on the other side of it. Moveable, and the hardest ask "
-           "here: only sell him for what actually shortens the rebuild, never for a fair price "
-           "on paper"),
+           "here: sell him when the return actually shortens the rebuild, never for a fair "
+           "price on paper"),
     False: ("cornerstone - and for a team that has NOT picked a direction this is not one move "
             "among others, it IS the choice. Converting him is what committing to the future "
             "consists of; keeping him is what committing to now consists of. Decide the "
             "direction first, then this answers itself - do not trade him to find out"),
 }
+
+# The one sell block that shipped without a note - and the eval that measures whether the
+# runway rule gets applied failed 6/6 runs while the rule lived only in a tool docstring.
+# Attached to the entries it governs, it survives to the sentence that needs it.
+SITUATIONAL_NOTE = (
+    "PIECES WITH YEARS STILL ON THEM, most now-weighted first - cornerstones included and "
+    "tagged, because the hardest ask is a price, never a veto. No clock forces any of these, "
+    "so the question each answers is fit: whose remaining years will this roster actually be "
+    "there for. Between two at the same position, years_to_decline picks the sale and age "
+    "never does - keep the years, sell the piece whose decline lands first, even when he is "
+    "the younger man (the curves cross: a running quarterback runs out of years before an "
+    "older pocket passer). An easier sale elsewhere in this report does not answer that "
+    "comparison - make it explicitly whenever a position holds more pieces than the lineup "
+    "can start."
+)
 
 PICKS_NOTE = (
     "ASK FOR PICKS, NOT JUST PLAYERS - and this is the block to work from first. A pick is the "
@@ -131,6 +146,7 @@ def _pivot_path(me: dict, board: Board,
         acquire_targets += ranked[:max_per_position]
     acquire_targets.sort(key=lambda t: (bool(t["friction"]), -t["value"]))
     result = {"sell_candidates": sell_candidates, "situational": situational,
+              "situational_note": SITUATIONAL_NOTE,
               "acquire_targets": acquire_targets, "acquire_note": ACQUIRE_NOTE,
               "sell_clock_note": SELL_CLOCK_COMMITTED if committed else SELL_CLOCK_OPTIONAL}
     if stranded:

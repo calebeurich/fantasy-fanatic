@@ -39,8 +39,8 @@ def _print_pivot(me: dict, pivot: dict) -> None:
           f"{names(pivot['sell_candidates'])}")
     print(f"  {pivot['sell_clock_note']}")
     buyers(pivot["sell_candidates"])
-    print(f"pieces with years still on them, most now-weighted first - your cornerstones "
-          f"included and tagged: {names(pivot['situational'])}")
+    print(f"situational sells: {names(pivot['situational'])}")
+    print(f"  {pivot['situational_note']}")
     buyers(pivot["situational"])
     # Said once, not once per cornerstone.
     cornerstones = [e for e in pivot["sell_candidates"] + pivot["situational"] if e.get("friction")]

@@ -330,8 +330,12 @@ def tertile_edges(ranks: dict, scores: dict, num_teams: int, same) -> dict:
         above = next(o for o, r in ranks.items() if r == line)
         below = next(o for o, r in ranks.items() if r == line + 1)
         if same(scores[above], scores[below]):
-            out[above] = (tertile(line + 1, num_teams), scores[above] - scores[below])
-            out[below] = (tertile(line, num_teams), scores[above] - scores[below])
+            # One gap, one reference score for BOTH sides - each side quoting the gap
+            # against its own total described the same 691-point gap as 1.8% and 1.9%
+            # in one grid, and a shared number is the point of a shared line.
+            gap = scores[above] - scores[below]
+            out[above] = (tertile(line + 1, num_teams), gap, scores[above])
+            out[below] = (tertile(line, num_teams), gap, scores[above])
     return out
 
 
@@ -369,15 +373,14 @@ def window_edge(row: dict, contention_edges: dict, trajectory_edges: dict) -> st
     notes = []
     edge = contention_edges.get(row["owner_id"])
     if edge:
-        alt_tier, gap = edge
+        alt_tier, gap, ref = edge
         alt_window = window_for(CONTENTION_TIER[alt_tier], row["trajectory"])
         notes.append(EDGE_CONTENTION.format(
-            gap_pct=round(100 * gap / row["starting_production"], 1)
-            if row["starting_production"] else 0,
+            gap_pct=round(100 * gap / ref, 1) if ref else 0,
             alt_window=alt_window))
     edge = trajectory_edges.get(row["owner_id"])
     if edge:
-        alt_tier, gap = edge
+        alt_tier, gap, _ = edge
         alt_trajectory = TRAJECTORY_TIER[alt_tier]
         alt_window = window_for(row["contention"], alt_trajectory)
         alt_flavor = flavor_for(alt_window, alt_trajectory, row["leverage"],

@@ -353,8 +353,9 @@ def test_a_tertile_line_through_a_tie_hedges_both_sides_and_a_clear_gap_neither(
     scores["o3"] = scores["o2"]  # tie exactly on the top line of a 6-team field
     edges = team_state.tertile_edges(team_values.rank_map(scores), scores, 6,
                                      _SAME_PRODUCTION)
-    assert edges == {"o2": ("middle", 0), "o3": ("top", 0)}, (
-        "each side is told which tier it is one refresh from")
+    assert edges == {"o2": ("middle", 0, 46_000), "o3": ("top", 0, 46_000)}, (
+        "each side is told which tier it is one refresh from, and both quote the SAME "
+        "gap against the same reference - one line, one number")
 
 
 def test_the_hedge_band_splits_the_measured_flip_boundary():
@@ -368,7 +369,7 @@ def test_the_hedge_band_splits_the_measured_flip_boundary():
               "o6": 20_000}
     edges = team_state.tertile_edges(team_values.rank_map(scores), scores, 6,
                                      _SAME_PRODUCTION)
-    assert edges == {"o4": ("bottom", 175), "o5": ("middle", 175)}
+    assert edges == {"o4": ("bottom", 175, 35_000), "o5": ("middle", 175, 35_000)}
 
 
 def _edge_row(**kw):
@@ -383,7 +384,7 @@ def test_an_edge_is_only_an_edge_when_crossing_the_line_changes_the_message():
     trajectory flip tells neither team anything new - hedging them would be noise about
     noise. The same flip IS news to a contender (the clock: Push vs Contend) and to a
     plain Middling team (whether patience is free)."""
-    a_point_from_lower = {"me": ("middle", 1)}
+    a_point_from_lower = {"me": ("middle", 1, 20)}
     rebuild = _edge_row(window="Rebuild", contention="also-ran", trajectory="rising",
                         flavor="ascending", ascending_pct=40, declining_pct=3)
     assert team_state.window_edge(rebuild, {}, a_point_from_lower) is None
@@ -398,7 +399,7 @@ def test_an_edge_is_only_an_edge_when_crossing_the_line_changes_the_message():
         "whether patience is free is the thing that can flip")
 
     contender = _edge_row(window="Contend", contention="contender", flavor="Contend")
-    note = team_state.window_edge(contender, {}, {"me": ("bottom", 2)})
+    note = team_state.window_edge(contender, {}, {"me": ("bottom", 2, 20)})
     assert "Push" in note, "the clock is the thing that can flip"
 
     assert team_state.window_edge(middling, {}, {}) is None
@@ -407,11 +408,11 @@ def test_an_edge_is_only_an_edge_when_crossing_the_line_changes_the_message():
 def test_a_contention_edge_names_the_window_across_the_line():
     """The alternate window is computed with the team's OWN trajectory - a falling team
     one refresh from the top tier would arrive there as Push, not generic Contending."""
-    note = team_state.window_edge(_edge_row(), {"me": ("top", 300)}, {})
+    note = team_state.window_edge(_edge_row(), {"me": ("top", 300, 30_000)}, {})
     assert "Contend" in note and "1.0%" in note, (
-        "the gap ships labelled, in the team's own production terms")
+        "the gap ships labelled, against the shared reference score")
     note = team_state.window_edge(_edge_row(trajectory="falling"),
-                                  {"me": ("top", 300)}, {})
+                                  {"me": ("top", 300, 30_000)}, {})
     assert "Push" in note
 
 
@@ -422,7 +423,7 @@ def test_the_trajectory_band_is_in_points_and_matches_its_calibration():
     same = lambda a, b: a - b <= team_state.TRAJECTORY_NOISE_POINTS
     scores = {"o1": 40, "o2": 20, "o3": 17, "o4": 5, "o5": 3, "o6": -30}
     edges = team_state.tertile_edges(team_values.rank_map(scores), scores, 6, same)
-    assert edges == {"o4": ("bottom", 2), "o5": ("middle", 2)}, (
+    assert edges == {"o4": ("bottom", 2, 5), "o5": ("middle", 2, 5)}, (
         "3 points across the top line holds; 2 across the bottom line is a coin flip")
 
 
@@ -853,6 +854,23 @@ def test_a_cornerstone_is_in_the_pivot_sell_lists_tagged_by_direction():
     assert "IS the choice" in undecided["situational"][0]["friction"][0]["why"], (
         "for a middling team converting the core is not one move among others, it is the "
         "decision - which is the thing most worth surfacing to them")
+
+
+def test_the_situational_block_ships_its_note_and_the_note_carries_the_runway_rule():
+    """`situational` was the ONE block without a note - the CLI printed a header the agent
+    never saw, and the runway-picks-the-sale rule lived only in a tool docstring. Measured
+    consequence: asked which of five QBs a rebuilder should trade, the agent failed to weigh
+    the short-runway cornerstone on 6 of 6 runs, every time leading with the easier stranded
+    sale instead. The rule has to ride at the entries it governs."""
+    rock = {"name": "Rock", "position": "WR", "value": 6000, "redraft_value": 4000,
+            "bucket": "prime", "years_to_decline": 5.0, "is_starter": True,
+            "is_cornerstone": True}
+    me = {"sellable": [rock], "owner_id": "me", "roster_id": 1}
+    out = trade_targets._pivot_path(me, _board(thresholds={"WR": 0}))
+    assert "years_to_decline picks the sale" in out["situational_note"]
+    assert "age never does" in out["situational_note"]
+    assert "does not answer that comparison" in out["situational_note"], (
+        "the note must forbid settling the question with an easier sale elsewhere")
 
 
 def test_offer_pool_lets_a_push_team_offer_an_ascending_starter():

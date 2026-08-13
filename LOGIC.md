@@ -539,6 +539,20 @@ rising-middling owners excluded); the shared "why any of these owners would sell
 lives once in `ACQUIRE_NOTE`. Picks print BEFORE the empty-acquire guard - an early
 return once hid the cleaner currency exactly when it was the whole plan.
 
+**`SITUATIONAL_NOTE` exists because a rule that lives only in a docstring does not reach
+the answer.** `situational` was the one block without a note - the CLI printed a header
+the agent never received - and "years_to_decline picks the sale, never age" lived solely
+in `get_team_state`'s docstring, read at tool-selection time and gone by the time the
+entries were on the table. Measured: asked which of five QBs a rebuilder should trade
+(runway order Goff 6.1 > Herbert 5.6 > Darnold 4.8 > Hurts 4.0), the agent failed to
+weigh the short-runway cornerstone on **6 of 6 runs**, every time following the one
+instruction it did have (`stranded`: "lead with these") to the easier Goff sale. What
+looked like eval flakiness for weeks was the opposite - the rare passes were the noise.
+The note also has to close the shortcut explicitly ("an easier sale elsewhere does not
+answer that comparison"), because the shortcut is what all six runs took. Same lesson as
+the lineup note riding on every `get_team_state` result: instructions survive when
+attached to the data they govern, not to the tool that fetched it.
+
 ### Deleted: mutual win-now swaps
 
 Removed outright with `find_surplus`/`league_surplus` and its MCP tool: it was package
