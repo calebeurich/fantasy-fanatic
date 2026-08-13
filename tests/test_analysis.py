@@ -1850,11 +1850,19 @@ def test_a_buy_target_says_what_that_owner_would_take_back():
     assert "Aging" in trade_targets._counterparty_fit(
         falling, needs, [aging, young], target=target)["offer_any_one_of"]
 
-    # And nobody is offered a 9,000 piece for a 2,500 one, in either direction.
-    assert "Star" not in trade_targets._counterparty_fit(
-        falling, needs, [aging, young, star], target=target)["offer_any_one_of"]
+    # Over-ceiling pieces are NAMED with the different-trade sentence, never silently
+    # dropped: Jalen Hurts missed a hard 1.5x line by 13 units (0.25%) and "why Goff
+    # instead of Hurts?" had no answer in the payload. The bar picks the sentence.
+    fit = trade_targets._counterparty_fit(falling, needs, [aging, young, star], target=target)
+    assert "Star" not in fit["offer_any_one_of"]
+    assert "Star (9,000)" in fit["why_it_fits"] and "sale in its own right" in fit["why_it_fits"]
     assert "Star" in trade_targets._counterparty_fit(
         falling, needs, [aging, young, star], target={"value": 8000})["offer_any_one_of"]
+
+    # Parity opens spend the FEWEST years that get the deal done - keep-the-years is the
+    # seller's half of the same doctrine, and pool order led with the 6.1-year piece.
+    assert fit["offer_any_one_of"] == ["Aging", "Young"], (
+        "shortest runway first among fitting pieces (0.3 before 6.0)")
 
 
 def test_a_named_player_gets_an_answer_not_a_verdict_about_list_membership():

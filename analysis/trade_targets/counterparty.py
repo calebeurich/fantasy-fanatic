@@ -228,23 +228,43 @@ def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict],
     # DK Metcalf". The clock is INSIDE_FINAL_YEAR, the same bar `_sells_him` uses.
     accumulating = other.get("ascending_pct", 0) > other.get("declining_pct", 0)
     ceiling = (target or {}).get("value", 0) * OVERPAY_LIMIT
-    offers = [e for e in my_offers
-              if e["position"] in their_needs
-              and not (accumulating
-                       and (e.get("years_to_decline") or 0) < INSIDE_FINAL_YEAR)
-              and not (ceiling and e["value"] > ceiling)]
-    if offers:
-        positions = sorted({e["position"] for e in offers})
+    fitting = [e for e in my_offers
+               if e["position"] in their_needs
+               and not (accumulating
+                        and (e.get("years_to_decline") or 0) < INSIDE_FINAL_YEAR)]
+    # The ceiling picks the SENTENCE, never whether a piece is mentioned: dropping
+    # over-ceiling pieces silently made "why Goff instead of Hurts?" unanswerable - Hurts
+    # sat 13 units (0.25%) over a hard 1.5x line he flaps across with every refresh.
+    # A piece worth more than the target covers is not unofferable, it is a DIFFERENT
+    # trade, and saying so is the answer.
+    offers = [e for e in fitting if not (ceiling and e["value"] > ceiling)]
+    bigger = [e for e in fitting if ceiling and e["value"] > ceiling]
+    if offers or bigger:
+        positions = sorted({e["position"] for e in fitting})
+        # Parity opens spend the FEWEST years that get the deal done - keep-the-years is
+        # the seller's side of the same doctrine, so among fitting pieces the shortest
+        # runway leads. Pool order led with the 6.1-year piece over the 4.8.
+        offers.sort(key=lambda e: (bool(e.get("friction")),
+                                   e.get("years_to_decline") or 99))
         timeline = (" These are the ones that fit his timeline as well as his lineup - he "
                     "is accumulating, so anything of yours inside its final year is a "
                     "piece he is trying to move, not acquire." if accumulating else "")
+        bigger_note = ""
+        if bigger:
+            names = ", ".join(f"{e['name']} ({e['value']:,})" for e in bigger[:3])
+            bigger_note = (f" {names}: also fills this hole but is worth more than "
+                           f"{(target or {}).get('name', 'this target')} covers - that is "
+                           f"a sale in its own right, a different conversation than this "
+                           f"acquisition, and nothing here prices the difference.")
         return {"offer_any_one_of": [e["name"] for e in offers[:3]],
                 "fills_a_hole": True,
                 "why_it_fits": (f"{other['owner']} has a "
                                 f"{their_needs[positions[0]]['level']} need at "
                                 f"{'/'.join(positions)}, which you can fill from your own "
                                 f"spare pieces - so this is a two-way conversation rather "
-                                f"than asking him to do you a favour.{timeline}")}
+                                f"than asking him to do you a favour. Ordered by fewest "
+                                f"years spent: the cheapest piece in remaining seasons "
+                                f"that still gets the deal done.{timeline}{bigger_note}")}
 
     if accumulating:
         # Above replacement, with a real current price, and not past his own cliff. Runway
