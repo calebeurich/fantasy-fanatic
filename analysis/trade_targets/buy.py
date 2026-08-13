@@ -19,6 +19,21 @@ LONG_SHOT_NOTE = (
     "willing to open a negotiation with no single piece that covers it."
 )
 
+# The list of what this team can give up shipped with no note at all, and a bare list of
+# names invites the one construction this project forbids: a live answer bundled two of
+# them ("Fannin 3,650 + Shough 3,379") against one 4,473 target, which is precisely the
+# additive-value error the tools refuse to make.
+MY_OFFERS_NOTE = (
+    "WHAT THIS TEAM CAN GIVE UP, one piece at a time. Every name here is offerable on its "
+    "own; the list is ALTERNATIVES, not a package, and nothing in this result prices a "
+    "bundle. Dynasty value does not add across players - two 3,500s are not a 7,000, because "
+    "the receiving lineup can only start so many - so pairing two of these into one offer is "
+    "not a bigger version of the same trade, it is a claim no tool here can support. Say "
+    "which single piece goes for which single piece. `give_up_cost` says what each one "
+    "actually costs YOU: production already realized (cheap to move) versus future years you "
+    "won't get back (expensive), which is a different question from what he fetches."
+)
+
 DEPTH_NOTE = (
     "DEPTH, NOT NEEDS. Each of these is a player who does not crack this lineup today but "
     "would step straight into it if one starter at his position were out - which byes "
@@ -175,6 +190,8 @@ def _buy_path(me: dict, board: Board, max_per_position: int,
         long_shots += blocked[:max_per_position]
 
     result = {"needs": my_needs, "targets": targets, "my_offers": my_pool}
+    if my_pool:
+        result["my_offers_note"] = MY_OFFERS_NOTE
     if long_shots:
         result["long_shots"] = long_shots
         result["long_shot_note"] = LONG_SHOT_NOTE

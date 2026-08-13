@@ -85,7 +85,10 @@ def _print_push(push: dict, extras: dict) -> None:
         print(f"  need at {pos}: {entry['note']}")
     _print_stranded(extras)
     if push["my_offers"]:
-        print("you could offer (cleanest first - anything with friction is listed last, with why):")
+        print("you could offer, ONE AT A TIME - not as a package (cleanest first, "
+              "anything with friction is listed last, with why):")
+        if push.get("my_offers_note"):
+            print(f"  {push['my_offers_note']}")
         for e in push["my_offers"]:
             cost = OFFER_GIVE_UP_COST[team_state.value_basis(e)]
             flavors = (" [" + ", ".join(f["flavor"] for f in e["friction"]) + "]"
@@ -149,8 +152,9 @@ def _print_push(push: dict, extras: dict) -> None:
                   f"per unit of cost - dyn {t['value']:,} / redraft {t['redraft_value']:,}) "
                   f"from {t['from_owner']}{marker}")
             print(f"      why they might listen: {t['why_they_might_listen']}")
-            if t.get("you_could_offer"):
-                print(f"      what they want from you: {', '.join(t['you_could_offer'])}")
+            if t.get("offer_any_one_of"):
+                print(f"      they'd be interested in any ONE of (not a bundle): "
+                      f"{', '.join(t['offer_any_one_of'])}")
             if t.get("cost_note"):
                 print(f"      what it costs: {t['cost_note']}")
             for f in t.get("friction") or []:

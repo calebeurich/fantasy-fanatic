@@ -687,7 +687,13 @@ families, named so the next instance is recognized rather than re-patched:
    narrated as games underperformed in the preseason. Numbers ship with the sentence
    that interprets them; what every entry shares goes in the block note, only what
    varies rides on the line (the repeat-per-entry mistake has been made three times in
-   one day).
+   one day). **An unlabelled LIST is the same defect**: `you_could_offer` shipped as a
+   bare array of alternatives, and the first hour of public use turned it into a priced
+   bundle ("Offer: Fannin 3,650 + Shough 3,379" against a 4,473 target) - the exact
+   additive-value error the tools refuse to make, with the rule sitting unheeded in the
+   system prompt TWICE. Renamed `offer_any_one_of`, both list sites carry the no-bundle
+   sentence, `my_offers` gained the note it never had. The field NAME is the cheapest
+   place to put a constraint: it rides on every entry and cannot be skimmed past.
 
 `audit.py` runs the checks against real leagues (the failures were all shaped by real
 distributions), every check derives from a shipped bug (a noisy audit gets muted), plus

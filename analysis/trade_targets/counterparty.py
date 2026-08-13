@@ -22,7 +22,11 @@ PERSUASION_NOTE = (
     "change direction, which is a commitment on his part and prices above market. Where he "
     "has no such hole and is CONTENDING it is marked HOLDS TO WIN - not a direction "
     "question at all: he could sell the piece and stay a contender, which is exactly why "
-    "he probably won't, and only an overwhelming offer opens it. Within each group, ranked by current "
+    "he probably won't, and only an overwhelming offer opens it. `offer_any_one_of` is a list "
+    "of ALTERNATIVES, never a bundle: each name is one thing that owner would find "
+    "interesting on its own, and combining two of them into a package is the one move this "
+    "tool cannot support - dynasty value does not add across players, so nothing here prices "
+    "'A plus B'. Name a single piece against a single piece. Within each group, ranked by current "
     "production per unit of trade value, the right order for a team buying for this season: "
     "the cheapest name is often better than the most valuable one, because the market "
     "discounts age the buyer isn't paying for. Where a decline argument is made it is "
@@ -200,7 +204,7 @@ def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict]) -> 
     offers = [e for e in my_offers if e["position"] in their_needs]
     if offers:
         positions = sorted({e["position"] for e in offers})
-        return {"you_could_offer": [e["name"] for e in offers[:3]],
+        return {"offer_any_one_of": [e["name"] for e in offers[:3]],
                 "fills_a_hole": True,
                 "why_it_fits": (f"{other['owner']} has a "
                                 f"{their_needs[positions[0]]['level']} need at "
@@ -230,7 +234,7 @@ def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict]) -> 
                       f"These score now, but the nearest of them is {reach:.1f} years from his "
                       f"own decline cutoff - so this is the weaker version of that trade, and "
                       f"he should want a real future piece more than he wants these.")
-            return {"you_could_offer": [e["name"] for e in offered],
+            return {"offer_any_one_of": [e["name"] for e in offered],
                     "fills_a_hole": False,
                     "why_it_fits": (f"{other['owner']} has no positional hole, so there is "
                                     f"nothing to fill - but his roster is tilting ascending "

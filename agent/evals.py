@@ -219,6 +219,36 @@ async def case_respects_the_starting_lineup_format() -> None:
           f"{result['num_turns']} turns)")
 
 
+async def case_never_builds_a_package() -> None:
+    """Rule 8's failure mode, caught in the first hour of real use: asked what to do, the
+    answer wrote "Offer: Harold Fannin (3,650) + Tyler Shough (3,379)" against a 4,473
+    target - a priced two-for-one whose halves were three ALTERNATIVES the tool listed
+    under one counterparty. Value is not additive, so the bundle is a claim no tool here
+    can support. The rule sat in the system prompt twice and still leaked; this pins the
+    behaviour, and the fix that made it hold lives in the payload (`offer_any_one_of`).
+
+    Detected structurally: a "+"-joined pair of rostered names on one line, which is what
+    package-building looks like in every observed instance."""
+    import re
+    from analysis.league import context
+
+    result = await _ask(
+        f"For Sleeper league {DYNASTY_LEAGUE}, I'm dezdroppedit27. I need a running back - "
+        "what exactly should I offer, and to who?")
+    names = {p["name"] for p in context(DYNASTY_LEAGUE).players.values() if p.get("name")}
+    for line in result["text"].splitlines():
+        # "A + B", "A and B for C", "A plus B" - all the same construction.
+        for joiner in (r"\+", r"\band\b", r"\bplus\b"):
+            parts = re.split(joiner, line)
+            if len(parts) < 2:
+                continue
+            hits = [p for p in parts if any(n in p for n in names)]
+            assert len(hits) < 2 or "for" not in line.lower(), (
+                f"built a multi-player package: {line.strip()}")
+    print(f"case_never_builds_a_package: PASS (${result['cost_usd']:.4f}, "
+          f"{result['num_turns']} turns)")
+
+
 async def case_sells_on_runway_not_age() -> None:
     """The failure that cost this roster the right answer twice - once from the agent and
     once from a human reading the same tools. Goff is 31.8 with 6.2 years to decline (pocket
@@ -287,6 +317,7 @@ CASES = [
     case_malformed_league_graceful,
     case_respects_the_starting_lineup_format,
     case_sells_on_runway_not_age,
+    case_never_builds_a_package,
 ]
 
 

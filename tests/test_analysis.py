@@ -1748,12 +1748,12 @@ def test_persuasion_says_what_the_other_owner_would_actually_want():
     short_at_qb = _holder("needy", "Push", "falling", [], asc=10, dec=30)
     fit = trade_targets._counterparty_fit(
         short_at_qb, {"QB": {"level": "critical"}}, offers)
-    assert fit["you_could_offer"] == ["SpareQB"] and "critical need at QB" in fit["why_it_fits"]
+    assert fit["offer_any_one_of"] == ["SpareQB"] and "critical need at QB" in fit["why_it_fits"]
 
     # No hole, but rising while starting aging players - wants now-and-later value.
     rising = _holder("rising", "Contend", "steady", [], asc=26, dec=16)
     fit = trade_targets._counterparty_fit(rising, {}, offers)
-    assert fit["you_could_offer"] == ["SpareQB", "AboutToTurn"], (
+    assert fit["offer_any_one_of"] == ["SpareQB", "AboutToTurn"], (
         "runway RANKS this pool and no longer empties it - the long-runway piece leads, the "
         "0.3-year one is still a real offer, and only a player past his own cliff is dropped. "
         "Filler is excluded on being below replacement, not on his runway")
@@ -1769,6 +1769,28 @@ def test_persuasion_says_what_the_other_owner_would_actually_want():
     # Aging into its own window with nothing to fill: no obvious fit, and say so.
     assert trade_targets._counterparty_fit(
         _holder("aging", "Contend", "steady", [], asc=21, dec=23), {}, offers) is None
+
+
+def test_every_list_of_offerable_pieces_says_it_is_not_a_package():
+    """A bare list of names invites the one construction this project forbids, and a live
+    answer built it: "Offer: Harold Fannin (3,650) + Tyler Shough (3,379)" against a 4,473
+    target - a priced bundle whose halves were three ALTERNATIVES the tool had listed. The
+    rule was already in the system prompt twice (principle D and rule 8) and still leaked,
+    so it now lives in the data: the field is NAMED for what it is, and both list sites
+    carry the no-bundle sentence."""
+    from analysis.trade_targets import buy, counterparty
+
+    offers = [{"name": "SpareQB", "position": "QB", "redraft_value": 3349, "bucket": "prime",
+               "years_to_decline": 7.1, "value_over_replacement": 700}]
+    fit = trade_targets._counterparty_fit(
+        _holder("needy", "Push", "falling", [], asc=10, dec=30),
+        {"QB": {"level": "critical"}}, offers)
+    assert "offer_any_one_of" in fit, "the key itself must say one-of, not a shopping list"
+
+    for note in (counterparty.PERSUASION_NOTE, buy.MY_OFFERS_NOTE):
+        assert "bundle" in note.lower() or "package" in note.lower(), (
+            "the note has to name the forbidden construction, not imply it")
+        assert "does not add across players" in note
 
 
 def test_persuasion_ranks_by_production_per_cost_not_by_value():
