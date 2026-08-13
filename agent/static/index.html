@@ -341,13 +341,36 @@ $("f").onsubmit = async e => {
   const question = withContext(typed);
   $("q").value = "";
   add(`<p>${typed.replace(/</g, "&lt;")}</p>`, "me");
-  const pending = add("<p>thinking… (first question can take ~30-60s)</p>");
+  const pending = add("<p>thinking… <span id='tick'>0s</span> (a full answer takes about a minute — keep this tab open)</p>");
   $("send").disabled = true;
+  // A visible clock, because the honest expectation is ~60-90s: a silent spinner is
+  // what makes someone switch tabs, and a backgrounded mobile tab gets its fetch killed.
+  const started = Date.now();
+  const ticker = setInterval(() => {
+    const el = document.getElementById("tick");
+    if (el) el.textContent = Math.round((Date.now() - started) / 1000) + "s";
+  }, 1000);
   try {
-    const res = await fetch("/ask", {
-      method: "POST", headers: hdrs({"Content-Type": "application/json"}),
-      body: JSON.stringify({question, session_id: sessionId}),
-    });
+    // One retry on a DROPPED CONNECTION only (fetch rejects, no response). A minute-long
+    // request dies for reasons that have nothing to do with the question - a redeploy
+    // cutting the instance, a network switch, a sleeping tab - and the first live friend
+    // to test this hit exactly that ("TypeError: Load failed"). Not retried on an HTTP
+    // error: a 4xx/5xx is an answer, and repeating it would just spend budget twice.
+    let res;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        res = await fetch("/ask", {
+          method: "POST", headers: hdrs({"Content-Type": "application/json"}),
+          body: JSON.stringify({question, session_id: sessionId}),
+        });
+        break;
+      } catch (netErr) {
+        if (attempt >= 1) throw netErr;
+        const el = document.getElementById("tick");
+        if (el) el.parentElement.innerHTML =
+          "connection dropped — trying once more… <span id='tick'>0s</span>";
+      }
+    }
     const d = await res.json();
     pending.innerHTML = md(d.text || d.detail || "(no answer)");
     const bits = [];
@@ -384,8 +407,18 @@ $("f").onsubmit = async e => {
       pending.appendChild(fb);
     }
   } catch (err) {
-    pending.innerHTML = `<p>Request failed: ${err}</p>`;
+    // "TypeError: Load failed" is Safari for "the connection died" - meaningless to the
+    // reader, and it is never their fault. Say what happened and give them the button.
+    pending.innerHTML =
+      "<p>That connection dropped before the answer came back — usually a network blip, "
+      + "a sleeping tab, or the app being updated mid-question. Nothing is broken on your "
+      + "end.</p>";
+    const again = document.createElement("button");
+    again.type = "button"; again.className = "ghost"; again.textContent = "ask it again";
+    again.onclick = () => { $("q").value = typed; $("f").requestSubmit(); };
+    pending.appendChild(again);
   } finally {
+    clearInterval(ticker);
     $("send").disabled = false;
     $("q").focus();
   }
