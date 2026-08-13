@@ -757,6 +757,21 @@ replaced it should be for control, not cost. Tool results are small once
 fall back to re-deriving windows from roster_detail - the fix was a filter, not a
 prompt). Haiku needs a 4,096+ token cacheable block before caching activates at all.
 
+**Payload diet (2026-08)**: model quality is NOT the cost gate - Haiku follows every
+note it is given, so scaling is a token problem, and the tokens were duplication. A
+field-weight histogram over live payloads found the two offenders: entry-level
+`wanted_by` shipped the same buyers as full dicts on every same-position entry (21-26%
+of a sell report; no reader used `rank` or `reason_count`) - now one composed string
+per entry (`wanted_line`), which also fixed a CLI/JSON drift where the
+contender-premium clause existed only in the printer; and `need_note` stamped the
+asker's OWN need paragraph on every buy target at the position (14% of a live buy
+payload, 90% literal duplication) - deleted, it ships once in `result["needs"]`.
+Result: every measured report 13-17% smaller (a Middling two-path report 22.3K -> 19.3K
+estimated tokens). Remaining known duplication, deliberately left: `their_reason` /
+`why_they_might_listen` repeat one owner's team case across his players (~40%
+dup) - deduping means cross-entry references, order coupling, and a contract change,
+for less than half the win the first two cuts bought.
+
 **HTTP API + budget** (`api.py`, `budget.py`): plain FastAPI, `/ask` calling the same
 `run_query` as CLI and evals. The daily ceiling is what makes a public endpoint safe -
 two ceilings (dollars + a request-count backstop, since a failed call reports

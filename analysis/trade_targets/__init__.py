@@ -20,7 +20,7 @@ from .board import (Board, DEFAULT_MAX_PER_POSITION, NOISE_BAND, NOISE_RETAINED,
                     NOW_PREMIUM_PERCENTILE, build_board, _sells_him)
 from .buy import _buy_path, _depth_adds, _my_offer_pool, DEPTH_NOTE, DEPTH_NOTE_REBUILD
 from .counterparty import (_cliff_case, _counterparty_fit, _persuasion_targets,
-                           _seller_case, _why_they_would_move_him, wanted_by)
+                           _seller_case, _why_they_would_move_him, wanted_by, wanted_line)
 from .pivot import STRANDED_NOTE, _pivot_path
 from .report import _print_report
 from .upgrades import (CONTEND_CHOICE_NOTE, RETURNS_PER_MOVE, VALUE_UPGRADE_NOTE,
@@ -88,7 +88,7 @@ def find_targets(league_id: str, owner_query: str,
         wanted = wanted_by(entry, my_roster, board)
         floor = weakest["redraft_value"] or 0
         stranded.append({**entry, "blocked_by": info["position"],
-                         "wanted_by": wanted,
+                         "wanted_by": wanted_line(wanted),
                          "times_weakest": (round((info.get("redraft_value") or 0) / floor, 1)
                                            if floor else None),
                          "note": (f"Produces {info.get('redraft_value') or 0:,} this season against the "

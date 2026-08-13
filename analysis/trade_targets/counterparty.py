@@ -159,6 +159,19 @@ def wanted_by(player: dict, me_roster: dict, board: Board) -> list[dict]:
                                           -w["reason_count"]))
 
 
+def wanted_line(wanting: list[dict]) -> str:
+    """The payload form of `wanted_by`: one string instead of a list of dicts. The dicts
+    repeated near-identically on every same-position entry - measured at 21-26% of a sell
+    report's tokens - and no reader used `rank` or `reason_count` at all. The
+    contender-premium clause used to be composed only in the CLI printer, so the agent
+    never saw it; built here, both readers get the same sentence."""
+    return " | ".join(
+        f"{w['owner']} [{w['window']}] {w['why']}"
+        + (" (a contender - pays a premium for production, worth more there than here)"
+           if w["window"] in ("Push", "Contend") else "")
+        for w in wanting)
+
+
 def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict]) -> dict | None:
     """What *I* hold that would interest this particular owner, or None. Two ways he is
     interested: he is short at a position I can offer, or he should be converting aging

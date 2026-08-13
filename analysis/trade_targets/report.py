@@ -29,11 +29,8 @@ def _print_pivot(me: dict, pivot: dict) -> None:
 
     def buyers(entries: list[dict]) -> None:
         for e in entries:
-            for w in (e.get("wanted_by") or [])[:2]:
-                premium = (" - and a contender pays a PREMIUM for production, which is what makes "
-                           "him worth more there than here"
-                           if w["window"] in ("Push", "Contend") else "")
-                print(f"      {e['name']} -> {w['owner']} [{w['window']}]: {w['why']}{premium}")
+            if e.get("wanted_by"):
+                print(f"      {e['name']} wanted by: {e['wanted_by']}")
 
     print(f"sell candidates (under {MIN_MEANINGFUL_RUNWAY:g} years before decline): "
           f"{names(pivot['sell_candidates'])}")
@@ -205,9 +202,7 @@ def _print_value_upgrades(result: dict) -> None:
         print(f"  move off {m['move_off']} ({m['position']}, {m['value']:,} dynasty / "
               f"{m['redraft_value']:,} this season - {pricing}):")
         if m["wanted_by"]:
-            print("      who would want him:")
-            for w in m["wanted_by"][:3]:
-                print(f"        {w['owner']} [{w['window']}] - {w['why']}")
+            print(f"      who would want him: {m['wanted_by']}")
         else:
             print("      who would want him: nobody obvious - no team is short here and "
                   "nobody's roster is crying out for this profile")
@@ -247,13 +242,12 @@ def _print_stranded(result: dict) -> None:
         return
     print("STRANDED - the most valuable thing you own that you cannot use:")
     for e in result["stranded"]:
-        wants = ", ".join(f"{w['owner']}[{w['window']}]" for w in (e.get("wanted_by") or [])[:3])
         margin = (f"{e['times_weakest']}x what your weakest starter produces"
                   if e.get("times_weakest") else "production your weakest starter has none of")
         print(f"  {e['name']} ({e['position']}, {e['redraft_value'] or 0:,} this season, "
               f"{e['value']:,} dynasty) - {margin}, and every {e['blocked_by']}-capable slot "
               f"is held by someone better"
-              + (f"; wanted by {wants}" if wants else ""))
+              + (f"; wanted by {e['wanted_by']}" if e.get("wanted_by") else ""))
     print(f"  {result['stranded_note']}")
 
 

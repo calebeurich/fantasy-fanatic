@@ -6,7 +6,8 @@ History: LOGIC.md, "Better holdings and the mirror".
 from .. import team_state
 from ..team_values import age_bucket, priced_for
 from .board import Board, NOISE_BAND, NOISE_RETAINED, _with_trade_note
-from .counterparty import _cliff_case, _counterparty_fit, _why_they_would_move_him, wanted_by
+from .counterparty import (_cliff_case, _counterparty_fit, _why_they_would_move_him,
+                           wanted_by, wanted_line)
 
 # Below NOISE_RETAINED of the production, the loss is REAL and the trade is a conversion -
 # a defensible dynasty play with no clock, the wrong answer while pushing. Below this floor
@@ -208,7 +209,7 @@ def find_value_upgrades(me_roster: dict, board: Board, my_starters: set[str],
             "bucket": profile["bucket"],
             "now_share": round(produced / mine["value"], 2) if mine["value"] else None,
             **({"priced_for": pricing[pid]} if pid in pricing else {}),
-            "wanted_by": wanted_by(profile, me_roster, board),
+            "wanted_by": wanted_line(wanted_by(profile, me_roster, board)),
             "returns": returns,
             "best_gain": returns[0]["production_gained"],
         })

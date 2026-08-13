@@ -686,9 +686,13 @@ def test_value_upgrade_names_who_would_want_the_player_being_moved():
              "needy": {"TE": {"level": "critical", "rank": 11}}}
 
     moves = trade_targets.find_value_upgrades(me, _board(ctx, states, trade_counts={"them": 3}, needs_by_owner_id=needs), {"mine"})
-    assert [w["owner"] for w in moves[0]["wanted_by"]] == ["needy"]
-    assert moves[0]["wanted_by"][0]["need_level"] == "critical"
-    assert "short at TE" in moves[0]["wanted_by"][0]["why"]
+    # Entries carry `wanted_by` as ONE composed string, not a list of dicts - the dicts
+    # repeated near-identically on every same-position entry and measured at 21-26% of a
+    # sell report's tokens. `them` must not appear: short at TE but starts two better ones.
+    assert "needy" in moves[0]["wanted_by"] and "them" not in moves[0]["wanted_by"]
+    assert "short at TE (critical)" in moves[0]["wanted_by"]
+    assert "pays a premium for production" in moves[0]["wanted_by"], (
+        "the contender-premium clause ships in the payload now, not only in the CLI")
 
 
 def test_a_falling_roster_wants_ascending_value_at_any_position():

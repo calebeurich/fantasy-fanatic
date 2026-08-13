@@ -7,7 +7,7 @@ from .. import team_state
 from ..team_values import MIN_MEANINGFUL_RUNWAY
 from .board import (Board, NOT_SELLER, _best_chip, _buy_friction, _friction, _others,
                     _with_trade_note)
-from .counterparty import wanted_by
+from .counterparty import wanted_by, wanted_line
 
 # The same runway means different things depending on whether the team has picked this
 # direction: a committed seller should move the piece, a Middling team's clock bounds how
@@ -148,7 +148,8 @@ def _pivot_path(me: dict, board: Board,
         """Who would take him - the fact that turns a sell list into a phone call."""
         if my_roster is None:
             return entries
-        return [{**e, "wanted_by": wanted_by(e, my_roster, board)} for e in entries]
+        return [{**e, "wanted_by": wanted_line(wanted_by(e, my_roster, board))}
+                for e in entries]
 
     sell_candidates = with_buyers(tagged([e for e in real_sellable if on_a_clock(e)]))
     situational = with_buyers(tagged([e for e in real_sellable if not on_a_clock(e)]))

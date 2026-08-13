@@ -148,8 +148,10 @@ def _buy_path(me: dict, board: Board, max_per_position: int,
                 # actually has, not league replacement level.
                 over_weakest = ((player.get("redraft_value") or 0) - need["weakest_starter"]
                                 if need.get("weakest_starter") is not None else None)
+                # `need_level` rides, the need's full note does NOT: it is the asker's own
+                # need, identical on every target at the position, and ships once in
+                # result["needs"] - it was 14% of a live buy payload at 90% duplication.
                 pos_targets.append({"position": pos, "need_level": need["level"],
-                                     "need_note": need["note"],
                                      "over_weakest_starter": over_weakest,
                                      "sells_because": ("rebuilding" if other["window"] == "Rebuild"
                                                        else "rising, so selling age not youth"),
