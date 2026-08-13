@@ -162,6 +162,7 @@ const hdrs = extra => Object.assign({"X-FF-Key": KEY()}, extra || {});
 const $ = id => document.getElementById(id);
 let currentLeague = null;
 let myTeam = null;
+let myName = null;   // the Sleeper display name they looked themselves up with
 
 // ---- find leagues by username: Sleeper's API is CORS-open, so this never touches
 // our server (or our budget) - the one thing a friend knows is their own username ----
@@ -172,6 +173,7 @@ $("find").onclick = async () => {
   try {
     const user = await (await fetch(`https://api.sleeper.app/v1/user/${encodeURIComponent(name)}`)).json();
     if (!user) { $("leagues").innerHTML = '<span class="cs warn">No Sleeper user by that name.</span>'; return; }
+    myName = user.display_name || name;
     // Sleeper keys leagues by season; around the rollover the new season may be empty.
     const year = new Date().getFullYear();
     let leagues = await (await fetch(`https://api.sleeper.app/v1/user/${user.user_id}/leagues/nfl/${year}`)).json();
@@ -255,15 +257,19 @@ async function loadLeague(id) {
       ${d.tier === "degraded" ? '<div class="note warn">Shallow league — percentile-based numbers are rougher than usual.</div>' : ""}
       ${d.no_trade_history ? '<div class="note warn">No trades in this league yet — window labels are less reliable this early.</div>' : ""}
       <div class="note">Ranked by current starting production (redraft value) — what decides whether a team can compete <em>this</em> season, as opposed to what its roster is worth. Click a team to ask about them.</div>`;
+    const pick = tr => {
+      myTeam = tr.dataset.owner;
+      document.querySelectorAll("tr.team").forEach(x => x.classList.remove("mine"));
+      tr.classList.add("mine");
+      showChips(myTeam);
+      $("q").placeholder = `ask anything about ${myTeam} or the league…`;
+    };
     document.querySelectorAll("tr.team").forEach(tr => {
-      tr.onclick = () => {
-        myTeam = tr.dataset.owner;
-        document.querySelectorAll("tr.team").forEach(x => x.classList.remove("mine"));
-        tr.classList.add("mine");
-        showChips(myTeam);
-        $("q").placeholder = `ask anything about ${myTeam} or the league…`;
-        $("q").focus();
-      };
+      tr.onclick = () => { pick(tr); $("q").focus(); };
+      // They told us their username to find this league, so which team is theirs is
+      // already known - making them click it (and the agent ask for it) is a question
+      // the page can answer itself.
+      if (myName && tr.dataset.owner.toLowerCase() === myName.toLowerCase()) pick(tr);
     });
   } catch (e) {
     $("overview").innerHTML = `<div class="empty warn">Failed to load: ${e}</div>`;
@@ -317,12 +323,24 @@ $("reset").onclick = () => {
   add("<p>Started a new conversation.</p>");
 };
 
+// The page knows the league and whose team it is; the model only knows what the question
+// says. A freehand "what should I do with my team" carried neither, so the agent had to
+// ask for a league id the user had already picked two boxes up. Context is prepended
+// here rather than in the system prompt, because it is a fact about THIS page state -
+// and only when the question doesn't already carry it (the chips do).
+function withContext(question) {
+  if (!currentLeague || question.includes(currentLeague)) return question;
+  const who = myTeam ? `, I'm ${myTeam}` : "";
+  return `For Sleeper league ${currentLeague}${who}. ${question}`;
+}
+
 $("f").onsubmit = async e => {
   e.preventDefault();
-  const question = $("q").value.trim();
-  if (!question) return;
+  const typed = $("q").value.trim();
+  if (!typed) return;
+  const question = withContext(typed);
   $("q").value = "";
-  add(`<p>${question.replace(/</g, "&lt;")}</p>`, "me");
+  add(`<p>${typed.replace(/</g, "&lt;")}</p>`, "me");
   const pending = add("<p>thinking… (first question can take ~30-60s)</p>");
   $("send").disabled = true;
   try {
