@@ -741,7 +741,14 @@ same Python the tools ran (`offerable_names` is the one shared definition across
 language and no negation (the blunt version fired on every roster description; the
 negation skip can miss "don't trade X, but do trade Y", accepted - a false positive
 costs money and contradicts correct advice, a miss costs one ungrounded name), one
-retry naming EVERY violation (naming one fixed one and left the other). **Fixes that
+retry naming EVERY violation (naming one fixed one and left the other). **The retry is
+stagecraft the reader must never see**: a live retry answered the CORRECTION instead of
+the friend - opened "You're absolutely right - I apologize", claimed the tool output had
+been "too large to display" (confabulated; the run's own log shows tool_errors empty and
+every payload cached in full), and asked the user to paste tool results back. The
+correction now carries its own voice rules (fresh complete reply, no apology, no
+mechanics, never ask the user for data the run already holds), and the substantive eval
+cases assert the punt phrases never appear (`_ask`). **Fixes that
 live in data hold; fixes that live in a prompt leak** - every durable correction went
 into a field, a note on a field, or a deterministic check. Rules with rare failures
 (stop-on-error, non-dynasty refusal) deliberately do NOT get their own verify machinery;

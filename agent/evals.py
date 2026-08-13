@@ -27,6 +27,21 @@ def _tool_names(result: dict) -> list[str]:
     return [c["name"] for c in result["tool_calls"]]
 
 
+async def _ask(question: str) -> dict:
+    """run_query plus the friend-voice check, for every case whose answer is advice (the
+    refusal cases stay on run_query - a polite refusal may legitimately apologize). A live
+    grounding retry produced all three violations at once: it opened "You're absolutely
+    right - I apologize", claimed the tool output was "too large to display" (confabulated
+    - the run log shows every payload fit), and asked the USER to paste tool results."""
+    result = await run_query(question, verbose=False)
+    for phrase in ("you're absolutely right", "i apologize", "too large to display",
+                   "can you share", "paste the"):
+        assert phrase not in result["text"].lower(), (
+            f"answer speaks to the harness, not the friend ('{phrase}'): "
+            f"{result['text'][:400]}")
+    return result
+
+
 def _weighs_as_sale(text: str, name: str) -> bool:
     """Was this player weighed AS A SALE - named in a sentence that talks about selling,
     moving, or the runway inversion - rather than merely listed among blockers or keepers?
@@ -47,10 +62,8 @@ async def case_team_window() -> None:
     (validated to happen with the owner_name filter after a real bug was found and
     fixed: without the filter, the model gave up on the full-league result and
     re-derived its own answer from roster_detail instead)."""
-    result = await run_query(
-        f"For Sleeper league {DYNASTY_LEAGUE}, what team window is dezdroppedit27 in and why?",
-        verbose=False,
-    )
+    result = await _ask(
+        f"For Sleeper league {DYNASTY_LEAGUE}, what team window is dezdroppedit27 in and why?")
     assert "get_team_state" in " ".join(_tool_names(result)), f"didn't call get_team_state: {_tool_names(result)}"
     # Asserted against the production label set rather than one hardcoded string, so this
     # tracks team_state instead of going stale the next time a window is renamed - and so
@@ -78,10 +91,8 @@ async def case_non_dynasty_refusal() -> None:
 
 async def case_trade_targets() -> None:
     """A trade question should use get_trade_targets, not improvise."""
-    result = await run_query(
-        f"For Sleeper league {DYNASTY_LEAGUE}, who should rjl22 target in a trade?",
-        verbose=False,
-    )
+    result = await _ask(
+        f"For Sleeper league {DYNASTY_LEAGUE}, who should rjl22 target in a trade?")
     assert "get_trade_targets" in " ".join(_tool_names(result)), f"didn't call get_trade_targets: {_tool_names(result)}"
     assert len(result["text"]) > 0
     print(f"case_trade_targets: PASS (${result['cost_usd']:.4f}, {result['num_turns']} turns)")
@@ -129,11 +140,9 @@ async def case_grounded_trade_chips() -> None:
     offerable = {e["name"] for e in ground_truth["my_offers"]}
     banned = {"Jonathan Taylor", "Christian McCaffrey"}
     assert not banned & offerable  # sanity-check the fixture itself hasn't drifted
-    result = await run_query(
+    result = await _ask(
         f"For Sleeper league {DYNASTY_LEAGUE_2}, I'm dezdroppedit27. What's the status "
-        "of my team and what should I look to do, and why?",
-        verbose=False,
-    )
+        "of my team and what should I look to do, and why?")
     violations = _trade_violations(result["text"], banned)
     assert not violations, f"recommended trading a non-offerable player: {violations}"
     print(f"case_grounded_trade_chips: PASS (${result['cost_usd']:.4f}, {result['num_turns']} turns)")
@@ -174,11 +183,9 @@ async def case_respects_the_starting_lineup_format() -> None:
     tokens later wrote "three QBs in a league that only starts one" - then built its whole
     recommendation on that. Format read once at the top of a conversation does not survive
     to where it matters, so `get_team_state` now ships the lineup shape with every roster."""
-    result = await run_query(
+    result = await _ask(
         f"For Sleeper league {FRIENDS_LEAGUE}, jwall567 is carrying several quarterbacks. "
-        "How many can he actually start, and what should he do with the rest?",
-        verbose=False,
-    )
+        "How many can he actually start, and what should he do with the rest?")
     text = result["text"].lower()
     assert not any(p in text for p in ("only starts one", "only start one", "starts one qb",
                                        "start one qb", "only one qb")), \
@@ -219,13 +226,13 @@ async def case_sells_on_runway_not_age() -> None:
 
     question = (f"For Sleeper league {FRIENDS_LEAGUE}, jwall567 is rebuilding and has too "
                 "many quarterbacks. Which one should he trade and why?")
-    result = await run_query(question, verbose=False)
+    result = await _ask(question)
     # The premise can also die INSIDE the run, where the pre-check above cannot see it: the
     # agent's own MCP subprocess hits the nflverse outage, discloses the data gap (as told
     # to), and Goff on the default curve drops to 2.1 years - at which point recommending
     # him IS the right runway answer. One retry; a second gap is the feed being down.
     if "data gap" in result["text"].lower() or "usage roles" in result["text"].lower():
-        result = await run_query(question, verbose=False)
+        result = await _ask(question)
         assert not ("data gap" in result["text"].lower()
                     or "usage roles" in result["text"].lower()), (
             "PREMISE GONE at runtime, not an agent regression: the agent's own run "

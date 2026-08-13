@@ -390,11 +390,20 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
                 # and left the other. Found live via the eval harness re-failing
                 # after the fix looked solved manually.
                 names = ", ".join(f'"{n}"' for n in violations)
+                # The reader never sees this exchange, and the model must not either: a live
+                # retry opened its answer "You're absolutely right - I apologize", claimed
+                # the tool output had been "too large to display" (confabulated - the run's
+                # own log shows every payload fit), and asked the USER to paste tool results.
+                # The correction is stagecraft; only the corrected answer goes on stage.
                 correction = (
                     f"You named {names} as trade-away candidates, but none of them are in this "
                     "team's real offer list from get_trade_targets. Redo your answer using only "
                     "players that actually appear in that tool's offer or sell-candidate lists - "
-                    "check every name against that list first."
+                    "check every name against that list first. Write the redone answer as a "
+                    "fresh, complete reply to the user's original question: no apology, no "
+                    "mention of this correction, no claims about tool output size or "
+                    "mechanics, and never ask the user to supply data - everything you need "
+                    "is already in the tool results you have."
                 )
                 turn = await _run_turn(client, correction, verbose)
                 all_tool_calls += turn["tool_calls"]
