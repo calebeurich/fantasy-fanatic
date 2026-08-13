@@ -349,8 +349,25 @@ function withContext(question) {
 // One renderer for an answer however it arrived - live, reclaimed after a dropped
 // connection, or restored from a previous visit - so a returning reader sees exactly
 // what they would have seen at the time, thumbs included.
+// The server sets conversation_reset on ANY freshly created session, including the very
+// first question, when it isn't news. Whether it matters depends on what this page knows:
+// was there a conversation before this? Decided once at ask time and stored with the
+// answer, so a redraw from history shows the same notice the reader saw live.
+const markReset = d => {
+  if (d && d.conversation_reset && history().length === 0) d.conversation_reset = false;
+  return d;
+};
+
 function renderAnswer(el, d, question) {
   el.innerHTML = md(d.text || d.detail || "(no answer)");
+  if (d.conversation_reset) {
+    const w = document.createElement("div");
+    w.className = "meta warn";
+    w.textContent = "⚠ The earlier messages above didn't reach the assistant — the server "
+      + "had let this conversation go (it sat idle a while, or the app updated), so this "
+      + "answer starts fresh. Restate anything from before that matters.";
+    el.prepend(w);
+  }
   const bits = [];
   if (d.cost_usd != null) bits.push("$" + d.cost_usd.toFixed(4));
   if (d.num_turns != null) bits.push(d.num_turns + " turns");
@@ -447,6 +464,7 @@ $("f").onsubmit = async e => {
       d = await reclaim(started, 210);
       if (!d) throw netErr;
     }
+    markReset(d);
     renderAnswer(pending, d, question);
     remember({typed, question, answer: d});
     localStorage.removeItem("ff_pending");
@@ -490,6 +508,7 @@ $("f").onsubmit = async e => {
   const d = await reclaim(p.started, 210);
   localStorage.removeItem("ff_pending");
   if (d) {
+    markReset(d);
     renderAnswer(slot, d, p.question);
     remember({typed: p.typed, question: p.question, answer: d});
   } else {

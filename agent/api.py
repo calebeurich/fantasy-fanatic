@@ -87,6 +87,13 @@ class AskResponse(BaseModel):
     num_turns: int | None = None
     grounding_retries: int | None = None
     budget_exhausted: bool = False
+    # True when the supplied session_id had no live conversation on the server, so this
+    # answer came from a model with no memory of anything asked before. On a first-ever
+    # question that's trivially true and the UI ignores it; on a follow-up it means the
+    # conversation was silently reset (idle TTL, LRU eviction, or a deploy) and the page
+    # tells the user so - the alternative is the model confidently answering "as we
+    # discussed" questions it never saw, which is exactly the jwall failure mode.
+    conversation_reset: bool = False
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -373,9 +380,10 @@ async def ask(request: AskRequest) -> AskResponse:
 
     track = (lambda step: _progress.__setitem__(request.session_id, step)) \
         if request.session_id else None
+    created = False
     try:
         if request.session_id:
-            session = await sessions.acquire(request.session_id)
+            session, created = await sessions.acquire(request.session_id)
             # Held for the whole turn: two concurrent requests on one session would
             # interleave on the same client and corrupt the conversation.
             async with session.lock:
@@ -415,6 +423,7 @@ async def ask(request: AskRequest) -> AskResponse:
             "question": question, "text": result["text"], "cost_usd": result["cost_usd"],
             "num_turns": result["num_turns"],
             "grounding_retries": result["grounding_retries"],
+            "conversation_reset": created,
             "finished_at": time.time(),
         }
     return AskResponse(
@@ -422,4 +431,5 @@ async def ask(request: AskRequest) -> AskResponse:
         cost_usd=result["cost_usd"],
         num_turns=result["num_turns"],
         grounding_retries=result["grounding_retries"],
+        conversation_reset=created,
     )

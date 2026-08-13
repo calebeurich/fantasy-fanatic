@@ -71,13 +71,18 @@ class SessionManager:
         self._sessions: dict[str, Session] = {}
         self._guard = asyncio.Lock()  # protects the map itself, not individual turns
 
-    async def acquire(self, session_id: str) -> Session:
+    async def acquire(self, session_id: str) -> tuple[Session, bool]:
+        """Returns (session, created). `created` is how a silent reset becomes visible:
+        when a client supplies an id it has used before and gets a fresh session back,
+        the old conversation was evicted (idle TTL, LRU, or an instance recycle) and the
+        model remembers none of it - the UI needs to say so rather than let the next
+        answer quietly pretend otherwise."""
         async with self._guard:
             await self._evict_idle()
             session = self._sessions.get(session_id)
             if session is not None:
                 session.last_used = time.monotonic()
-                return session
+                return session, False
 
             # Evict the least-recently-used session to stay under the cap, rather than
             # refusing the request - a demo visitor shouldn't hit "too many sessions".
@@ -89,7 +94,7 @@ class SessionManager:
             await client.connect()
             session = Session(session_id, client)
             self._sessions[session_id] = session
-            return session
+            return session, True
 
     async def _evict_idle(self) -> None:
         now = time.monotonic()

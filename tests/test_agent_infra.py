@@ -10,9 +10,11 @@ Run: python -m pytest tests/ -q
 
 
 
+import asyncio
+
 from agent import budget
 from agent.agent import _trade_violations
-from agent.sessions import Session
+from agent.sessions import Session, SessionManager
 from sources.cache import ttl_cache
 
 
@@ -143,3 +145,34 @@ def test_session_cost_delta_handles_missing_cost():
     session = Session.__new__(Session)
     session.cost_baseline = 0.0
     assert session.cost_delta(None) is None
+
+
+# ------------------------------------------------------- silent reset made visible
+
+class _FakeClient:
+    async def connect(self):
+        pass
+
+    async def disconnect(self):
+        pass
+
+
+def test_acquire_reports_when_a_known_id_gets_a_fresh_conversation(monkeypatch):
+    """A tester whose session was evicted (idle TTL, LRU, a deploy) used to get a model
+    with amnesia and no warning - the fabricated-needs incident grew from exactly that.
+    The `created` flag is what lets the page say 'this answer starts fresh'."""
+    import agent.sessions as sessions_mod
+    monkeypatch.setattr(sessions_mod, "ClaudeSDKClient", lambda options: _FakeClient())
+    manager = SessionManager(options_factory=lambda: None)
+
+    async def scenario():
+        _, created_first = await manager.acquire("jwall-tab")
+        _, created_again = await manager.acquire("jwall-tab")
+        await manager.close_all()  # the eviction, from the client's point of view
+        _, created_after_reset = await manager.acquire("jwall-tab")
+        return created_first, created_again, created_after_reset
+
+    first, again, after_reset = asyncio.run(scenario())
+    assert first is True
+    assert again is False
+    assert after_reset is True
