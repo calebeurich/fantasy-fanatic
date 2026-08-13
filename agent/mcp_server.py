@@ -156,6 +156,54 @@ def get_roster_needs(league_id: str) -> dict:
                       for owner_id, needs in roster_needs.league_needs(league_id).items()]}
 
 
+# A tool result over ~50KB on the wire is not delivered: the harness replaces the whole
+# thing with a 2KB preview and a file path the model cannot open. It is silent - no tool
+# error, nothing in the log - and the model answers from that 2KB, which is how a live
+# run built a three-player package out of the only names it could still see
+# (LOGIC.md, "The tool result the model never saw"). Budget in JSON chars with margin:
+# 43,225 chars measured 52.6KB on the wire, so ~1.22 bytes per char.
+WIRE_BUDGET_CHARS = 36_000
+
+
+def _within_wire_limit(league_id: str, owner_name: str, max_per_position: int) -> dict:
+    """The full report if it fits, otherwise the same report with shorter lists.
+
+    Shrinking `max_per_position` is the right lever because it is the one the tool
+    already documents: every block survives, each just carries fewer entries, so no
+    KIND of advice silently disappears - which is what dropping whole blocks would do.
+    """
+    import json
+
+    for attempt in range(max_per_position, 0, -1):
+        result = trade_targets.find_targets(league_id, owner_name, attempt)
+        if len(json.dumps(result)) <= WIRE_BUDGET_CHARS or attempt == 1:
+            break
+
+    # The per-position cap does not bound the sell lists (a deep roster has as many
+    # sellable pieces as it has), so a Middling team - which ships BOTH paths - can still
+    # be over at one per position. Trim the longest list repeatedly until it fits: any
+    # entry dropped is the lowest-ranked of its own block, and every block survives.
+    dropped = False
+    while len(json.dumps(result)) > WIRE_BUDGET_CHARS:
+        lists = [(len(json.dumps(v)), k, v, d)
+                 for d in (result, result.get("push") or {}, result.get("pivot") or {})
+                 for k, v in d.items() if isinstance(v, list) and len(v) > 1]
+        if not lists:
+            break
+        _, key, longest, owner_dict = max(lists)
+        owner_dict[key] = longest[:max(1, len(longest) // 2)]
+        dropped = True
+
+    if attempt < max_per_position or dropped:
+        result["truncation_note"] = (
+            f"This report did not fit in one tool result, so the lists are shortened "
+            f"(capped at {attempt} per position, longest lists trimmed further). Every "
+            f"block is still here and each keeps its best-ranked entries - nothing is "
+            f"missing except lower-ranked names. Do not describe these lists as the whole "
+            f"market; if the answer needs more at one position, say so and ask again.")
+    return result
+
+
 @mcp.tool()
 def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3) -> dict:
     """Trade recommendations for one team, shaped by its window (see get_team_state):
@@ -183,7 +231,7 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     - An empty list is a meaningful answer (a young rebuild has nothing declining to
       sell; a covered roster needs no depth). Do not pad it from other blocks.
     - max_per_position caps each list - call again with a higher number for more."""
-    return trade_targets.find_targets(league_id, owner_name, max_per_position)
+    return _within_wire_limit(league_id, owner_name, max_per_position)
 
 
 @mcp.tool()

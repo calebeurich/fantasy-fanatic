@@ -108,7 +108,8 @@ def _upgrade_note(kind: str, produced: float, replaced: dict, freed: float, mine
 def find_value_upgrades(me_roster: dict, board: Board, my_starters: set[str],
                         window: str = "Contend",
                         already_surfaced: set[str] | None = None,
-                        my_offers: list[dict] | None = None) -> list[dict]:
+                        my_offers: list[dict] | None = None,
+                        max_moves: int | None = None) -> list[dict]:
     """Which single holding beats one of my starters at his own position, for less dynasty
     value? Candidates come from every roster INCLUDING my own bench (a man already mine
     needs no trade). Comparisons stay one player against one at the same position - the
@@ -213,7 +214,12 @@ def find_value_upgrades(me_roster: dict, board: Board, my_starters: set[str],
             "returns": returns,
             "best_gain": returns[0]["production_gained"],
         })
-    return sorted(moves, key=lambda m: -m["best_gain"])
+    # One move per beatable starter with no ceiling made this the largest block in the
+    # result (41% of a Middling report), and the whole result is undeliverable past a
+    # size limit - so the caller's per-position cap bounds moves too. Best gain first,
+    # so a cut only ever loses the smallest upgrades.
+    ranked = sorted(moves, key=lambda m: -m["best_gain"])
+    return ranked[:max_moves] if max_moves else ranked
 
 
 def _conversion_candidates(me: dict, board: Board) -> list[dict]:

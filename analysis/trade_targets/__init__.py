@@ -120,7 +120,8 @@ def find_targets(league_id: str, owner_query: str,
         # someone who is.
         if me["window"] != "Rebuild":
             upgrades = find_value_upgrades(my_roster, board, my_starters, me["window"],
-                                           surfaced, buy_side.get("my_offers"))
+                                           surfaced, buy_side.get("my_offers"),
+                                           max_moves=max_per_position)
             if upgrades:
                 result["value_upgrades"] = upgrades
                 result["value_upgrade_note"] = VALUE_UPGRADE_NOTE
@@ -135,7 +136,7 @@ def find_targets(league_id: str, owner_query: str,
         return result
 
     if me["window"] == "Rebuild":
-        return with_extras({"me": me, "mode": "rebuild",
+        return with_extras({"me": _me_summary(me), "mode": "rebuild",
                             **_pivot_path(me, board, stranded, my_roster=my_roster,
                                           max_per_position=max_per_position)})
 
@@ -144,13 +145,13 @@ def find_targets(league_id: str, owner_query: str,
         # on how the season starts, which nothing here has yet.
         timing = (MIDDLING_TIMING_NOTE_RISING if me["trajectory"] == "rising"
                   else MIDDLING_TIMING_NOTE)
-        return with_extras({"me": me, "mode": "middling", "timing_note": timing,
+        return with_extras({"me": _me_summary(me), "mode": "middling", "timing_note": timing,
                 "push": _buy_path(me, board, max_per_position, my_picks, covered, backfills),
                 "pivot": _pivot_path(me, board, stranded, committed=False,
                                      my_roster=my_roster,
                                      max_per_position=max_per_position)})
 
-    result = {"me": me, "mode": "buy",
+    result = {"me": _me_summary(me), "mode": "buy",
               **_buy_path(me, board, max_per_position, my_picks, covered, backfills)}
 
     result = with_extras(result)
@@ -165,6 +166,23 @@ def find_targets(league_id: str, owner_query: str,
         result["choice_note"] = CONTEND_CHOICE_NOTE
         result["conversion_candidates"] = conversions
     return result
+
+
+# What the report needs to know about the asking team - NOT its rosters. The full
+# `team_state` row shipped here re-sent every cornerstone, sell candidate and surplus
+# piece that `get_team_state` had just returned, 19% of the biggest payload, and the
+# duplication was what pushed that payload past the 50KB wire limit where the SDK
+# replaces the whole result with a 2KB preview (LOGIC.md, "The tool result the model
+# never saw"). Roster lists have exactly one home.
+_ME_FIELDS = ("owner", "owner_id", "roster_id", "window", "state", "flavor",
+              "window_note", "flavor_note", "window_edge", "next_first_note",
+              "leverage", "leverage_note", "owns_next_first", "trajectory",
+              "contention_rank", "of_teams", "pct_of_best", "starting_production",
+              "ascending_pct", "declining_pct", "pick_capital", "no_trade_history")
+
+
+def _me_summary(me: dict) -> dict:
+    return {k: me[k] for k in _ME_FIELDS if k in me}
 
 
 def offerable_names(result: dict) -> set[str]:

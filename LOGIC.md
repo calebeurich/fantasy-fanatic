@@ -694,6 +694,9 @@ families, named so the next instance is recognized rather than re-patched:
    system prompt TWICE. Renamed `offer_any_one_of`, both list sites carry the no-bundle
    sentence, `my_offers` gained the note it never had. The field NAME is the cheapest
    place to put a constraint: it rides on every entry and cannot be skimmed past.
+   **Coda**: those notes did not stop it either - because on that league the payload was
+   over the wire limit and the model never received them (see "The tool result the model
+   never saw"). A label cannot fix a defect in prose the reader is not given.
 
 `audit.py` runs the checks against real leagues (the failures were all shaped by real
 distributions), every check derives from a shipped bug (a noisy audit gets muted), plus
@@ -738,6 +741,96 @@ ships this repo's CLAUDE.md on every call - a measured 38% input-token cut). The
 prompt carries the doctrine no single tool result states (five principles: pick an end,
 two currencies, age is a distance, value is not additive, a trade needs a counterparty)
 plus numbered rules, each added for an observed failure.
+
+### The tool result the model never saw
+
+The most expensive bug in this project, and the one worth showing other people, because
+nothing about it looks like an AI bug until you measure it.
+
+**Symptom.** Answers on the biggest leagues went subtly wrong in ways the small ones
+never did: a three-player package priced as a bundle (the one thing every tool here
+refuses to do), a manager addressed as "Owner 637083353878695936", meta-narration
+("let me pull that with better visibility"), and once, a request that the USER paste
+tool output back into the chat.
+
+**The false diagnosis, twice.** Each answer also said some version of *"the trade
+targets output was too large to fully display."* Both times this was written off as
+confabulation, on what looked like solid evidence: `tool_errors` was empty, the run log
+showed the call succeeding, and models do invent excuses. The reasoning was backwards -
+absence of an *error* was taken as presence of the *data*.
+
+**The measurement that settled it.** Compare what the tool returns against what arrives
+on the model's `ToolResultBlock` for the same call:
+
+| | bytes |
+|---|---|
+| `get_trade_targets` returned | 43,225 chars |
+| model received | **2,271 chars (5%)** |
+
+The harness replaces any tool result over ~50KB on the wire with this:
+
+```
+<persisted-output>
+Output too large (52.6KB). Full output saved to: .../tool-results/<id>.json
+Preview (first 2KB): [ ... ]
+</persisted-output>
+```
+
+A file path the model cannot open, and the first 2KB of JSON. **The model was telling
+the truth every time.** The 2KB happened to contain `me.cornerstones`,
+`me.win_now_core` and `me.tradeable_surplus` - which is precisely where the packaged
+names came from. It was not hallucinating: it was reasoning correctly over the only
+data it had been given, and the missing 95% included every no-bundle note written to
+prevent exactly that answer.
+
+Why it stayed hidden: it is silent (no tool error, nothing in the log), it is
+threshold-based (every eval fixture sat under the limit - jwall567 is ~31KB on the wire
+and has never misbehaved across dozens of runs), and the failure presents as a
+*reasoning* defect, which sends you to the prompt instead of the transport.
+
+**The fixes**, in order of how much they matter:
+
+1. **A wire-size guard** (`mcp_server._within_wire_limit`). Serialize, compare against a
+   budget with margin, and if it does not fit, shrink `max_per_position` - the knob the
+   tool already documents - then trim the longest remaining lists until it does. Every
+   block survives at its best-ranked entries, and a `truncation_note` tells the model
+   the lists are shortened so it cannot present them as the whole market. Worst case
+   across three real leagues went from 92KB (undeliverable) to 42.7KB.
+2. **Stop re-shipping what another tool already sent.** `get_trade_targets` included the
+   asking team's entire `team_state` row - every cornerstone, sell candidate and surplus
+   piece that `get_team_state` had just returned - 19% of the largest payload. Roster
+   lists now have exactly one home.
+3. **Bound the unbounded block.** `value_upgrades` had one move per beatable starter with
+   no ceiling: 41% of a Middling report. It takes the same per-position cap, best gain
+   first.
+
+**Transferable lessons**, which is why this is written up at length:
+
+- **A model claiming something about its own inputs is data, not noise.** "The output was
+  too large" was a factual report about the transport, dismissed twice because it sounded
+  like an excuse.
+- **Absence of an error is not presence of the data.** Nothing in this system failed. The
+  result was delivered, successfully, mangled.
+- **Measure the boundary, not the endpoints.** The tool was correct and the model was
+  reasonable; only the gap between them was broken, and nothing on either side could
+  show it.
+- **Thresholds hide in fixtures.** Every eval and every unit test sat below the limit, so
+  a 100% green suite coexisted with a production-breaking bug for as long as the biggest
+  league went unasked. The first friend to load a deep roster would have hit it.
+- **A payload has a size budget like any other resource.** It belongs in the transport
+  layer, enforced with margin, with the degradation labelled rather than silent.
+
+**The tripwire that lied, twice.** The eval written to catch the packaging shipped with
+a detector matching `"A + B"` on one line. It passed immediately - and the very next live
+answer packaged three pieces across three sentences ("Lead with Fannin... Add Shough...
+Sweeten with picks"). Rewritten as a whole-answer window, it then failed answers that
+correctly offered one piece each to two DIFFERENT targets. Three versions, two of them
+confidently wrong in opposite directions, each discovered by a paid live call. It is now
+high-precision by design (a conjunction inside one clause; "A or B" never fires) with the
+recall limit stated, and - the actual fix - **verified offline against the recorded live
+answers**, so the tripwire is tested for free and can never go vacuous. When a check
+passes right after the fix it was written for, prove it can still fail on the original
+defect before believing it.
 
 **The grounding check is the pattern worth keeping**: prompt rules are probabilistic,
 so rule 6 (only name offerable players as trade-aways) is enforced by

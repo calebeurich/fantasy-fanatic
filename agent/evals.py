@@ -43,6 +43,32 @@ async def _ask(question: str) -> dict:
     return result
 
 
+def packaged_pieces(text: str, mine: set[str]) -> list[str]:
+    """Two of MY pieces joined into ONE offer - the additive-value error - or [].
+
+    Deliberately high precision over recall, after two detectors that were wrong in
+    opposite directions: a one-line "A + B" check gave a false pass on a bundle written
+    across three sentences, and a whole-answer window then failed answers that correctly
+    offered one piece each to two DIFFERENT targets. What is unambiguous is a conjunction
+    inside a single clause, so that is all this claims to catch - "A or B" is alternatives
+    and never fires. A bundle spread across sentences will slip through; the payload fix
+    (whole result delivered, notes intact) is the real defence, and this is the tripwire."""
+    import re
+
+    found = []
+    for clause in re.split(r"[.;:!?\n]", text):
+        if " or " in clause.lower():
+            continue
+        named = [n for n in mine if n in clause]
+        if len(named) < 2:
+            continue
+        # Only when they are actually joined - "and", "+", "plus", or a comma list.
+        between = clause[min(clause.index(n) for n in named):]
+        if re.search(r"\+|\band\b|\bplus\b|,", between):
+            found.append(", ".join(sorted(named)) + f"  ->  {clause.strip()[:200]}")
+    return found
+
+
 def _weighs_as_sale(text: str, name: str) -> bool:
     """Was this player weighed AS A SALE - named in a sentence that talks about selling,
     moving, or the runway inversion - rather than merely listed among blockers or keepers?
@@ -228,32 +254,21 @@ async def case_never_builds_a_package() -> None:
     can support. The rule sat in the system prompt twice and still leaked; this pins the
     behaviour, and the fix that made it hold lives in the payload (`offer_any_one_of`).
 
-    Detected SEMANTICALLY, not syntactically. The first version of this check looked for
-    "A + B" on one line, passed, and the very next live answer packaged three pieces
-    across three sentences ("Lead with Fannin... Add Shough... Sweeten with picks") - a
-    false pass that made the fix look like it held when it hadn't. What defines the
-    defect is two of MY OWN offerable pieces proposed as one outbound offer, whatever
-    the punctuation, so the check reads a sliding window over the whole answer."""
-    from analysis.league import context
-
+    Scoped PER PROPOSAL, which took two wrong versions to get right. Looking for "A + B"
+    on one line gave a false PASS (the next live answer packaged three pieces across three
+    sentences: "Lead with Fannin... Add Shough... Sweeten with picks"). A sliding window
+    over the whole answer then gave a false FAILURE, on an answer offering Metcalf for one
+    target and Shough for a different one - which is the correct behaviour, twice. The
+    defect is two of my pieces offered for the SAME target, so the unit is one proposal:
+    a section, as the model itself delimits them (heading or rule)."""
     result = await _ask(
         f"For Sleeper league {DYNASTY_LEAGUE}, I'm dezdroppedit27. I need a running back - "
         "what exactly should I offer, and to who?")
     mine = trade_targets.offerable_names(
         trade_targets.find_targets(DYNASTY_LEAGUE, "dezdroppedit27"))
-    text = result["text"]
-    GIVE = ("offer", "send", "give", "add", "sweeten", "package", "throw in", "lead with",
-            "pair", "attach", "include")
-    WINDOW = 600
-    for start in range(0, max(len(text) - 1, 1), 150):
-        span = text[start:start + WINDOW]
-        low = span.lower()
-        if not any(v in low for v in GIVE):
-            continue
-        named = {n for n in mine if n in span}
-        assert len(named) < 2, (
-            f"proposed {sorted(named)} together as one outbound offer - value is not "
-            f"additive, so no tool here can price that bundle:\n...{span.strip()}...")
+    bundles = packaged_pieces(result["text"], mine)
+    assert not bundles, ("built a multi-player package - value is not additive across "
+                         "players, so no tool here can price one:\n" + "\n".join(bundles))
     print(f"case_never_builds_a_package: PASS (${result['cost_usd']:.4f}, "
           f"{result['num_turns']} turns)")
 

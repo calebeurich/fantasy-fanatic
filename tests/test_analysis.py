@@ -1771,6 +1771,34 @@ def test_persuasion_says_what_the_other_owner_would_actually_want():
         _holder("aging", "Contend", "steady", [], asc=21, dec=23), {}, offers) is None
 
 
+def test_the_package_tripwire_fires_on_real_bundles_and_not_on_real_alternatives():
+    """The detector for `case_never_builds_a_package`, checked against the actual live
+    answers rather than invented strings - because two earlier versions were confidently
+    wrong in OPPOSITE directions (a false pass on a real bundle, then false failures on
+    two correct answers), and each wrong version cost a live API call to discover.
+
+    Offline, so the tripwire itself is verified for free and can never go vacuous."""
+    from agent.evals import packaged_pieces
+
+    mine = {"Harold Fannin", "Tyler Shough", "DK Metcalf", "Jalen Nailor"}
+
+    # The defect, verbatim from the answer Caleb caught on his phone.
+    assert packaged_pieces(
+        "**Offer:** Harold Fannin (3,650) + Tyler Shough (3,379). This serves both sides.",
+        mine), "the original bundle must still be caught"
+    assert packaged_pieces("Offer for Barkley: Tyler Shough and DK Metcalf.", mine)
+
+    # Correct behaviour that earlier versions failed: alternatives, and one piece each to
+    # two different targets.
+    assert not packaged_pieces(
+        "Offer: **Tyler Shough** (or **DK Metcalf** if they've heard about Shough).", mine)
+    assert not packaged_pieces(
+        "Target 2: Jaylen Warren. Offer: DK Metcalf (1,985).\n"
+        "Target 3: Kyren Williams. Offer: Tyler Shough (3,378).", mine)
+    assert not packaged_pieces("You could offer Harold Fannin, DK Metcalf, or Jalen Nailor "
+                               "- one of them, not several.", mine)
+
+
 def test_every_list_of_offerable_pieces_says_it_is_not_a_package():
     """A bare list of names invites the one construction this project forbids, and a live
     answer built it: "Offer: Harold Fannin (3,650) + Tyler Shough (3,379)" against a 4,473
