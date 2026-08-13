@@ -202,6 +202,17 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
         # a birthday. And a cornerstone stays in `sellable` - the hardest ask is a price,
         # not a veto, and leaving him out made the best piece on a roster unaskable.
         if (entry["years_to_decline"] or 0) < MIN_MEANINGFUL_RUNWAY:
+            # He missed the cornerstone tag on the CLOCK, not on value - so the ask must
+            # not fall off a cliff with the label. Without this, a roster read
+            # "cornerstones: none" while holding a top-6 receiver, and the seller's own
+            # tool framed its premium asset as an ordinary piece.
+            if entry["years_to_decline"] is not None:
+                entry["price_note"] = (
+                    f"cornerstone-priced: his {entry['value']:,} clears the same top-10% "
+                    f"bar this league's cornerstones do, and only the clock "
+                    f"({entry['years_to_decline']} years) keeps the tag off. The market "
+                    f"has not discounted the remaining years yet - that is exactly what "
+                    f"makes now the selling window, and the ask is a cornerstone's ask.")
             win_now_core.append(entry)
             sellable.append(entry)  # valuable but short - still sellable, just pricier
         else:
@@ -551,7 +562,9 @@ def main(league_id: str) -> None:
         names = lambda entries: ", ".join(e["name"] for e in entries)
         print(f"       cornerstones: {names(row['cornerstones']) if row['cornerstones'] else 'none'}")
         if row["win_now_core"]:
-            print(f"       win-now core / sell candidates: {names(row['win_now_core'])}")
+            core = ", ".join(e["name"] + (" [cornerstone-priced]" if e.get("price_note") else "")
+                             for e in row["win_now_core"])
+            print(f"       win-now core / sell candidates: {core}")
         if row["tradeable_surplus"]:
             print(f"       tradeable surplus: {names(row['tradeable_surplus'])}")
 

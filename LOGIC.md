@@ -324,7 +324,13 @@ computed under `MIN_TEAMS_FOR_LEVERAGE` (6).
 (`CORNERSTONE_PERCENTILE`) AND at least `MIN_MEANINGFUL_RUNWAY` of runway - runway, not
 bucket, so an elite back months from his cutoff is a sell surface, not a foundation.
 Cornerstones ALSO appear in `sellable`, tagged: the hardest ask is a price, not a veto.
-`win_now_core` = valuable but short-runway. `sellable` = everything a team could
+`win_now_core` = valuable but short-runway - and these carry `price_note`
+("cornerstone-priced"), because a piece that missed the tag only on the CLOCK still
+sells at the tag's price. Found by the owner's eye test: a roster read "cornerstones:
+none" while holding a top-6 receiver at ~1.8 years, and the tool framed its premium
+asset as ordinary - the hard-breakpoint family applied to the seller's ask at the 2.0
+bar. The market still paying the top-10% price IS the selling argument, said on the
+entry. `sellable` = everything a team could
 realistically be asked about (prime/declining below the threshold, plus the two above).
 `tradeable_surplus` = ascending below the threshold - lottery tickets and young depth.
 
@@ -823,7 +829,12 @@ Measured or confirmed, none urgent, kept so nobody re-derives them:
 - **The market's own age curve could calibrate `AGE_CURVE`**: cornerstone-share by age
   shows a WR cliff at 28 (ours says 29 - possibly a year late; 13 cornerstones, none
   28+), while the apparent TE cliff at 27 was an artifact of a four-player cell (Kittle
-  at 32.9 is the 11th most valuable TE - the curve stays 30). Cornerstone value is
+  at 32.9 is the 11th most valuable TE - the curve stays 30). Live counterweight from
+  the owner (2026-08, Justin Jefferson at ~27.2 reading 1.8 years): "top 6 receiver
+  this year and shouldn't fall off for at least 2 more" - a domain read that puts the
+  cliff LATER than 29 for elite receivers, opposite the cornerstone-share signal. One
+  anecdote moves no curve, but if elite WRs keep out-living the bar the curve may need
+  a tier the way QBs got one. Cornerstone value is
   decline TIMES remaining years and survivorship-biased, so the general version needs a
   bigger pool tracked across seasons.
 - **The market refuses our rushing-QB discount on Josh Allen** (10,415 at 29.5, 7.1

@@ -266,6 +266,30 @@ def test_trajectory_measures_current_production_not_dynasty_value():
     assert result["starting_production"] == 2000
 
 
+def test_missing_the_cornerstone_tag_on_the_clock_does_not_cheapen_the_ask():
+    """The owner's eye test caught it: a roster read "cornerstones: none" while holding
+    a top-6 receiver at ~1.8 years - above the cornerstone VALUE bar, under the runway
+    gate - and the tool sold its premium asset like an ordinary piece. The label may
+    cliff at 2.0; the ASK must not: the market is still paying the top-10% price, which
+    is precisely the argument for selling now. The note rides only where both facts hold
+    (value above the bar AND a known clock) - an unknown age claims nothing."""
+    roster, players, starters = _roster([("WR", 12_000), ("WR", 12_000),
+                                         ("WR", 1_000), ("WR", 12_000)])
+    players["0"] |= {"age": 27.5}   # 1.5 years on the WR curve: tag lost to the clock
+    players["1"] |= {"age": 24}     # real cornerstone
+    players["2"] |= {"age": 27.5}   # same clock, but never near the value bar
+    players["3"] |= {"age": None}   # value clears the bar, clock unknown
+
+    result = team_state.classify(roster, players, 10_000, starters)
+    assert [e["name"] for e in result["cornerstones"]] == ["P1"]
+    core = {e["name"]: e for e in result["win_now_core"]}
+    assert "cornerstone-priced" in core["P0"]["price_note"]
+    assert "12,000" in core["P0"]["price_note"] and "1.5 years" in core["P0"]["price_note"]
+    assert "price_note" not in core["P3"], "no clock, no claim about the clock"
+    cheap = next(e for e in result["sellable"] if e["name"] == "P2")
+    assert "price_note" not in cheap, "the note is about the VALUE bar, not the clock alone"
+
+
 def test_priced_for_reads_rank_on_each_scale_not_the_raw_ratio():
     """The ratio cannot answer "is he priced for now or later" and rank can. Dynasty prices ~400
     players against redraft's ~200, so the ratio decays toward zero down the board - measured

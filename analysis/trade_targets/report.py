@@ -39,6 +39,9 @@ def _print_pivot(me: dict, pivot: dict) -> None:
           f"{names(pivot['sell_candidates'])}")
     print(f"  {pivot['sell_clock_note']}")
     buyers(pivot["sell_candidates"])
+    for entry in pivot["sell_candidates"]:
+        if entry.get("price_note"):
+            print(f"  {entry['name']}: {entry['price_note']}")
     print(f"situational sells: {names(pivot['situational'])}")
     print(f"  {pivot['situational_note']}")
     buyers(pivot["situational"])
