@@ -622,6 +622,40 @@ a time, and agent rule 8 says the rest is a negotiation the tool cannot price.
   current-owner view, confirmed against chronological transactions.
 - Usage-role tags on all 18 rostered tagged players match real-world knowledge.
 
+## Judging a proposed trade (`analysis/trade_eval.py`)
+
+The question testers actually bring: "I'm being offered X and Y for Z - good deal?"
+Every other surface discovers trades; none could judge one the user arrived with.
+
+This is NOT the deleted `find_surplus` returning: that tool *generated* packages and
+priced their balance by summing both sides, and the summing is why it died. Here the
+package is the user's premise - the module never constructs one, never totals one, and
+declares no winner by margin. Values ride per piece; judgment comes from four facts
+this codebase already knows how to compute:
+
+- **Best single player** (`_best_chip`'s logic on the deal itself): which side gets
+  him. Consolidation favors that side; the side sending him needs the rest of the deal
+  to buy something specific. One player against one player stays the only comparison.
+- **Need changes against the real bar**: the whole league re-assessed
+  (`assess_positions`) with the two rosters swapped, before vs. after, so the diff can
+  only come from the trade. Declared starters are omitted from BOTH runs (stale in a
+  hypothetical); that costs only the injury-exposure notes. "Closes the QB need
+  (critical -> ok)" is a recomputed fact, not a position-label guess.
+- **Lineup production delta** via `fill_lineup` - the cascade, not the traded pieces'
+  raw values, because a vacated FLEX does not refill the way a manager assumes.
+- **Timeline fit on what each side takes back**, with the bar matched to the window:
+  a true Rebuild is judged on the buyer's two-season horizon (`MIN_MEANINGFUL_RUNWAY` -
+  the next competitive season is past a 1.4-year piece, which is exactly the Higgins
+  case), while a merely-accumulating roster is flagged only for a piece at his own edge
+  (`INSIDE_FINAL_YEAR`, the `_sells_him` clock pointed the other way). Both bars
+  already existed; the module introduces no threshold of its own.
+
+Each side's `read` is composed from that side's own seat, and a trade can read well
+for both - which is what a real trade usually is. Validated by reconstructing jwall's
+actual Higgins+Thornton-for-Fannin deal in reverse: the reversal reads as bad for
+jwall on all three axes (ships the best piece, and the runway flag fires on Higgins),
+which is the market agreeing with the trade he actually made.
+
 ## Waiver wire (`analysis/waiver_wire.py`)
 
 Same relevance floor as everywhere else. Surfaces an available player who beats a

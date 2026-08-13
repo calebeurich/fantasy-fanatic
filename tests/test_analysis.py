@@ -2277,3 +2277,79 @@ def test_a_data_gap_reaches_the_tool_result_not_only_stderr():
     assert "say this in your answer" in note, (
         "the note is addressed to the model, because the reader can see it no other way")
     degraded._MISSING.clear()
+
+
+# ------------------------------------------------------- trade evaluation (trade_eval)
+
+from analysis import trade_eval
+
+
+def _eval_fixture():
+    """Two-team stub league (plus needs enough shape to assess). Team A has a spare QB;
+    team B has no QB at all - the cleanest possible need to open and close."""
+    players = {
+        "qb1": {"name": "StarQB", "position": "QB", "value": 5000, "redraft_value": 4000, "age": 25},
+        "qb2": {"name": "SpareQB", "position": "QB", "value": 2000, "redraft_value": 1500, "age": 26},
+        "wr0": {"name": "OkWR", "position": "WR", "value": 900, "redraft_value": 500, "age": 24},
+        "wr1": {"name": "BigWR", "position": "WR", "value": 6000, "redraft_value": 3000, "age": 23},
+        "wr2": {"name": "SmallWR", "position": "WR", "value": 800, "redraft_value": 700, "age": 24},
+        "rb1": {"name": "BackA", "position": "RB", "value": 1000, "redraft_value": 900, "age": 24},
+        "rb2": {"name": "OldBack", "position": "RB", "value": 1000, "redraft_value": 900, "age": 28},
+        "te1": {"name": "TightA", "position": "TE", "value": 700, "redraft_value": 600, "age": 25},
+        "te2": {"name": "TightB", "position": "TE", "value": 700, "redraft_value": 600, "age": 25},
+    }
+    rosters = [{"owner_id": "a", "players": ["qb1", "qb2", "wr0", "rb1", "te1"]},
+               {"owner_id": "b", "players": ["wr1", "wr2", "rb2", "te2"]}]
+    ctx = _Ctx(players, rosters, {})
+    ctx.needs_slots = {"QB": 1, "RB": 1, "WR": 1, "TE": 1}
+    ctx.start_thresholds = {"QB": 0, "RB": 0, "WR": 0, "TE": 0}
+    ctx.lineup_dedicated = ctx.needs_slots
+    ctx.lineup_flex = []
+    ctx.pick_owner = lambda q, rows: next(r for r in rows if q in r["owner"])
+    states = [{"owner_id": "a", "owner": "a", "window": "Contend",
+               "trajectory": "steady", "ascending_pct": 10, "declining_pct": 20},
+              {"owner_id": "b", "owner": "b", "window": "Rebuild",
+               "trajectory": "steady", "ascending_pct": 30, "declining_pct": 5}]
+    return _board(ctx, states)
+
+
+def test_a_trade_is_judged_per_side_never_priced():
+    """SpareQB for BigWR: b closes its QB hole against the recomputed league bar, a gets
+    the best single player. No side carries a summed package price or a winner."""
+    out = trade_eval.evaluate_from_board(_eval_fixture(), "a", ["spareqb"], "b", ["bigwr"])
+    assert out["ok"] and out["best_piece"]["name"] == "BigWR" and out["best_piece"]["to"] == "a"
+    a, b = out["sides"]
+    assert any("closes the QB need (critical -> ok)" in r for r in b["read"])
+    assert any("gets the best single player" in r for r in a["read"])
+    assert any("sends the best single player" in r for r in b["read"])
+    # The lineup delta comes from fill_lineup, not from the traded pieces' raw values:
+    # BigWR (3000) replaces OkWR (500) in a's one WR slot; SpareQB never started for a.
+    assert a["lineup_production_delta"] == 2500
+    # No summed package price anywhere, and no read declares a winner.
+    for side in out["sides"]:
+        assert "total" not in side and "wins" not in " ".join(side["read"])
+
+
+def test_a_rebuilder_taking_short_runway_production_is_flagged():
+    """b (Rebuild) takes back OldBack-class runway: the read says those seasons won't be
+    part of the next competitive team. The bar is the buyer's two-season horizon for a
+    true Rebuild, not the seller's final-year clock."""
+    # a (Contend, not accumulating) receiving OldBack: no flag - runway is his problem
+    # only on a roster whose window is further out than the player's remaining seasons.
+    out = trade_eval.evaluate_from_board(_eval_fixture(), "b", ["oldback"], "a", ["spareqb"])
+    a_side = next(s for s in out["sides"] if s["owner"] == "a")
+    assert not any("runway" in r for r in a_side["read"])
+
+    # The real case: b (Rebuild) receives OldBack.
+    board = _eval_fixture()
+    board.ctx.rosters[0]["players"].append("rb2")
+    board.ctx.rosters[1]["players"].remove("rb2")
+    out2 = trade_eval.evaluate_from_board(board, "a", ["oldback"], "b", ["smallwr"])
+    b_side = next(s for s in out2["sides"] if s["owner"] == "b")
+    assert any("won't be part of it" in r for r in b_side["read"]), (
+        "a Rebuild receiving a sub-two-season piece gets the horizon flag")
+
+
+def test_trade_eval_says_plainly_when_a_name_is_not_on_the_roster():
+    out = trade_eval.evaluate_from_board(_eval_fixture(), "a", ["ghost"], "b", ["bigwr"])
+    assert out["ok"] is False and "'ghost' is not on a's roster" in out["problem"]
