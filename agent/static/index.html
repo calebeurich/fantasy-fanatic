@@ -147,6 +147,18 @@
 let sessionId = sessionStorage.getItem("ff_session") || crypto.randomUUID();
 sessionStorage.setItem("ff_session", sessionId);
 
+// The friends link carries ?key=... - keep it in localStorage and take it off the URL
+// so a copied/screenshotted address bar doesn't hand the key around by accident.
+{
+  const urlKey = new URLSearchParams(location.search).get("key");
+  if (urlKey) {
+    localStorage.setItem("ff_key", urlKey);
+    history.replaceState(null, "", location.pathname);
+  }
+}
+const KEY = () => localStorage.getItem("ff_key") || "";
+const hdrs = extra => Object.assign({"X-FF-Key": KEY()}, extra || {});
+
 const $ = id => document.getElementById(id);
 let currentLeague = null;
 let myTeam = null;
@@ -212,8 +224,12 @@ async function loadLeague(id) {
   if (!id) return;
   $("overview").innerHTML = '<div class="empty">Loading… (first load ~7s, cached after)</div>';
   try {
-    const res = await fetch(`/api/league/${encodeURIComponent(id)}`);
+    const res = await fetch(`/api/league/${encodeURIComponent(id)}`, {headers: hdrs()});
     const d = await res.json();
+    if (res.status === 401) {
+      $("overview").innerHTML = `<div class="empty warn">${d.detail}</div>`;
+      return;
+    }
     if (!d.supported) {
       $("overview").innerHTML = `<div class="empty warn">Not supported: ${d.reason}</div>`;
       return;
@@ -311,11 +327,11 @@ $("f").onsubmit = async e => {
   $("send").disabled = true;
   try {
     const res = await fetch("/ask", {
-      method: "POST", headers: {"Content-Type": "application/json"},
+      method: "POST", headers: hdrs({"Content-Type": "application/json"}),
       body: JSON.stringify({question, session_id: sessionId}),
     });
     const d = await res.json();
-    pending.innerHTML = md(d.text || "(no answer)");
+    pending.innerHTML = md(d.text || d.detail || "(no answer)");
     const bits = [];
     if (d.cost_usd != null) bits.push("$" + d.cost_usd.toFixed(4));
     if (d.num_turns != null) bits.push(d.num_turns + " turns");

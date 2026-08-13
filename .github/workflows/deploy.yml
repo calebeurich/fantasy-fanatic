@@ -51,25 +51,39 @@ jobs:
           gcloud run deploy "$SERVICE" \
             --source . \
             --region "$REGION" \
-            --no-allow-unauthenticated \
-            --memory 2Gi \
+            --allow-unauthenticated \
+            --memory 4Gi \
             --cpu 1 \
             --timeout 600 \
-            --concurrency 1 \
+            --concurrency 2 \
             --max-instances 1 \
             --execution-environment gen2 \
             --service-account "fantasy-fanatic-run@fantasy-fanatic.iam.gserviceaccount.com" \
-            --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest"
+            --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest" \
+            --set-env-vars "FF_LINK_KEY=${{ secrets.FF_LINK_KEY }}"
 
       # The settings above are load-bearing and easy to lose in a console edit, so they
       # are declared here rather than living only as click-state:
-      #   concurrency/max-instances 1 - budget.py's daily cap is only exactly accurate
-      #                                 with a single instance, and each request spawns
-      #                                 two subprocesses
-      #   memory 2Gi                  - polars/pandas in both the parent and the MCP
-      #                                 subprocess
+      #   max-instances 1             - budget.py's daily cap is an in-process counter,
+      #                                 exact only while every request lands in ONE
+      #                                 process
+      #   concurrency 2               - two friends can ask at once instead of queueing
+      #                                 behind a 60-90s answer; still one instance, one
+      #                                 event loop, so the budget counter stays exact
+      #   memory 4Gi                  - each concurrent session holds a claude CLI + MCP
+      #                                 subprocess pair (pandas/nflverse in the MCP one);
+      #                                 two lanes of that plus the parent outgrows 2Gi
       #   gen2                        - full Linux compatibility for subprocess spawning
-      #   no-allow-unauthenticated    - stays private until deliberately made public
+      #   allow-unauthenticated       - the service is public; what gates real use is
+      #                                 FF_LINK_KEY (app-level, checked on /ask and
+      #                                 /api/*) plus the daily budget that fails closed.
+      #                                 If this flag errors on deploy the deployer SA
+      #                                 lacks run.services.setIamPolicy - grant
+      #                                 roles/run.admin to github-deployer, or set the
+      #                                 allUsers invoker binding once in the console
+      #   FF_LINK_KEY                 - the friends-link key, a GitHub Actions secret
+      #                                 (repo Settings -> Secrets -> Actions); rotating
+      #                                 it is changing the secret and re-deploying
       #   service-account             - a dedicated runtime identity holding exactly one
       #                                 permission (read the anthropic-api-key secret),
       #                                 not the default compute account, which carries

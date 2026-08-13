@@ -20,7 +20,7 @@ import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -51,6 +51,23 @@ app = FastAPI(title="fantasy-fanatic agent", lifespan=lifespan)
 sessions = SessionManager(_options)
 
 MAX_QUESTION_CHARS = 1000  # a real question is far shorter; this just bounds abuse
+
+# The friends gate: one shared key in the link, checked on everything that costs money
+# or exposes internals. Not real auth - it keeps bots and drive-by traffic off the daily
+# budget once the Cloud Run service goes public, and a leaked key rotates by changing
+# one GitHub secret. Unset (local dev) means no gate at all.
+import os
+LINK_KEY = os.environ.get("FF_LINK_KEY")
+
+
+def require_key(request: Request) -> None:
+    if not LINK_KEY:
+        return
+    supplied = request.headers.get("x-ff-key") or request.query_params.get("key")
+    if supplied != LINK_KEY:
+        raise HTTPException(status_code=401, detail=(
+            "This link needs its key. Open the exact link you were sent (it carries the "
+            "key) - or ask Caleb for the current one."))
 
 
 class AskRequest(BaseModel):
@@ -85,7 +102,7 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/api/league/{league_id}")
+@app.get("/api/league/{league_id}", dependencies=[Depends(require_key)])
 def league_overview(league_id: str) -> dict:
     """Deterministic league snapshot, rendered by the UI as a table rather than
     described by the model.
@@ -134,14 +151,14 @@ def league_overview(league_id: str) -> dict:
     }
 
 
-@app.get("/sessions")
+@app.get("/sessions", dependencies=[Depends(require_key)])
 def session_status() -> dict:
     """Visible so session count/idle time can be checked against the memory ceiling
     rather than guessed at - each live session holds two subprocesses."""
     return sessions.status()
 
 
-@app.get("/diagnostics")
+@app.get("/diagnostics", dependencies=[Depends(require_key)])
 async def diagnostics() -> dict:
     """Spawns the MCP server directly and reports what actually happens.
 
@@ -235,7 +252,7 @@ def budget_status() -> dict:
     return budget.status()
 
 
-@app.post("/ask", response_model=AskResponse)
+@app.post("/ask", response_model=AskResponse, dependencies=[Depends(require_key)])
 async def ask(request: AskRequest) -> AskResponse:
     # Checked before calling Claude, so an exhausted budget costs nothing to serve.
     if budget.is_exhausted():
