@@ -343,6 +343,28 @@ $("f").onsubmit = async e => {
       m.textContent = bits.join(" · ");
       pending.appendChild(m);
     }
+    // One thumbs-click per answer - "that doesn't make sense" is the single richest
+    // bug source this project has, and this is that sentence with a button.
+    if (!d.budget_exhausted && d.text) {
+      const fb = document.createElement("div");
+      fb.className = "meta";
+      ["👍", "👎"].forEach(v => {
+        const b = document.createElement("button");
+        b.className = "ghost"; b.type = "button"; b.textContent = v;
+        b.onclick = async () => {
+          let comment = null;
+          if (v === "👎") comment = prompt("What was off? (optional)") || null;
+          fetch("/feedback", {
+            method: "POST", headers: hdrs({"Content-Type": "application/json"}),
+            body: JSON.stringify({verdict: v === "👍" ? "up" : "down", comment,
+                                  session_id: sessionId, question}),
+          });
+          fb.textContent = "thanks — noted.";
+        };
+        fb.appendChild(b);
+      });
+      pending.appendChild(fb);
+    }
   } catch (err) {
     pending.innerHTML = `<p>Request failed: ${err}</p>`;
   } finally {

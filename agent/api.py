@@ -244,6 +244,28 @@ async def diagnostics() -> dict:
     return info
 
 
+class FeedbackRequest(BaseModel):
+    verdict: str          # "up" | "down"
+    comment: str | None = None
+    session_id: str | None = None
+    question: str | None = None
+
+
+@app.post("/feedback", dependencies=[Depends(require_key)])
+def feedback(fb: FeedbackRequest) -> dict:
+    """One thumbs-click per answer, into the same JSONL the runs land in - the friends
+    test exists to learn, and 'that doesn't make sense' has been the single richest
+    source of real bugs in this project. This is that sentence, with a button."""
+    observability.log_run({
+        "kind": "feedback",
+        "verdict": "up" if fb.verdict == "up" else "down",
+        "comment": (fb.comment or "")[:500],
+        "session_id": fb.session_id,
+        "question": (fb.question or "")[:300],
+    })
+    return {"ok": True}
+
+
 @app.get("/budget")
 def budget_status() -> dict:
     """Exposed so the daily cap is externally verifiable, rather than something you
