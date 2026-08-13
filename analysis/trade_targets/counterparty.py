@@ -199,10 +199,16 @@ def wanted_line(wanting: list[dict]) -> str:
     report's tokens - and no reader used `rank` or `reason_count` at all. The
     contender-premium clause used to be composed only in the CLI printer, so the agent
     never saw it; built here, both readers get the same sentence."""
+    # A Middling buyer's interest is real but conditional: he hasn't committed to
+    # contending, so this buy would BE the commitment. Without the clause the model
+    # presented an undecided team's need with a contender's urgency.
     return " | ".join(
         f"{w['owner']} [{w['window']}] {w['why']}"
         + (" (a contender - pays a premium for production, worth more there than here)"
-           if w["window"] in ("Push", "Contend") else "")
+           if w["window"] in ("Push", "Contend") else
+           " (undecided window - buying is what would push them in, so expect interest "
+           "without a contender's urgency or price)"
+           if w["window"] == "Middling" else "")
         for w in wanting)
 
 

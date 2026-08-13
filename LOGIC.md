@@ -517,7 +517,12 @@ codebase - waivers reuse it rather than inventing another.
   ranking.
 - **`wanted_by`**: who wants a player this team is moving - a positional need he would
   actually improve (`_would_actually_help` - a need is not the same as wanting THIS
-  player), or a falling roster short of ascending value at any position.
+  player), or a falling roster short of ascending value at any position. The composed
+  line carries a window clause in two directions: Push/Contend buyers pay a premium
+  for production (worth more there than here), and a Middling buyer reads as
+  *undecided* - his need is real, but he hasn't committed to contending, so this buy
+  would BE the commitment. Presented bare, his interest got a contender's urgency,
+  which overstates both his motivation and the price he'll pay.
 - **Persuasion tier** (`_persuasion_targets`): aging production held by non-sellers -
   the tier the buy path structurally cannot see, and where the best production usually
   sits. Sourced from `sellable` (not the cornerstone-gated `win_now_core`), runway

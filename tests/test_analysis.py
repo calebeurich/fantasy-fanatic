@@ -744,6 +744,19 @@ def test_value_upgrade_names_who_would_want_the_player_being_moved():
         "the contender-premium clause ships in the payload now, not only in the CLI")
 
 
+def test_a_middling_buyer_reads_as_undecided_not_urgent():
+    """A Middling team's need is real but he hasn't committed to contending - the buy
+    would BE the commitment. Presented bare, the model gave his interest a contender's
+    urgency, which overstates both his motivation and his price."""
+    line = trade_targets.wanted_line([
+        {"owner": "fence-sitter", "window": "Middling", "why": "short at TE (thin)"},
+        {"owner": "pusher", "window": "Push", "why": "short at TE (critical)"},
+    ])
+    assert "buying is what would push them in" in line
+    assert line.index("fence-sitter") < line.index("buying is what would push them in") < line.index("pusher"), (
+        "the undecided clause belongs to the Middling entry, not the contender")
+
+
 def test_a_falling_roster_wants_ascending_value_at_any_position():
     """Positional need alone missed the most obvious counterparty on a live board: the owner
     holding both best returns needed no TE and no RB, he needed youth."""
