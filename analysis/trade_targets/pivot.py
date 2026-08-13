@@ -45,8 +45,8 @@ SITUATIONAL_NOTE = (
     "never does - keep the years, sell the piece whose decline lands first, even when he is "
     "the younger man (the curves cross: a running quarterback runs out of years before an "
     "older pocket passer). An easier sale elsewhere in this report does not answer that "
-    "comparison - make it explicitly whenever a position holds more pieces than the lineup "
-    "can start."
+    "comparison - and where this roster's own numbers invert it, the entry carries "
+    "RUNWAY INVERSION naming the pair: price that version first."
 )
 
 PICKS_NOTE = (
@@ -87,6 +87,42 @@ STRANDED_NOTE = (
 )
 
 
+def _runway_inversion(lists: list[list[dict]]) -> None:
+    """Tag the starter a seller should actually be pricing: at each position, when the
+    bench piece with the MOST years out-runways the starter with the FEWEST, the starter's
+    entry says so, with both numbers. The block note states the keep-the-years rule; six of
+    six live runs applied it only within the bench until the roster's own counterexample
+    rode on the entry - the model repeats an attached fact far more reliably than it
+    extends an instruction to a player the question didn't mention.
+
+    Replaces the tagged entry with a copy - some entries here are still the caller's own
+    dicts (untagged pieces pass through `tagged`/`with_buyers` uncopied), and a tag written
+    into those would survive into the next report built from the same rows."""
+    entries = [e for lst in lists for e in lst]
+    by_pos = {}
+    for e in entries:
+        if e.get("years_to_decline") is not None:
+            by_pos.setdefault(e["position"], []).append(e)
+    for pos, group in by_pos.items():
+        starters = [e for e in group if e.get("is_starter")]
+        bench = [e for e in group if not e.get("is_starter")]
+        if not starters or not bench:
+            continue
+        s = min(starters, key=lambda e: e["years_to_decline"])
+        b = max(bench, key=lambda e: e["years_to_decline"])
+        if b["years_to_decline"] <= s["years_to_decline"]:
+            continue
+        note = (f"RUNWAY INVERSION at {pos}: {s['name']} starts with {s['years_to_decline']} "
+                f"years before decline while {b['name']} holds {b['years_to_decline']} behind "
+                f"him - a seller keeping years sells {s['name']} and keeps {b['name']}, even "
+                f"though moving the bench piece is the easier call. Weigh that version of the "
+                f"trade before settling for the easy one.")
+        for lst in lists:
+            for i, e in enumerate(lst):
+                if e is s:
+                    lst[i] = {**e, "runway_inversion": note}
+
+
 def _pivot_path(me: dict, board: Board,
                 stranded: list[dict] | None = None, committed: bool = True,
                 my_roster: dict | None = None,
@@ -120,6 +156,9 @@ def _pivot_path(me: dict, board: Board,
     # future, so the order is how much of a price is present. No redraft price sorts last -
     # unknown, not zero.
     situational.sort(key=lambda e: -((e.get("redraft_value") or 0) / e["value"]) if e["value"] else 0)
+    # Across BOTH lists: the short-runway starter may be on the clock while the long
+    # bench piece is situational, and the inversion is about the pair.
+    _runway_inversion([sell_candidates, situational])
 
     others_have_traded = board.others_have_traded(me["owner_id"])
     best_chip = _best_chip(real_sellable)

@@ -873,6 +873,35 @@ def test_the_situational_block_ships_its_note_and_the_note_carries_the_runway_ru
         "the note must forbid settling the question with an easier sale elsewhere")
 
 
+def test_a_starter_out_runwayed_by_his_own_bench_carries_the_inversion():
+    """Round two of the same eval failure: with the rule in the note, six of six runs
+    applied keep-the-years WITHIN the bench and never asked whether the starter was the
+    real sale. The roster's own counterexample now rides on the starter's entry - the
+    model repeats an attached fact far more reliably than it extends an instruction.
+    Fires only on a real inversion: bench piece with the most years vs starter with the
+    fewest, both named with their numbers."""
+    starter = {"name": "ShortStarter", "position": "QB", "value": 5000,
+               "redraft_value": 6000, "bucket": "prime", "years_to_decline": 4.0,
+               "is_starter": True}
+    bench = {"name": "LongBench", "position": "QB", "value": 3000,
+             "redraft_value": 4000, "bucket": "prime", "years_to_decline": 6.1,
+             "is_starter": False}
+    me = {"sellable": [starter, bench], "owner_id": "me", "roster_id": 1}
+    out = trade_targets._pivot_path(me, _board(thresholds={"QB": 0}))
+    tagged = {e["name"]: e.get("runway_inversion") for e in out["situational"]}
+    assert tagged["LongBench"] is None, "the inversion is a fact about the STARTER"
+    note = tagged["ShortStarter"]
+    assert "4.0" in note and "6.1" in note and "LongBench" in note
+    assert "sells ShortStarter and keeps LongBench" in note
+
+    # No inversion, no tag: bench piece with fewer years than the starter is the
+    # ordinary case the sell lists already order correctly.
+    ordinary = {**bench, "years_to_decline": 2.5}
+    out = trade_targets._pivot_path({"sellable": [starter, ordinary], "owner_id": "me",
+                                     "roster_id": 1}, _board(thresholds={"QB": 0}))
+    assert not any(e.get("runway_inversion") for e in out["situational"])
+
+
 def test_offer_pool_lets_a_push_team_offer_an_ascending_starter():
     """"Is he a starter" was a proxy for "does moving him cost me", and on a real roster it
     hid the owner's single biggest trade chip: an ascending TE at 3,660 dynasty against

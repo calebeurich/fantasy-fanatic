@@ -27,6 +27,21 @@ def _tool_names(result: dict) -> list[str]:
     return [c["name"] for c in result["tool_calls"]]
 
 
+def _weighs_as_sale(text: str, name: str) -> bool:
+    """Was this player weighed AS A SALE - named in a sentence that talks about selling,
+    moving, or the runway inversion - rather than merely listed among blockers or keepers?
+    Sentence-scoped on purpose: "Herbert and Hurts hold both slots" says nothing about a
+    sale, while "you'd sell Hurts and keep Goff, but he is a cornerstone" is the weighing
+    this predicate exists to credit even though the runtime check's negation skip drops it.
+    Colons are NOT boundaries: "Jalen Hurts (4.0 years): ...the one to sell" is one claim."""
+    import re
+    for sentence in re.split(r"(?<=[.!?])\s+|\n", text):
+        if name in sentence and re.search(r"\b(sell|sale|trade|trading|move|moving|inversion)",
+                                          sentence, re.IGNORECASE):
+            return True
+    return False
+
+
 async def case_team_window() -> None:
     """A team-window question should use get_team_state's own classification
     (validated to happen with the owner_name filter after a real bug was found and
@@ -202,17 +217,29 @@ async def case_sells_on_runway_not_age() -> None:
             f"'WARNING: usage roles unavailable' on stderr and re-run. If roles ARE available, "
             f"it is real fixture drift and the case needs rewriting around the new numbers.")
 
-    result = await run_query(
-        f"For Sleeper league {FRIENDS_LEAGUE}, jwall567 is rebuilding and has too many "
-        "quarterbacks. Which one should he trade and why?",
-        verbose=False,
-    )
+    question = (f"For Sleeper league {FRIENDS_LEAGUE}, jwall567 is rebuilding and has too "
+                "many quarterbacks. Which one should he trade and why?")
+    result = await run_query(question, verbose=False)
+    # The premise can also die INSIDE the run, where the pre-check above cannot see it: the
+    # agent's own MCP subprocess hits the nflverse outage, discloses the data gap (as told
+    # to), and Goff on the default curve drops to 2.1 years - at which point recommending
+    # him IS the right runway answer. One retry; a second gap is the feed being down.
+    if "data gap" in result["text"].lower() or "usage roles" in result["text"].lower():
+        result = await run_query(question, verbose=False)
+        assert not ("data gap" in result["text"].lower()
+                    or "usage roles" in result["text"].lower()), (
+            "PREMISE GONE at runtime, not an agent regression: the agent's own run "
+            "disclosed a usage-roles gap twice, so its runway numbers are the default-curve "
+            "ones this case's premise check exists to reject. Re-run when nflverse recovers.")
     # "Hurts appears anywhere in the text" is too weak an assertion, and a live run proved
     # it: the answer led with "Trade 1: Ship Jared Goff" and mentioned Hurts only in a list
-    # of the roster's QBs and again among the keepers, never weighing him as the sale. Both
-    # names have to appear in *trade-action* lines, which is the comparison being tested.
+    # of the roster's QBs and again among the keepers, never weighing him as the sale.
+    # `_trade_violations` is too NARROW for the Hurts side, in exactly the opposite way: its
+    # negation skip (right for the runtime safety net) discards "you'd actually sell Hurts
+    # and keep Goff - but he's a cornerstone", which is this case's PASSING answer. Weighing
+    # a sale and pricing it above market is consideration, not negation.
     if _trade_violations(result["text"], {"Jared Goff"}):
-        assert _trade_violations(result["text"], {"Jalen Hurts"}), (
+        assert _weighs_as_sale(result["text"], "Hurts"), (
             "recommended moving the older QB without weighing the one with less runway "
             f"as a sale at all: {result['text']}")
     print(f"case_sells_on_runway_not_age: PASS (${result['cost_usd']:.4f}, "

@@ -42,6 +42,9 @@ def _print_pivot(me: dict, pivot: dict) -> None:
     print(f"situational sells: {names(pivot['situational'])}")
     print(f"  {pivot['situational_note']}")
     buyers(pivot["situational"])
+    for entry in pivot["sell_candidates"] + pivot["situational"]:
+        if entry.get("runway_inversion"):
+            print(f"  {entry['runway_inversion']}")
     # Said once, not once per cornerstone.
     cornerstones = [e for e in pivot["sell_candidates"] + pivot["situational"] if e.get("friction")]
     if cornerstones:

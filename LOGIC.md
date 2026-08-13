@@ -539,19 +539,43 @@ rising-middling owners excluded); the shared "why any of these owners would sell
 lives once in `ACQUIRE_NOTE`. Picks print BEFORE the empty-acquire guard - an early
 return once hid the cleaner currency exactly when it was the whole plan.
 
-**`SITUATIONAL_NOTE` exists because a rule that lives only in a docstring does not reach
-the answer.** `situational` was the one block without a note - the CLI printed a header
-the agent never received - and "years_to_decline picks the sale, never age" lived solely
-in `get_team_state`'s docstring, read at tool-selection time and gone by the time the
-entries were on the table. Measured: asked which of five QBs a rebuilder should trade
-(runway order Goff 6.1 > Herbert 5.6 > Darnold 4.8 > Hurts 4.0), the agent failed to
-weigh the short-runway cornerstone on **6 of 6 runs**, every time following the one
-instruction it did have (`stranded`: "lead with these") to the easier Goff sale. What
-looked like eval flakiness for weeks was the opposite - the rare passes were the noise.
-The note also has to close the shortcut explicitly ("an easier sale elsewhere does not
-answer that comparison"), because the shortcut is what all six runs took. Same lesson as
-the lineup note riding on every `get_team_state` result: instructions survive when
-attached to the data they govern, not to the tool that fetched it.
+**`SITUATIONAL_NOTE` and `RUNWAY INVERSION` exist because a rule that lives only in a
+docstring does not reach the answer** - measured in three rounds on one eval case (which
+of five QBs should a rebuilder trade; runway order Goff 6.1 > Herbert 5.6 > Darnold 4.8 >
+Hurts 4.0, so the short-runway piece is a STARTING cornerstone and the easy sale is not
+the deep one):
+
+1. **Baseline 0/6.** `situational` was the one block without a note - the CLI printed a
+   header the agent never received - and "years_to_decline picks the sale, never age"
+   lived solely in `get_team_state`'s docstring, read at tool-selection time and gone by
+   the time the entries were on the table. Every run followed the one instruction it did
+   have (`stranded`: "lead with these") to the easier Goff sale. What had logged as eval
+   flakiness for weeks was inverted: the rare passes were the noise.
+2. **Note at the data: 4/6.** The failures now quoted the rule verbatim and applied it -
+   but only WITHIN the bench (Darnold vs Goff), never extending it to the starter the
+   question didn't name. So the roster's own counterexample was computed onto the entry
+   (`_runway_inversion`: "Hurts starts with 4.0 years while Goff holds 6.1 behind him"),
+   one tag per position, only when a real inversion exists. **Compute the instance,
+   don't instruct the comparison** - the model repeats an attached fact far more
+   reliably than it extends an imperative.
+3. **Checker calibration.** With the tag in place the "failures" were the eval
+   under-crediting the right answer: the runtime grounding regex's negation skip (correct
+   for banning) discards "you'd sell Hurts and keep Goff - but he's a cornerstone", which
+   is weighing a sale, not negating one (`_weighs_as_sale`, sentence-scoped, colons not
+   boundaries, validated against all seven collected transcripts). And the premise can
+   die inside the agent's own subprocess (nflverse outage -> default curves -> Goff at
+   2.1 years), where recommending Goff IS the right runway answer: the case retries once
+   when the answer itself discloses the data gap, and calls a second gap PREMISE GONE.
+
+End state (2026-08-12): full suite 9/9; in isolation the case passes ~4-5 of 6 runs
+against 0/6 at baseline. The residual failure is its own, smaller defect: the model
+READS the inversion tag (one failing run quoted Hurts's 4.0 years back) and still files
+him under "anchors" without weighing the sale - an emphasis problem, so the next lever
+if it matters is where the tag sits in the entry, not more words in it.
+
+Same lesson as the lineup note riding on every `get_team_state` result: instructions
+survive when attached to the data they govern, not to the tool that fetched it - and
+what a computed fact governs best is the single entry it is true of.
 
 ### Deleted: mutual win-now swaps
 
