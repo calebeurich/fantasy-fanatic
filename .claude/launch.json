@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "fantasy-fanatic",
+      "name": "api",
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "uvicorn", "agent.api:app", "--port", "8000"],
       "port": 8000

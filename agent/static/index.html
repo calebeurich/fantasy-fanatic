@@ -66,6 +66,18 @@
   .msg td{padding:5px 9px;border-bottom:1px solid var(--line)}
   .meta{color:var(--dim);font-size:11.5px;margin-top:9px;padding-top:7px;border-top:1px solid var(--line)}
   .empty{color:var(--dim);padding:18px 14px;text-align:center;font-size:13.5px}
+  .tldr p{margin:0 0 8px}
+  .tldr ul{margin:0;padding-left:20px;color:var(--muted)}
+  .tldr li{margin:3px 0}
+  .lg{background:var(--panel2);border:1px solid var(--line);border-radius:9px;
+      padding:8px 12px;cursor:pointer;font-size:13.5px}
+  .lg:hover{border-color:var(--mid)}
+  .lg.on{border-color:var(--ok);color:var(--ok)}
+  tr.team.mine{outline:1px solid var(--ok);outline-offset:-1px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 12px}
+  .chip{background:transparent;border:1px dashed var(--line);color:var(--muted);
+        border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer}
+  .chip:hover{color:var(--ink);border-color:var(--mid)}
 </style>
 </head>
 <body>
@@ -76,21 +88,48 @@
 
 <main>
   <div class="card">
-    <h2>League</h2>
+    <h2>What this is (and isn't)</h2>
+    <div class="pad tldr">
+      <p><strong>A dynasty trade advisor for Sleeper leagues.</strong> It knows every roster,
+      every team's competitive window, who's quietly aging out, and who around the league
+      would actually pick up the phone. Ask it anything a sharp league-mate could answer.</p>
+      <ul>
+        <li><strong>Dynasty only.</strong> Redraft leagues get a polite no.</li>
+        <li><strong>Not a trade calculator.</strong> It never adds player values into a package
+            price — it tells you which holding beats which, who wants whom, and why an ask is
+            hard. The negotiating is yours.</li>
+        <li><strong>Preseason math.</strong> Everything comes from roster composition and market
+            prices — no games have been played, and it will say so.</li>
+        <li><strong>Answers take up to a minute</strong>, and there's a shared daily budget —
+            if it's spent, come back tomorrow.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Find your league</h2>
     <div class="pad">
       <div class="row">
-        <input id="league" type="text" placeholder="Sleeper league ID"
-               value="1315386978904084480" autocomplete="off">
-        <button id="load" class="primary" type="button">Load</button>
+        <input id="username" type="text" placeholder="Your Sleeper username" autocomplete="off">
+        <button id="find" class="primary" type="button">Find my leagues</button>
       </div>
+      <div id="leagues" class="row" style="margin-top:8px"></div>
+      <details style="margin-top:10px">
+        <summary class="cs" style="cursor:pointer">or paste a league ID</summary>
+        <div class="row" style="margin-top:8px">
+          <input id="league" type="text" placeholder="Sleeper league ID" autocomplete="off">
+          <button id="load" type="button">Load</button>
+        </div>
+      </details>
     </div>
-    <div id="overview"><div class="empty">Enter a league ID and hit Load.</div></div>
+    <div id="overview"><div class="empty">Enter your Sleeper username to get started.</div></div>
   </div>
 
   <div class="card">
     <h2>Ask</h2>
+    <div id="chips" class="chips" style="display:none"></div>
     <div id="log" class="pad"><div class="empty" id="hint">
-      Load a league, then click any team to ask about them — or type a question.
+      Load a league, then click your team to get question ideas — or type anything.
     </div></div>
     <div class="pad" style="border-top:1px solid var(--line)">
       <form id="f" class="row">
@@ -110,10 +149,66 @@ sessionStorage.setItem("ff_session", sessionId);
 
 const $ = id => document.getElementById(id);
 let currentLeague = null;
+let myTeam = null;
+
+// ---- find leagues by username: Sleeper's API is CORS-open, so this never touches
+// our server (or our budget) - the one thing a friend knows is their own username ----
+$("find").onclick = async () => {
+  const name = $("username").value.trim();
+  if (!name) return;
+  $("leagues").innerHTML = '<span class="cs">looking up…</span>';
+  try {
+    const user = await (await fetch(`https://api.sleeper.app/v1/user/${encodeURIComponent(name)}`)).json();
+    if (!user) { $("leagues").innerHTML = '<span class="cs warn">No Sleeper user by that name.</span>'; return; }
+    // Sleeper keys leagues by season; around the rollover the new season may be empty.
+    const year = new Date().getFullYear();
+    let leagues = await (await fetch(`https://api.sleeper.app/v1/user/${user.user_id}/leagues/nfl/${year}`)).json();
+    if (!leagues || !leagues.length) {
+      leagues = await (await fetch(`https://api.sleeper.app/v1/user/${user.user_id}/leagues/nfl/${year - 1}`)).json();
+    }
+    if (!leagues || !leagues.length) { $("leagues").innerHTML = '<span class="cs warn">No leagues found for that user.</span>'; return; }
+    $("leagues").innerHTML = "";
+    leagues.forEach(l => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "lg"; b.textContent = l.name;
+      b.onclick = () => {
+        document.querySelectorAll(".lg").forEach(x => x.classList.remove("on"));
+        b.classList.add("on");
+        loadLeague(l.league_id);
+      };
+      $("leagues").appendChild(b);
+    });
+    if (leagues.length === 1) $("leagues").firstChild.click();
+  } catch (e) {
+    $("leagues").innerHTML = `<span class="cs warn">Lookup failed: ${e}</span>`;
+  }
+};
+$("username").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("find").click(); } });
+
+// ---- example paths: the question shapes the agent answers best, one click away ----
+const CHIPS = owner => [
+  `What team window is ${owner} in, and why?`,
+  `Who should ${owner} target in a trade?`,
+  `What is ${owner} holding that they can't actually use?`,
+  `Which of ${owner}'s players should they think about selling, and why?`,
+];
+function showChips(owner) {
+  const box = $("chips");
+  box.innerHTML = "";
+  CHIPS(owner).forEach(q => {
+    const c = document.createElement("button");
+    c.type = "button"; c.className = "chip"; c.textContent = q;
+    c.onclick = () => {
+      $("q").value = `For Sleeper league ${currentLeague}, ${q.charAt(0).toLowerCase()}${q.slice(1)}`;
+      $("q").focus();
+    };
+    box.appendChild(c);
+  });
+  box.style.display = "flex";
+}
 
 // ---- league overview: rendered from deterministic data, never from the model ----
-$("load").onclick = async () => {
-  const id = $("league").value.trim();
+async function loadLeague(id) {
   if (!id) return;
   $("overview").innerHTML = '<div class="empty">Loading… (first load ~7s, cached after)</div>';
   try {
@@ -146,14 +241,19 @@ $("load").onclick = async () => {
       <div class="note">Ranked by current starting production (redraft value) — what decides whether a team can compete <em>this</em> season, as opposed to what its roster is worth. Click a team to ask about them.</div>`;
     document.querySelectorAll("tr.team").forEach(tr => {
       tr.onclick = () => {
-        $("q").value = `For Sleeper league ${currentLeague}, what should ${tr.dataset.owner} do and why?`;
+        myTeam = tr.dataset.owner;
+        document.querySelectorAll("tr.team").forEach(x => x.classList.remove("mine"));
+        tr.classList.add("mine");
+        showChips(myTeam);
+        $("q").placeholder = `ask anything about ${myTeam} or the league…`;
         $("q").focus();
       };
     });
   } catch (e) {
     $("overview").innerHTML = `<div class="empty warn">Failed to load: ${e}</div>`;
   }
-};
+}
+$("load").onclick = () => loadLeague($("league").value.trim());
 
 // ---- minimal markdown: the model answers in markdown and raw ## / ** looked bad ----
 // Tables are handled because the model reaches for them constantly on this data (offer
