@@ -251,11 +251,14 @@ def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict],
                     "piece he is trying to move, not acquire." if accumulating else "")
         bigger_note = ""
         if bigger:
-            names = ", ".join(f"{e['name']} ({e['value']:,})" for e in bigger[:3])
+            names = ", ".join(f"{e['name']} ({e['value']:,}, "
+                              f"{e.get('years_to_decline')} yrs)" for e in bigger[:3])
             bigger_note = (f" {names}: also fills this hole but is worth more than "
-                           f"{(target or {}).get('name', 'this target')} covers - that is "
-                           f"a sale in its own right, a different conversation than this "
-                           f"acquisition, and nothing here prices the difference.")
+                           f"{(target or {}).get('name', 'this target')} covers - a sale "
+                           f"in its own right at its own price, a different conversation "
+                           f"than this acquisition, and nothing here prices the "
+                           f"difference. For a seller keeping years, the shortest-runway "
+                           f"piece among these is the one to be shopping hardest anyway.")
         return {"offer_any_one_of": [e["name"] for e in offers[:3]],
                 "fills_a_hole": True,
                 "why_it_fits": (f"{other['owner']} has a "
