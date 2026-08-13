@@ -175,6 +175,39 @@ def test_needs_name_the_shape_of_the_problem_not_just_its_severity():
             < roster_needs.NEED_PRIORITY["weak"])
 
 
+def test_a_superflex_room_of_mahomes_plus_nobody_is_top_heavy_not_critical():
+    """The first friend-tester pushback: the agent pitched selling a QB to teams it
+    called "short at QB (critical)... group among the league's worst" - and one of those
+    rooms was Patrick Mahomes plus nothing. The manager said "those teams have great QB
+    rooms" and the agent apologised for advice that was RIGHT (superflex: they need a
+    second BODY). The bug: group quality was ranked on the group TOTAL, and the empty
+    second slot dragged a one-stud room to the bottom - the hole contaminated the verdict
+    on the players. Count-short groups are now judged per startable body.
+
+    Two count-short rooms, same hole, opposite bodies - only the bodies should differ."""
+    slots = {"QB": 2, "RB": 0, "WR": 0, "TE": 0}
+    thresholds = {"QB": 1000, "RB": 0, "WR": 0, "TE": 0}
+    rosters, players = _league({
+        "mahomes":  [("QB", 7000)],                    # one elite body, one empty slot
+        "scrub":    [("QB", 1100)],                    # one weak body, one empty slot
+        "full1":    [("QB", 5000), ("QB", 4000)],
+        "full2":    [("QB", 4500), ("QB", 3500)],
+        "full3":    [("QB", 4200), ("QB", 3000)],
+        "full4":    [("QB", 3800), ("QB", 2800)],
+    })
+    out = roster_needs.assess_positions(rosters, players, slots, thresholds)
+
+    m = out["mahomes"]["QB"]
+    assert m["level"] == "top-heavy", (
+        "one elite starter and an empty slot is a BODY problem - ranking the hole-dragged "
+        "total called this room among the league's worst")
+    assert "dragged by the empty slot, not by the players" in m["note"]
+    assert "per body" in m["note"]
+
+    assert out["scrub"]["QB"]["level"] == "critical", (
+        "a genuinely weak body plus a hole is still both problems at once")
+
+
 def test_a_mid_ranked_group_can_still_be_weak_in_absolute_terms():
     """Rank alone misses skewed positions. On a real league the 8th-of-12 TE room (648)
     was 39% of the league median and 10% of the best - "average" by rank, plainly a hole
@@ -684,15 +717,18 @@ def test_value_upgrade_names_who_would_want_the_player_being_moved():
     # decide whether an ask is a fit or a pivot.
     states.append({"owner_id": "needy", "owner": "needy", "window": "Push",
                    "trajectory": "steady", "ascending_pct": 10, "declining_pct": 10})
-    needs = {"them": {"TE": {"level": "critical", "rank": 12}},
-             "needy": {"TE": {"level": "critical", "rank": 11}}}
+    needs = {"them": {"TE": {"level": "critical", "rank": 12, "startable": 0, "slots": 1}},
+             "needy": {"TE": {"level": "critical", "rank": 11, "startable": 0, "slots": 1}}}
 
     moves = trade_targets.find_value_upgrades(me, _board(ctx, states, trade_counts={"them": 3}, needs_by_owner_id=needs), {"mine"})
     # Entries carry `wanted_by` as ONE composed string, not a list of dicts - the dicts
     # repeated near-identically on every same-position entry and measured at 21-26% of a
     # sell report's tokens. `them` must not appear: short at TE but starts two better ones.
     assert "needy" in moves[0]["wanted_by"] and "them" not in moves[0]["wanted_by"]
-    assert "short at TE (critical)" in moves[0]["wanted_by"]
+    assert "short at TE (critical: 0 startable for 1 slot)" in moves[0]["wanted_by"], (
+        "the why carries the SHAPE of the need, not just its label - a bare '(critical)' "
+        "about a top-heavy superflex room read as 'their players are bad' and got the "
+        "model apologising for correct advice")
     assert "pays a premium for production" in moves[0]["wanted_by"], (
         "the contender-premium clause ships in the payload now, not only in the CLI")
 
@@ -742,8 +778,8 @@ def test_a_positional_need_is_not_the_same_as_wanting_this_player():
                {"stocked": {"theirs_good"}, "desperate": {"theirs_bad"}})
     states = [{"owner_id": "stocked", "owner": "stocked", "window": "Push"},
               {"owner_id": "desperate", "owner": "desperate", "window": "Push"}]
-    needs = {"stocked": {"QB": {"level": "critical"}},
-             "desperate": {"QB": {"level": "critical"}}}
+    needs = {"stocked": {"QB": {"level": "critical", "startable": 1, "slots": 2}},
+             "desperate": {"QB": {"level": "critical", "startable": 1, "slots": 2}}}
 
     wants = trade_targets.wanted_by(players["weak"], {"owner_id": "me"}, _board(ctx, states, needs_by_owner_id=needs))
     assert [w["owner"] for w in wants] == ["desperate"], (
@@ -1237,7 +1273,7 @@ def test_win_now_buyer_sees_production_priced_targets_first():
             {"name": "AgingGuy", "position": "WR", "value": 2000, "bucket": "declining", "is_starter": False},
         ],
     }
-    need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12}
+    need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12, "startable": 0, "slots": 1}
     out = trade_targets._buy_path(me, _board(None, [seller], needs_by_owner_id={"me": {"WR": need}},
                                        thresholds=thresholds), max_per_position=5)
     assert [t["name"] for t in out["targets"]][0] == "AgingGuy", \
@@ -1269,7 +1305,7 @@ def test_unreachable_targets_are_split_out_rather_than_ranked_below():
              "bucket": "declining", "is_starter": False},
         ]},
     ]
-    need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12}
+    need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12, "startable": 0, "slots": 1}
     out = trade_targets._buy_path(me, _board(None, sellers, needs_by_owner_id={"me": {"RB": need}},
                                        thresholds=thresholds, trade_counts={"active": 4}),
                             max_per_position=5)
@@ -1298,7 +1334,7 @@ def test_no_trade_history_anywhere_does_not_block_every_target():
     seller = {"owner_id": "them", "owner": "them", "window": "Rebuild", "sellable": [
         {"name": "Available", "position": "RB", "value": 2000, "redraft_value": 2000,
          "bucket": "declining", "is_starter": False}]}
-    need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12}
+    need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12, "startable": 0, "slots": 1}
 
     def run(trade_counts):
         return trade_targets._buy_path(me, _board(None, [seller], needs_by_owner_id={"me": {"RB": need}},
@@ -1507,7 +1543,7 @@ def _prior(finish, champion=False, made_playoffs=True, continuity=1.0):
 BARS = {"QB": 1.31, "RB": 1.05, "WR": 0.89, "TE": 0.81}
 
 ME = {"owner_id": "me", "owner": "Me", "window": "Push"}
-NEED_RB = {"RB": {"level": "critical", "weakest_starter": 0, "note": "", "rank": 10, "of": 12}}
+NEED_RB = {"RB": {"level": "critical", "weakest_starter": 0, "note": "", "rank": 10, "of": 12, "startable": 0, "slots": 1}}
 
 
 def test_persuasion_excludes_an_aging_contender_whose_own_window_is_now():
@@ -1615,7 +1651,7 @@ def test_a_persuasion_target_has_to_beat_who_you_already_start():
     not crack the lineup. Live, under a note promising "aging production the market discounts":
     Tyrone Tracy at 255 against a weakest RB starter of 638, 0.18x production per unit of cost,
     which is the market pricing him far ABOVE what he produces."""
-    need = {"level": "critical", "weakest_starter": 638, "note": "", "rank": 12, "of": 12}
+    need = {"level": "critical", "weakest_starter": 638, "note": "", "rank": 12, "of": 12, "startable": 0, "slots": 1}
     holder = _holder("kk", "Push", "falling", [_aging("Tracy", 1386, 255),
                                                _aging("Harvey", 2032, 865)], traj_rank=11)
     out = trade_targets._persuasion_targets(
@@ -1747,7 +1783,7 @@ def test_persuasion_says_what_the_other_owner_would_actually_want():
 
     short_at_qb = _holder("needy", "Push", "falling", [], asc=10, dec=30)
     fit = trade_targets._counterparty_fit(
-        short_at_qb, {"QB": {"level": "critical"}}, offers)
+        short_at_qb, {"QB": {"level": "critical", "startable": 1, "slots": 2}}, offers)
     assert fit["offer_any_one_of"] == ["SpareQB"] and "critical need at QB" in fit["why_it_fits"]
 
     # No hole, but rising while starting aging players - wants now-and-later value.
@@ -1789,7 +1825,7 @@ def test_a_buy_target_says_what_that_owner_would_take_back():
              "bucket": "ascending", "years_to_decline": 6.0, "value_over_replacement": 200}
     star = {"name": "Star", "position": "WR", "value": 9000, "redraft_value": 8000,
             "bucket": "prime", "years_to_decline": 5.0, "value_over_replacement": 5000}
-    needs = {"WR": {"level": "weak"}}
+    needs = {"WR": {"level": "weak", "startable": 2, "slots": 2}}
     target = {"name": "Wanted", "position": "RB", "value": 2500}
 
     rising = _holder("rising", "Middling", "rising", [], asc=55, dec=8)
@@ -1851,7 +1887,7 @@ def test_every_list_of_offerable_pieces_says_it_is_not_a_package():
                "years_to_decline": 7.1, "value_over_replacement": 700}]
     fit = trade_targets._counterparty_fit(
         _holder("needy", "Push", "falling", [], asc=10, dec=30),
-        {"QB": {"level": "critical"}}, offers)
+        {"QB": {"level": "critical", "startable": 1, "slots": 2}}, offers)
     assert "offer_any_one_of" in fit, "the key itself must say one-of, not a shopping list"
 
     for note in (counterparty.PERSUASION_NOTE, buy.MY_OFFERS_NOTE):

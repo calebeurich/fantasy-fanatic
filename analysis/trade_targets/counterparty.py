@@ -166,7 +166,18 @@ def wanted_by(player: dict, me_roster: dict, board: Board) -> list[dict]:
         their_roster = rosters_by_owner.get(other["owner_id"])
         helps = their_roster is None or _would_actually_help(player, their_roster, ctx)
         if need and helps:
-            reasons.append(f"short at {player['position']} ({need['level']})")
+            # Self-defending, because "short at QB (critical)" about a Mahomes-plus-nobody
+            # superflex room read as "their QBs are bad" - the manager pushed back, and the
+            # model apologised for advice that was right. The why now carries the shape of
+            # the need, so it survives the pushback it is guaranteed to get.
+            if need["startable"] < need["slots"]:
+                good = (" - what they start is good, the slot is the problem"
+                        if need["level"] == "top-heavy" else "")
+            else:
+                good = " - wants an upgrade, not another body"
+            reasons.append(f"short at {player['position']} ({need['level']}: "
+                           f"{need['startable']} startable for {need['slots']} "
+                           f"slot{'' if need['slots'] == 1 else 's'}{good})")
         ascending_pct, declining_pct = other.get("ascending_pct", 0), other.get("declining_pct", 0)
         if player.get("bucket") == "ascending" and declining_pct > ascending_pct:
             reasons.append(f"falling roster ({ascending_pct}% ascending against "
