@@ -144,8 +144,10 @@
 <script>
 // Session id is client-generated: the server never issues one, so an expired session
 // starts a fresh conversation instead of erroring, and one tab can't reach another's.
-let sessionId = sessionStorage.getItem("ff_session") || crypto.randomUUID();
-sessionStorage.setItem("ff_session", sessionId);
+// localStorage, not sessionStorage: closing the tab should not throw away the
+// conversation, and reclaiming an in-flight answer needs the same id after a reload.
+let sessionId = localStorage.getItem("ff_session") || crypto.randomUUID();
+localStorage.setItem("ff_session", sessionId);
 
 // The friends link carries ?key=... - keep it in localStorage and take it off the URL
 // so a copied/screenshotted address bar doesn't hand the key around by accident.
@@ -316,9 +318,19 @@ function add(html, cls) {
   return el;
 }
 
+// ---- the conversation survives the tab ----
+// Kept as raw question/answer text (re-rendered through md() on load) rather than saved
+// HTML, so a change to the renderer applies to old messages too.
+const HISTORY_MAX = 30;
+const history = () => JSON.parse(localStorage.getItem("ff_history") || "[]");
+const remember = entry => localStorage.setItem(
+  "ff_history", JSON.stringify([...history(), entry].slice(-HISTORY_MAX)));
+
 $("reset").onclick = () => {
   sessionId = crypto.randomUUID();
-  sessionStorage.setItem("ff_session", sessionId);
+  localStorage.setItem("ff_session", sessionId);
+  localStorage.removeItem("ff_history");
+  localStorage.removeItem("ff_pending");
   $("log").innerHTML = "";
   add("<p>Started a new conversation.</p>");
 };
@@ -332,6 +344,60 @@ function withContext(question) {
   if (!currentLeague || question.includes(currentLeague)) return question;
   const who = myTeam ? `, I'm ${myTeam}` : "";
   return `For Sleeper league ${currentLeague}${who}. ${question}`;
+}
+
+// One renderer for an answer however it arrived - live, reclaimed after a dropped
+// connection, or restored from a previous visit - so a returning reader sees exactly
+// what they would have seen at the time, thumbs included.
+function renderAnswer(el, d, question) {
+  el.innerHTML = md(d.text || d.detail || "(no answer)");
+  const bits = [];
+  if (d.cost_usd != null) bits.push("$" + d.cost_usd.toFixed(4));
+  if (d.num_turns != null) bits.push(d.num_turns + " turns");
+  if (d.grounding_retries) bits.push(d.grounding_retries + " grounding retry");
+  if (d.budget_exhausted) bits.push("daily budget reached");
+  if (bits.length) {
+    const m = document.createElement("div");
+    m.className = "meta" + (d.budget_exhausted ? " warn" : "");
+    m.textContent = bits.join(" · ");
+    el.appendChild(m);
+  }
+  // One thumbs-click per answer - "that doesn't make sense" is the single richest
+  // bug source this project has, and this is that sentence with a button.
+  if (!d.budget_exhausted && d.text) {
+    const fb = document.createElement("div");
+    fb.className = "meta";
+    ["👍", "👎"].forEach(v => {
+      const b = document.createElement("button");
+      b.className = "ghost"; b.type = "button"; b.textContent = v;
+      b.onclick = async () => {
+        let comment = null;
+        if (v === "👎") comment = prompt("What was off? (optional)") || null;
+        fetch("/feedback", {
+          method: "POST", headers: hdrs({"Content-Type": "application/json"}),
+          body: JSON.stringify({verdict: v === "👍" ? "up" : "down", comment,
+                                session_id: sessionId, question}),
+        });
+        fb.textContent = "thanks — noted.";
+      };
+      fb.appendChild(b);
+    });
+    el.appendChild(fb);
+  }
+}
+
+// Poll for an answer this session finished after `since`. Used both when a connection
+// drops mid-question and when the page is reopened while one was in flight.
+async function reclaim(since, seconds) {
+  const deadline = Date.now() + seconds * 1000;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const a = await (await fetch(`/answer/${sessionId}`, {headers: hdrs()})).json();
+      if (a && a.finished_at && a.finished_at * 1000 > since) return a;
+    } catch (_) { /* keep waiting - the network may still be coming back */ }
+  }
+  return null;
 }
 
 $("f").onsubmit = async e => {
@@ -359,62 +425,31 @@ $("f").onsubmit = async e => {
       if (s && p.step) s.textContent = p.step + "…";
     } catch (_) { /* progress is decoration; never let it break the answer */ }
   }, 2000);
+  // Note the question as in-flight BEFORE sending, so a reload mid-answer knows to go
+  // looking for it rather than showing an empty page.
+  localStorage.setItem("ff_pending", JSON.stringify({typed, question, started}));
   try {
-    // One retry on a DROPPED CONNECTION only (fetch rejects, no response). A minute-long
-    // request dies for reasons that have nothing to do with the question - a redeploy
-    // cutting the instance, a network switch, a sleeping tab - and the first live friend
-    // to test this hit exactly that ("TypeError: Load failed"). Not retried on an HTTP
-    // error: a 4xx/5xx is an answer, and repeating it would just spend budget twice.
-    let res;
-    for (let attempt = 0; ; attempt++) {
-      try {
-        res = await fetch("/ask", {
-          method: "POST", headers: hdrs({"Content-Type": "application/json"}),
-          body: JSON.stringify({question, session_id: sessionId}),
-        });
-        break;
-      } catch (netErr) {
-        if (attempt >= 1) throw netErr;
-        const el = document.getElementById("tick");
-        if (el) el.parentElement.innerHTML =
-          "connection dropped — trying once more… <span id='tick'>0s</span>";
-      }
-    }
-    const d = await res.json();
-    pending.innerHTML = md(d.text || d.detail || "(no answer)");
-    const bits = [];
-    if (d.cost_usd != null) bits.push("$" + d.cost_usd.toFixed(4));
-    if (d.num_turns != null) bits.push(d.num_turns + " turns");
-    if (d.grounding_retries) bits.push(d.grounding_retries + " grounding retry");
-    if (d.budget_exhausted) bits.push("daily budget reached");
-    if (bits.length) {
-      const m = document.createElement("div");
-      m.className = "meta" + (d.budget_exhausted ? " warn" : "");
-      m.textContent = bits.join(" · ");
-      pending.appendChild(m);
-    }
-    // One thumbs-click per answer - "that doesn't make sense" is the single richest
-    // bug source this project has, and this is that sentence with a button.
-    if (!d.budget_exhausted && d.text) {
-      const fb = document.createElement("div");
-      fb.className = "meta";
-      ["👍", "👎"].forEach(v => {
-        const b = document.createElement("button");
-        b.className = "ghost"; b.type = "button"; b.textContent = v;
-        b.onclick = async () => {
-          let comment = null;
-          if (v === "👎") comment = prompt("What was off? (optional)") || null;
-          fetch("/feedback", {
-            method: "POST", headers: hdrs({"Content-Type": "application/json"}),
-            body: JSON.stringify({verdict: v === "👍" ? "up" : "down", comment,
-                                  session_id: sessionId, question}),
-          });
-          fb.textContent = "thanks — noted.";
-        };
-        fb.appendChild(b);
+    let d;
+    try {
+      const res = await fetch("/ask", {
+        method: "POST", headers: hdrs({"Content-Type": "application/json"}),
+        body: JSON.stringify({question, session_id: sessionId}),
       });
-      pending.appendChild(fb);
+      d = await res.json();
+    } catch (netErr) {
+      // The connection died, NOT the answer. Measured on the deployed service: a request
+      // abandoned by its client still runs to completion server-side, because Cloud Run
+      // keeps CPU allocated while the handler runs and uvicorn does not cancel it. So the
+      // right move is to WAIT for the answer that is already being computed - re-asking
+      // would pay for the same work twice and take another minute.
+      const s = document.getElementById("step");
+      if (s) s.textContent = "connection dropped — waiting for the answer, which is still being written";
+      d = await reclaim(started, 210);
+      if (!d) throw netErr;
     }
+    renderAnswer(pending, d, question);
+    remember({typed, question, answer: d});
+    localStorage.removeItem("ff_pending");
   } catch (err) {
     // "TypeError: Load failed" is Safari for "the connection died" - meaningless to the
     // reader, and it is never their fault. Say what happened and give them the button.
@@ -432,6 +467,36 @@ $("f").onsubmit = async e => {
     $("q").focus();
   }
 };
+
+// ---- reopening the page ----
+// Redraw the conversation, and if a question was still in flight when the tab went away,
+// go and collect the answer: the server finished it regardless (measured), so the only
+// thing that was ever lost is the delivery.
+(async () => {
+  const past = history();
+  for (const h of past) {
+    add(`<p>${h.typed.replace(/</g, "&lt;")}</p>`, "me");
+    renderAnswer(add(""), h.answer, h.question);
+  }
+  const raw = localStorage.getItem("ff_pending");
+  if (!raw) return;
+  const p = JSON.parse(raw);
+  // Anything older than a few minutes is not still running - the request would have
+  // finished or the instance recycled, and a stale spinner is its own kind of lie.
+  if (Date.now() - p.started > 240000) { localStorage.removeItem("ff_pending"); return; }
+  add(`<p>${p.typed.replace(/</g, "&lt;")}</p>`, "me");
+  const slot = add("<p>picking up where you left off — this answer was still being "
+                   + "written when you left…</p>");
+  const d = await reclaim(p.started, 210);
+  localStorage.removeItem("ff_pending");
+  if (d) {
+    renderAnswer(slot, d, p.question);
+    remember({typed: p.typed, question: p.question, answer: d});
+  } else {
+    slot.innerHTML = "<p>That one didn't survive — the app was probably updated while it "
+                   + "was running. Ask again and it'll be quick.</p>";
+  }
+})();
 </script>
 </body>
 </html>

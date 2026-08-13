@@ -16,6 +16,7 @@ import asyncio
 import subprocess
 import sys
 import tempfile
+import time
 import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -340,6 +341,25 @@ def progress(session_id: str) -> dict:
     return {"step": _progress.get(session_id)}
 
 
+# The last finished answer per session, so leaving does not destroy it.
+#
+# Measured, not assumed: a request abandoned by its client after 6 seconds still ran to
+# completion on the deployed service (28s, 3 turns, logged and charged) - Cloud Run counts
+# the request in-flight while the handler runs, so CPU stays allocated, and uvicorn does
+# not cancel a handler when the client disconnects. The work was never the fragile part;
+# the answer simply had nowhere to go once the connection died. Stashing it here means a
+# tab that closed, slept, or lost signal can come back and claim the result - with no
+# background tasks, no always-on CPU billing, and no database. What it does NOT survive is
+# the instance itself going away (a deploy, or scale-to-zero after idle); that is the line
+# where a durable store would actually be needed.
+_answers: dict[str, dict] = {}
+
+
+@app.get("/answer/{session_id}", dependencies=[Depends(require_key)])
+def last_answer(session_id: str) -> dict:
+    return _answers.get(session_id) or {}
+
+
 @app.post("/ask", response_model=AskResponse, dependencies=[Depends(require_key)])
 async def ask(request: AskRequest) -> AskResponse:
     # Checked before calling Claude, so an exhausted budget costs nothing to serve.
@@ -389,6 +409,14 @@ async def ask(request: AskRequest) -> AskResponse:
 
     _progress.pop(request.session_id, None)
     budget.record(result["cost_usd"])
+    if request.session_id:
+        # Written whether or not anyone is still listening - that is the entire point.
+        _answers[request.session_id] = {
+            "question": question, "text": result["text"], "cost_usd": result["cost_usd"],
+            "num_turns": result["num_turns"],
+            "grounding_retries": result["grounding_retries"],
+            "finished_at": time.time(),
+        }
     return AskResponse(
         text=result["text"],
         cost_usd=result["cost_usd"],
