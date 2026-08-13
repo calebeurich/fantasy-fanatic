@@ -201,6 +201,7 @@ TOOL_PROGRESS = {
     "get_team_state": "reading every team's window",
     "get_roster_needs": "working out who is short where",
     "get_trade_targets": "matching trade targets across the league",
+    "get_player_outlook": "working out both sides of that call",
     "get_waiver_upgrades": "scanning the waiver wire",
     "get_optimal_lineup": "solving the best legal lineup",
     "get_roster_detail": "pulling the full roster detail",
