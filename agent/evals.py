@@ -35,7 +35,8 @@ async def _ask(question: str) -> dict:
     - the run log shows every payload fit), and asked the USER to paste tool results."""
     result = await run_query(question, verbose=False)
     for phrase in ("you're absolutely right", "i apologize", "too large to display",
-                   "can you share", "paste the"):
+                   "can you share", "paste the", "let me pull", "better visibility",
+                   "i need to see the full"):
         assert phrase not in result["text"].lower(), (
             f"answer speaks to the harness, not the friend ('{phrase}'): "
             f"{result['text'][:400]}")
@@ -227,24 +228,32 @@ async def case_never_builds_a_package() -> None:
     can support. The rule sat in the system prompt twice and still leaked; this pins the
     behaviour, and the fix that made it hold lives in the payload (`offer_any_one_of`).
 
-    Detected structurally: a "+"-joined pair of rostered names on one line, which is what
-    package-building looks like in every observed instance."""
-    import re
+    Detected SEMANTICALLY, not syntactically. The first version of this check looked for
+    "A + B" on one line, passed, and the very next live answer packaged three pieces
+    across three sentences ("Lead with Fannin... Add Shough... Sweeten with picks") - a
+    false pass that made the fix look like it held when it hadn't. What defines the
+    defect is two of MY OWN offerable pieces proposed as one outbound offer, whatever
+    the punctuation, so the check reads a sliding window over the whole answer."""
     from analysis.league import context
 
     result = await _ask(
         f"For Sleeper league {DYNASTY_LEAGUE}, I'm dezdroppedit27. I need a running back - "
         "what exactly should I offer, and to who?")
-    names = {p["name"] for p in context(DYNASTY_LEAGUE).players.values() if p.get("name")}
-    for line in result["text"].splitlines():
-        # "A + B", "A and B for C", "A plus B" - all the same construction.
-        for joiner in (r"\+", r"\band\b", r"\bplus\b"):
-            parts = re.split(joiner, line)
-            if len(parts) < 2:
-                continue
-            hits = [p for p in parts if any(n in p for n in names)]
-            assert len(hits) < 2 or "for" not in line.lower(), (
-                f"built a multi-player package: {line.strip()}")
+    mine = trade_targets.offerable_names(
+        trade_targets.find_targets(DYNASTY_LEAGUE, "dezdroppedit27"))
+    text = result["text"]
+    GIVE = ("offer", "send", "give", "add", "sweeten", "package", "throw in", "lead with",
+            "pair", "attach", "include")
+    WINDOW = 600
+    for start in range(0, max(len(text) - 1, 1), 150):
+        span = text[start:start + WINDOW]
+        low = span.lower()
+        if not any(v in low for v in GIVE):
+            continue
+        named = {n for n in mine if n in span}
+        assert len(named) < 2, (
+            f"proposed {sorted(named)} together as one outbound offer - value is not "
+            f"additive, so no tool here can price that bundle:\n...{span.strip()}...")
     print(f"case_never_builds_a_package: PASS (${result['cost_usd']:.4f}, "
           f"{result['num_turns']} turns)")
 

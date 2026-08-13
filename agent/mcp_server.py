@@ -105,6 +105,10 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
       short-runway cornerstone is often a rebuilder's right sale.
     - A cornerstone is ALSO a trade chip: being the foundation raises his price, it never
       removes him from the table.
+    - `sellable`/`tradeable_surplus`/`win_now_core` are lists of pieces that could move
+      INDIVIDUALLY, never a set to combine. Naming two of them as one offer prices a
+      bundle, and dynasty value does not add across players (a live answer paired a
+      3,650 TE with a 3,379 QB against a 4,473 target). One piece against one piece.
     - `window_edge`, when present, means the label itself sits within refresh noise of
       the adjacent tier: present that tier's advice as live alongside this one, and a
       different label on a re-ask is pricing noise, never the team changing direction.
@@ -130,7 +134,9 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
 
 @mcp.tool()
 def get_roster_needs(league_id: str) -> dict:
-    """Positional needs for every team, keyed by owner_id. A need's `level` names the
+    """Positional needs for every team as a list, each entry carrying the owner's NAME
+    (use it - a live answer addressed a manager as "Owner 637083353878695936" because
+    this payload was keyed by id alone). A need's `level` names the
     SHAPE of the problem - critical (bodies and quality), top-heavy (bodies, NOT an
     upgrade), weak (an upgrade, NOT more depth) - and each entry's `note` states the
     finding in words: use that wording, never a generic "thin". Fine positions are
@@ -140,7 +146,14 @@ def get_roster_needs(league_id: str) -> dict:
     NOT a need - raise it when asked about depth or risk, never as a hole in the lineup.
     Exposure already accounts for flex refills, so in superflex two good QBs plus a cheap
     third is a sound build rather than a gap."""
-    return roster_needs.league_needs(league_id)
+    # Names attached HERE rather than in `league_needs`, whose {owner_id: {POS: ...}}
+    # shape every analysis caller iterates by position - a sibling "owner" key would
+    # read as a position. The model is the only reader that needs the name.
+    from analysis.league import context
+    ctx = context(league_id)
+    return {"teams": [{"owner": ctx.owner_names.get(owner_id, "Unknown"),
+                       "owner_id": owner_id, "needs": needs}
+                      for owner_id, needs in roster_needs.league_needs(league_id).items()]}
 
 
 @mcp.tool()
