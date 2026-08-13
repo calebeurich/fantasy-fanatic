@@ -46,6 +46,16 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v3
 
+      # The service is public and the app-level key is the gate - deploying with the
+      # secret unset would ship an ungated public endpoint, so refuse instead.
+      - name: Refuse to deploy public without the link key
+        run: |
+          if [ -z "${{ secrets.FF_LINK_KEY }}" ]; then
+            echo "FF_LINK_KEY repo secret is not set - add it (Settings -> Secrets and"
+            echo "variables -> Actions) before deploying a public service."
+            exit 1
+          fi
+
       - name: Build and deploy
         run: |
           gcloud run deploy "$SERVICE" \
