@@ -762,6 +762,42 @@ def test_a_falling_roster_wants_ascending_value_at_any_position():
         "a falling roster has no special appetite for another declining player")
 
 
+def test_need_claims_about_teams_are_grounded_or_fired_on():
+    """A live answer told a rebuilder to sell a QB to MSpoto29 - a Contend team holding
+    Josh Allen, Jaxson Dart AND Kyler Murray, flagged with no QB need anywhere in the
+    data. The trade-away side had a deterministic tripwire; the need-claim side had
+    nothing, so a fabricated need sailed through and collapsed to "oops my bad" under
+    pushback. Same generate-then-verify pattern, next surface.
+
+    Verified against today's REAL answers so the guard cannot false-fire on correct
+    behaviour - both recorded sentences below shipped in live passes."""
+    from agent.agent import _need_claim_violations
+
+    flagged = {("FitzmagicsEMUs", "QB"), ("FitzmagicsEMUs", "RB"), ("SeanCenter", "QB")}
+    names = {"FitzmagicsEMUs", "SeanCenter", "MSpoto29"}
+
+    # The fabrication fires.
+    v = _need_claim_violations(
+        "MSpoto29 has a critical QB need and would jump at Goff.", flagged, names)
+    assert v and "MSpoto29" in v[0]
+
+    # Real recorded sentences from live passing answers must NOT fire.
+    assert not _need_claim_violations(
+        "FitzmagicsEMUs has a critical QB need, and Darnold is exactly the kind of "
+        "swap a rebuilder wants.", flagged, names)
+    assert not _need_claim_violations(
+        "Lead with Sam Darnold. FitzmagicsEMUs has a critical QB need.", flagged, names)
+
+    # Negations and need-free descriptions never fire.
+    assert not _need_claim_violations(
+        "MSpoto29 doesn't need a QB - that room is loaded.", flagged, names)
+    assert not _need_claim_violations(
+        "MSpoto29 has a great QB room with Josh Allen and Dart.", flagged, names)
+    # A need claim with no position in the clause is not checkable - stay silent.
+    assert not _need_claim_violations(
+        "MSpoto29 needs to decide a direction.", flagged, names)
+
+
 def test_grounding_check_ignores_advice_not_to_trade_someone():
     """A live run spent a retry telling the model off for advice it had given correctly:
     "Don't trade ... or Tyler Warren" has a trade word and a non-offerable name on one line.

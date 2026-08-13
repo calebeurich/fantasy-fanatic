@@ -70,7 +70,7 @@ jobs:
             --execution-environment gen2 \
             --service-account "fantasy-fanatic-run@fantasy-fanatic.iam.gserviceaccount.com" \
             --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest" \
-            --set-env-vars "FF_LINK_KEY=${{ secrets.FF_LINK_KEY }},DAILY_BUDGET_USD=3.00,DAILY_MAX_REQUESTS=100"
+            --set-env-vars "FF_LINK_KEY=${{ secrets.FF_LINK_KEY }},DAILY_BUDGET_USD=10.00,DAILY_MAX_REQUESTS=300,MAX_SESSIONS=4"
 
       # The settings above are load-bearing and easy to lose in a console edit, so they
       # are declared here rather than living only as click-state:
@@ -94,11 +94,15 @@ jobs:
       #   FF_LINK_KEY                 - the friends-link key, a GitHub Actions secret
       #                                 (repo Settings -> Secrets -> Actions); rotating
       #                                 it is changing the secret and re-deploying
-      #   DAILY_BUDGET_USD            - $3/day (~35-75 questions) for the friends test,
-      #   DAILY_MAX_REQUESTS            up from the $1 demo default; the request count is
-      #                                 the backstop for calls that report no cost. This
-      #                                 is the whole exposure if the link key ever leaks,
-      #                                 so it is a deliberate number, not a default
+      #   DAILY_BUDGET_USD            - $10/day (~110-250 questions), raised from $3 when
+      #   DAILY_MAX_REQUESTS            the first group session nearly hit the ceiling;
+      #                                 the request count is the backstop for calls that
+      #                                 report no cost. This is the whole exposure if the
+      #                                 link key ever leaks - a deliberate number
+      #   MAX_SESSIONS 4              - conversation slots (each holds a claude+MCP
+      #                                 subprocess pair). 2 slots with LRU eviction
+      #                                 silently reset a tester's conversation mid-session
+      #                                 while others were asking; 4Gi covers four pairs
       #   service-account             - a dedicated runtime identity holding exactly one
       #                                 permission (read the anthropic-api-key secret),
       #                                 not the default compute account, which carries

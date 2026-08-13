@@ -297,6 +297,69 @@ def _banned_trade_names(tool_calls: list[dict]) -> set[str]:
     return banned
 
 
+FLAGGABLE_POSITIONS = ("QB", "RB", "WR", "TE")
+
+# Words that make a clause a NEED CLAIM about a team. Deliberately narrow: "MSpoto has a
+# great QB room" carries no need word and never fires.
+NEED_CLAIM_WORDS = ("need", "short at", "short a ", "desperate", "hole at", "thin at",
+                    "starving for", "hurting at")
+
+
+def _flagged_needs(tool_calls: list[dict]) -> tuple[set, set]:
+    """Ground truth for need claims: every (owner name, position) the needs data actually
+    flags, plus every owner name in the leagues touched this turn - recomputed from the
+    same Python the tools call, exactly like `_banned_trade_names`. Exists because a live
+    answer invented a QB need for a Contend team holding Josh Allen, Dart AND Kyler -
+    a claim present nowhere in any payload - and there was no tripwire for it."""
+    from analysis import roster_needs
+    from analysis.league import context
+
+    league_ids = {c["input"].get("league_id") for c in tool_calls
+                  if isinstance(c.get("input"), dict)} - {None}
+    flagged, owner_names = set(), set()
+    for league_id in league_ids:
+        try:
+            ctx = context(league_id)
+            needs = roster_needs.league_needs(league_id)
+        except Exception:
+            continue  # can't validate what we can't recompute - don't block on it
+        for owner_id in ctx.owner_names:
+            for alias in ctx.aliases_for(owner_id):
+                # Team names are free text; a 2-3 char alias would substring-match all
+                # over an answer and turn the guard into noise.
+                if len(alias) < 4:
+                    continue
+                owner_names.add(alias)
+                flagged |= {(alias, pos) for pos in needs.get(owner_id, {})}
+    return flagged, owner_names
+
+
+def _need_claim_violations(text: str, flagged: set, owner_names: set) -> list[str]:
+    """Need claims about named teams that the needs data does not support. Clause-scoped
+    and high-precision like `packaged_pieces` in evals: a claim is a team name and a
+    position and a need word in ONE clause with no negation. "SeanCenter is short at QB"
+    fires only if (SeanCenter, QB) is unflagged; "MSpoto doesn't need a QB" never fires."""
+    import re
+    violations = []
+    for clause in re.split(r"[.;!?\n]", text):
+        low = clause.lower()
+        if not any(w in low for w in NEED_CLAIM_WORDS):
+            continue
+        # The shared tuple plus contractions: "doesn't need a QB" is the model getting
+        # it RIGHT, and lacks the "not " the shared list catches.
+        if any(neg in low for neg in NEGATION_WORDS + ("doesn't", "does not", "isn't", "no ")):
+            continue
+        for owner in owner_names:
+            if not owner or owner not in clause:
+                continue
+            for pos in FLAGGABLE_POSITIONS:
+                if re.search(rf"\b{pos}s?\b", clause) and (owner, pos) not in flagged:
+                    violations.append(
+                        f'claimed {owner} needs {pos}, but the needs data flags no {pos} '
+                        f'need for them: "{clause.strip()[:140]}"')
+    return violations
+
+
 # A banned name only counts as a real violation if the line naming it also reads
 # like a trade suggestion, not just team-status description. Found live: the
 # original whole-text substring check flagged normal roster-summary lines ("Your
@@ -422,30 +485,47 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
             # result in context), so a fresh per-turn computation would go empty and
             # silently miss the same violation repeating in the corrected answer.
             banned = _banned_trade_names(turn["tool_calls"])
+            # Recompute needs ground truth only when the answer makes a need claim at
+            # all - most answers don't, and the recompute is a real league fetch.
+            flagged, league_owner_names = (
+                _flagged_needs(turn["tool_calls"])
+                if any(w in turn["text"].lower() for w in NEED_CLAIM_WORDS)
+                else (set(), set()))
             violations = _trade_violations(turn["text"], banned)
-            while violations and retries < MAX_GROUNDING_RETRIES:
+            need_violations = _need_claim_violations(turn["text"], flagged, league_owner_names)
+            while (violations or need_violations) and retries < MAX_GROUNDING_RETRIES:
                 if verbose:
-                    print(f"[grounding check failed: {violations} aren't offerable - retrying]")
+                    print(f"[grounding check failed: {violations + need_violations} - retrying]")
                 # List every violation found, not just one - an earlier version only
                 # named a single offender (via next() on a set), so when an answer
                 # named two non-offerable players at once, the one retry fixed one
                 # and left the other. Found live via the eval harness re-failing
                 # after the fix looked solved manually.
-                names = ", ".join(f'"{n}"' for n in violations)
+                problems = []
+                if violations:
+                    names = ", ".join(f'"{n}"' for n in violations)
+                    problems.append(
+                        f"You named {names} as trade-away candidates, but none of them are in "
+                        "this team's real offer list from get_trade_targets - use only players "
+                        "actually in that tool's offer or sell-candidate lists.")
+                if need_violations:
+                    claims = " ".join(need_violations)
+                    problems.append(
+                        f"You asserted positional needs the roster-needs data does not "
+                        f"contain: {claims} Only claim a team needs a position when the tools "
+                        f"flag that need - if you have not called get_roster_needs for this "
+                        f"league, call it rather than inferring needs.")
                 # The reader never sees this exchange, and the model must not either: a live
                 # retry opened its answer "You're absolutely right - I apologize", claimed
                 # the tool output had been "too large to display" (confabulated - the run's
                 # own log shows every payload fit), and asked the USER to paste tool results.
                 # The correction is stagecraft; only the corrected answer goes on stage.
                 correction = (
-                    f"You named {names} as trade-away candidates, but none of them are in this "
-                    "team's real offer list from get_trade_targets. Redo your answer using only "
-                    "players that actually appear in that tool's offer or sell-candidate lists - "
-                    "check every name against that list first. Write the redone answer as a "
-                    "fresh, complete reply to the user's original question: no apology, no "
-                    "mention of this correction, no claims about tool output size or "
-                    "mechanics, and never ask the user to supply data - everything you need "
-                    "is already in the tool results you have."
+                    " ".join(problems)
+                    + " Redo your answer. Write it as a fresh, complete reply to the user's "
+                    "original question: no apology, no mention of this correction, no claims "
+                    "about tool output size or mechanics, and never ask the user to supply "
+                    "data - everything you need is in the tool results you have."
                 )
                 turn = await _run_turn(client, correction, verbose, on_progress)
                 all_tool_calls += turn["tool_calls"]
@@ -453,8 +533,13 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
                 total_turns += turn["result"].num_turns if turn["result"] else 0
                 result = turn["result"]
                 banned |= _banned_trade_names(turn["tool_calls"])
+                new_flagged, new_names = _flagged_needs(turn["tool_calls"])
+                flagged |= new_flagged
+                league_owner_names |= new_names
                 retries += 1
                 violations = _trade_violations(turn["text"], banned)
+                need_violations = _need_claim_violations(turn["text"], flagged,
+                                                         league_owner_names)
 
         return {
             "text": turn["text"],
