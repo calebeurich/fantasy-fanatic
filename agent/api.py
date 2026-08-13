@@ -18,6 +18,7 @@ import sys
 import tempfile
 import traceback
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -266,12 +267,77 @@ def feedback(fb: FeedbackRequest) -> dict:
     return {"ok": True}
 
 
+ACTIVITY_CSS = """
+body{background:#0d1017;color:#e7eaf0;font:14px/1.5 ui-sans-serif,system-ui,sans-serif;
+     margin:0;padding:14px}
+h1{font-size:15px;margin:0 0 4px} .sub{color:#6b7789;font-size:12px;margin-bottom:14px}
+.r{border:1px solid #262d3a;border-radius:10px;padding:10px 12px;margin-bottom:9px;
+   background:#151922}
+.q{font-weight:600;margin-bottom:5px} .m{color:#6b7789;font-size:12px}
+.down{border-color:#f87171} .up{border-color:#4ade80}
+.err{border-color:#fbbf24} .c{color:#fbbf24;margin-top:5px}
+"""
+
+
+@app.get("/activity", response_class=HTMLResponse, dependencies=[Depends(require_key)])
+def activity() -> str:
+    """What people actually asked, and what they thought of the answer - readable on a
+    phone, which is where it gets read.
+
+    Every run and every thumbs-click already went to stdout, which Cloud Run pipes into
+    Cloud Logging. That is durable and queryable and completely out of reach while the
+    author is away from a desktop watching friends test - so the same records, in memory,
+    rendered. Downvotes and errors sort to the top of the eye, not the top of the list:
+    order stays chronological because a bad answer usually needs the question before it.
+    """
+    rows = []
+    for r in observability.recent():
+        when = datetime.fromtimestamp(r["timestamp"]).strftime("%H:%M:%S")
+        if r.get("kind") == "feedback":
+            cls = "down" if r["verdict"] == "down" else "up"
+            mark = "👎 downvote" if r["verdict"] == "down" else "👍 upvote"
+            comment = f'<div class="c">"{r["comment"]}"</div>' if r.get("comment") else ""
+            rows.append(f'<div class="r {cls}"><div class="q">{mark}</div>'
+                        f'<div class="m">{when} · on: {r.get("question") or "(no question)"}</div>'
+                        f'{comment}</div>')
+            continue
+        cls = "err" if r.get("outcome") != "ok" else ""
+        bits = [when]
+        for key, fmt in (("cost_usd", "${:.4f}"), ("latency_seconds", "{:.0f}s"),
+                         ("num_turns", "{} turns"), ("grounding_retries", "{} retry")):
+            if r.get(key):
+                bits.append(fmt.format(r[key]))
+        if r.get("error"):
+            bits.append(f'ERROR {r["error"][:120]}')
+        rows.append(f'<div class="r {cls}"><div class="q">'
+                    f'{(r.get("question") or "(no question logged)")}</div>'
+                    f'<div class="m">{" · ".join(bits)}</div></div>')
+    body = "".join(rows) or '<div class="r">Nothing yet.</div>'
+    return (f"<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
+            f"<style>{ACTIVITY_CSS}</style><h1>fantasy-fanatic · recent activity</h1>"
+            f"<div class=sub>Newest first. In-memory, so a deploy clears it - Cloud Logging "
+            f"keeps the durable copy.</div>{body}")
+
+
 @app.get("/budget")
 def budget_status() -> dict:
     """Exposed so the daily cap is externally verifiable, rather than something you
     have to trust is working - used to confirm the ceiling actually trips before this
     endpoint is ever made public."""
     return budget.status()
+
+
+# What each in-flight question is doing right now, keyed by the client's session id.
+# Polling rather than streaming on purpose: /ask already returns one whole answer, and
+# turning it into an SSE stream would rewrite the response contract, the retry logic and
+# the eval harness to show a progress line. A dict the client reads while it waits costs
+# ~15 lines and nothing else changes.
+_progress: dict[str, str] = {}
+
+
+@app.get("/progress/{session_id}", dependencies=[Depends(require_key)])
+def progress(session_id: str) -> dict:
+    return {"step": _progress.get(session_id)}
 
 
 @app.post("/ask", response_model=AskResponse, dependencies=[Depends(require_key)])
@@ -285,19 +351,22 @@ async def ask(request: AskRequest) -> AskResponse:
         return AskResponse(text="Ask a question about a Sleeper dynasty league.")
     question = question[:MAX_QUESTION_CHARS]
 
+    track = (lambda step: _progress.__setitem__(request.session_id, step)) \
+        if request.session_id else None
     try:
         if request.session_id:
             session = await sessions.acquire(request.session_id)
             # Held for the whole turn: two concurrent requests on one session would
             # interleave on the same client and corrupt the conversation.
             async with session.lock:
-                result = await run_query(question, verbose=False, client=session.client)
+                result = await run_query(question, verbose=False, client=session.client,
+                                         on_progress=track)
                 # Convert the client's cumulative total into this question's own cost -
                 # see Session.cost_delta for why the raw value would both over-report
                 # and over-charge the daily budget on a persistent session.
                 result["cost_usd"] = session.cost_delta(result["cost_usd"])
         else:
-            result = await run_query(question, verbose=False)
+            result = await run_query(question, verbose=False, on_progress=track)
     except Exception as e:
         # Log before swallowing. The detail is still withheld from the caller (internals
         # shouldn't leak from a public endpoint), but it must go *somewhere*: failures in
@@ -315,8 +384,10 @@ async def ask(request: AskRequest) -> AskResponse:
         # A failed call still consumed real capacity (it may have burned tokens before
         # failing), so it counts against the day rather than being free to retry in a loop.
         budget.record(None)
+        _progress.pop(request.session_id, None)
         return AskResponse(text="Something went wrong answering that. Try again, or try a different league.")
 
+    _progress.pop(request.session_id, None)
     budget.record(result["cost_usd"])
     return AskResponse(
         text=result["text"],

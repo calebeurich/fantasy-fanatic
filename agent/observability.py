@@ -18,7 +18,21 @@ import json
 import os
 import sys
 import time
+from collections import deque
 from pathlib import Path
+
+# The last N records, in memory, so the hosted service can SHOW its own recent activity
+# (see api.py's /activity). Cloud Logging already has all of this durably, but reading it
+# means the GCP console - which is exactly what the author does not have while friends are
+# testing from a phone. A log nobody can reach is a log nobody reads.
+RECENT_LIMIT = 200
+_recent: deque = deque(maxlen=RECENT_LIMIT)
+
+
+def recent() -> list[dict]:
+    """Newest first. In-memory only, so a deploy or a scale-to-zero clears it - the
+    durable copy is Cloud Logging, and this is the window you can actually open."""
+    return list(reversed(_recent))
 
 LOG_PATH = Path(__file__).resolve().parent.parent / "logs" / "agent_runs.jsonl"
 
@@ -30,6 +44,7 @@ LOG_TO_FILE = not IS_CLOUD_RUN
 
 def log_run(record: dict) -> None:
     entry = {"timestamp": time.time(), **record}
+    _recent.append(entry)
     line = json.dumps(entry)
 
     # stdout first, and never let a file-write problem lose the record entirely -

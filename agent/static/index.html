@@ -341,15 +341,24 @@ $("f").onsubmit = async e => {
   const question = withContext(typed);
   $("q").value = "";
   add(`<p>${typed.replace(/</g, "&lt;")}</p>`, "me");
-  const pending = add("<p>thinking… <span id='tick'>0s</span> (a full answer takes about a minute — keep this tab open)</p>");
+  const pending = add("<p><span id='step'>thinking…</span> <span id='tick'>0s</span>"
+                      + "<br><span class='cs'>a full answer takes about a minute — keep this tab open</span></p>");
   $("send").disabled = true;
-  // A visible clock, because the honest expectation is ~60-90s: a silent spinner is
-  // what makes someone switch tabs, and a backgrounded mobile tab gets its fetch killed.
+  // A clock AND the actual step, because the honest expectation is ~60-90s: a silent
+  // spinner is what makes someone switch tabs, and a backgrounded mobile tab gets its
+  // fetch killed. The step comes from the agent's real tool calls (GET /progress), not
+  // from a scripted sequence - a fake progress bar that finishes before the answer does
+  // is worse than none.
   const started = Date.now();
-  const ticker = setInterval(() => {
+  const ticker = setInterval(async () => {
     const el = document.getElementById("tick");
     if (el) el.textContent = Math.round((Date.now() - started) / 1000) + "s";
-  }, 1000);
+    try {
+      const p = await (await fetch(`/progress/${sessionId}`, {headers: hdrs()})).json();
+      const s = document.getElementById("step");
+      if (s && p.step) s.textContent = p.step + "…";
+    } catch (_) { /* progress is decoration; never let it break the answer */ }
+  }, 2000);
   try {
     // One retry on a DROPPED CONNECTION only (fetch rejects, no response). A minute-long
     // request dies for reasons that have nothing to do with the question - a redeploy

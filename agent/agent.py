@@ -174,7 +174,26 @@ def _options() -> ClaudeAgentOptions:
     )
 
 
-async def _run_turn(client: ClaudeSDKClient, message: str, verbose: bool) -> dict:
+# What each tool is DOING, for the person waiting on a 60-90 second answer. The tool
+# names are internal jargon; a reader wants to know the machine is working and roughly
+# where it is. Missing names fall back to the raw name rather than going silent.
+TOOL_PROGRESS = {
+    "check_league_format": "checking the league format",
+    "get_team_state": "reading every team's window",
+    "get_roster_needs": "working out who is short where",
+    "get_trade_targets": "matching trade targets across the league",
+    "get_waiver_upgrades": "scanning the waiver wire",
+    "get_optimal_lineup": "solving the best legal lineup",
+    "get_roster_detail": "pulling the full roster detail",
+}
+
+
+def _progress_label(tool_name: str) -> str:
+    return TOOL_PROGRESS.get(str(tool_name).split("__")[-1], str(tool_name))
+
+
+async def _run_turn(client: ClaudeSDKClient, message: str, verbose: bool,
+                    on_progress=None) -> dict:
     """Sends one message on an already-open client session and collects the reply,
     including tool *results* (not just calls) - needed to know whether a tool
     errored (e.g. a nonexistent league_id) and what check_league_format actually
@@ -194,6 +213,8 @@ async def _run_turn(client: ClaudeSDKClient, message: str, verbose: bool) -> dic
                 elif isinstance(block, ToolUseBlock):
                     tool_calls.append({"name": block.name, "input": block.input})
                     tool_name_by_id[block.id] = block.name
+                    if on_progress:
+                        on_progress(_progress_label(block.name))
                     if verbose:
                         print(f"[tool call: {block.name}({block.input})]")
         elif isinstance(msg, UserMessage):
@@ -342,7 +363,8 @@ def _observability_fields(tool_calls: list[dict], tool_results: list[dict]) -> d
     return {"league_ids": league_ids, "format_tier": format_tier, "tool_errors": tool_errors}
 
 
-async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient | None = None) -> dict:
+async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient | None = None,
+                    on_progress=None) -> dict:
     """Runs one question through the agent, then deterministically checks the answer
     against ground truth before returning it: if it named a player its own trade-tool
     calls say isn't offerable, send one corrective follow-up on the same session
@@ -366,7 +388,7 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
         async with AsyncExitStack() as stack:
             if client is None:
                 client = await stack.enter_async_context(ClaudeSDKClient(options=_options()))
-            turn = await _run_turn(client, question, verbose)
+            turn = await _run_turn(client, question, verbose, on_progress)
             all_tool_calls = list(turn["tool_calls"])
             all_tool_results = list(turn["tool_results"])
             # num_turns resets per client.query() call (verified live: 4, then 1 on
@@ -405,7 +427,7 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
                     "mechanics, and never ask the user to supply data - everything you need "
                     "is already in the tool results you have."
                 )
-                turn = await _run_turn(client, correction, verbose)
+                turn = await _run_turn(client, correction, verbose, on_progress)
                 all_tool_calls += turn["tool_calls"]
                 all_tool_results += turn["tool_results"]
                 total_turns += turn["result"].num_turns if turn["result"] else 0
