@@ -1771,6 +1771,45 @@ def test_persuasion_says_what_the_other_owner_would_actually_want():
         _holder("aging", "Contend", "steady", [], asc=21, dec=23), {}, offers) is None
 
 
+def test_a_buy_target_says_what_that_owner_would_take_back():
+    """Half the trade was missing from the buy block: it named who to ring and, in a
+    separate list, everything this team could give up - with no join. The reader had to
+    invent the pairing, and a live answer offered a 0.3-runway 28-year-old WR to a
+    55%-ascending team ("buttboi would not want DK Metcalf"). `_counterparty_fit` already
+    answered this for the persuasion tier; it just never ran here.
+
+    Two filters, both mirroring rules that already exist elsewhere: a team ACCUMULATING is
+    not offered a piece inside its final year (the same `INSIDE_FINAL_YEAR` clock
+    `_sells_him` uses to say that team is SELLING such pieces), and no piece worth wildly
+    more than the target is proposed (the give-side mirror of `beyond_your_best_chip`,
+    which stopped a 7,321 cornerstone being offered for a 2,006 back)."""
+    aging = {"name": "Aging", "position": "WR", "value": 1900, "redraft_value": 900,
+             "bucket": "prime", "years_to_decline": 0.3, "value_over_replacement": 100}
+    young = {"name": "Young", "position": "WR", "value": 2000, "redraft_value": 800,
+             "bucket": "ascending", "years_to_decline": 6.0, "value_over_replacement": 200}
+    star = {"name": "Star", "position": "WR", "value": 9000, "redraft_value": 8000,
+            "bucket": "prime", "years_to_decline": 5.0, "value_over_replacement": 5000}
+    needs = {"WR": {"level": "weak"}}
+    target = {"name": "Wanted", "position": "RB", "value": 2500}
+
+    rising = _holder("rising", "Middling", "rising", [], asc=55, dec=8)
+    fit = trade_targets._counterparty_fit(rising, needs, [aging, young], target=target)
+    assert fit["offer_any_one_of"] == ["Young"], (
+        "a team accumulating youth is being sent the piece it would itself be selling")
+    assert "accumulating" in fit["why_it_fits"]
+
+    # The same aging piece is a fine offer to a team that is NOT accumulating.
+    falling = _holder("falling", "Middling", "falling", [], asc=8, dec=40)
+    assert "Aging" in trade_targets._counterparty_fit(
+        falling, needs, [aging, young], target=target)["offer_any_one_of"]
+
+    # And nobody is offered a 9,000 piece for a 2,500 one, in either direction.
+    assert "Star" not in trade_targets._counterparty_fit(
+        falling, needs, [aging, young, star], target=target)["offer_any_one_of"]
+    assert "Star" in trade_targets._counterparty_fit(
+        falling, needs, [aging, young, star], target={"value": 8000})["offer_any_one_of"]
+
+
 def test_the_package_tripwire_fires_on_real_bundles_and_not_on_real_alternatives():
     """The detector for `case_never_builds_a_package`, checked against the actual live
     answers rather than invented strings - because two earlier versions were confidently

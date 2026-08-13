@@ -4,7 +4,7 @@ History: LOGIC.md, "The counterparty".
 """
 
 from .. import team_state, roster_needs
-from ..team_values import MIN_MEANINGFUL_RUNWAY
+from ..team_values import INSIDE_FINAL_YEAR, MIN_MEANINGFUL_RUNWAY
 from .board import (Board, NOT_SELLER, _best_chip, _buy_friction, _friction, _others,
                     _sells_him, _with_trade_note)
 
@@ -195,24 +195,47 @@ def wanted_line(wanting: list[dict]) -> str:
         for w in wanting)
 
 
-def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict]) -> dict | None:
+# How far above the target's own price a piece can be before offering it is an overpay
+# rather than an offer. One player against one player is the only comparison this project
+# makes, and it has to run in BOTH directions: the buy side already refuses targets above
+# the asking team's best single chip (`beyond_your_best_chip`), while the give side had no
+# ceiling at all and proposed a 7,321 cornerstone QB for a 2,006 back.
+OVERPAY_LIMIT = 1.5
+
+
+def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict],
+                      target: dict | None = None) -> dict | None:
     """What *I* hold that would interest this particular owner, or None. Two ways he is
     interested: he is short at a position I can offer, or he should be converting aging
     production and I hold now-and-later value he'd convert into. Annotation, not ranking -
     re-sorting by fit would push low-friction options down. `fills_a_hole` is returned as
     data because it is the single definition of the `needs_a_pivot` flavor."""
-    offers = [e for e in my_offers if e["position"] in their_needs]
+    # Position match alone is not want: an owner ACCUMULATING (tilting ascending) is the
+    # same owner `_sells_him` says sells his own final-year pieces, so handing him one is
+    # the trade backwards. Live: a 0.3-runway 28-year-old WR offered to a 55%-ascending
+    # team because they were "short at WR" - the owner's read: "buttboi would not want
+    # DK Metcalf". The clock is INSIDE_FINAL_YEAR, the same bar `_sells_him` uses.
+    accumulating = other.get("ascending_pct", 0) > other.get("declining_pct", 0)
+    ceiling = (target or {}).get("value", 0) * OVERPAY_LIMIT
+    offers = [e for e in my_offers
+              if e["position"] in their_needs
+              and not (accumulating
+                       and (e.get("years_to_decline") or 0) < INSIDE_FINAL_YEAR)
+              and not (ceiling and e["value"] > ceiling)]
     if offers:
         positions = sorted({e["position"] for e in offers})
+        timeline = (" These are the ones that fit his timeline as well as his lineup - he "
+                    "is accumulating, so anything of yours inside its final year is a "
+                    "piece he is trying to move, not acquire." if accumulating else "")
         return {"offer_any_one_of": [e["name"] for e in offers[:3]],
                 "fills_a_hole": True,
                 "why_it_fits": (f"{other['owner']} has a "
                                 f"{their_needs[positions[0]]['level']} need at "
                                 f"{'/'.join(positions)}, which you can fill from your own "
                                 f"spare pieces - so this is a two-way conversation rather "
-                                f"than asking him to do you a favour.")}
+                                f"than asking him to do you a favour.{timeline}")}
 
-    if other["ascending_pct"] > other["declining_pct"]:
+    if accumulating:
         # Above replacement, with a real current price, and not past his own cliff. Runway
         # RANKS this pool rather than emptying it - 24% of starters sit within a year of the
         # two-season bar - and the bar decides what the sentence claims instead.

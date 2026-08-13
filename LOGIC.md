@@ -742,6 +742,31 @@ prompt carries the doctrine no single tool result states (five principles: pick 
 two currencies, age is a distance, value is not additive, a trade needs a counterparty)
 plus numbered rules, each added for an observed failure.
 
+### A target without a price is half a trade
+
+Buy targets shipped "here is who to ring" beside a separate list of everything this team
+could give up, and **no join between them** - so the pairing was left to whoever read it.
+The model paired badly and the owner caught it instantly: a 28.7-year-old WR with 0.3
+years of runway offered to a team 55% ascending against 8% declining ("buttboi would not
+want DK Metcalf"). The machinery to answer this already existed and simply never ran on
+this block - `_counterparty_fit` had been wired to the persuasion tier only.
+
+Two filters now bound `offer_any_one_of`, each mirroring a rule already in the codebase
+rather than inventing a new one:
+
+- **Timeline, not just position.** A team whose tilt is ascending is *accumulating*, and
+  `_sells_him` already says that team sells its own pieces inside `INSIDE_FINAL_YEAR` -
+  so offering it one is the trade backwards. Same clock, other direction.
+- **Proportion, both ways.** The buy side already refused targets above the asking team's
+  biggest single chip (`beyond_your_best_chip`); the give side had no ceiling and proposed
+  a 7,321 cornerstone QB for a 2,006 back. `OVERPAY_LIMIT` (1.5x the target's own price)
+  is that same one-against-one comparison pointed the other way.
+
+`targets_note` states what the field is and is not: a starting point for the
+conversation, never a claim that the two pieces are worth the same. This project finds
+who to call and what they want; it does not price trades, and a payload that lists a give
+beside a get has to say so or it will be read as a valuation.
+
 ### The tool result the model never saw
 
 The most expensive bug in this project, and the one worth showing other people, because

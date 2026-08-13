@@ -7,7 +7,7 @@ from .. import team_state, roster_needs
 from ..team_values import age_bucket, pick_equivalent
 from .board import (Board, CORNERSTONE_ASK, MIGHT_SELL, NOISE_RETAINED, _best_chip,
                     _buy_friction, _friction, _others, _sells_him, _with_trade_note)
-from .counterparty import PERSUASION_NOTE, _persuasion_targets
+from .counterparty import PERSUASION_NOTE, _counterparty_fit, _persuasion_targets
 
 LONG_SHOT_NOTE = (
     "LONG SHOTS - real fits, but something structural is in the way, and `friction` says what. "
@@ -32,6 +32,16 @@ MY_OFFERS_NOTE = (
     "which single piece goes for which single piece. `give_up_cost` says what each one "
     "actually costs YOU: production already realized (cheap to move) versus future years you "
     "won't get back (expensive), which is a different question from what he fetches."
+)
+
+TARGETS_NOTE = (
+    "WHO TO RING FIRST - players whose owner is already selling this kind of piece, at a "
+    "position this team is short of. `offer_any_one_of`, where present, is what THAT owner "
+    "would have interest in receiving, filtered to his timeline as well as his lineup: a "
+    "team accumulating youth is never offered a piece inside its final year, because that "
+    "is exactly what he is trying to move. It is a starting point for the conversation, "
+    "NOT a priced or fair-value offer - nothing here says these two pieces are worth the "
+    "same, only that each side wants what the other has. Name one piece, let him counter."
 )
 
 DEPTH_NOTE = (
@@ -166,11 +176,21 @@ def _buy_path(me: dict, board: Board, max_per_position: int,
                 # `need_level` rides, the need's full note does NOT: it is the asker's own
                 # need, identical on every target at the position, and ships once in
                 # result["needs"] - it was 14% of a live buy payload at 90% duplication.
+                # WHAT TO SEND BACK, computed per counterparty - the half of the trade
+                # this block used to leave out. Buy targets shipped "here is who to ring"
+                # beside a separate list of everything this team could give up, with no
+                # join, so the pairing was left to the reader: a live answer offered a
+                # 0.3-runway 28-year-old to a 55%-ascending team. `_counterparty_fit` is
+                # the same test the persuasion tier already used; it just never ran here.
+                fit = _counterparty_fit(
+                    other, board.needs_by_owner_id.get(other["owner_id"], {}), my_pool,
+                    target=player) or {}
                 pos_targets.append({"position": pos, "need_level": need["level"],
                                      "over_weakest_starter": over_weakest,
                                      "sells_because": ("rebuilding" if other["window"] == "Rebuild"
                                                        else "rising, so selling age not youth"),
                                      "production_per_cost": round(ratio, 2) if ratio else None,
+                                     **{k: v for k, v in fit.items() if k != "fills_a_hole"},
                                      **_buy_friction(player, other, best_chip,
                                                      trade_counts.get(other["owner_id"], 0),
                                                      others_have_traded),
@@ -190,6 +210,8 @@ def _buy_path(me: dict, board: Board, max_per_position: int,
         long_shots += blocked[:max_per_position]
 
     result = {"needs": my_needs, "targets": targets, "my_offers": my_pool}
+    if targets:
+        result["targets_note"] = TARGETS_NOTE
     if my_pool:
         result["my_offers_note"] = MY_OFFERS_NOTE
     if long_shots:

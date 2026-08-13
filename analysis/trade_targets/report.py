@@ -112,6 +112,8 @@ def _print_push(push: dict, extras: dict) -> None:
     if push["targets"]:
         print("BUY TARGETS - ring these first (from owners who are selling THIS player, at a "
               "position you need):")
+        if push.get("targets_note"):
+            print(f"  {push['targets_note']}")
         for t in push["targets"]:
             trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "no trades yet"
             price_note = BUY_PRICE_NOTE[team_state.value_basis(t)]
@@ -122,6 +124,10 @@ def _print_push(push: dict, extras: dict) -> None:
             print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}{beats}) from "
                   f"{t['from_owner']} [{t['sells_because']}] - need: {t['need_level']} - "
                   f"{trade_note}{kind}")
+            if t.get("offer_any_one_of"):
+                print(f"      send back any ONE of (not a bundle): "
+                      f"{', '.join(t['offer_any_one_of'])}")
+                print(f"      {t['why_it_fits']}")
     else:
         why = ("everything available is a long shot, listed below" if push.get("long_shots")
                else "no need for the buy path to fill in the first place")
@@ -134,6 +140,9 @@ def _print_push(push: dict, extras: dict) -> None:
                      f", {t['over_weakest_starter']:+,} vs your weakest {t['position']} starter")
             print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}{beats}) from "
                   f"{t['from_owner']} - need: {t['need_level']}")
+            if t.get("offer_any_one_of"):
+                print(f"      send back any ONE of (not a bundle): "
+                      f"{', '.join(t['offer_any_one_of'])}")
             for f in t["friction"]:
                 print(f"      - [{f['flavor']}] {f['why']}")
         print(f"  {push['long_shot_note']}")
