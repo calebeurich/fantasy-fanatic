@@ -329,6 +329,19 @@ def test_a_rebuild_flavor_is_absolute_because_the_label_makes_a_claim():
         "and it works the other way too - a flattering tertile cannot make a rebuild ascending")
     assert team_state.flavor_for("Rebuild", "steady", None, 9, 9) == "stalled", (
         "nothing arriving is stalled, ties included")
+    # The quality floor on the tilt: a positive ratio from players who are all bad still
+    # read "ascending" (live: 25/7 while dead last in lineup AND assets - the owner: "his
+    # ascending assets are just bad"). Accumulation is the evidence the tilt is real, and
+    # every measured working rebuild sat mid-table or better in total assets.
+    assert team_state.flavor_for("Rebuild", "steady", None, 40, 3,
+                                 assets_bottom=True) == "stalled", (
+        "an ascending tilt with a bottom-third war chest is not a rebuild that is working")
+    assert team_state.flavor_for("Rebuild", "steady", None, 40, 3,
+                                 assets_bottom=False) == "ascending"
+    assert team_state._assets_bottom(9, 12) and not team_state._assets_bottom(8, 12), (
+        "bottom tertile of 12 starts at rank 9")
+    assert not team_state._assets_bottom(5, 5), (
+        "below MIN_TEAMS_FOR_LEVERAGE the tertile is one team and asserts nothing")
     assert team_state.flavor_for("Middling", "steady", None, 40, 3) == "steady"
     # `convertible` outranks trajectory: a weak lineup on a top-third war chest is not
     # described by which way it happens to be tilting.
@@ -375,7 +388,8 @@ def test_the_hedge_band_splits_the_measured_flip_boundary():
 def _edge_row(**kw):
     row = {"owner_id": "me", "contention": "fringe", "trajectory": "steady",
            "window": "Middling", "flavor": "steady", "leverage": None,
-           "ascending_pct": 20, "declining_pct": 20, "starting_production": 30_000}
+           "ascending_pct": 20, "declining_pct": 20, "starting_production": 30_000,
+           "asset_rank": 6, "of_teams": 12}
     return {**row, **kw}
 
 

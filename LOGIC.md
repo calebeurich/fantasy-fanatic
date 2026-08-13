@@ -295,12 +295,22 @@ alternative design; it needs persisted prior state the stateless per-request pip
 doesn't have, and the hedge makes the instability honest without it - revisit only if
 testers still find the flips confusing with the hedge in place.
 
-**Backlog - `ascending` needs a quality floor.** `ascending_pct` is a share of the team's
-OWN production, so it is scale-free: a roster whose young players are all bad still reads
-ascending (live: 23/7 while ranking 12th of 12 in both contention and assets - the owner:
-"his ascending assets are just bad"). The flavor needs an absolute floor on top of the
-ratio; `clears_relevance_floor` and `asset_rank` both exist and the flavor reads neither.
-Until then `stalled` is under-reported at the very bottom, the least harmful direction.
+**The `ascending` quality floor is `asset_rank`, not the relevance floor.**
+`ascending_pct` is a share of the team's OWN production, so it is scale-free: a roster
+whose young players are all bad still reads ascending on ratio (live: 25/7 while ranking
+12th of 12 in both contention and assets - the owner: "his ascending assets are just
+bad"). The backlogged fix was `clears_relevance_floor`, and the data rejected it: every
+rebuild in all three leagues holds multiple ascending pieces clearing that floor - it is
+a "real chip vs waiver filler" bar, far too low to separate a working rebuild from a bad
+one. What actually separates them is accumulation: the documented offender was 12/12 in
+total assets while every working rebuild sat 5-6/12 or better. So `ascending` now
+requires the tilt AND not-bottom-tertile assets (`_assets_bottom`, same
+`MIN_TEAMS_FOR_LEVERAGE` guard as leverage); across three leagues this changes exactly
+one label - the complained-about one. Deliberate tension, documented rather than hidden:
+the tilt stays absolute (a league of ascending rebuilds must not relabel the best one)
+while the floor is league-relative (accumulation is only measurable comparatively) - in
+a league where every rebuild is loaded, the bottom-third one still reads stalled, which
+is the honest comparative claim.
 
 **Leverage** (`convertible` / `mortgaged` / None): `asset_rank` (every player plus every
 pick) against `contention_rank`, tertile-cut. The state the window could not express - a
@@ -819,7 +829,6 @@ Measured or confirmed, none urgent, kept so nobody re-derives them:
 - **The market refuses our rushing-QB discount on Josh Allen** (10,415 at 29.5, 7.1
   carries/game; our curve gives him 1.5 years) - `dual_threat_qb` absorbs most of this,
   but an elite thrower-and-runner forced onto the rushing curve may still be underrated.
-- **`ascending` rebuild flavor needs a quality floor** (see Team windows).
 - **`starting_production` is misnamed** (see the axis section).
 - **`miss_rate` is attached to players who could never play**; `would_start_if_one_out`
   could gate it. Depth is not weighted by injury risk (needs severity/duration by injury

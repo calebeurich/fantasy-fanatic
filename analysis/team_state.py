@@ -90,12 +90,20 @@ FLAVOR_NOTE = {
     "falling": "waiting costs something - this roster does not improve on its own",
     "steady": "flat - neither arriving nor aging out on its own",
     "ascending": "the rebuild is working - young production is arriving",
-    "stalled": "nothing arriving and nothing to convert - genuinely stuck",
+    "stalled": "the rebuild is not delivering - no ascending tilt that is actually "
+               "accumulating, and no war chest to convert",
 }
 
 
+def _assets_bottom(asset_rank: int, num_teams: int) -> bool:
+    """Bottom third of the league in total tradeable value - the same small-league guard
+    as `leverage`, because below it the tertile is one team and means nothing."""
+    return num_teams >= MIN_TEAMS_FOR_LEVERAGE and tertile(asset_rank, num_teams) == "bottom"
+
+
 def flavor_for(window: str, trajectory: str, leverage: str | None,
-               ascending_pct: float = 0, declining_pct: float = 0) -> str:
+               ascending_pct: float = 0, declining_pct: float = 0,
+               assets_bottom: bool = False) -> str:
     """The sub-flavor of the state, from fields already computed. For Contending the clock
     is the flavor (`window` already encodes it); `convertible` outranks trajectory
     everywhere else, because a weak lineup on a top-third war chest is not described by
@@ -105,10 +113,16 @@ def flavor_for(window: str, trajectory: str, leverage: str | None,
     if leverage == "convertible":
         return "convertible"
     if window == "Rebuild":
-        # Absolute, not the tertile: "is the rebuild working" is about this roster, not its
-        # rank - a league full of ascending rebuilds once made the tertile call the clearest
-        # working rebuild "stalled".
-        return "ascending" if ascending_pct > declining_pct else "stalled"
+        # The tilt is absolute, not the tertile: "is the rebuild working" is about this
+        # roster, not its rank - a league full of ascending rebuilds once made the tertile
+        # call the clearest working rebuild "stalled". But the tilt alone is scale-free, and
+        # a roster whose young players are all bad reads ascending on ratio (live: 25/7
+        # while dead last in both lineup and assets - "his ascending assets are just bad").
+        # `assets_bottom` is the floor: arriving production that isn't accumulating into a
+        # war chest is not a rebuild that is working. Every working rebuild measured sat
+        # mid-table or better in assets; the relevance floor could not separate them at all.
+        return ("ascending" if ascending_pct > declining_pct and not assets_bottom
+                else "stalled")
     # Middling keeps the tertile: whether waiting is free RELATIVE TO THIS LEAGUE is what
     # decides between pushing and pivoting.
     return trajectory
@@ -384,7 +398,8 @@ def window_edge(row: dict, contention_edges: dict, trajectory_edges: dict) -> st
         alt_trajectory = TRAJECTORY_TIER[alt_tier]
         alt_window = window_for(row["contention"], alt_trajectory)
         alt_flavor = flavor_for(alt_window, alt_trajectory, row["leverage"],
-                                row["ascending_pct"], row["declining_pct"])
+                                row["ascending_pct"], row["declining_pct"],
+                                _assets_bottom(row["asset_rank"], row["of_teams"]))
         s = "s" if gap == 1 else ""
         if alt_window != row["window"]:
             notes.append(EDGE_CLOCK.format(gap=_points(gap), s=s,
@@ -495,7 +510,8 @@ def classify_league(league_id: str) -> list[dict]:
         row["leverage"] = leverage(c_rank, row["asset_rank"], num_teams)
         # After `leverage`, because `convertible` outranks trajectory as the flavor.
         row["flavor"] = flavor_for(window, trajectory, row["leverage"],
-                                   row["ascending_pct"], row["declining_pct"])
+                                   row["ascending_pct"], row["declining_pct"],
+                                   _assets_bottom(row["asset_rank"], num_teams))
         row["flavor_note"] = FLAVOR_NOTE[row["flavor"]]
         # After flavor: an edge is only an edge if crossing the line changes the message.
         row["window_edge"] = window_edge(row, contention_edges, trajectory_edges)
