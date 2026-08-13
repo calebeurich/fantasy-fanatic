@@ -135,7 +135,10 @@ def check_one_player_is_not_described_two_ways(league_id, ctx, results) -> list[
             them = returns.get(entry["name"])
             if them is None:
                 continue
-            tagged = any(f["flavor"] == "needs_a_pivot" for f in them.get("friction") or [])
+            # Both flavors are the same underlying boolean ("no hole you can fill") -
+            # which spelling an entry gets is the seller's window, not a second concept.
+            tagged = any(f["flavor"] in ("needs_a_pivot", "holds_to_win")
+                         for f in them.get("friction") or [])
             if tagged != entry["needs_a_pivot"]:
                 problems.append(f"{owner}: {entry['name']} needs_a_pivot is "
                                 f"{entry['needs_a_pivot']} in persuasion and {tagged} in the "

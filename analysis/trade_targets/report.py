@@ -135,18 +135,24 @@ def _print_push(push: dict, extras: dict) -> None:
         print()
         # Nearly-fits first, which is also the order to make the calls in.
         print("harder asks (aging production on teams that are NOT shopping it - most are still "
-              "a fit for both sides; the ones marked PIVOT need them to change direction):")
+              "a fit for both sides; PIVOT needs a change of direction, HOLDS TO WIN needs an "
+              "overwhelming offer):")
         for t in sorted(push["persuasion_targets"], key=lambda t: t["needs_a_pivot"]):
+            marker = ""
+            if t["needs_a_pivot"]:
+                marker = (" [HOLDS TO WIN]" if t.get("seller_window") in ("Push", "Contend")
+                          else " [PIVOT]")
             print(f"  {t['name']} ({t['position']}, {t['production_per_cost']}x production "
                   f"per unit of cost - dyn {t['value']:,} / redraft {t['redraft_value']:,}) "
-                  f"from {t['from_owner']}" + (" [PIVOT]" if t["needs_a_pivot"] else ""))
+                  f"from {t['from_owner']}{marker}")
             print(f"      why they might listen: {t['why_they_might_listen']}")
             if t.get("you_could_offer"):
                 print(f"      what they want from you: {', '.join(t['you_could_offer'])}")
             if t.get("cost_note"):
                 print(f"      what it costs: {t['cost_note']}")
             for f in t.get("friction") or []:
-                if f["flavor"] != "needs_a_pivot":   # already said by cost_note above
+                # needs_a_pivot / holds_to_win are already said by cost_note above.
+                if f["flavor"] not in ("needs_a_pivot", "holds_to_win"):
                     print(f"      - [{f['flavor']}] {f['why']}")
         print(f"  {push['persuasion_note']}")
 

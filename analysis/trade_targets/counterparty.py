@@ -15,11 +15,14 @@ MIN_RUNWAY_FOR_LATER = MIN_MEANINGFUL_RUNWAY
 PERSUASION_NOTE = (
     "These are held by teams that are NOT shopping them, so none is available the way a "
     "rebuilding team's pieces are. Each carries why that owner might listen and what it "
-    "costs to ask. Two different asks sit here and the difference decides whether to make "
+    "costs to ask. Three different asks sit here and the difference decides whether to make "
     "the call: where the owner has a hole this roster can fill, the trade serves his "
     "existing plan and is nearer a fit than a pitch, and those come first. Where he has no "
-    "such hole it is marked PIVOT - you are asking him to change direction, which is a "
-    "commitment on his part and prices above market. Within each group, ranked by current "
+    "such hole and is mid-table or rebuilding it is marked PIVOT - you are asking him to "
+    "change direction, which is a commitment on his part and prices above market. Where he "
+    "has no such hole and is CONTENDING it is marked HOLDS TO WIN - not a direction "
+    "question at all: he could sell the piece and stay a contender, which is exactly why "
+    "he probably won't, and only an overwhelming offer opens it. Within each group, ranked by current "
     "production per unit of trade value, the right order for a team buying for this season: "
     "the cheapest name is often better than the most valuable one, because the market "
     "discounts age the buyer isn't paying for. Where a decline argument is made it is "
@@ -104,10 +107,7 @@ def _why_they_would_move_him(player: dict, other: dict, prior: dict | None,
     case = _cliff_case(player, other, ratio, team_case=team_case,
                        discounted=ratio >= (premium_bars or {}).get(player["position"],
                                                                     float("inf"))) or team_case
-    serves_their_plan = [_friction(
-        "needs_a_pivot", f"{other['owner']} has no hole you can fill, so this asks him to "
-                         f"change direction rather than take a fair offer - a wait-and-see, "
-                         f"not a call you make once")] if not fills_a_hole else []
+    serves_their_plan = [] if fills_a_hole else [_no_hole_friction(other)]
     if case:
         return {"their_reason": case, "friction": serves_their_plan}
     return {"their_reason": (f"Nothing about {other['owner']}'s team says seller, and their "
@@ -115,6 +115,25 @@ def _why_they_would_move_him(player: dict, other: dict, prior: dict | None,
                              f"and have no reason to, so this needs them to want your side "
                              f"more than they want him."),
             "friction": serves_their_plan}
+
+
+def _no_hole_friction(other: dict) -> dict:
+    """The no-hole ask, named by the seller's own window. "Change direction" is only the
+    honest claim when there is a direction to change; for a contender it never was - the
+    owner's own words, twice, months apart: "shiv is win now and could choose to move off
+    the aging value but doesn't have to", and of a #1 lineup carrying the pivot tag, "I
+    would not say it needs a pivot... probably hangs onto them to win now"."""
+    if other["window"] in ("Push", "Contend"):
+        return _friction(
+            "holds_to_win",
+            f"{other['owner']} has no hole you can fill and is winning now - this asks him "
+            f"to sell production he is winning WITH, not to change direction. He could move "
+            f"an aging piece and stay a contender, which is exactly why he probably won't: "
+            f"expect a no unless the offer overwhelms him, and a premium if it does")
+    return _friction(
+        "needs_a_pivot",
+        f"{other['owner']} has no hole you can fill, so this asks him to change direction "
+        f"rather than take a fair offer - a wait-and-see, not a call you make once")
 
 
 def _would_actually_help(player: dict, roster: dict, ctx) -> bool:
@@ -267,31 +286,46 @@ def _persuasion_targets(me: dict, board: Board, my_needs: dict,
             friction = _buy_friction(player, other, best_chip,
                                      trade_counts.get(other["owner_id"], 0),
                                      others_have_traded)["friction"]
+            # Three different asks, not two: filling his hole serves his plan; a pivot
+            # prices above market; and a CONTENDER with no hole is not a direction
+            # question at all - he holds to win, and only an overwhelming offer opens it.
+            # Describing the first two identically once contradicted `why_it_fits`;
+            # describing the third as a pivot misread the league's best team.
+            if is_fit:
+                cost_note = (
+                    f"{other['owner']} has a need you can fill, so this need not be a change "
+                    f"of direction for him - it can be a straight trade that serves both "
+                    f"plans. He is still not shopping {player['name']}, so you are opening "
+                    f"the conversation and should expect to pay something for that, but this "
+                    f"is nearer a fit than a pitch.")
+            elif other["window"] in ("Push", "Contend"):
+                cost_note = (
+                    f"{other['owner']} is winning with {player['name']} and not currently a "
+                    f"seller - and this is not a direction question: he could move him and "
+                    f"stay a contender, which is exactly why he probably holds. Expect a no "
+                    f"unless the offer overwhelms him; you are buying production out of a "
+                    f"winning lineup, and that prices above market.")
+            else:
+                cost_note = (
+                    f"{other['owner']} is not currently a seller, so this is a conversation "
+                    f"rather than a fit: acquiring {player['name']} means persuading them to "
+                    f"change direction, which is a commitment on their part and prices above "
+                    f"market. Treat it as an option worth opening, not a deal that's there.")
             plausible.append({
                 "position": pos,
                 "need_level": need["level"],
                 **(fit or {}),
                 **_with_trade_note(player, other, trade_counts),
+                "seller_window": other["window"],
                 "production_per_cost": round(ratio, 2),
                 "why_they_might_listen": why,
                 "friction": friction,
                 "needs_a_pivot": not is_fit,
-                # Two different asks: filling his hole serves his plan; a pivot prices
-                # above market. Describing both identically contradicted `why_it_fits`.
-                "cost_note": (
-                    f"{other['owner']} has a need you can fill, so this need not be a change "
-                    f"of direction for him - it can be a straight trade that serves both "
-                    f"plans. He is still not shopping {player['name']}, so you are opening "
-                    f"the conversation and should expect to pay something for that, but this "
-                    f"is nearer a fit than a pitch."
-                    if is_fit else
-                    f"{other['owner']} is not currently a seller, so this is a conversation "
-                    f"rather than a fit: acquiring {player['name']} means persuading them to "
-                    f"change direction, which is a commitment on their part and prices above "
-                    f"market. Treat it as an option worth opening, not a deal that's there."
-                ),
+                "cost_note": cost_note,
             })
             if not is_fit:
-                friction.append(_friction("needs_a_pivot", plausible[-1]["cost_note"]))
+                friction.append(_friction(
+                    "holds_to_win" if other["window"] in ("Push", "Contend")
+                    else "needs_a_pivot", cost_note))
     plausible.sort(key=lambda t: -t["production_per_cost"])
     return plausible

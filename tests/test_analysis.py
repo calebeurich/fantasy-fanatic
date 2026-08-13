@@ -563,7 +563,9 @@ def test_every_return_says_why_its_owner_would_part_with_him():
 
     A `Rebuild` owner is already selling; anyone else has to be argued into it, which is the
     same `_seller_case`/`_cliff_case` pair the persuasion tier uses, reused rather than
-    restated, and it comes with `needs_a_pivot` friction attached."""
+    restated - and the no-hole friction is named by the holder's window: this holder is a
+    CONTENDER, so the ask is `holds_to_win`, which is what the owner's quote above was
+    actually describing all along."""
     ctx, me, states = _upgrade_fixture()
     seller, holder = states[1], {"owner_id": "holder", "owner": "holder", "window": "Contend",
                                 "trajectory": "rising", "ascending_pct": 26, "declining_pct": 16}
@@ -585,7 +587,7 @@ def test_every_return_says_why_its_owner_would_part_with_him():
 
     aging = by_name["Aging"]
     assert "don't line up" in aging["their_reason"], "the cliff argument, not just 'he's old'"
-    assert [f["flavor"] for f in aging["friction"]] == ["needs_a_pivot"]
+    assert [f["flavor"] for f in aging["friction"]] == ["holds_to_win"]
 
 
 def test_a_pushing_team_is_never_offered_a_conversion():
@@ -1638,9 +1640,41 @@ def test_one_definition_of_needs_a_pivot_across_both_blocks():
     pivots = trade_targets._why_they_would_move_him(player, other, None, BARS, fills_a_hole=False)
     assert [f["flavor"] for f in fits["friction"]] == [], (
         "an owner with a hole this roster can fill is taking a trade that serves his own plan")
-    assert [f["flavor"] for f in pivots["friction"]] == ["needs_a_pivot"]
+    assert [f["flavor"] for f in pivots["friction"]] == ["holds_to_win"], (
+        "this holder is a contender, so no-hole friction is holds_to_win, not a pivot")
     assert fits["their_reason"] == pivots["their_reason"], (
         "why they'd listen is a fact about their team and must not move with the pivot flavor")
+
+
+def test_a_contender_with_no_hole_holds_to_win_rather_than_needing_a_pivot():
+    """The owner's read of a live report, and the second time he said it: a #1 lineup
+    carrying [needs_a_pivot] on A.J. Brown - "that team is just nasty and competing. I
+    would not say it needs a pivot... could sell some aging people and still be winning,
+    but probably hangs onto them to win now." The no-hole ask has three shapes, split by
+    the seller's window: a fit (has a hole), a pivot (mid-table, a direction to change),
+    and holds-to-win (a contender, where 'change direction' was never the honest claim)."""
+    contender = {"owner_id": "kk", "owner": "kk", "window": "Contend", "trajectory": "steady",
+                 "ascending_pct": 37, "declining_pct": 12}
+    middling = {**contender, "window": "Middling"}
+    holds = trade_targets._why_they_would_move_him(_aging("Vet", 3000, 4000), contender,
+                                                   None, BARS, fills_a_hole=False)
+    pivot = trade_targets._why_they_would_move_him(_aging("Vet", 3000, 4000), middling,
+                                                   None, BARS, fills_a_hole=False)
+    assert holds["friction"][0]["flavor"] == "holds_to_win"
+    assert "not to change direction" in holds["friction"][0]["why"]
+    assert "stay a contender" in holds["friction"][0]["why"]
+    assert pivot["friction"][0]["flavor"] == "needs_a_pivot"
+    assert "change direction" in pivot["friction"][0]["why"]
+
+    # And the persuasion tier says the same thing about the same seller: cost_note carries
+    # the holds-to-win price and the entry still prices it ("not currently a seller").
+    holder = _holder("kk", "Contend", "steady", [_aging("Stud", 4000, 6000)], asc=26, dec=16)
+    out = trade_targets._persuasion_targets(
+        ME, _board(states=[holder], thresholds={"RB": 100},
+                   prior={"kk": _prior(3)}, premium_bars=BARS), NEED_RB)
+    assert "probably holds" in out[0]["cost_note"] and "not currently a seller" in out[0]["cost_note"]
+    assert out[0]["seller_window"] == "Contend", "the CLI marker derives from this, not a guess"
+    assert [f["flavor"] for f in out[0]["friction"]] == ["holds_to_win"]
 
 
 def test_persuasion_includes_a_falling_contender_that_has_not_won():

@@ -105,7 +105,8 @@ def _sells_him(other: dict, player: dict) -> bool:
 # ONE vocabulary for "how hard is this, and why", used on both sides of the table. An entry
 # with no friction is easy. Flavors rather than a difficulty score because they call for
 # different responses, and because they group. None of these is a price.
-BUY_FRICTION = ("cornerstone", "beyond_your_best_chip", "never_trades", "needs_a_pivot")
+BUY_FRICTION = ("cornerstone", "beyond_your_best_chip", "never_trades", "needs_a_pivot",
+                "holds_to_win")
 SELL_FRICTION = ("cornerstone", "costs_you_production")
 
 

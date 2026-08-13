@@ -429,9 +429,17 @@ composing per window - buy for Push/Contend, pivot for Rebuild, both for Middlin
 - **`friction`** - one {flavor, why} vocabulary on both sides of the table; an empty
   list means easy. Buy side: `cornerstone`, `beyond_your_best_chip` (above the asking
   team's biggest SINGLE chip - the only comparison this project can make),
-  `never_trades`, `needs_a_pivot`. Sell side: `cornerstone`, `costs_you_production`
-  (the lineup notices only outside the noise band). Flavors, not a score, because they
-  call for different responses and because lists group by them. None is a price.
+  `never_trades`, `needs_a_pivot`, `holds_to_win`. Sell side: `cornerstone`,
+  `costs_you_production` (the lineup notices only outside the noise band). Flavors, not
+  a score, because they call for different responses and because lists group by them.
+  None is a price. The no-hole ask splits by the seller's WINDOW (`_no_hole_friction`):
+  "change direction" (`needs_a_pivot`) is only honest when there is a direction to
+  change; a CONTENDER with no hole gets `holds_to_win` - he could sell an aging piece
+  and stay a contender, which is exactly why he probably won't, and only an overwhelming
+  offer opens it. The owner flagged the same misread twice, months apart ("shiv is win
+  now and could choose to move off the aging value but doesn't have to"; then of a #1
+  lineup tagged needs_a_pivot: "that team is just nasty and competing... probably hangs
+  onto them to win now") - the second time is what split the flavor.
 - **`_best_chip`**: max single value in a pool - "out of reach" always means above one
   piece, never above a sum.
 - Noise bands: `NOISE_RETAINED = 0.98` / `NOISE_BAND` - two values inside the band are
