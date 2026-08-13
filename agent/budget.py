@@ -12,14 +12,23 @@ server subprocess, so it is memory-heavy and not a horizontal-scaling workload) 
 a plain in-process counter exactly accurate, with zero extra infrastructure. The
 tradeoff is no horizontal scaling, which a demo does not need.
 
-Set `max-instances=1` AND `concurrency=1` on the service: concurrency 1 also removes
-any check-then-record race, so the ceiling can't be overshot by parallel requests.
+`max-instances=1` is what makes the counter exact - every request lands in this
+process. It is load-bearing and lives in deploy.yml.
 
-Known, bounded imprecision: a call's real cost isn't known until after Claude has
-already been called, so the check is "has the ceiling already been passed?" The
-ceiling can therefore be exceeded by at most one call's worth (MAX_BUDGET_USD, $0.50)
-before the next request is refused. Accepted rather than engineered around - the
-alternative is pre-estimating token cost, which would be a guess.
+Known, bounded imprecision, in three parts, all accepted rather than engineered around:
+
+1. A call's real cost isn't known until after Claude has been called, so the check is
+   "has the ceiling already been passed?" - the alternative is pre-estimating token
+   cost, which would be a guess.
+2. `concurrency=2` (raised from 1 so two friends don't queue behind each other's
+   60-90s answer) reopens a check-then-record race the single-lane version had closed:
+   both in-flight calls can pass the check before either records. Overshoot is
+   therefore bounded by TWO calls' worth (2 x MAX_BUDGET_USD) rather than one.
+3. **A deploy resets the counter.** It lives in process memory, so a new revision
+   starts the day at zero - which means the real ceiling is per instance lifetime, not
+   per calendar day, on any day with deploys. Harmless for a demo (a deploy is a
+   deliberate act by the author, not something a caller can trigger), and the cost of
+   fixing it is the database this design deliberately avoids.
 """
 
 import os
