@@ -1855,7 +1855,9 @@ def test_a_buy_target_says_what_that_owner_would_take_back():
     # instead of Hurts?" had no answer in the payload. The bar picks the sentence.
     fit = trade_targets._counterparty_fit(falling, needs, [aging, young, star], target=target)
     assert "Star" not in fit["offer_any_one_of"]
-    assert "Star (9,000)" in fit["why_it_fits"] and "sale in its own right" in fit["why_it_fits"]
+    assert "Star (9,000, 5.0 yrs)" in fit["why_it_fits"], (
+        "the bigger piece carries its runway, so keep-the-years connects to it")
+    assert "sale in its own right" in fit["why_it_fits"]
     assert "Star" in trade_targets._counterparty_fit(
         falling, needs, [aging, young, star], target={"value": 8000})["offer_any_one_of"]
 
