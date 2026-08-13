@@ -1646,6 +1646,17 @@ def test_one_definition_of_needs_a_pivot_across_both_blocks():
         "why they'd listen is a fact about their team and must not move with the pivot flavor")
 
 
+def test_the_mixed_price_basis_does_not_claim_to_be_upside():
+    """value_basis says "mixed" for a prime player and the CLI phrasebook rendered that as
+    "upside-priced" - a sentence claiming a different classification than the one computed
+    (the owner, of two prime receivers: "I don't think Smith and Waddle are necessarily
+    upside priced"). Each phrase may only describe its own basis."""
+    from analysis.trade_targets import report
+    assert "upside" not in report.BUY_PRICE_NOTE["mixed"]
+    assert "production" in report.BUY_PRICE_NOTE["production"]
+    assert "future" in report.BUY_PRICE_NOTE["upside"]
+
+
 def test_a_contender_with_no_hole_holds_to_win_rather_than_needing_a_pivot():
     """The owner's read of a live report, and the second time he said it: a #1 lineup
     carrying [needs_a_pivot] on A.J. Brown - "that team is just nasty and competing. I

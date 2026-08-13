@@ -9,9 +9,12 @@ from ..team_values import MIN_MEANINGFUL_RUNWAY, ordinal
 from .upgrades import UPGRADE_KIND_TAG
 
 # The VALUE_BASIS classification (team_state.value_basis) phrased for each side of a trade.
+# "mixed" must not read as "upside-priced" - that word belongs to the upside basis, and
+# calling a prime receiver upside-priced overclaimed the classification (the owner: "I
+# don't think Smith and Waddle are necessarily upside priced").
 BUY_PRICE_NOTE = {
     "production": "production-priced",
-    "mixed": "upside-priced, may cost more than the fit justifies",
+    "mixed": "priced on production and remaining years both - some future in the cost",
     "upside": "mostly future value - likely a real overpay for current-year fit",
 }
 OFFER_GIVE_UP_COST = {
