@@ -26,6 +26,12 @@ jobs:
     # The gate: workflow_run fires on failure too, so this must be checked explicitly.
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    # Declaring an environment is what makes GitHub record a Deployment object per run -
+    # without it the repo's Deployments panel stays empty no matter what actually shipped.
+    # The url is the bare service origin; the friends key never goes here (public repo).
+    environment:
+      name: production
+      url: https://fantasy-fanatic-487070873858.us-central1.run.app
     permissions:
       contents: read
       id-token: write # required to mint the OIDC token for WIF
