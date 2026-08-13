@@ -281,6 +281,14 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                       in enumerate(sorted(per_body, key=lambda o: -per_body[o]), start=1)}
         body_median = statistics.median(per_body.values()) if per_body else 0
 
+        # Raw roster bodies, because "1 startable QB for 2 slots" read as "they only have
+        # one QB" about a room holding FOUR (Love, Willis, Rodgers, Penix - only Love
+        # clears the startable bar). The count claim is about the bar; a manager who
+        # knows the roster hears it as a count of players and catches the tool "wrong".
+        bodies = {oid: sum(1 for pid in (by_owner[oid]["players"] or [])
+                           if pid in players and players[pid]["position"] == pos)
+                  for oid in groups}
+
         quality_known = num_teams >= MIN_TEAMS_FOR_QUALITY
         for owner_id, group in groups.items():
             total, rank = totals[owner_id], ranks[owner_id]
@@ -311,8 +319,10 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                 # The bar an acquisition has to clear to actually improve the starting
                 # group rather than just join it - what `weak` needs, by definition.
                 "weakest_starter": round(group[pos][-1]) if group[pos] else 0,
+                "rostered_bodies": bodies[owner_id],
                 "note": _position_note(pos, level, count, required, total, rank, num_teams,
-                                       median, top_third, body_ranks[owner_id]),
+                                       median, top_third, body_ranks[owner_id],
+                                       bodies[owner_id]),
             }
             drop = drops.get(owner_id)
             entry = out[owner_id][pos]
@@ -362,9 +372,16 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
 
 def _position_note(pos: str, level: str, count: int, required: int, total: float, rank: int,
                    num_teams: int, median: float, top_third: float,
-                   body_rank: int | None = None) -> str:
+                   body_rank: int | None = None, bodies: int | None = None) -> str:
     have = f"No startable {pos}s" if count == 0 else f"{count} startable {pos}{'' if count == 1 else 's'}"
     short = f"{have} for {required} slot{'' if required == 1 else 's'}"
+    # "Startable" is a bar, not a headcount - without saying so, "1 startable QB" about a
+    # four-QB room reads as a count of players and gets caught as wrong by anyone who
+    # knows the roster. The gap is the QUALITY of the extra bodies, not their existence.
+    if bodies is not None and bodies > count:
+        short += (f" ({bodies} {pos}s rostered - the other {bodies - count} sit below the "
+                  f"startable bar, so the gap is the quality of the next body, not an "
+                  f"empty room)")
     standing = (f"Starting {pos} production ranks {rank} of {num_teams} "
                 f"({round(total):,} against a league median of {round(median):,}).")
 

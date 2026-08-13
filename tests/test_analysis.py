@@ -186,9 +186,10 @@ def test_a_superflex_room_of_mahomes_plus_nobody_is_top_heavy_not_critical():
 
     Two count-short rooms, same hole, opposite bodies - only the bodies should differ."""
     slots = {"QB": 2, "RB": 0, "WR": 0, "TE": 0}
-    thresholds = {"QB": 1000, "RB": 0, "WR": 0, "TE": 0}
+    thresholds = {"QB": 2000, "RB": 0, "WR": 0, "TE": 0}
     rosters, players = _league({
         "mahomes":  [("QB", 7000)],                    # one elite body, one empty slot
+        "love":     [("QB", 5131), ("QB", 1717), ("QB", 1360)],  # a FULL room, one above the bar
         "scrub":    [("QB", 1100)],                    # one weak body, one empty slot
         "full1":    [("QB", 5000), ("QB", 4000)],
         "full2":    [("QB", 4500), ("QB", 3500)],
@@ -203,6 +204,16 @@ def test_a_superflex_room_of_mahomes_plus_nobody_is_top_heavy_not_critical():
         "total called this room among the league's worst")
     assert "dragged by the empty slot, not by the players" in m["note"]
     assert "per body" in m["note"]
+
+    # The owner's second correction ("the Love/Willis guy had a fine QB room"): startable
+    # is a BAR, not a headcount. This room holds three QBs - saying "1 startable QB" with
+    # no mention of the others reads as a count of players, and anyone who knows the
+    # roster catches the tool being "wrong". The note must say the gap is the quality of
+    # the next body, not an empty room.
+    love = out["love"]["QB"]
+    assert love["level"] == "top-heavy" and love["rostered_bodies"] == 3
+    assert "3 QBs rostered" in love["note"] and "below the startable bar" in love["note"]
+    assert "not an empty room" in love["note"]
 
     assert out["scrub"]["QB"]["level"] == "critical", (
         "a genuinely weak body plus a hole is still both problems at once")
