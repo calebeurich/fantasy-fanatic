@@ -2315,13 +2315,13 @@ def _eval_fixture():
 
 def test_a_trade_is_judged_per_side_never_priced():
     """SpareQB for BigWR: b closes its QB hole against the recomputed league bar, a gets
-    the best single player. No side carries a summed package price or a winner."""
+    the best single piece. No side carries a summed package price or a winner."""
     out = trade_eval.evaluate_from_board(_eval_fixture(), "a", ["spareqb"], "b", ["bigwr"])
     assert out["ok"] and out["best_piece"]["name"] == "BigWR" and out["best_piece"]["to"] == "a"
     a, b = out["sides"]
     assert any("closes the QB need (critical -> ok)" in r for r in b["read"])
-    assert any("gets the best single player" in r for r in a["read"])
-    assert any("sends the best single player" in r for r in b["read"])
+    assert any("gets the best single piece" in r for r in a["read"])
+    assert any("sends the best single piece" in r for r in b["read"])
     # The lineup delta comes from fill_lineup, not from the traded pieces' raw values:
     # BigWR (3000) replaces OkWR (500) in a's one WR slot; SpareQB never started for a.
     assert a["lineup_production_delta"] == 2500
@@ -2353,3 +2353,26 @@ def test_a_rebuilder_taking_short_runway_production_is_flagged():
 def test_trade_eval_says_plainly_when_a_name_is_not_on_the_roster():
     out = trade_eval.evaluate_from_board(_eval_fixture(), "a", ["ghost"], "b", ["bigwr"])
     assert out["ok"] is False and "'ghost' is not on a's roster" in out["problem"]
+
+
+def test_picks_ride_as_pieces_with_the_right_timeline_reads():
+    """A pick is the longest-dated asset there is: it must never trip the short-runway
+    flag (no `years_to_decline` is not 0 years), and a win-now team taking one back is
+    told the value pays after its window."""
+    board = _eval_fixture()
+    board.ctx.rosters[0]["roster_id"] = 1
+    board.ctx.rosters[1]["roster_id"] = 2
+    board.picks_by_owner = {
+        1: [{"pick": "2027 1st (Early)", "value": 9000, "round": 1, "season": 2027,
+             "originally": 1, "slot_basis": "expected early"}],
+        2: [{"pick": "2026 1st (Mid)", "value": 3000, "round": 1, "season": 2026,
+             "originally": 2, "slot_basis": "expected mid"}]}
+    out = trade_eval.evaluate_from_board(board, "a", ["2027 1st"], "b", ["2026 1st"])
+    assert out["ok"] and out["best_piece"]["name"] == "2027 1st (Early)"
+
+    b_side = next(s for s in out["sides"] if s["owner"] == "b")
+    assert not any("runway" in r for r in b_side["read"]), (
+        "a Rebuild receiving a pick is buying exactly its own timeline - no flag")
+    a_side = next(s for s in out["sides"] if s["owner"] == "a")
+    assert any("value that pays after the window" in r for r in a_side["read"]), (
+        "a Contend team taking back futures gets the mirror warning")

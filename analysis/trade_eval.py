@@ -5,8 +5,9 @@ into a package price, and no margin declares a winner - value is not additive ac
 players, and "wins by 214" is the exact claim this project refuses to make. The
 judgment instead composes what analysis/ already knows:
 
-- who gets the best SINGLE player in the deal (the consolidation principle - the side
-  giving him up needs the rest of the deal to buy something specific)
+- who gets the best SINGLE piece in the deal, players and picks alike (the
+  consolidation principle - the side giving it up needs the rest of the deal to buy
+  something specific)
 - which holes each side opens or closes, recomputed against the same league-relative
   startable bar as roster_needs - the whole league re-assessed with the two rosters
   swapped, so only the trade moves the answer
@@ -16,8 +17,8 @@ judgment instead composes what analysis/ already knows:
 - timeline fit: an accumulating roster taking on a final-year piece is buying seasons
   that won't be there - the same INSIDE_FINAL_YEAR clock `_sells_him` uses
 
-Smoke test:
-    python -m analysis.trade_eval <league_id> "<owner_a>: name, name" "<owner_b>: name"
+Smoke test (picks resolve against the sender's owned picks, same fuzzy contract):
+    python -m analysis.trade_eval <league_id> "<owner_a>: fannin, 2027 1st (early)" "<owner_b>: tee higgins"
 """
 
 from . import roster_needs
@@ -38,19 +39,29 @@ def evaluate_trade(league_id: str, owner_a: str, sends_a: list[str],
     return evaluate_from_board(build_board(league_id), owner_a, sends_a, owner_b, sends_b)
 
 
-def _resolve(ctx, roster, owner_name, queries):
-    """Player ids for each name, matched within the sending roster only - a trade can
-    only send what the sender actually holds, so that is the only place to look."""
-    ids, problems = [], []
+def _resolve(ctx, roster, owned_picks, owner_name, queries):
+    """Each name matched within what the sender actually holds - roster players first,
+    then owned picks ('2027 1st', '2026 Pick 1.03'). 25 of the 28 real trades across
+    the validation leagues included a pick, so picks are the main case, not an extra."""
+    ids, picks, problems = [], [], []
     for q in queries:
         matches = [pid for pid in (roster["players"] or [])
                    if q.lower() in (ctx.players.get(pid, {}).get("name") or "").lower()]
         if len(matches) == 1:
             ids.append(matches[0])
+            continue
+        if len(matches) > 1:
+            problems.append(f"'{q}' matches several players on {owner_name}'s roster")
+            continue
+        pick_matches = [p for p in owned_picks if q.lower() in p["pick"].lower()]
+        if len(pick_matches) == 1:
+            picks.append(pick_matches[0])
+        elif pick_matches:
+            names = ", ".join(p["pick"] for p in pick_matches)
+            problems.append(f"'{q}' matches several of {owner_name}'s picks ({names})")
         else:
-            what = "matches several players" if matches else "is not"
-            problems.append(f"'{q}' {what} on {owner_name}'s roster")
-    return ids, problems
+            problems.append(f"'{q}' is not on {owner_name}'s roster (players or picks)")
+    return ids, picks, problems
 
 
 def _piece(ctx, pid):
@@ -95,10 +106,10 @@ def _need_changes(before: dict, after: dict) -> list[dict]:
 def _side_read(state, receives, changes, lineup_delta, best, receives_best) -> list[str]:
     read = []
     if receives_best:
-        read.append(f"gets the best single player in the deal ({best['name']}, "
+        read.append(f"gets the best single piece in the deal ({best['name']}, "
                     f"{best['value']:,}) - consolidation favors the side holding him")
     else:
-        read.append(f"sends the best single player ({best['name']}, {best['value']:,}) - "
+        read.append(f"sends the best single piece ({best['name']}, {best['value']:,}) - "
                     f"the return has to buy something specific to be worth that")
     for c in changes:
         if c["direction"] == "closes":
@@ -122,10 +133,18 @@ def _side_read(state, receives, changes, lineup_delta, best, receives_best) -> l
                                            "should be selling, not buying")
     else:
         bar = None
+    # `is not None` matters: a pick has no runway at all - it is the longest-dated
+    # asset there is, the opposite of a piece at his edge - and `or 0` would flag it.
     for p in receives:
-        if bar and (p.get("years_to_decline") or 0) < bar:
+        if bar and p.get("years_to_decline") is not None and p["years_to_decline"] < bar:
             read.append(f"takes on {p['name']} with {p['years_to_decline']} yrs of "
                         f"runway - {horizon}")
+    if state["window"] in ("Push", "Contend"):
+        futures = [p["name"] for p in receives if p["position"] == "PICK"]
+        if futures:
+            read.append(f"takes back futures ({', '.join(futures)}) while built to win "
+                        f"now - value that pays after the window, so the rest of the "
+                        f"return has to carry this season")
     return read
 
 
@@ -138,13 +157,24 @@ def evaluate_from_board(board, owner_a: str, sends_a: list[str],
         return {"ok": False, "problem": "both sides resolve to the same team"}
     rosters = {r["owner_id"]: r for r in ctx.rosters}
 
-    ids_a, problems_a = _resolve(ctx, rosters[a["owner_id"]], a["owner"], sends_a)
-    ids_b, problems_b = _resolve(ctx, rosters[b["owner_id"]], b["owner"], sends_b)
+    # picks_by_owner is keyed by roster_id, not owner_id, despite the name.
+    picks_of = lambda state: board.picks_by_owner.get(
+        rosters[state["owner_id"]].get("roster_id"), [])
+    ids_a, picks_a, problems_a = _resolve(ctx, rosters[a["owner_id"]], picks_of(a),
+                                          a["owner"], sends_a)
+    ids_b, picks_b, problems_b = _resolve(ctx, rosters[b["owner_id"]], picks_of(b),
+                                          b["owner"], sends_b)
     if problems_a or problems_b:
         return {"ok": False, "problem": "; ".join(problems_a + problems_b)}
 
-    pieces_a = [_piece(ctx, pid) for pid in ids_a]   # what A sends (B receives)
-    pieces_b = [_piece(ctx, pid) for pid in ids_b]
+    # A pick rides as a piece with a value and its slot basis; it never enters the
+    # needs or lineup math because it fills no slot this season.
+    def _pick_piece(p):
+        return {"name": p["pick"], "position": "PICK", "value": p["value"],
+                "slot_basis": p["slot_basis"]}
+
+    pieces_a = [_piece(ctx, pid) for pid in ids_a] + [_pick_piece(p) for p in picks_a]
+    pieces_b = [_piece(ctx, pid) for pid in ids_b] + [_pick_piece(p) for p in picks_b]
 
     after = {a["owner_id"]: [p for p in rosters[a["owner_id"]]["players"]
                              if p not in ids_a] + ids_b,
@@ -157,15 +187,15 @@ def evaluate_from_board(board, owner_a: str, sends_a: list[str],
     best_to = b["owner"] if best in pieces_a else a["owner"]
 
     sides = []
-    for state, sent_ids, receives, changes_key in (
-            (a, ids_a, pieces_b, a["owner_id"]), (b, ids_b, pieces_a, b["owner_id"])):
+    for state, sends, receives, changes_key in (
+            (a, pieces_a, pieces_b, a["owner_id"]), (b, pieces_b, pieces_a, b["owner_id"])):
         changes = _need_changes(needs_before[changes_key], needs_after[changes_key])
         delta = (_lineup_production(ctx, after[changes_key])
                  - _lineup_production(ctx, rosters[changes_key]["players"]))
         sides.append({
             "owner": state["owner"], "window": state["window"],
             "trajectory": state.get("trajectory"),
-            "sends": [_piece(ctx, pid) for pid in sent_ids], "receives": receives,
+            "sends": sends, "receives": receives,
             "need_changes": changes, "lineup_production_delta": delta,
             "read": _side_read(state, receives, changes, delta, best,
                                receives_best=(state["owner"] == best_to)),

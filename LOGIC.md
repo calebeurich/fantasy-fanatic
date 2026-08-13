@@ -633,9 +633,10 @@ package is the user's premise - the module never constructs one, never totals on
 declares no winner by margin. Values ride per piece; judgment comes from four facts
 this codebase already knows how to compute:
 
-- **Best single player** (`_best_chip`'s logic on the deal itself): which side gets
-  him. Consolidation favors that side; the side sending him needs the rest of the deal
-  to buy something specific. One player against one player stays the only comparison.
+- **Best single piece** (`_best_chip`'s logic on the deal itself), players and picks
+  alike: which side gets it. Consolidation favors that side; the side sending it needs
+  the rest of the deal to buy something specific. One piece against one piece stays
+  the only comparison.
 - **Need changes against the real bar**: the whole league re-assessed
   (`assess_positions`) with the two rosters swapped, before vs. after, so the diff can
   only come from the trade. Declared starters are omitted from BOTH runs (stale in a
@@ -650,11 +651,23 @@ this codebase already knows how to compute:
   (`INSIDE_FINAL_YEAR`, the `_sells_him` clock pointed the other way). Both bars
   already existed; the module introduces no threshold of its own.
 
+**Picks are the main case, not an extra**: replaying every completed trade of the
+current season across the three validation leagues, 25 of 28 included a draft pick.
+A pick resolves against the sender's owned picks (`picks_by_owner` - keyed by
+roster_id despite the name) under the same fuzzy-match-or-name-the-candidates
+contract as players, and rides as a piece with its value and `slot_basis`. It never
+enters the needs or lineup math (it fills no slot this season), it never trips the
+short-runway flag (no runway is not zero runway - it is the longest-dated asset
+there is), and a Push/Contend side taking one back is told the value pays after its
+window.
+
 Each side's `read` is composed from that side's own seat, and a trade can read well
-for both - which is what a real trade usually is. Validated by reconstructing jwall's
-actual Higgins+Thornton-for-Fannin deal in reverse: the reversal reads as bad for
-jwall on all three axes (ships the best piece, and the runway flag fires on Higgins),
-which is the market agreeing with the trade he actually made.
+for both - which is what a real trade usually is. Validated two ways: reconstructing
+jwall's actual Higgins+Thornton-for-Fannin deal in reverse (the reversal reads as bad
+for jwall on all three axes, which is the market agreeing with the trade he made),
+and replaying the six current-season trades whose pieces are still where they landed -
+no crashes, and every read survives an eye-check against how the league actually
+discussed those deals.
 
 ## Waiver wire (`analysis/waiver_wire.py`)
 
