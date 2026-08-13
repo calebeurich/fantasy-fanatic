@@ -1846,6 +1846,56 @@ def test_a_buy_target_says_what_that_owner_would_take_back():
         falling, needs, [aging, young, star], target={"value": 8000})["offer_any_one_of"]
 
 
+def test_a_named_player_gets_an_answer_not_a_verdict_about_list_membership():
+    """The first friend-tester's actual complaint: "how do I trade for Rashee Rice" got
+    "Rice isn't a trade target", repeatedly - absence from a ranked, capped, need-filtered
+    list read back as unavailability. Absence has five meanings and none of them is that.
+    `player_outlook` answers about the NAMED player: who owns him, whether that owner
+    sells, and which single pieces of mine that owner would want back. Live, the real
+    answer landed on the friend's own plan (Fitz sells Rice; send back Goff or Darnold).
+    """
+    players = {
+        "rice": {"name": "Rice", "position": "WR", "value": 3500, "redraft_value": 2600,
+                 "age": 26.3},
+        "goff": {"name": "Goff", "position": "QB", "value": 3400, "redraft_value": 4600,
+                 "age": 31.8},
+    }
+    rosters = [{"owner_id": "fitz", "players": ["rice"]},
+               {"owner_id": "me", "players": ["goff"]}]
+    ctx = _Ctx(players, rosters, {"fitz": {"rice"}, "me": set()})
+    ctx.pick_owner = lambda q, rows: next(r for r in rows if q in r["owner"])
+    rice_entry = {"name": "Rice", "position": "WR", "value": 3500, "redraft_value": 2600,
+                  "bucket": "prime", "years_to_decline": 2.7, "is_starter": True}
+    fitz = {"owner_id": "fitz", "owner": "fitz", "window": "Rebuild", "state": "Rebuilding",
+            "flavor": "stalled", "window_note": "n", "trajectory": "steady",
+            "ascending_pct": 26, "declining_pct": 8,
+            "sellable": [rice_entry], "tradeable_surplus": []}
+    me = {"owner_id": "me", "owner": "me", "window": "Rebuild", "state": "Rebuilding",
+          "flavor": "convertible", "window_note": "n", "trajectory": "steady",
+          "ascending_pct": 23, "declining_pct": 2,
+          "sellable": [{"name": "Goff", "position": "QB", "value": 3400,
+                        "redraft_value": 4600, "bucket": "prime", "years_to_decline": 6.1,
+                        "is_starter": False}],
+          "tradeable_surplus": []}
+    board = _board(ctx, [fitz, me],
+                   needs_by_owner_id={"fitz": {"QB": {"level": "critical", "startable": 1,
+                                                      "slots": 2}}},
+                   thresholds={"QB": 0, "WR": 0}, trade_counts={"fitz": 2, "me": 1})
+
+    out = trade_targets.outlook_from_board(board, "rice", "me")
+    assert out["found"] and out["owner"] == "fitz"
+    assert "seller of exactly this kind of piece" in out["availability"], (
+        "a Rebuild owner sells - the call is a price conversation, not a persuasion")
+    assert out["your_fit"]["offer_any_one_of"] == ["Goff"], (
+        "the fit names MY single pieces that fill THEIR hole")
+    assert "not a bundle" not in out["availability"], "the no-bundle rule lives in the note"
+
+    # A player nobody in the data matches is said plainly, with candidates on ambiguity.
+    assert trade_targets.outlook_from_board(board, "zzz")["found"] is False
+    # Asking about your own player redirects instead of pretending there is a call to make.
+    assert trade_targets.outlook_from_board(board, "goff", "me").get("already_yours")
+
+
 def test_the_package_tripwire_fires_on_real_bundles_and_not_on_real_alternatives():
     """The detector for `case_never_builds_a_package`, checked against the actual live
     answers rather than invented strings - because two earlier versions were confidently

@@ -247,6 +247,38 @@ def _print_value_upgrades(result: dict) -> None:
     print(f"  {result['value_upgrade_note']}")
 
 
+def _print_outlook(o: dict) -> None:
+    if not o.get("found"):
+        print(o.get("note", "not found"))
+        for c in o.get("candidates") or []:
+            print(f"  - {c}")
+        return
+    p = o["player"]
+    print(f"{p['name']} ({p['position']}, dyn {p['value']:,} / rd "
+          f"{p.get('redraft_value') or 0:,}, {p['bucket']}, "
+          f"runway {p.get('years_to_decline')})")
+    if p.get("price_note"):
+        print(f"  {p['price_note']}")
+    if o.get("rostered") is False:
+        print(f"  {o['note']}")
+        return
+    print(f"owned by {o['owner']} - {o['owner_window']} ({o['owner_flavor']})")
+    print(f"  {o['owner_window_note']}")
+    print(f"availability: {o.get('availability')}")
+    for f in o.get("friction") or []:
+        print(f"  - [{f['flavor']}] {f['why']}")
+    if o.get("owner_is_short_at"):
+        print("owner is short at: "
+              + ", ".join(f"{k} ({v})" for k, v in o["owner_is_short_at"].items()))
+    fit = o.get("your_fit")
+    if fit:
+        if fit.get("offer_any_one_of"):
+            print("send back any ONE of (not a bundle): "
+                  + ", ".join(fit["offer_any_one_of"]))
+        print(f"  {fit['why_it_fits']}")
+    print(f"  {o['note']}")
+
+
 def _print_conversion_candidates(result: dict) -> None:
     if not result.get("conversion_candidates"):
         return

@@ -742,6 +742,44 @@ prompt carries the doctrine no single tool result states (five principles: pick 
 two currencies, age is a distance, value is not additive, a trade needs a counterparty)
 plus numbered rules, each added for an observed failure.
 
+### The first friends-test feedback, and what each complaint actually was
+
+One tester (the league's sports-modeling guy) produced three complaints in one session,
+and each turned out to be a different class of defect - worth recording because the
+surface read ("the agent was annoying") hid all three.
+
+**"It kept saying Rice isn't a trade target."** A question SHAPE we could not answer:
+every surface was team-directed ("who should I target") and he asked a player-directed
+question ("how do I get X"). Absence from a ranked, capped, need-filtered list was read
+back as a verdict, when absence has five meanings (not a scored need, capped out, below
+the floor, non-seller, wire-trimmed) and none is "unavailable". Fix: `player_outlook` /
+`get_player_outlook` - one named player, both sides of the call, composed entirely from
+existing machinery (`_sells_him`, `_why_they_would_move_him`, `_counterparty_fit`).
+Live, its answer landed on the tester's own plan: Rice's owner is a stalled Rebuild
+(seller), and `offer_any_one_of` came back Goff/Darnold - "dump a QB", confirmed with
+reasons. Plus one docstring rule on get_trade_targets: list absence is never a verdict
+on a named player.
+
+**"It told me to sell a QB to teams with great QB rooms, then said oops my bad."** The
+advice was RIGHT and the label made it indefensible. Superflex: those rooms (Mahomes
+plus nobody, Love plus nobody) genuinely need a second BODY - but group quality ranked
+the group TOTAL, the empty slot dragged a one-stud room to "among the league's worst",
+and `top-heavy` (a body, NOT an upgrade) flipped to `critical`. The hole contaminated
+the verdict on the players. Count-short groups are now judged per startable body, the
+note says "dragged by the empty slot, not by the players", and the `wanted_by` why
+carries the shape ("1 startable for 2 slots - what they start is good") so the model
+can survive the pushback it is guaranteed to get. The capitulation itself ("oops my
+bad") is addressed as rule 13: re-check the disputed claim, then stand corrected with
+data or explain what the number measures - most disputes are a label read differently
+than it was measured.
+
+**"Rice is undervalued" (his own model).** Not a defect to fix - a thesis to engage.
+Rule 14: never argue the market price back, never adopt the user's number (no
+projections here); state what the market says and what the price is made of, then
+reason CONDITIONALLY on the thesis - is the owner a seller, does the timeline fit, does
+being right make the buy better. A sharp user's model can beat FantasyCalc; this
+product's job is the league context around that bet, not the bet itself.
+
 ### A target without a price is half a trade
 
 Buy targets shipped "here is who to ring" beside a separate list of everything this team

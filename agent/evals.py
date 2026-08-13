@@ -246,6 +246,29 @@ async def case_respects_the_starting_lineup_format() -> None:
           f"{result['num_turns']} turns)")
 
 
+async def case_a_named_player_is_answered_not_dismissed() -> None:
+    """The first friend-tester's complaint, verbatim shape: he asked how to trade for a
+    specific player and was told, repeatedly, that the player "isn't a trade target" -
+    absence from get_trade_targets' ranked lists read back as a verdict. Rashee Rice sits
+    on a stalled Rebuild in this league (a seller), and the asker holds spare QBs that
+    owner is short of: the right answer is HOW to make the call, not that there is no call.
+    """
+    result = await _ask(
+        f"For Sleeper league {FRIENDS_LEAGUE}, I'm jwall567. How would I go about "
+        "trading for Rashee Rice?")
+    tools = " ".join(_tool_names(result))
+    assert "get_player_outlook" in tools, (
+        f"a named-player question must use the player surface, called: {_tool_names(result)}")
+    text = result["text"].lower()
+    assert not any(p in text for p in ("isn't a trade target", "is not a trade target",
+                                       "not a valid trade target", "cannot be traded")), \
+        f"dismissed a gettable player instead of answering: {result['text'][:400]}"
+    assert "fitzmagics" in text.replace(" ", ""), (
+        f"never named the owner to call: {result['text'][:400]}")
+    print(f"case_a_named_player_is_answered_not_dismissed: PASS "
+          f"(${result['cost_usd']:.4f}, {result['num_turns']} turns)")
+
+
 async def case_never_builds_a_package() -> None:
     """Rule 8's failure mode, caught in the first hour of real use: asked what to do, the
     answer wrote "Offer: Harold Fannin (3,650) + Tyler Shough (3,379)" against a 4,473
@@ -342,6 +365,7 @@ CASES = [
     case_respects_the_starting_lineup_format,
     case_sells_on_runway_not_age,
     case_never_builds_a_package,
+    case_a_named_player_is_answered_not_dismissed,
 ]
 
 

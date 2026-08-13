@@ -21,6 +21,7 @@ from .board import (Board, DEFAULT_MAX_PER_POSITION, NOISE_BAND, NOISE_RETAINED,
 from .buy import _buy_path, _depth_adds, _my_offer_pool, DEPTH_NOTE, DEPTH_NOTE_REBUILD
 from .counterparty import (_cliff_case, _counterparty_fit, _persuasion_targets,
                            _seller_case, _why_they_would_move_him, wanted_by, wanted_line)
+from .outlook import OUTLOOK_NOTE, outlook_from_board, player_outlook
 from .pivot import STRANDED_NOTE, _pivot_path
 from .report import _print_report
 from .upgrades import (CONTEND_CHOICE_NOTE, RETURNS_PER_MOVE, VALUE_UPGRADE_NOTE,
@@ -199,6 +200,13 @@ def offerable_names(result: dict) -> set[str]:
 
 def main(league_id: str, owner_query: str = None,
          max_per_position: int = DEFAULT_MAX_PER_POSITION) -> None:
+    # Smoke test for the player surface: python -m analysis.trade_targets <league_id>
+    # "player=rashee rice=jwall567" (second "=asker" part optional).
+    if owner_query and owner_query.startswith("player="):
+        from .report import _print_outlook
+        name, _, asker = owner_query[len("player="):].partition("=")
+        _print_outlook(player_outlook(league_id, name, asker or None))
+        return
     if owner_query:
         _print_report(find_targets(league_id, owner_query, max_per_position))
         return

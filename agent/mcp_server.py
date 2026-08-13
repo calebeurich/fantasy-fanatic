@@ -230,8 +230,28 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
       that one" is the entire claim. Say the age - cheaper usually means older.
     - An empty list is a meaningful answer (a young rebuild has nothing declining to
       sell; a covered roster needs no depth). Do not pad it from other blocks.
-    - max_per_position caps each list - call again with a higher number for more."""
+    - max_per_position caps each list - call again with a higher number for more.
+    - These lists answer "who fits best", not "who is available": if the user asks about
+      a SPECIFIC player who isn't in them, that absence is not a verdict - call
+      get_player_outlook for him instead of declaring him untradeable."""
     return _within_wire_limit(league_id, owner_name, max_per_position)
+
+
+@mcp.tool()
+def get_player_outlook(league_id: str, player_name: str, your_team: str = None) -> dict:
+    """Call this whenever the user names a SPECIFIC player - "how do I trade for X",
+    "what would it take to get X", "should I go after X". Absence from
+    get_trade_targets' lists is NEVER a verdict on a named player (those lists are
+    ranked, capped and filtered to scored needs); this answers about him directly.
+
+    Returns one player with both sides of the call: who owns him, that owner's window,
+    `availability` (why the owner would or wouldn't move him - use its wording),
+    `friction` (same vocabulary as everywhere), what the owner is short at, and - when
+    your_team is given - `your_fit` with `offer_any_one_of`: single pieces THAT owner
+    would want back, alternatives never a bundle. It does not price the deal; if the
+    user believes the player is under- or over-valued, treat that as their thesis per
+    your rules and reason conditionally on it."""
+    return trade_targets.player_outlook(league_id, player_name, your_team)
 
 
 @mcp.tool()
