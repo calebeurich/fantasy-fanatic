@@ -191,7 +191,8 @@ def team_detail(league_id: str, owner: str) -> dict:
     by_pos: dict[str, list] = {}
     for r in detail["rows"]:
         by_pos.setdefault(r["position"], []).append({
-            "name": r["name"], "value": r["value"], "age": r["age"],
+            "name": r["name"], "value": r["value"],
+            "redraft_value": r.get("redraft_value"), "age": r["age"],
             "bucket": r["bucket"], "starter": r["lineup_role"] == "starter",
             "cornerstone": r["name"] in corner,
             # The continuous variable behind the bucket - the UI colors on it, because

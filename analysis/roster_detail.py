@@ -41,6 +41,7 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
             "name": info["name"],
             "position": info["position"],
             "value": info["value"],
+            "redraft_value": info.get("redraft_value"),
             "age": info["age"],
             "bucket": age_bucket(info["position"], info["age"], info.get("usage_role")),
             # The distance to the boundary, not just which side of it he's on - two players
