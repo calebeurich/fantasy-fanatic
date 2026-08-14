@@ -236,8 +236,8 @@ def next_first_note(owns_next_first: bool, window: str) -> str:
             "the case for selling has to stand on the trade returns alone.")
 
 
-def cornerstone_threshold(players: dict[str, dict]) -> float:
-    values = sorted((info["value"] for info in players.values()), reverse=True)
+def cornerstone_threshold(players: dict[str, dict], metric: str = "value") -> float:
+    values = sorted((info.get(metric) or 0 for info in players.values()), reverse=True)
     return values[int(len(values) * CORNERSTONE_PERCENTILE)]
 
 
@@ -247,7 +247,7 @@ def clears_relevance_floor(entry: dict, thresholds: dict[str, float]) -> bool:
 
 
 def classify(roster: dict, players: dict[str, dict], threshold: float,
-             starter_ids: set[str]) -> dict:
+             starter_ids: set[str], redraft_threshold: float = float("inf")) -> dict:
     """One roster's raw measurements; the league-relative parts are added by
     `classify_league`. `starter_ids` is the value-derived lineup. Trajectory is measured
     on current production, not dynasty value - dynasty prices the growth being asked
@@ -279,7 +279,13 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
         entry["bucket"] = bucket
         entry["years_to_decline"] = years_to_decline(info["position"], info["age"],
                                                      info.get("usage_role"))
-        if info["value"] < threshold:
+        # A piece is core-sized if EITHER currency clears the league's top-10% bar.
+        # Dynasty value alone made the deepest producers invisible: Derrick Henry's
+        # price has already collapsed, so he missed win_now_core - and every note built
+        # on it - while carrying more of his team's production than anyone (the
+        # Walker-but-not-Henry note). Production is the other honest way to be core.
+        production_core = (info.get("redraft_value") or 0) >= redraft_threshold
+        if info["value"] < threshold and not production_core:
             # Not a foundational piece either way, but the two cases mean different
             # things: ascending-but-small is a lottery ticket you'd offer as filler;
             # prime/declining-but-small is a real (if modest) win-now contributor that
@@ -292,18 +298,28 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
         # Runway, not bucket: a cornerstone is a piece with several seasons, not a side of
         # a birthday. And a cornerstone stays in `sellable` - the hardest ask is a price,
         # not a veto, and leaving him out made the best piece on a roster unaskable.
-        if (entry["years_to_decline"] or 0) < MIN_MEANINGFUL_RUNWAY:
+        # Production-only qualifiers can never be cornerstones - "build around" is a
+        # dynasty-price claim the market is explicitly not making about them.
+        if (entry["years_to_decline"] or 0) < MIN_MEANINGFUL_RUNWAY or info["value"] < threshold:
             # He missed the cornerstone tag on the CLOCK, not on value - so the ask must
             # not fall off a cliff with the label. Without this, a roster read
             # "cornerstones: none" while holding a top-6 receiver, and the seller's own
             # tool framed its premium asset as an ordinary piece.
-            if entry["years_to_decline"] is not None:
+            if info["value"] >= threshold and entry["years_to_decline"] is not None:
                 entry["price_note"] = (
                     f"cornerstone-priced: his {entry['value']:,} clears the same top-10% "
                     f"bar this league's cornerstones do, and only the clock "
                     f"({entry['years_to_decline']} years) keeps the tag off. The market "
                     f"has not discounted the remaining years yet - that is exactly what "
                     f"makes now the selling window, and the ask is a cornerstone's ask.")
+            elif info["value"] < threshold:
+                entry["price_note"] = (
+                    f"production-priced: his {entry['redraft_value']:,} this-season value "
+                    f"clears the league's top-10% production bar while his dynasty price "
+                    f"({entry['value']:,}) no longer does - the market has already "
+                    f"discounted the future, so whoever buys him is buying this season "
+                    f"only. His market is any team whose path says buy, and it peaks at "
+                    f"the deadline.")
             win_now_core.append(entry)
             sellable.append(entry)  # valuable but short - still sellable, just pricier
         else:
@@ -359,14 +375,15 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
         return (f"{e['name']} ({abs(y):.1f} yrs past his breakpoint - still productive "
                 f"today, declining from here)")
 
+    # Human-readable fact only - the instruction to raise it unprompted lives in
+    # get_team_state's docstring, not here; this string is shown to people in the UI.
     mismatch_note = (
         "Built for later, starting now: " +
         ", ".join(_slope_phrase(e) for e in clock_mismatch) +
         f" - this roster's tilt is ascending ({round(asc_pct)}% vs {round(dec_pct)}%), "
         f"so it is accumulating seasons these starters won't be part of. They still "
         f"contend today, and that is exactly the window to convert them in - while "
-        f"the price still says starter. Raise this whenever describing the window, "
-        f"not only when asked about selling." if clock_mismatch else None)
+        f"the price still says starter." if clock_mismatch else None)
 
     return {"clock_mismatch": clock_mismatch,
             "clock_mismatch_note": mismatch_note,
@@ -587,6 +604,7 @@ def classify_league(league_id: str) -> list[dict]:
     ctx = context(league_id)
     league, players = ctx.league, ctx.players
     threshold = cornerstone_threshold(players)
+    redraft_threshold = cornerstone_threshold(players, "redraft_value")
     rosters, owner_names = ctx.rosters, ctx.owner_names
 
     # Dynasty identity is built through trades, so a league with zero in its history
@@ -616,7 +634,7 @@ def classify_league(league_id: str) -> list[dict]:
     for roster in rosters:
         starter_ids = ctx.starters_for(roster)
         starter_value, _ = split_starters_bench(roster, players, starter_ids)
-        result = classify(roster, players, threshold, starter_ids)
+        result = classify(roster, players, threshold, starter_ids, redraft_threshold)
         roster_value = sum(players[pid]["value"] or 0
                            for pid in (roster["players"] or []) if pid in players)
         rows.append({

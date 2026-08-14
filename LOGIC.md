@@ -274,6 +274,23 @@ misaligned flavor, which this supersedes conceptually) and spugz13 (rank 9, 8/11
 war chest → uncommitted, "the first trade is for a direction"). The old
 window/flavor fields remain computed and shipped alongside during the migration.
 
+**Core membership is either-currency** (2026-08-15, the Walker-but-not-Henry note):
+a piece is core-sized if EITHER its dynasty value or its redraft value clears the
+league's top-10% bar (`cornerstone_threshold`, same percentile both currencies).
+Dynasty value alone made the deepest producers invisible - Derrick Henry's price had
+already collapsed, so he missed `win_now_core` and every note built on it while
+carrying more of his team's production than anyone; shivvv's aging-core note named
+Walker and skipped Henry, which read as wrong to the owner because it was. Two
+price_note variants say which door a piece came in: "cornerstone-priced" (value
+clears the bar, only the clock keeps the tag off - the sell window) and
+"production-priced" (production clears the bar, price no longer does - the market
+already discounted the future, so his buyer is buying this season only: the rental
+market shape). Production-only qualifiers can never be cornerstones - "build around"
+is a dynasty-price claim the market is explicitly not making about them - so they
+always land in `win_now_core` regardless of runway. The UI's Core column shows the
+split directly: bold = build-around, orange = production-priced (the James Cook /
+JT+Barkley / Jefferson / Henry row the owner asked to SEE).
+
 **Clock mismatch** (`clock_mismatch` + note, per team): `_cliff_case` pointed at
 one's own roster - an ascending-tilt team STARTING a short-runway premium piece
 (win_now_core's starters) is holding seasons it isn't built for. Exists because the

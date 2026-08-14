@@ -110,6 +110,8 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
       Rebuild - bottom third. Sell decline, accumulate youth and picks.
 
     Hard rules:
+    - Raise `clock_mismatch_note` whenever describing the window, not only when asked
+      about selling - it names the starters whose clock disagrees with the roster.
     - Use `window_note`'s wording: these are roster-composition measures - never describe
       them as records, wins or points, because no games have been played.
     - `years_to_decline` decides WHO to sell, never age: the curves give a 31.8-year-old

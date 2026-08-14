@@ -61,6 +61,9 @@
   .p-rebuild{background:rgba(248,113,113,.2);color:var(--crit)}
   .tag.cool{opacity:.8}
   .tag.hot{font-weight:700;outline:1px solid currentColor}
+  /* The production-priced core line: pieces whose price is what they do NOW
+     (Henry, JT, Kelce shapes) - visually the "aging but load-bearing" row. */
+  .pp{color:hsl(25,65%,55%)}
   .need{display:inline-block;padding:1px 6px;border-radius:5px;font-size:11.5px;margin-right:4px}
   .critical{background:rgba(248,113,113,.15);color:var(--crit)}
   .weak{background:rgba(251,191,36,.13);color:var(--thin)}
@@ -390,8 +393,7 @@ async function toggleDetail(tr, leagueId) {
       `<div class="cs" style="margin-bottom:6px"><strong>${d.alignment} · ${d.path}</strong>` +
       ` — ${d.path_reason}</div>` +
       (d.clock_mismatch_note
-        ? `<div class="cs warn" style="margin-bottom:8px"><strong>⚑ extra flag — aging core:</strong> ` +
-          `${d.clock_mismatch_note}</div>` : "") +
+        ? `<div class="cs warn" style="margin-bottom:8px">${d.clock_mismatch_note}</div>` : "") +
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}${picksHtml}</div>` +
       `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--ok)">▸</span>` +
@@ -458,11 +460,15 @@ async function loadLeague(id) {
         <td class="rk">${t.rank}</td>
         <td class="who">${t.owner}${tn}<div class="cs">${flags}</div></td>
         <td><span class="tag ${chip[0]} ${heat}" title="${t.path_reason.replace(/"/g, "&quot;")}">${chip[1]}</span></td>
-        <td class="cs">${t.starting_production.toLocaleString()}<div class="cs">${t.pct_of_best}% of best · ${t.ascending_pct}%asc / ${t.declining_pct}%dec</div></td>
+        <td class="cs">${t.starting_production.toLocaleString()}
+          <div class="cs">${t.pct_of_best}% of best</div>
+          <div class="cs">${t.ascending_pct}% asc · ${t.declining_pct}% dec</div></td>
         <td class="cs">${t.starter_value.toLocaleString()}<div class="cs">${firsts}</div></td>
         <td>${needs}</td>
-        <td class="cs">${t.core.slice(0, 4).map(c =>
-          c.cornerstone ? `<strong>${c.name}</strong>` : c.name).join(", ") || "none"}</td>
+        <td class="cs">
+          <div>${t.core.filter(c => c.cornerstone).slice(0, 3).map(c => `<strong>${c.name}</strong>`).join(", ") || "—"}</div>
+          ${t.core.some(c => !c.cornerstone)
+            ? `<div class="pp">${t.core.filter(c => !c.cornerstone).slice(0, 3).map(c => c.name).join(", ")}</div>` : ""}</td>
       </tr>`;
     }).join("");
     $("overview").innerHTML = `
@@ -470,7 +476,7 @@ async function loadLeague(id) {
       <tbody>${rows}</tbody></table>
       ${d.tier === "degraded" ? '<div class="note warn">Shallow league — percentile-based numbers are rougher than usual.</div>' : ""}
       ${d.no_trade_history ? '<div class="note warn">No trades in this league yet — window labels are less reliable this early.</div>' : ""}
-      <div class="note">Ranked by current starting production (redraft value) — what decides whether a team can compete <em>this</em> season. Path = the suggested move: <strong>bright</strong> means a real decision is pending, muted means continue as-is (hover for why). Core = the roster's headline pieces; <strong>bold</strong> ones are young enough to build around. Click a team to ask about them.</div>`;
+      <div class="note">Ranked by current starting production (redraft value) — what decides whether a team can compete <em>this</em> season. Path = the suggested move: <strong>bright</strong> means a real decision is pending, muted means continue as-is (hover for why). Core: <strong>bold</strong> = build-around pieces; <span class="pp">orange</span> = priced on what they do now — the aging load-bearers and sell-window watch list. Click a team to ask about them.</div>`;
     const pick = tr => {
       myTeam = tr.dataset.owner;
       document.querySelectorAll("tr.team").forEach(x => x.classList.remove("mine"));
