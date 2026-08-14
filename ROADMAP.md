@@ -64,6 +64,16 @@ eventually to learn from.
   source for historical trades. **GPL-3.0: fetch at analysis time, never vendor
   the CSVs into this repo.** Coarser format-conditioning than FC (no
   teams/ppr axis) — acceptable, FC's own ppr effect measured at ~0.6% on RBs.
+  **Meshes with FC (measured 2026-08-14):** FC's universe is a strict subset of
+  DP's (397/399 join by name+pos, FC's entire top-200 covered); Spearman 0.968
+  overall and ~0.97 within every position. Two required corrections when
+  bridging train (DP) to inference (FC): (1) a **per-position calibration
+  curve**, because the disagreement is a cross-position tilt, not noise — the
+  trade market prices top TEs 20-30 ranks above expert consensus (Bowers,
+  Warren, Loveland, McBride), and trades are cross-position comparisons;
+  (2) DP's picks file carries **ECR only, no values** — derive pick values by
+  fitting the ECR-to-value curve from DP's own players file. Rank/percentile-
+  space training needs neither.
 
 **Representative, not sharp:** trade data describes what the market accepts, not
 what is correct. It feeds realism framing ("a gap like this is the median
