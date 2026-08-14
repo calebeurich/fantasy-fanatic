@@ -36,7 +36,6 @@ from pydantic import BaseModel
 # Unaffected on Linux, which is why the container never hit this.
 
 from analysis import format_support, roster_needs, team_state
-from sources import sleeper
 
 from . import budget, observability
 from .agent import run_query, MCP_SERVER_PATH, _options
@@ -133,10 +132,6 @@ def league_overview(league_id: str) -> dict:
 
     teams = team_state.classify_league(league_id)
     needs = roster_needs.league_needs(league_id)
-    # Sleeper's custom team names ("Bijan Mustard") are how half a league refers to each
-    # other - surfacing them beside the owner lets a question use either name.
-    team_names = {u["user_id"]: (u.get("metadata") or {}).get("team_name")
-                  for u in sleeper.get_users(league_id)}
 
     return {
         "league_id": league_id,
@@ -147,7 +142,7 @@ def league_overview(league_id: str) -> dict:
         "teams": [
             {
                 "owner": t["owner"],
-                "team_name": team_names.get(t["owner_id"]),
+                "team_name": t["team_name"],
                 "rank": t["contention_rank"],
                 "starting_production": t["starting_production"],
                 "pct_of_best": t["pct_of_best"],

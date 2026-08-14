@@ -65,7 +65,7 @@
           margin-bottom:4px;border-bottom:1px solid var(--line);padding-bottom:3px}
   /* Picks wrap below the four position columns; without a cap the lone group
      stretches the full row and the value lands a screen-width from its label. */
-  .pgroup.picks{flex:0 1 auto;min-width:280px;max-width:420px}
+  .pgroup.picks{flex:0 1 auto;min-width:200px;max-width:300px}
   .prow{display:flex;gap:8px;font-size:13px;padding:1.5px 0;align-items:baseline}
   .prow span:first-child{color:var(--dim);flex:1;white-space:nowrap;overflow:hidden;
                          text-overflow:ellipsis;min-width:0}
@@ -218,8 +218,8 @@ let myName = null;   // the Sleeper display name they looked themselves up with
 function showAskContext() {
   const el = $("askctx");
   if (!currentLeague) { el.style.display = "none"; return; }
-  el.textContent = "questions are about: " + (currentLeagueName || "league " + currentLeague)
-    + (myTeam ? " · your team: " + myTeam : "");
+  el.textContent = "questions go to: " + (currentLeagueName || "league " + currentLeague)
+    + (myTeam ? " · you = " + myTeam + " — but ask about any team by name" : "");
   el.style.display = "block";
 }
 
@@ -342,8 +342,8 @@ async function toggleDetail(tr, leagueId) {
       }
       return `hsl(${Math.round(10 + 30 * (1 + y / tail))}, 65%, 55%)`;
     };
-    const group = (title, rows, heads = ["now", "dyn", "age"], cls = "") =>
-      `<div class="pgroup${cls}"><div class="ptitle">${title}</div>` +
+    const group = (title, rows, heads = ["now", "dyn", "age"]) =>
+      `<div class="pgroup"><div class="ptitle">${title}</div>` +
       `<div class="prow phead"><span></span><span class="pv">${heads[0]}</span>` +
       `<span class="pv">${heads[1]}</span><span class="pa">${heads[2]}</span></div>` +
       rows.map(p => `<div class="prow${p.starter ? " st" : ""}">` +
@@ -352,9 +352,10 @@ async function toggleDetail(tr, leagueId) {
         `<span class="pv">${(p.value || 0).toLocaleString()}</span>` +
         `<span class="pa" style="color:${runwayColor(p, title)}">` +
         `${p.age != null ? p.age.toFixed(1) : ""}</span></div>`).join("") + `</div>`;
-    // One row per draft season, not per pick - 21 single-pick lines was a wall that
-    // pushed the legend off-screen, and every 2027 1st carries the same generic value
-    // anyway, so listing four of them said nothing four times.
+    // Picks as a round x year grid: rows are rounds, columns are seasons, cells are
+    // how many, one footer row totals each season's pick capital. 21 single-pick
+    // lines was a wall that pushed the legend off-screen, and every 2027 1st carries
+    // the same generic value anyway.
     const bySeason = {};
     d.picks.forEach(p => {
       const [season, round] = [p.pick.split(" ")[0], p.pick.split(" ").slice(1).join(" ")];
@@ -362,13 +363,20 @@ async function toggleDetail(tr, leagueId) {
       s.rounds[round] = (s.rounds[round] || 0) + 1;
       s.total += p.value || 0;
     });
+    const seasons = Object.keys(bySeason).sort();
+    const rounds = [...new Set(d.picks.map(p => p.pick.split(" ").slice(1).join(" ")))]
+      .sort((a, b) => parseInt(a) - parseInt(b));
+    const kfmt = v => v >= 1000 ? (v / 1000).toFixed(1) + "k" : String(v);
     const picksHtml = d.picks.length
-      ? group("Picks", Object.keys(bySeason).sort().map(season => {
-          const s = bySeason[season];
-          const parts = Object.keys(s.rounds).sort((a, b) => parseInt(a) - parseInt(b))
-            .map(r => r + (s.rounds[r] > 1 ? "×" + s.rounds[r] : ""));
-          return {name: season + " — " + parts.join(" · "), value: s.total};
-        }), ["", "total", ""], " picks")
+      ? `<div class="pgroup picks"><div class="ptitle">Picks</div>` +
+        `<div class="prow phead"><span></span>` +
+        seasons.map(s => `<span class="pv">'${s.slice(2)}</span>`).join("") + `</div>` +
+        rounds.map(r => `<div class="prow"><span>${r}</span>` +
+          seasons.map(s => `<span class="pv">${bySeason[s].rounds[r] || "·"}</span>`).join("") +
+          `</div>`).join("") +
+        `<div class="prow"><span>value</span>` +
+        seasons.map(s => `<span class="pv">${kfmt(bySeason[s].total)}</span>`).join("") +
+        `</div></div>`
       : "";
     row.innerHTML = `<td colspan="7">` +
       `<div class="cs" style="margin-bottom:6px"><strong>${d.window}${d.flavor !== d.window ? " · " + d.flavor : ""}</strong>` +
@@ -404,6 +412,11 @@ async function loadLeague(id) {
     if (!d.supported) {
       $("overview").innerHTML = `<div class="empty warn">Not supported: ${d.reason}</div>`;
       return;
+    }
+    // A conversation is about ONE league - answers about the old league sitting above
+    // questions pinned to the new one read as the assistant mixing leagues up.
+    if (currentLeague && currentLeague !== id) {
+      startNewConversation(`Switched leagues — started a new conversation for ${currentLeagueName || "this league"}.`);
     }
     currentLeague = id;
     const rows = d.teams.map(t => {
@@ -538,14 +551,15 @@ const pruneHistory = () => {
   return kept;
 };
 
-$("reset").onclick = () => {
+function startNewConversation(reason) {
   sessionId = crypto.randomUUID();
   localStorage.setItem("ff_session", sessionId);
   localStorage.removeItem("ff_history");
   localStorage.removeItem("ff_pending");
   $("log").innerHTML = "";
-  add("<p>Started a new conversation.</p>");
-};
+  add(`<p>${reason}</p>`);
+}
+$("reset").onclick = () => startNewConversation("Started a new conversation.");
 
 // The page knows the league and whose team it is; the model only knows what the question
 // says. A freehand "what should I do with my team" carried neither, so the agent had to

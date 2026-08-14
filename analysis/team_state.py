@@ -82,6 +82,13 @@ def window_for(contention: str, trajectory: str) -> str:
 STATE = {"Push": "Contending", "Contend": "Contending",
          "Middling": "Middling", "Rebuild": "Rebuilding"}
 
+# "Steady" is a NET number, and a barbell roster nets to zero: hard-aging assets
+# cancelled out by arriving youth. That is not stability - it is an efficiency loss
+# with an action attached (convert one side into the other's timeline), where genuine
+# steadiness makes inaction efficient. The floor: at least a quarter of started
+# production moving in EACH direction before the cancellation is called real.
+BARBELL_MIN_PCT = 25
+
 FLAVOR_NOTE = {
     "Push": "on a clock - the roster declines if you wait",
     "Contend": "no clock - good now and not declining",
@@ -89,6 +96,10 @@ FLAVOR_NOTE = {
     "rising": "patience is free - next season's production is already here",
     "falling": "waiting costs something - this roster does not improve on its own",
     "steady": "flat - neither arriving nor aging out on its own",
+    "misaligned": "flat in net only - real aging production and real arriving production "
+                  "are cancelling out. Not stability: holding both sides is an efficiency "
+                  "loss, and converting one side into the other's timeline is the action "
+                  "a genuinely steady roster doesn't have",
     "ascending": "the rebuild is working - young production is arriving",
     "stalled": "the rebuild is not delivering - no ascending tilt that is actually "
                "accumulating, and no war chest to convert",
@@ -125,6 +136,8 @@ def flavor_for(window: str, trajectory: str, leverage: str | None,
                 else "stalled")
     # Middling keeps the tertile: whether waiting is free RELATIVE TO THIS LEAGUE is what
     # decides between pushing and pivoting.
+    if trajectory == "steady" and min(ascending_pct, declining_pct) >= BARBELL_MIN_PCT:
+        return "misaligned"
     return trajectory
 
 
@@ -530,6 +543,9 @@ def classify_league(league_id: str) -> list[dict]:
                            for pid in (roster["players"] or []) if pid in players)
         rows.append({
             "owner": owner_names.get(roster["owner_id"], "Unknown"),
+            # The custom Sleeper team name ("Where's the Lamb Sauce???") - half a league
+            # refers to teams this way, so every reader of these rows gets both names.
+            "team_name": ctx.team_names.get(roster["owner_id"]),
             "owner_id": roster["owner_id"],
             "roster_id": roster["roster_id"],
             "starter_value": starter_value,

@@ -116,15 +116,18 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
     - `leverage`/`leverage_note`, when present, say what a team could BECOME (convertible:
       weak lineup, top-third war chest; mortgaged: the reverse) - raise it whenever asked
       whether a team is good, because a Rebuild label on a convertible team understates it."""
+    from analysis.league import context
     teams = team_state.classify_league(league_id)
     if owner_name:
-        teams = [t for t in teams if owner_name.lower() in t["owner"].lower()]
+        # pick_owner matches handle OR custom team name and raises listing the real
+        # options - the old handle-only substring filter answered a team-name query
+        # with an empty list, which the model read as "no such team".
+        teams = [context(league_id).pick_owner(owner_name, teams)]
     # The lineup shape ships with every team, not only from check_league_format. A live run
     # called check_league_format, got superflex, and still wrote "three QBs in a league that
     # only starts one" a few hundred tokens later - then built its whole recommendation on
     # that. Format read once at the top of a conversation does not survive to the point where
     # it matters; attached to the roster it is being reasoned about, it does.
-    from analysis.league import context
     fmt = sleeper.describe_format(context(league_id).league)
     # Wrapped in a dict rather than returned as a bare list - this MCP SDK version
     # splits a top-level list return into one content block per item instead of one

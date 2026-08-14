@@ -235,6 +235,18 @@ entry. It landed as a clause on the Rebuild window_note instead ("conversion has
 deadline, not just a direction"), gated by the same falling tertile Push uses - the
 existing instrument, no new threshold.
 
+**Misaligned, the barbell case** (settled 2026-08-14, from the owner's read of a real
+roster): "steady" is a NET number, and a barbell roster nets to zero - hard-aging
+assets cancelled out by arriving youth. The owner's articulation is the rule: genuine
+steadiness makes *inaction* efficient, while a cancelled-out roster is a live
+efficiency loss with an action attached (convert one side into the other's timeline) -
+so it passes the verb test and earns its own flavor rather than a note variant.
+`misaligned` replaces `steady` for a Middling team when at least `BARBELL_MIN_PCT`
+(25%) of started production is moving in EACH direction - a quarter of the lineup
+aging out while a quarter arrives is cancellation, not calm. Middling-only by
+construction: Push/Contend and Rebuild flavors resolve before trajectory is consulted,
+and their machinery (clock_mismatch, the sell lists) already names their aging pieces.
+
 **Clock mismatch** (`clock_mismatch` + note, per team): `_cliff_case` pointed at
 one's own roster - an ascending-tilt team STARTING a short-runway premium piece
 (win_now_core's starters) is holding seasons it isn't built for. Exists because the
@@ -261,7 +273,7 @@ the room whose pieces are individually below that bar.
 | state | flavors | wants | can spare |
 |---|---|---|---|
 | **Contending** | `Push` (clock) / `Contend` (none) | production now | future years |
-| **Middling** | `rising` / `falling` / `steady` / `convertible` | information | nothing freely |
+| **Middling** | `rising` / `falling` / `steady` / `misaligned` / `convertible` | information | nothing freely |
 | **Rebuilding** | `ascending` / `stalled` / `convertible` | future years | production now |
 
 - `Push` = contender + falling: waiting costs value, buy production, spend picks.
