@@ -212,8 +212,11 @@ def team_detail(league_id: str, owner: str) -> dict:
             "years_to_decline": years_to_decline(info["position"], info["age"],
                                                  info.get("usage_role")),
         })
+    # Sorted by THIS-SEASON value: starters are computed from redraft, so they
+    # cluster at the top, the marker draws the cut line, and "who is close to
+    # starting" is literally the first name below it - dynasty-sorting hid that.
     for rows in by_pos.values():
-        rows.sort(key=lambda x: -(x["value"] or 0))
+        rows.sort(key=lambda x: (-(x["redraft_value"] or 0), -(x["value"] or 0)))
 
     ctx = context(league_id)
     pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.fmt["num_teams"],
