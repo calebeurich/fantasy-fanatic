@@ -280,6 +280,22 @@ misaligned flavor, which this supersedes conceptually) and spugz13 (rank 9, 8/11
 war chest → uncommitted, "the first trade is for a direction"). The old
 window/flavor fields remain computed and shipped alongside during the migration.
 
+**Payload prose obeys the tiers** (2026-08-15 agent audit, Caleb-triggered): the
+model reasons FROM the notes it is handed, so any note whose wording predates the
+tier structure can invert an answer. Three data-level rules from the audit: (1)
+piece-level price_notes are PRICING facts ("the ask IF he moves"), never directives
+- unconditional "now is the selling window" on three pieces made an answer tell a
+contend-on-a-clock team to liquidate its rank-carrying RB room; the docstring adds
+the precedence rule (path outranks piece notes) and its exception (clock_mismatch's
+NAMED pieces are the path-sanctioned conversions - present them as live, not
+"monitor"). (2) A barbell contender never carries Contend's "not declining, no
+clock" window_note - both clauses are false of it; it gets a barbell-aware note.
+(3) CONTEND_CHOICE_NOTE's "neither is urgent, no clock" routes only to ALIGNED
+contenders; unaligned ones get PRESS_CHOICE_NOTE (same two paths, states the lean,
+"the aging half sheds value while you deliberate - waiting applies to the ask,
+never the decision"). Also: no contract data exists in any payload, and the
+docstring now says so (an answer dressed runway numbers as "expiring contracts").
+
 **The table is deterministic; the logic lives in the agent** (owner's deciding rule,
 2026-08-15): the UI renders measured facts - chips, values, colors, counts - and
 carries NO prose judgment beyond a hover tooltip. Every "should" sentence belongs to
