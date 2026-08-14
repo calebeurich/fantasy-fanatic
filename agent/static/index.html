@@ -289,12 +289,16 @@ async function toggleDetail(tr, leagueId) {
       detailCache[key] = await res.json();
     }
     const d = detailCache[key];
-    // Color IS the runway, continuously: red at the cliff through green at 5+ years.
-    // The buckets flattened it - a 0.1-year piece and a 3.9-year piece showed the same
-    // green, which hid exactly the James Cook effect the clock warning talks about.
+    // Color IS the runway, anchored to the analysis' own constants rather than an
+    // arbitrary ramp: red at the cliff (0), amber at exactly MIN_MEANINGFUL_RUNWAY
+    // (2 yrs - the buyer's two-season horizon, so amber means "inside the sell
+    // window"), pure green at 4+ (two full horizons), and a darker red past the
+    // cliff - Henry at -5.6 is a different fact than Cook at 0.1. A 23-year-old RB
+    // with 4.1 years reads pure green because he genuinely holds two horizons.
     const runwayColor = y => {
       if (y == null) return "var(--muted)";
-      const t = Math.max(0, Math.min(1, y / 5));
+      if (y < 0) return "hsl(0, 60%, 40%)";
+      const t = Math.min(1, y / 4);
       return `hsl(${Math.round(t * 120)}, 65%, 58%)`;
     };
     const group = (title, rows) => `<div class="pgroup"><div class="ptitle">${title}</div>` +
@@ -313,9 +317,11 @@ async function toggleDetail(tr, leagueId) {
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}${picksHtml}</div>` +
       `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--ok)">▸</span>` +
-      `<strong> starter</strong> · this-season value, then dynasty value · age colored by runway left ` +
-      `(<span style="color:hsl(0,65%,58%)">at the cliff</span> → ` +
-      `<span style="color:hsl(120,65%,58%)">5+ years</span>)</div></td>`;
+      `<strong> starter</strong> · this-season value, then dynasty value · age = runway: ` +
+      `<span style="color:hsl(0,60%,40%)">past the cliff</span> · ` +
+      `<span style="color:hsl(0,65%,58%)">at it</span> · ` +
+      `<span style="color:hsl(60,65%,58%)">2 yrs (a buyer's horizon)</span> · ` +
+      `<span style="color:hsl(120,65%,58%)">4+ yrs</span></div></td>`;
   } catch (e) {
     row.innerHTML = `<td colspan="7" class="cs warn">Couldn't load roster: ${e}</td>`;
   }
