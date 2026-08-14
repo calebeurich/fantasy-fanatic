@@ -76,7 +76,9 @@ def get_season_chain(league_id: str) -> list[str]:
     """This league's own league_id plus every prior season's, oldest dynasty history
     included, most recent first."""
     chain = []
-    while league_id:
+    # Chains end as null OR the string "0", league by league - both mean "no prior
+    # season", and chasing "0" is a 404 (found crawling leagues beyond our own).
+    while league_id and league_id != "0":
         chain.append(league_id)
         league_id = get_league(league_id).get("previous_league_id")
     return chain

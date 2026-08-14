@@ -176,3 +176,15 @@ def test_acquire_reports_when_a_known_id_gets_a_fresh_conversation(monkeypatch):
     assert first is True
     assert again is False
     assert after_reset is True
+
+
+# ----------------------------------------------------------- sleeper season chains
+
+def test_season_chain_treats_string_zero_as_the_end(monkeypatch):
+    """Some Sleeper leagues terminate their chain with previous_league_id "0" rather
+    than null; chasing it 404s. Found crawling leagues beyond our own - any tool
+    pointed at such a league would crash on its first context build."""
+    from sources import sleeper
+    leagues = {"a": {"previous_league_id": "b"}, "b": {"previous_league_id": "0"}}
+    monkeypatch.setattr(sleeper, "get_league", lambda lid: leagues[lid])
+    assert sleeper.get_season_chain("a") == ["a", "b"]
