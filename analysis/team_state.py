@@ -449,9 +449,10 @@ def classify_league(league_id: str) -> list[dict]:
     # letting it in would make the label feed its own input.
     pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.fmt["num_teams"],
                                               ctx.fmt["ppr"], ctx.fmt["is_dynasty"])
-    capital = pick_capital(owned_picks(league_id, int(league["season"]),
-                                       league["settings"]["draft_rounds"],
-                                       [r["roster_id"] for r in rosters], pick_values))
+    picks_by_roster = owned_picks(league_id, int(league["season"]),
+                                  league["settings"]["draft_rounds"],
+                                  [r["roster_id"] for r in rosters], pick_values)
+    capital = pick_capital(picks_by_roster)
 
     rows = []
     for roster in rosters:
@@ -475,6 +476,11 @@ def classify_league(league_id: str) -> list[dict]:
                                 / (roster_value + capital.get(roster["roster_id"], 0)))
             if roster_value + capital.get(roster["roster_id"], 0) else 0,
             "owns_next_first": roster["roster_id"] not in lost_own_first,
+            # Which future 1sts this team actually holds, by season - the detail behind
+            # pick_capital's number. First-round only: that is the pick people track.
+            "firsts": sorted(int(p["season"]) for p in
+                             picks_by_roster.get(roster["roster_id"], [])
+                             if p["round"] == 1),
             "no_trade_history": no_trade_history,
             **result,
         })

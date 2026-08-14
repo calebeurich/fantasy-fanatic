@@ -36,7 +36,7 @@
      a tester reported the league chart was half-invisible on mobile with no way
      to reach the rest. */
   #overview{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  #overview table{min-width:640px}
+  #overview table{min-width:760px}
   .msg{overflow-x:auto}
   table{width:100%;border-collapse:collapse;font-size:14px}
   th{text-align:left;font-weight:500;color:var(--dim);font-size:11.5px;
@@ -285,19 +285,27 @@ async function loadLeague(id) {
         ? t.flavor : t.trajectory;
       const flags = [shade,
                      t.pick_share > 0 ? `${t.pick_share}% in picks` : null,
-                     !t.owns_next_first ? "no 1st" : null].filter(Boolean).join(" · ");
+                     !t.owns_next_first ? "sold own next 1st" : null].filter(Boolean).join(" · ");
+      // "1sts: '26, '27×2" - the detail behind pick_share's percentage.
+      const fc = {};
+      (t.firsts || []).forEach(s => fc[s] = (fc[s] || 0) + 1);
+      const firsts = Object.keys(fc).length
+        ? "1sts: " + Object.entries(fc).map(([s, n]) =>
+            "'" + String(s).slice(2) + (n > 1 ? "×" + n : "")).join(", ")
+        : "no future 1sts";
       return `<tr class="team" data-owner="${t.owner}">
         <td class="rk">${t.rank}</td>
         <td class="who">${t.owner}<div class="cs">${flags}</div></td>
         <td><span class="tag ${t.window}">${t.window}</span></td>
         <td class="cs">${t.starting_production.toLocaleString()}<div class="cs">${t.pct_of_best}% of best · ${t.ascending_pct}%asc / ${t.declining_pct}%dec</div></td>
+        <td class="cs">${t.starter_value.toLocaleString()}<div class="cs">${firsts}</div></td>
         <td>${needs}</td>
         <td class="cs">${t.core.slice(0, 4).map(c =>
           c.cornerstone ? `<strong>${c.name}</strong>` : c.name).join(", ") || "none"}</td>
       </tr>`;
     }).join("");
     $("overview").innerHTML = `
-      <table><thead><tr><th></th><th>Owner</th><th>Window</th><th>This season</th><th>Needs</th><th>Core</th></tr></thead>
+      <table><thead><tr><th></th><th>Owner</th><th>Window</th><th>This season</th><th>Dynasty</th><th>Needs</th><th>Core</th></tr></thead>
       <tbody>${rows}</tbody></table>
       ${d.tier === "degraded" ? '<div class="note warn">Shallow league — percentile-based numbers are rougher than usual.</div>' : ""}
       ${d.no_trade_history ? '<div class="note warn">No trades in this league yet — window labels are less reliable this early.</div>' : ""}

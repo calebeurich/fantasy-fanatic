@@ -157,6 +157,7 @@ def league_overview(league_id: str) -> dict:
                 "declining_pct": t["declining_pct"],
                 "owns_next_first": t["owns_next_first"],
                 "pick_share": t["pick_share"],
+                "firsts": t["firsts"],
                 # Cornerstones alone made the column lie by omission: a roster showed
                 # "Lamar" while holding CeeDee Lamb, because Lamb misses the tag on the
                 # CLOCK, not on value (he lives in win_now_core). The reader of this

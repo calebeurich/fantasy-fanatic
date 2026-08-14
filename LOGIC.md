@@ -1037,7 +1037,9 @@ shade word (flavor when it beats the trajectory - "stalled" over "steady"). The
 contention tier was a third vocabulary restating what rank order and %-of-best
 already show, and reading "Push" beside "contender" looked like two systems
 disagreeing about one fact. Pick capital surfaces as `pick_share` ("19% in picks")
-plus the no-1st flag - reported, not weighted, same reasoning as the field itself.
+plus a sold-own-next-1st flag, and the Dynasty column shows starter dynasty value with
+the actual future firsts held ("1sts: '27×2, '28") - the detail behind the percentage,
+already computed inside classify_league and previously discarded after summing.
 
 The table's "Core" column merges cornerstones with `win_now_core`, cornerstones in
 bold. Cornerstones alone made the column lie by omission: a roster showed only
