@@ -262,8 +262,13 @@ because dynasty value is future-weighted by construction), `pick_share` for the 
 chest (>= PICKS_HEAVY_PCT 25 - picks are pure arriving-side value: no roster spot, no
 injury, and the year ladder prices their appreciation), the `assets_bottom` guard on
 rebuilds (an ascending tilt that isn't accumulating value is not a working rebuild),
-and ARRIVING_MARGIN_PCT (15) so "young and good" fires on real tilts, not 25/20
-noise (without it: 11 of 19 contenders, wallpaper). Anchors: kierankieran XFL 2
+and ARRIVING_MARGIN_PCT (15) so "arriving" means a real tilt, not 25/20 noise. A
+young CONTENDER is aligned, not a pending decision: an ascending starter delivers
+now AND later, so "stack or convert - decide" advice there would tell the best spot
+on the board to unwind the point of competing (the owner's RJL test: two young stud
+redraft-relevant RBs are not a barbell side, they are the rank). The tilt counts
+STARTERS only - a deep bench aging out or arriving does not shape a team, so it
+never enters tier 2. Anchors: kierankieran XFL 2
 (rank 3, 37/35 barbell → unaligned lean push - invisible to the Middling-only
 misaligned flavor, which this supersedes conceptually) and spugz13 (rank 9, 8/11, no
 war chest → uncommitted, "the first trade is for a direction"). The old

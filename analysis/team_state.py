@@ -170,9 +170,12 @@ def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: f
                     "real aging production AND real arriving production cancelling out, "
                     "at a rank that already delivers - the delivering side is the one to keep")
         if arriving:
-            return ("unaligned", "stack or convert - lean push",
-                    "young and good - both paths are winning moves, and the rank says "
-                    "converting some future into now is the one with the trophy in it")
+            # NOT a conflict: an ascending starter is delivering now AND later - a young
+            # contender is the best spot on the board, and "decide something" advice
+            # here would tell a team already competing to unwind the point of competing.
+            return ("aligned", "hold",
+                    "young and good - the production is arriving and already winning at "
+                    "the same time. The best spot on the board; nothing needs deciding")
         if leaving:
             return ("aligned", "buy - on a clock",
                     "a contender whose production is aging out: the window is open and "
