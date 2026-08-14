@@ -68,16 +68,23 @@ eventually to learn from.
   source for historical trades. **GPL-3.0: fetch at analysis time, never vendor
   the CSVs into this repo.** Coarser format-conditioning than FC (no
   teams/ppr axis) — acceptable, FC's own ppr effect measured at ~0.6% on RBs.
-  **Meshes with FC (measured 2026-08-14):** FC's universe is a strict subset of
-  DP's (397/399 join by name+pos, FC's entire top-200 covered); Spearman 0.968
-  overall and ~0.97 within every position. Two required corrections when
-  bridging train (DP) to inference (FC): (1) a **per-position calibration
-  curve**, because the disagreement is a cross-position tilt, not noise — the
-  trade market prices top TEs 20-30 ranks above expert consensus (Bowers,
-  Warren, Loveland, McBride), and trades are cross-position comparisons;
-  (2) DP's picks file carries **ECR only, no values** — derive pick values by
-  fitting the ECR-to-value curve from DP's own players file. Rank/percentile-
-  space training needs neither. **Bonus (2026-08-14): DP's `db_fpecr` archive
+  **Meshes with FC (measured 2026-08-14, same-day scrapes):** FC's universe is
+  a strict subset of DP's (397/399 join by name+pos, FC's entire top-200
+  covered). But the headline Spearman 0.968 is tail-flattered — stratified:
+  top-25 by FC value **0.476**, top-50 0.752, top-100 0.915, while
+  within-position among the top-100 every position holds ~0.93. So the elite
+  disagreement is about CROSS-POSITION ordering (is Bowers worth more than a
+  QB2), and it is not necessarily miscalibration — expert opinion and market
+  clearing prices are different instruments, possibly with era effects in
+  position-class strength. The bridge translates, it does not correct.
+  Consequences: (1) **per-position percentile space is mandatory** (inherits
+  the 0.93s, sidesteps the 0.476); (2) elite cross-position value labels carry
+  real uncertainty — prefer the production ledger (nflverse actuals, no
+  translation problem) as primary signal for big-piece trades; (3)
+  era-stability is unfalsifiable backward (no FC history) but bounded forward
+  by re-fitting the calibration weekly from the fc_trades snapshots; (4) DP's
+  picks file carries ECR only — derive pick values from DP's own ECR-to-value
+  curve. **Bonus (2026-08-14): DP's `db_fpecr` archive
   carries BOTH dynasty and redraft FantasyPros ECR per scrape_date, back
   years** — point-in-time redraft rankings exist after all. Two uses: the fair
   lineup-decision baseline for manager scores ("start who consensus would have
