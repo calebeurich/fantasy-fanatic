@@ -120,13 +120,13 @@ caveat downstream logic is an unbuilt design, and more of these gaps should be e
 ## Age curves and runway (`team_values.py`, `sources/player_roles.py`)
 
 Per-position breakpoints (ascending below / declining at-or-above), dynasty-community
-heuristics: QB 26/34, RB 24/27, WR 25/29, TE 25/30. Usage-based overrides from measured
+heuristics: QB 27/34, RB 24/27, WR 25/29, TE 25/30 (QB enters prime a year later than the entry ages of other positions - the position takes years to develop, so the peak arrives later on both ends). Usage-based overrides from measured
 season data (nflreadpy), thresholds picked from natural gaps in the real distribution:
 
-- `rushing_qb` (carries/game >= 5.0, not an elite passer): 26/32
-- `dual_threat_qb` (>= 5.0 carries AND elite passer): 26/34 - the point is the absence
+- `rushing_qb` (carries/game >= 5.0, not an elite passer): 27/32
+- `dual_threat_qb` (>= 5.0 carries AND elite passer): 27/34 - the point is the absence
   of the rushing discount, not a bonus; elite passing survives the legs
-- `pocket_passer` (elite passer, not a runner): 26/37 - not 40, because the curve should
+- `pocket_passer` (elite passer, not a runner): 27/37 - not 40, because the curve should
   turn before the market does; the top passing-EPA tier over three seasons is all pocket
   throwers, so the tag is earned by production. (Tuned 38 -> 37 on the author's eye
   test - a 34-year-old pocket passer is fine but not a green light - paired with the
@@ -1077,6 +1077,16 @@ disagreeing about one fact. Pick capital surfaces as `pick_share` ("19% in picks
 plus a sold-own-next-1st flag, and the Dynasty column shows starter dynasty value with
 the actual future firsts held ("1sts: '27×2, '28") - the detail behind the percentage,
 already computed inside classify_league and previously discarded after summing.
+
+**The color single-source rule**: the UI computes no ages, buckets, or runways - it
+receives `bucket`, `years_to_decline`, and `prime_span` from the same team_values
+functions every trade tool calls, and only maps them to hue (life-stage bands: green
+ascending, yellows across the player's own prime span, oranges across a
+position-specific decline tail, dark red past it). Colors therefore cannot drift from
+the trade age logic; a curve change server-side recolors the page automatically. The
+one display-only judgment is the decline-tail shading, which lives past the
+breakpoint where the analysis only says "negative runway" - nothing to contradict -
+and is queued for measurement against the DP archive.
 
 Clicking a team expands its full roster inline - position groups with dynasty values
 and ages (ascending green, declining red), cornerstones starred, projected starters

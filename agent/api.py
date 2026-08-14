@@ -211,6 +211,7 @@ def team_detail(league_id: str, owner: str) -> dict:
             # bucket color was hiding (the James Cook effect, visually).
             "years_to_decline": years_to_decline(info["position"], info["age"],
                                                  info.get("usage_role")),
+            "prime_span": team_values.prime_span(info["position"], info.get("usage_role")),
         })
     # Sorted by THIS-SEASON value: starters are computed from redraft, so they
     # cluster at the top, the marker draws the cut line, and "who is close to

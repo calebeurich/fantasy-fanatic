@@ -7,7 +7,7 @@ from sources import sleeper, fantasycalc, contracts, player_roles, degraded
 # (ascending_below, declining_at_or_above), by position. Dynasty community heuristics,
 # not a model: RBs decline earliest, QBs/TEs age gracefully.
 AGE_CURVE = {
-    "QB": (26, 34),
+    "QB": (27, 34),
     "RB": (24, 27),
     "WR": (25, 29),
     "TE": (25, 30),
@@ -19,12 +19,22 @@ AGE_CURVE = {
 # does, and a 34-year-old pocket passer is fine but not a green light; tuned down from
 # 38 on the author's eye test); receiving-down RBs age more like WRs. Tags are earned
 # by measured usage, not reputation - LOGIC.md, "Age curves and runway".
+# QB young cutoff is 27 everywhere, one later than the other positions' entries: the
+# position takes years to develop, so the peak arrives later on both ends (the exit
+# side is the pocket/rushing spread below).
 AGE_CURVE_OVERRIDES = {
-    "rushing_qb": (26, 32),
-    "dual_threat_qb": (26, 34),
-    "pocket_passer": (26, 37),
+    "rushing_qb": (27, 32),
+    "dual_threat_qb": (27, 34),
+    "pocket_passer": (27, 37),
     "pass_catching_rb": (24, 29),
 }
+
+def prime_span(position: str, usage_role: str | None = None) -> float | None:
+    """Length of the prime window on this player's OWN curve (role-aware) - the
+    denominator for "how far into his prime is he", which the UI shades on."""
+    young, old = AGE_CURVE_OVERRIDES.get(usage_role) or AGE_CURVE.get(position, (None, None))
+    return old - young if young is not None else None
+
 
 # The single definition of "has a future": seasons before his own decline cutoff, the
 # horizon claims like "still there later" actually make. Buckets are only a discretization
