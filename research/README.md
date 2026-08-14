@@ -89,8 +89,46 @@ pattern - rank ~TE2, 89% survival, pure survivor selection at n=13. First-pass
 support for graduating the RB/WR tails from eye-test to measured constants after
 one more year of data.
 
-**What changed in the product because of this study:** nothing, yet - by design.
-The findings are recorded here and in ROADMAP.md; constants graduate only when a
-finding survives a re-run after more data accumulates, and the first candidate is
-replacing the UI's judgment-based decline tails with measured post-breakpoint decay
-rates.
+## Study: archetypes and tiers (2026-08-14)
+
+`archetype_tests.py` - role tags reconstructed from the season COMPLETED before each
+cohort (no hindsight), contract state from the deal actually covering year t, joined
+via the DP id crosswalk. Plus a within-position value-tier split (top-12 at time t).
+
+**Finding 6 - pass-catching RB: confirmed, strongly, in both eras.** RBs at >=4
+targets/game the prior season hold roughly DOUBLE the value of other RBs at every
+age (25+: 0.52 vs 0.33 in 2020-22, 0.66 vs 0.38 in 2023-25). The +2 curve shift is
+directionally right and possibly understated.
+
+**Finding 7 - the rushing-QB discount is questioned, not yet overturned.** High-rush
+QBs as a pool hold BETTER than other QBs in both eras (about 1.0 vs 0.5-0.8) - but
+this test pools true rushing_qbs with dual threats (the Lamar shape our override
+already exempts). Overturning the discount needs the elite-passer EPA split
+reconstructed per season; until then the override stands with a flag on it.
+
+**Finding 8 - contract year is a real value signal, era-stable.** Final-contract-year
+players shed far more value than mid-contract players of the same position and age
+band (RB 23-28: ~0.35 vs ~0.61 in BOTH eras; TE similar; WR strong in 2020-22,
+weak in 2023-25; QB present at 29+). Mechanism is partly selection - teams extend
+the players they believe in, so final-year status carries the team's own quality
+verdict - but it is knowable at decision time either way. This REOPENS the parked
+contract question with the polarity clarified: contract state earns its way in as a
+VALUE-drift signal, not as an age-curve modifier.
+
+**Finding 9 - tier conditions everything (the CeeDee Lamb objection).** Top-12
+players at time t hold dramatically better than the rest of their position in every
+age band, era-stable: elite QBs ~0.9-1.0 vs ~0.5, elite RBs ~2x their cohort, elite
+WRs 28+ 0.68 vs 0.35. The all-timer-TE pattern (finding: top-3 TEs 29+ hold 0.72 vs
+0.34) is one instance of this. Consequence already applied: the measured holding-
+cost table (analysis/market_drift.py) is tier-conditioned, because a cohort median
+without tier tells an elite player's owner a fate that mostly belongs to the
+non-elite - the exact bleed into projections-arbitrage territory the owner flagged.
+
+**What changed in the product so far:** one artifact - analysis/market_drift.py, the
+tier-conditioned holding-cost table (measured constants with provenance; note-only
+by doctrine, not yet wired into payloads). Everything else is recorded and waiting:
+constants graduate when findings survive a re-run after more data accumulates.
+Graduation queue, in order of evidence strength: the tier-conditioned drift note
+into sell-window payloads; the contract-year signal as a second note; the decline
+tails from eye-test to measured; the rushing-QB override review once the EPA split
+is reconstructed.
