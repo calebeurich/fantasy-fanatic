@@ -137,6 +137,14 @@ number would be quietly wrong.
   of the same data — same feed, second consumer. Anything with a paid feed
   obeys the CLAUDE.md rule: budget cap before it's wired to anything
   automated.
+- **Community heuristics as hypotheses**: mine FF YouTuber/analyst transcripts
+  for the folk strategies they preach ("stack cheap upside RBs in redraft",
+  "deep benches are for upside plays, not floor") — then TEST them against our
+  outcome data before any of it touches a recommendation. The creators are the
+  hypothesis generator; the dataset is the referee. A heuristic that survives
+  measurement graduates into LOGIC.md with its evidence; one that fails is
+  worth a write-up too. (Transcript access via legitimate caption APIs, and
+  LLM summarization of transcripts obeys the budget-cap rule.)
 - **Redraft**: far future state. Most machinery transfers (lineups, waivers,
   luck, format conditioning); windows/runway/picks do not. Do not build toward
   it speculatively — note what transfers when designing, nothing more.
