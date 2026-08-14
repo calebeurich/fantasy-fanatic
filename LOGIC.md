@@ -274,6 +274,22 @@ misaligned flavor, which this supersedes conceptually) and spugz13 (rank 9, 8/11
 war chest → uncommitted, "the first trade is for a direction"). The old
 window/flavor fields remain computed and shipped alongside during the migration.
 
+**Alignment is a dial, not a switch** (2026-08-15, owner's Vicdank/Smith reads):
+aligned means NO FORCED MOVE, not perfection - a team can always trim toward better
+alignment. Aligned reasons carry a brief clause when the trim is real: measured on
+the RUNWAY bar (share of started production inside MIN_MEANINGFUL_RUNWAY - the same
+bar position_clocks uses), not the declining bucket, because a 27.8 WR with 1.2
+years is late-prime by bucket but expiring by any honest read (DeVonta Smith).
+Floor AGING_WORTH_NOTING_PCT=10: below it, "nothing aging out" is honest wording.
+Emphasis is asymmetric by design (owner's rule): UNALIGNED rows carry specifics BY
+NAME ("the pieces on the clock: ...") because telling them how to become aligned is
+the bright chip's whole point; aligned rows stay brief - their specifics are the
+agent's job. Related fix: clock_mismatch checks runway explicitly rather than
+inheriting it from win_now_core (either-currency membership added long-runway
+production-priced pieces - a 5.1-year pocket QB was being flagged as aging core),
+and production-priced pieces WITH runway get their own price_note (the Goff shape:
+the market doubts the asset, not this season - fine to hold, nothing forces a sale).
+
 **Core membership is either-currency** (2026-08-15, the Walker-but-not-Henry note):
 a piece is core-sized if EITHER its dynasty value or its redraft value clears the
 league's top-10% bar (`cornerstone_threshold`, same percentile both currencies).

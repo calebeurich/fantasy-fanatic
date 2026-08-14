@@ -150,10 +150,25 @@ def flavor_for(window: str, trajectory: str, leverage: str | None,
 ARRIVING_MARGIN_PCT = 15   # asc must beat dec by this much before "young and good"
                            # fires - without it the flag hit 11 of 19 contenders (wallpaper)
 PICKS_HEAVY_PCT = 25       # a quarter of asset value in picks = a real war chest
+AGING_WORTH_NOTING_PCT = 10  # below this, "nothing aging out" is honest wording
+
+
+def _aging_clause(aging_pct: float) -> str:
+    """Aligned is 'no forced move', not perfection - a team can always trim toward
+    better alignment. Measured on the runway bar (started production inside two
+    seasons), not the declining bucket - a 27.8 WR with 1.2 years is late-prime by
+    bucket but expiring by any honest read. No names here: an aligned team's
+    specifics are the agent's job; the row just keeps the trim visible (live: a
+    roster starting a 38-year-old QB was told nothing was aging out)."""
+    if aging_pct < AGING_WORTH_NOTING_PCT:
+        return ""
+    return (f". One trim available: {round(aging_pct)}% of started production is inside "
+            f"two seasons of runway - not enough to force anything, enough to keep "
+            f"converting at the right price")
 
 
 def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: float,
-                  assets_bottom: bool) -> tuple[str, str, str]:
+                  assets_bottom: bool, aging_pct: float = 0) -> tuple[str, str, str]:
     """(alignment, path, reason) for one team. Production tilt for the players, pick
     share as its own signal - measuring the sides in dynasty value instead washed out
     completely (44 of 46 teams read 'arriving', the market's youth premium reported
@@ -181,8 +196,8 @@ def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: f
                     "a contender whose production is aging out: the window is open and "
                     "closing on its own, so buying now is the aligned move")
         return ("aligned", "hold",
-                "good now and not declining - nothing needs buying at a premium, "
-                "nothing needs selling")
+                "good now with no wave aging out - nothing needs buying at a premium, "
+                "nothing needs selling" + _aging_clause(aging_pct))
     if contention == "fringe":
         if leaving or barbell:
             why = ("holding decline a middle rank isn't cashing"
@@ -196,16 +211,21 @@ def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: f
                     "and unexercised, and the middle rank gives no lean")
         if arriving:
             return ("aligned", "wait - production is arriving",
-                    "next season's production is already on the roster - patience is free")
+                    "next season's production is already on the roster - patience is free"
+                    + _aging_clause(aging_pct))
         return ("aligned", "wait",
-                "nothing arriving and nothing aging out - waiting costs nothing here")
+                ("nothing arriving and nothing aging out - waiting costs nothing here"
+                 if dec_pct < AGING_WORTH_NOTING_PCT else
+                 "no wave big enough to force a move - waiting is cheap here")
+                + _aging_clause(aging_pct))
     # also-ran: the rank itself urges the rebuild; unaligned just means it isn't underway.
     # A real war chest counts as arriving even before the production shows - picks are
     # pure future - but the assets_bottom guard applies to both: neither an ascending
     # tilt nor a pick pile that isn't accumulating into actual value is a working rebuild.
     if (arriving or picks_heavy) and not assets_bottom:
         return ("aligned", "keep accumulating",
-                "the rebuild is working - young production arriving and value accumulating")
+                "the rebuild is working - young production arriving and value accumulating"
+                + _aging_clause(aging_pct))
     if arriving:  # ascending tilt that isn't accumulating into a war chest
         return ("unaligned", "hard rebuild - lean pivot",
                 "an ascending tilt that is not accumulating value - the young pieces "
@@ -365,6 +385,16 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
         info = players.get(pid)
         if info:
             by_pos.setdefault(info["position"], []).append(info)
+    # Roster-wide version of the same bar: how much started production is inside the
+    # buyer's two-season horizon. The declining BUCKET undercounts "aging out" - a
+    # 27.8 WR with 1.2 years is late-prime by bucket but expiring by any honest read.
+    expiring_starters = [
+        i for infos in by_pos.values() for i in infos
+        if (y := years_to_decline(i["position"], i["age"], i.get("usage_role"))) is not None
+        and y < MIN_MEANINGFUL_RUNWAY]
+    expiring_starters.sort(key=lambda i: -(i.get("redraft_value") or 0))
+    expiring_total = sum(i.get("redraft_value") or 0 for i in expiring_starters)
+    expiring_pct = round(100 * expiring_total / production) if production else 0
     for pos, infos in by_pos.items():
         total = sum(i.get("redraft_value") or 0 for i in infos)
         expiring = [i for i in infos
@@ -402,6 +432,8 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
     return {"clock_mismatch": clock_mismatch,
             "clock_mismatch_note": mismatch_note,
             "position_clocks": position_clocks,
+            "expiring_pct": expiring_pct,
+            "expiring_names": [i["name"] for i in expiring_starters[:3]],
             "starting_production": round(production),
             "trajectory_score": round(asc_pct - dec_pct),
             "ascending_pct": round(asc_pct), "declining_pct": round(dec_pct),
@@ -740,7 +772,13 @@ def classify_league(league_id: str) -> list[dict]:
         row["flavor_note"] = FLAVOR_NOTE[row["flavor"]]
         row["alignment"], row["path"], row["path_reason"] = alignment_for(
             contention, row["ascending_pct"], row["declining_pct"], row["pick_share"],
-            _assets_bottom(row["asset_rank"], num_teams))
+            _assets_bottom(row["asset_rank"], num_teams), row["expiring_pct"])
+        # Unaligned rows carry their specifics BY NAME - telling them how to become
+        # aligned is the whole point of the bright chip. Aligned rows stay brief;
+        # their specifics are the agent's job.
+        if row["alignment"] == "unaligned" and row["expiring_names"]:
+            row["path_reason"] += (
+                ". The pieces on the clock: " + ", ".join(row["expiring_names"]))
         # After flavor: an edge is only an edge if crossing the line changes the message.
         row["window_edge"] = window_edge(row, contention_edges, trajectory_edges)
         row["leverage_note"] = (
