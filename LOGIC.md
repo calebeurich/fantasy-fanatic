@@ -394,6 +394,16 @@ restated, not comfort.
 5.3x and 1.5x, so the figure is not doing delicate work). Their whole value to this
 roster is what they fetch, in any window; the report leads with them.
 
+**The nearest door** (`nearest_door`, on every non-starter offered as sellable and on
+stranded entries): WHO holds this player's cheapest reachable slot (dedicated or an
+eligible flex) and the production margin to it. "Every slot is held by someone better"
+was true but absolute-sounding - a TE 61 points behind the last FLEX read back to a
+tester as "you have 5 WR slots so he can't start"; the model invented slot mechanics
+because the payload stated a verdict without its margin. The margin self-defends in
+both directions: 61 is a competition, 2,764 is a wall, and no wording has to pick
+which. Skipped when the margin comes out negative - declared starters and the optimal
+lineup can disagree, and a player who would beat the door isn't locked out at all.
+
 **Depth as a third state** (`would_start_if_one_out`): binary needs leave depth
 invisible. A body who steps in when the weakest starter at his position is out has real
 value at a nominal price - stated with "don't overpay", never as a need.
@@ -1007,6 +1017,12 @@ One static page, vanilla JS, no build step. League data renders directly from
 already computes it exactly, and recitation is where confabulation creeps in. The agent
 is reserved for reasoning. Client-generated session ids, so an expired session degrades
 to a new conversation rather than an error.
+
+The table's "Core" column merges cornerstones with `win_now_core`, cornerstones in
+bold. Cornerstones alone made the column lie by omission: a roster showed only
+"Lamar" while holding CeeDee Lamb, because Lamb misses the tag on the CLOCK, not on
+value. The reader wants the roster's headline pieces; which of them are young enough
+to build around is a flag on the name, not a filter on the list.
 
 ## Known limitations / backlog
 

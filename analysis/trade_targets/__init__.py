@@ -80,6 +80,36 @@ def find_targets(league_id: str, owner_query: str,
     by_name = {e["name"]: e for e in me["sellable"] + me["tradeable_surplus"]}
     weakest_id = roster_needs.weakest_starter(ctx.players, my_starters)
     weakest = ctx.players[weakest_id] if weakest_id else None
+    # WHO holds this player's cheapest reachable slot, and by how much. "Every slot is
+    # held by someone better" was true but absolute-sounding: a TE 61 points behind the
+    # last FLEX read back to a tester as "you have 5 WR slots so he can't start" - the
+    # model invented slot mechanics because the payload stated a verdict without its
+    # margin. The margin self-defends in both directions: 61 is a competition, 4,000
+    # is a wall, and the reader can tell which without being told.
+    filled = roster_needs.fill_lineup(my_roster, ctx.players, ctx.lineup_dedicated,
+                                      ctx.lineup_flex)
+
+    def _nearest_door(pos):
+        doors = [(slot, ctx.players[pid]) for slot, pid in filled if pid in ctx.players
+                 and (slot == pos or pos in roster_needs.FLEX_ELIGIBILITY.get(slot, ()))]
+        if not doors:
+            return None
+        slot, occ = min(doors, key=lambda d: d[1].get("redraft_value") or 0)
+        return {"slot": slot, "held_by": occ["name"],
+                "redraft_value": occ.get("redraft_value") or 0}
+
+    # The same fact for every non-starter the payload offers as sellable: his distance
+    # from the lineup is a number with a name on it. Skipped when the margin comes out
+    # negative - declared starters and the optimal lineup can disagree, and a player
+    # who would beat the door isn't locked out at all.
+    for e in me["sellable"] + me["tradeable_surplus"]:
+        if not e.get("is_starter") and e.get("redraft_value") is not None:
+            d = _nearest_door(e["position"])
+            if d:
+                m = d["redraft_value"] - (e["redraft_value"] or 0)
+                if m >= 0:
+                    e["nearest_door"] = {**d, "margin": m}
+
     stranded = []
     for player_id in stranded_ids:
         info = ctx.players[player_id]
@@ -88,7 +118,14 @@ def find_targets(league_id: str, owner_query: str,
                                            "redraft_value": info.get("redraft_value")})
         wanted = wanted_by(entry, my_roster, board)
         floor = weakest["redraft_value"] or 0
+        door = _nearest_door(info["position"])
+        margin = (door["redraft_value"] - (info.get("redraft_value") or 0)) if door else None
+        door_sentence = (
+            f" His cheapest reachable slot is {door['slot']}, where {door['held_by']} "
+            f"starts at {door['redraft_value']:,} - {info['name']} is {margin:,} points "
+            f"of current production behind that door." if door else "")
         stranded.append({**entry, "blocked_by": info["position"],
+                         **({"nearest_door": {**door, "margin": margin}} if door else {}),
                          "wanted_by": wanted_line(wanted),
                          "times_weakest": (round((info.get("redraft_value") or 0) / floor, 1)
                                            if floor else None),
@@ -96,7 +133,8 @@ def find_targets(league_id: str, owner_query: str,
                                   f"{weakest['redraft_value'] or 0:,} of {weakest['name']} "
                                   f"({weakest['position']}), who starts - and every "
                                   f"{info['position']}-capable slot is held by someone better, so "
-                                  f"none of it reaches the lineup."
+                                  f"none of it reaches the lineup today."
+                                  + door_sentence
                                   + (f" {len(wanted)} team(s) are short at {info['position']}: "
                                      + ", ".join(f"{w['owner']} ({w['need_level']})" for w in wanted[:3])
                                      + " - start there."

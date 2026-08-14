@@ -152,7 +152,14 @@ def league_overview(league_id: str) -> dict:
                 "ascending_pct": t["ascending_pct"],
                 "declining_pct": t["declining_pct"],
                 "owns_next_first": t["owns_next_first"],
-                "cornerstones": [e["name"] for e in t["cornerstones"]],
+                # Cornerstones alone made the column lie by omission: a roster showed
+                # "Lamar" while holding CeeDee Lamb, because Lamb misses the tag on the
+                # CLOCK, not on value (he lives in win_now_core). The reader of this
+                # table wants the roster's headline pieces; which of them are young
+                # enough to build around is a flag on the name, not a filter.
+                "core": [{"name": e["name"], "cornerstone": bool(e.get("is_cornerstone"))}
+                         for e in sorted(t["cornerstones"] + t["win_now_core"],
+                                         key=lambda e: -e["value"])],
                 "needs": needs.get(t["owner_id"], {}),
             }
             for t in teams

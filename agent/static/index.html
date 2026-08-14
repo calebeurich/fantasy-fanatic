@@ -282,15 +282,16 @@ async function loadLeague(id) {
         <td><span class="tag ${t.window}">${t.window}</span></td>
         <td class="cs">${t.starting_production.toLocaleString()}<div class="cs">${t.pct_of_best}% of best · ${t.ascending_pct}%asc / ${t.declining_pct}%dec</div></td>
         <td>${needs}</td>
-        <td class="cs">${t.cornerstones.slice(0, 4).join(", ") || "none"}</td>
+        <td class="cs">${t.core.slice(0, 4).map(c =>
+          c.cornerstone ? `<strong>${c.name}</strong>` : c.name).join(", ") || "none"}</td>
       </tr>`;
     }).join("");
     $("overview").innerHTML = `
-      <table><thead><tr><th></th><th>Owner</th><th>Window</th><th>This season</th><th>Needs</th><th>Cornerstones</th></tr></thead>
+      <table><thead><tr><th></th><th>Owner</th><th>Window</th><th>This season</th><th>Needs</th><th>Core</th></tr></thead>
       <tbody>${rows}</tbody></table>
       ${d.tier === "degraded" ? '<div class="note warn">Shallow league — percentile-based numbers are rougher than usual.</div>' : ""}
       ${d.no_trade_history ? '<div class="note warn">No trades in this league yet — window labels are less reliable this early.</div>' : ""}
-      <div class="note">Ranked by current starting production (redraft value) — what decides whether a team can compete <em>this</em> season, as opposed to what its roster is worth. Click a team to ask about them.</div>`;
+      <div class="note">Ranked by current starting production (redraft value) — what decides whether a team can compete <em>this</em> season, as opposed to what its roster is worth. Core = the roster's headline pieces; <strong>bold</strong> ones are young enough to build around. Click a team to ask about them.</div>`;
     const pick = tr => {
       myTeam = tr.dataset.owner;
       document.querySelectorAll("tr.team").forEach(x => x.classList.remove("mine"));
