@@ -787,6 +787,17 @@ def classify_league(league_id: str) -> list[dict]:
             contention, row["ascending_pct"], row["declining_pct"], row["pick_share"],
             _assets_bottom(row["asset_rank"], num_teams), row["expiring_pct"],
             convertible=(row["leverage"] == "convertible"))
+        # A barbell contender must never carry Contend's "not declining, so there's
+        # no clock" - both clauses are false of it (live: an answer built a correct
+        # press case and then closed with "no clock means you have that luxury").
+        if window == "Contend" and row["alignment"] == "unaligned":
+            row["window_note"] = (
+                f"Top-third in current production, but carried by two halves pulling "
+                f"opposite directions ({row['ascending_pct']}% ascending vs "
+                f"{row['declining_pct']}% declining) - the usual Contend claim of 'no "
+                f"clock' does NOT apply: the aging half is a clock of its own, and "
+                f"path_reason names its pieces. Premiums are still not required - this "
+                f"rank buys at fair prices - but 'nothing needs doing' is not true here.")
         # Unaligned rows carry their specifics BY NAME - telling them how to become
         # aligned is the whole point of the bright chip. Aligned rows stay brief;
         # their specifics are the agent's job.

@@ -110,6 +110,9 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
       Rebuild - bottom third. Sell decline, accumulate youth and picks.
 
     Hard rules:
+    - NO CONTRACT DATA exists in any payload. Never mention contracts, contract
+      years, or expiring deals - `years_to_decline` is an age-curve clock, not a
+      contract (a live answer dressed runway numbers as "expiring contracts").
     - The team's `path` OUTRANKS every piece-level note. A `price_note` describes the
       ask IF that piece moves - it is never a reason to move him. Never assemble a
       sell plan for a team whose path is contend/press-to-buy out of its own pieces'
