@@ -41,9 +41,15 @@ INSIDE_FINAL_YEAR = 1.0
 # for free.
 SECURE_YEARS_REMAINING = 2
 
-# How many future draft classes to count as pick capital. Beyond this, picks are too
-# speculative to value meaningfully and dynasty traders rarely deal that far out anyway.
-FUTURE_DRAFT_YEARS = 2
+# How many future draft classes to count as pick capital. Three, because that is what
+# actually exists: Sleeper lets leagues trade three drafts ahead and FantasyCalc prices
+# all three classes (verified: 2027-2029 valued in August 2026) - at 2 this undercounted
+# every roster's capital and hid a whole year of firsts from the league table. Classes
+# FantasyCalc doesn't price are skipped by the flat-value guard, so a shorter market
+# degrades gracefully. (Caveat for the in-season track: `owned_picks` starts at
+# season+1, which is right once the current class has drafted and wrong in the spring
+# before it has - the current class is the one with exact slot prices.)
+FUTURE_DRAFT_YEARS = 3
 
 
 def age_bucket(position: str, age: float | None, role: str | None = None) -> str:
