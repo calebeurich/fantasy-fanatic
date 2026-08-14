@@ -114,6 +114,29 @@ channel scores across manager-seasons. Placement is the headline but the
 noisiest label; all-play and points-for carry the skill signal. Needs crawl
 scale (~thousands of manager-seasons).
 
+## Track 4: In-season (time-triggered — the 2026 season starts in September)
+
+Everything shipped is preseason math, and says so. Real games change what the
+right answer IS, not just its precision — this track is dated by the calendar,
+not by preference:
+
+- **Windows and needs re-weighted by results**: a "Contend" roster that starts
+  1-5 is not contending; actual points and standings join roster composition in
+  the classification, with the preseason basis phased down as weeks accumulate.
+- **Playoff math**: all-play strength, remaining schedule, seeding scenarios,
+  and playoff odds — the input that flips trade advice at the deadline
+  (playoff-bound teams buy production, eliminated teams are sellers with a
+  clock; "holds_to_win" becomes literal).
+- **Playoff-week schedules**: a player's weeks 15-17 matchups/bye reality
+  affects what win-now production is worth to a contender in December.
+- **Season-adjusted trade evaluation**: trade_eval's production ledger switches
+  from redraft-market proxy to actual rest-of-season outlook; the two-ledger
+  window grading (Track 3) inherits the same adjustment.
+- **Live manager scores**: lineup efficiency and schedule luck start computing
+  for the current season as it happens — the report card gets a weekly pulse.
+- **Projections stop being backlog**: in-season, "who should I start" questions
+  arrive immediately, and roster values alone cannot answer them.
+
 ## The format-conditioning rule (applies to every track)
 
 Anything that enters a training or measurement set carries its league's
