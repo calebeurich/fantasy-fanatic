@@ -66,8 +66,12 @@ Three packages, split by role, each with an `__init__.py`:
   `trade_targets.py`, `waiver_wire.py`, `format_support.py`
 - **`agent/`** (Phase 1+ of the agent build-out plan): `mcp_server.py`,
   `test_mcp_server.py`, `agent.py` (Phase 2+)
+- **`research/`** (offline studies that test intuitions against data before they
+  become constants - deterministic, free to re-run, findings summarized in its
+  README and ROADMAP.md)
 - **Docs, at the repo root**: `CLAUDE.md` (this file - how the project is built),
-  `LOGIC.md` (why every heuristic works the way it does)
+  `LOGIC.md` (why every heuristic works the way it does), `ROADMAP.md` (what is not
+  built yet)
 
 **Run everything as a module from the repo root**, never as a bare file path -
 `python -m analysis.team_state <league_id>`, not `python analysis/team_state.py
