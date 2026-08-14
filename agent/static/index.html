@@ -148,6 +148,25 @@
 </main>
 
 <script>
+// FIRST, before anything that can throw: a crash must never look like a dead button.
+// A script error above used to kill every handler silently - the page looked fine and
+// just ignored clicks, which reads as "the button doesn't work" and invites spam
+// clicking. Any uncaught error now paints an unmissable banner instead.
+const showCrash = msg => {
+  let bar = document.getElementById("crashbar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "crashbar";
+    bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99;background:#7f1d1d;" +
+      "color:#fff;padding:10px 14px;font:13px/1.4 ui-sans-serif,system-ui,sans-serif";
+    document.body.prepend(bar);
+  }
+  bar.textContent = "This page hit an error and may not respond — refresh to recover. " +
+                    "If it keeps happening, tell Caleb: " + msg;
+};
+window.addEventListener("error", e => showCrash(e.message || "unknown error"));
+window.addEventListener("unhandledrejection", e => showCrash(String(e.reason).slice(0, 120)));
+
 // Session id is client-generated: the server never issues one, so an expired session
 // starts a fresh conversation instead of erroring, and one tab can't reach another's.
 // localStorage, not sessionStorage: closing the tab should not throw away the
@@ -177,6 +196,10 @@ let myName = null;   // the Sleeper display name they looked themselves up with
 $("find").onclick = async () => {
   const name = $("username").value.trim();
   if (!name) return;
+  // The button itself acknowledges the click - box text alone sits below the fold
+  // on a phone, and an unacknowledged tap invites spam clicking.
+  $("find").disabled = true;
+  $("find").textContent = "looking…";
   $("leagues").innerHTML = '<span class="cs">looking up…</span>';
   try {
     const user = await (await fetch(`https://api.sleeper.app/v1/user/${encodeURIComponent(name)}`)).json();
@@ -203,6 +226,9 @@ $("find").onclick = async () => {
     if (leagues.length === 1) $("leagues").firstChild.click();
   } catch (e) {
     $("leagues").innerHTML = `<span class="cs warn">Lookup failed: ${e}</span>`;
+  } finally {
+    $("find").disabled = false;
+    $("find").textContent = "Find my leagues";
   }
 };
 $("username").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("find").click(); } });
@@ -328,9 +354,15 @@ function add(html, cls) {
 // Kept as raw question/answer text (re-rendered through md() on load) rather than saved
 // HTML, so a change to the renderer applies to old messages too.
 const HISTORY_MAX = 30;
-const history = () => JSON.parse(localStorage.getItem("ff_history") || "[]");
+// Named savedHistory, NOT history: a top-level `const history` shadows
+// window.history for the whole script, and the key-stripping block's
+// history.replaceState then throws before any handler attaches - which
+// killed the ENTIRE page, but only for visitors arriving via the keyed
+// link (the only path that executes replaceState). Every localhost test
+// used a bare URL, so the crash lived in production only.
+const savedHistory = () => JSON.parse(localStorage.getItem("ff_history") || "[]");
 const remember = entry => localStorage.setItem(
-  "ff_history", JSON.stringify([...history(), entry].slice(-HISTORY_MAX)));
+  "ff_history", JSON.stringify([...savedHistory(), entry].slice(-HISTORY_MAX)));
 
 $("reset").onclick = () => {
   sessionId = crypto.randomUUID();
@@ -360,7 +392,7 @@ function withContext(question) {
 // was there a conversation before this? Decided once at ask time and stored with the
 // answer, so a redraw from history shows the same notice the reader saw live.
 const markReset = d => {
-  if (d && d.conversation_reset && history().length === 0) d.conversation_reset = false;
+  if (d && d.conversation_reset && savedHistory().length === 0) d.conversation_reset = false;
   return d;
 };
 
@@ -497,7 +529,7 @@ $("f").onsubmit = async e => {
 // go and collect the answer: the server finished it regardless (measured), so the only
 // thing that was ever lost is the delivery.
 (async () => {
-  const past = history();
+  const past = savedHistory();
   for (const h of past) {
     add(`<p>${h.typed.replace(/</g, "&lt;")}</p>`, "me");
     renderAnswer(add(""), h.answer, h.question);
