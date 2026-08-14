@@ -452,9 +452,7 @@ async function loadLeague(id) {
         t.path.startsWith("hold") ? ["p-hold", "hold"] :
         t.path.startsWith("wait") ? ["p-wait", "wait"] :
         t.path.startsWith("keep") ? ["p-build", "build"] :
-        t.path.startsWith("push or pivot")
-          ? ["p-decide", "decide" + (t.path.includes("lean push") ? " · push" : "")]
-          : ["p-rebuild", "rebuild"];
+        t.path.startsWith("push or pivot") ? ["p-decide", "decide"] : ["p-rebuild", "rebuild"];
       const heat = t.alignment === "unaligned" ? "hot" : "cool";
       return `<tr class="team" data-owner="${t.owner}">
         <td class="rk">${t.rank}</td>
