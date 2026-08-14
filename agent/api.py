@@ -179,26 +179,38 @@ def team_detail(league_id: str, owner: str) -> dict:
     with their market prices, and the team-level reads (window, clock mismatch).
     Deterministic and rendered directly by the UI, same reasoning as the league table -
     the analysis already knows all of it, so no tokens are spent reciting a roster."""
-    from analysis import roster_detail as rd, team_values
+    from analysis import team_values
     from analysis.league import context
+    from analysis.team_values import age_bucket, years_to_decline
     from sources import fantasycalc
 
-    detail = rd.get_roster_rows(league_id, owner)
+    # Built straight from the cached league context, NOT get_roster_rows - that path
+    # downloads nflverse contracts and injury rates, neither of which this view shows,
+    # and the first click paid several seconds for data it never rendered.
+    ctx = context(league_id)
+    roster = ctx.roster_for(owner)
+    owner_name = ctx.owner_names[roster["owner_id"]]
+    starters = ctx.starters_for(roster)
     t = next(t for t in team_state.classify_league(league_id)
-             if t["owner"] == detail["owner"])
+             if t["owner"] == owner_name)
     corner = {e["name"] for e in t["cornerstones"]}
 
     by_pos: dict[str, list] = {}
-    for r in detail["rows"]:
-        by_pos.setdefault(r["position"], []).append({
-            "name": r["name"], "value": r["value"],
-            "redraft_value": r.get("redraft_value"), "age": r["age"],
-            "bucket": r["bucket"], "starter": r["lineup_role"] == "starter",
-            "cornerstone": r["name"] in corner,
+    for pid in roster["players"] or []:
+        info = ctx.players.get(pid)
+        if info is None:
+            continue
+        by_pos.setdefault(info["position"], []).append({
+            "name": info["name"], "value": info["value"],
+            "redraft_value": info.get("redraft_value"), "age": info["age"],
+            "bucket": age_bucket(info["position"], info["age"], info.get("usage_role")),
+            "starter": pid in starters,
+            "cornerstone": info["name"] in corner,
             # The continuous variable behind the bucket - the UI colors on it, because
             # a 0.1-year piece and a 3.9-year piece are different facts the same
             # bucket color was hiding (the James Cook effect, visually).
-            "years_to_decline": r.get("years_to_decline"),
+            "years_to_decline": years_to_decline(info["position"], info["age"],
+                                                 info.get("usage_role")),
         })
     for rows in by_pos.values():
         rows.sort(key=lambda x: -(x["value"] or 0))
@@ -210,7 +222,7 @@ def team_detail(league_id: str, owner: str) -> dict:
                                     ctx.league["settings"]["draft_rounds"],
                                     [r["roster_id"] for r in ctx.rosters], pick_values)
     return {
-        "owner": detail["owner"], "window": t["window"], "flavor": t["flavor"],
+        "owner": owner_name, "window": t["window"], "flavor": t["flavor"],
         "clock_mismatch_note": t.get("clock_mismatch_note"),
         "players": by_pos,
         "picks": [{"pick": p["pick"], "value": p["value"]}
