@@ -464,9 +464,9 @@ async function loadLeague(id) {
         <td class="cs">${t.starter_value.toLocaleString()}<div class="cs">${firsts}</div></td>
         <td>${needs}</td>
         <td class="cs">
-          <div>${t.core.filter(c => c.cornerstone).slice(0, 3).map(c => `<strong>${c.name}</strong>`).join(", ") || "—"}</div>
+          <div>${t.core.filter(c => c.cornerstone).map(c => `<strong>${c.name}</strong>`).join(", ") || "—"}</div>
           ${t.core.some(c => !c.cornerstone)
-            ? `<div class="pp">${t.core.filter(c => !c.cornerstone).slice(0, 3).map(c => c.name).join(", ")}</div>` : ""}</td>
+            ? `<div class="pp">${t.core.filter(c => !c.cornerstone).map(c => c.name).join(", ")}</div>` : ""}</td>
       </tr>`;
     }).join("");
     $("overview").innerHTML = `
@@ -474,7 +474,15 @@ async function loadLeague(id) {
       <tbody>${rows}</tbody></table>
       ${d.tier === "degraded" ? '<div class="note warn">Shallow league — percentile-based numbers are rougher than usual.</div>' : ""}
       ${d.no_trade_history ? '<div class="note warn">No trades in this league yet — window labels are less reliable this early.</div>' : ""}
-      <div class="note">Ranked by current starting production (redraft value) — what decides whether a team can compete <em>this</em> season. Path = the suggested move: <strong>bright</strong> means a real decision is pending, muted means continue as-is (hover for why). Core: <strong>bold</strong> = build-around pieces; <span class="pp">orange</span> = priced on what they do now — the aging load-bearers and sell-window watch list. Click a team to ask about them.</div>`;
+      <div class="note" style="line-height:2">
+        <span class="tag p-hold cool">hold</span> good now, nothing needs buying or selling &nbsp;
+        <span class="tag p-buy cool">buy</span> window closing on its own — pay for production now &nbsp;
+        <span class="tag p-wait cool">wait</span> patience is free, let it develop &nbsp;
+        <span class="tag p-build cool">build</span> rebuild working — keep stacking youth and picks &nbsp;
+        <span class="tag p-decide hot">decide</span> roster and rank disagree — push or pivot, both live &nbsp;
+        <span class="tag p-rebuild hot">rebuild</span> not competing and not accumulating — sell aging value, get a direction
+      </div>
+      <div class="note">Ranked by current starting production (redraft value) — what decides whether a team can compete <em>this</em> season. Bright chip = a real decision is pending; muted = continue as-is (hover for why). Core: <strong>bold</strong> = build-around pieces; <span class="pp">orange</span> = priced on what they do now — the aging load-bearers and sell-window watch list. Click a team to ask about them.</div>`;
     const pick = tr => {
       myTeam = tr.dataset.owner;
       document.querySelectorAll("tr.team").forEach(x => x.classList.remove("mine"));
