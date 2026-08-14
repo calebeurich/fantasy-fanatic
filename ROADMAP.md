@@ -20,6 +20,24 @@ can *show its work*: every recommendation grounded in either deterministic math
 or measured market behavior — never vibes. Dynasty first; redraft is the far
 future state once the dynasty machinery earns it.
 
+**Sharpened (2026-08-14): the globally optimizable metric is championship equity —
+expected titles over the next ~5 seasons.** That is how dynasty pays, so every move
+(trade, waiver, pick, hold) ultimately scores as ΔEquity. The architecture is three
+components, each already in flight as its own track: (1) a season-level title model
+(roster strength → placement → title odds, calibrated on the crawl's real
+league-seasons; playoff variance is Track 4's math), (2) a roster TRANSITION model —
+which is exactly the measured drift tables: tier-conditioned value/production
+trajectories by position x age x archetype plus exit rates, (3) opponent symmetry:
+every rival roster ages under the same transition, so equity is a share recomputed
+per season, and "windows" become emergent (Push = equity front-loaded in season 1).
+Uncertainty compounding self-discounts distant seasons. Two standing guards: ship
+distributions and deltas with ranges, never point estimates - and validate against
+the trade dataset by scoring thousands of REAL historical trades on ΔEquity and
+checking that positive-delta sides actually went on to win more. Doctrine note: this
+is the planned evolution of judgment-not-price, named - the rule was never "no
+numbers", it was "market values don't add"; championship equity is an OUTCOME
+currency, which is what the judgment was always approximating in words.
+
 ---
 
 ## Track 1: Trade evaluation (branch `trade-eval`, active)
