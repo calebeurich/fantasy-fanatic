@@ -295,18 +295,24 @@ async function toggleDetail(tr, leagueId) {
     // window"), pure green at 4+ (two full horizons), and a darker red past the
     // cliff - Henry at -5.6 is a different fact than Cook at 0.1. A 23-year-old RB
     // with 4.1 years reads pure green because he genuinely holds two horizons.
-    const runwayColor = y => {
+    // Decline is a slope, not a cliff: the breakpoint is where decline STARTS, so
+    // runway 0 reads orange, and full red arrives only a position-specific tail past
+    // it - RBs fall fast (2 yrs), WRs/TEs slower (3), QBs slowest (5). Display-only
+    // constants encoding that judgment; the analysis' own math stays on runway.
+    const DECLINE_TAIL = {RB: 2, WR: 3, TE: 3, QB: 5};
+    const runwayColor = (y, pos) => {
       if (y == null) return "var(--muted)";
-      if (y < 0) return "hsl(0, 60%, 40%)";
-      const t = Math.min(1, y / 4);
-      return `hsl(${Math.round(t * 120)}, 65%, 58%)`;
+      const tail = DECLINE_TAIL[pos] || 3;
+      if (y <= -tail) return "hsl(0, 60%, 38%)";
+      if (y < 0) return `hsl(${Math.round(30 * (1 + y / tail))}, 65%, 55%)`;
+      return `hsl(${Math.round(30 + Math.min(1, y / 4) * 90)}, 65%, 58%)`;
     };
     const group = (title, rows) => `<div class="pgroup"><div class="ptitle">${title}</div>` +
       rows.map(p => `<div class="prow${p.starter ? " st" : ""}">` +
         `<span>${p.cornerstone ? "★ " : ""}${p.name}</span>` +
         `<span class="pv pn">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
         `<span class="pv">${(p.value || 0).toLocaleString()}</span>` +
-        `<span class="pa" style="color:${runwayColor(p.years_to_decline)}">` +
+        `<span class="pa" style="color:${runwayColor(p.years_to_decline, title)}">` +
         `${p.age != null ? p.age.toFixed(1) : ""}</span></div>`).join("") + `</div>`;
     const picksHtml = d.picks.length
       ? group("Picks", d.picks.map(p => ({name: p.pick, value: p.value})))
@@ -318,10 +324,10 @@ async function toggleDetail(tr, leagueId) {
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}${picksHtml}</div>` +
       `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--ok)">▸</span>` +
       `<strong> starter</strong> · this-season value, then dynasty value · age = runway: ` +
-      `<span style="color:hsl(0,60%,40%)">past the cliff</span> · ` +
-      `<span style="color:hsl(0,65%,58%)">at it</span> · ` +
-      `<span style="color:hsl(60,65%,58%)">2 yrs (a buyer's horizon)</span> · ` +
-      `<span style="color:hsl(120,65%,58%)">4+ yrs</span></div></td>`;
+      `<span style="color:hsl(120,65%,58%)">4+ yrs</span> → ` +
+      `<span style="color:hsl(30,65%,58%)">decline starting</span> → ` +
+      `<span style="color:hsl(0,60%,38%)">deep in it</span> ` +
+      `(how fast red arrives depends on the position - RBs fall in 2 yrs, QBs in 5)</div></td>`;
   } catch (e) {
     row.innerHTML = `<td colspan="7" class="cs warn">Couldn't load roster: ${e}</td>`;
   }
