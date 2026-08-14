@@ -395,7 +395,10 @@ async function toggleDetail(tr, leagueId) {
     row.innerHTML = `<td colspan="7">` +
       `<div class="cs" style="margin-bottom:6px"><strong>${d.alignment} · ${d.path}</strong>` +
       ` — ${d.path_reason}</div>` +
-      (d.clock_mismatch_note
+      (d.clock_mismatch_note && d.alignment === "aligned"
+        // The orange line is the exception to a CALM chip (hold + Henry aging out).
+        // On an unaligned team the grey line already names the pieces on the clock -
+        // the same names twice in adjacent lines read as clutter. Agent gets it always.
         ? `<div class="cs warn" style="margin-bottom:8px">${d.clock_mismatch_note}</div>` : "") +
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}${picksHtml}</div>` +
