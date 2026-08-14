@@ -79,7 +79,7 @@ eventually to learn from.
   top-25 by FC value **0.476**, top-50 0.752, top-100 0.915, while
   within-position among the top-100 every position holds ~0.93. So the elite
   disagreement is about CROSS-POSITION ordering (is Bowers worth more than a
-  QB2), and it is not necessarily miscalibration — expert opinion and market
+  QB2), and it is not necessarily miscalibration — rank consensus and market
   clearing prices are different instruments, possibly with era effects in
   position-class strength. The bridge translates, it does not correct.
   Consequences: (1) **per-position percentile space is mandatory** (inherits
