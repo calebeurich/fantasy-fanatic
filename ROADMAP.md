@@ -121,6 +121,32 @@ RBs disappear IS the falloff); bottom-censoring at DP's ~700-player floor report
 not interpolated; injury-wrecked seasons flagged via nflverse rather than read as
 aging; era drift checked (early vs late halves) before pooling. Findings graduate
 into constants; misses correct them - either way the curves stop being vibes.
+**FIRST RESULTS (run 2026-08-14, 8,328 player-year observations, 22 cohorts
+2020-2026):** DP values are ECR-derived and roughly pool-conserved, so every rookie
+class dilutes every incumbent - raw one-year ratios sit below 1.0 almost everywhere,
+and the honest age effect is each age cell relative to its own position baseline.
+Normalized: **market value peaks 2-4 years BEFORE the production breakpoint at every
+position** - WR value turns at ~26-27 (production curve says 29), TE at ~26 (30), QB
+at ~31 (34-37), and RB value has no plateau at all, descending steadily from 23 with
+the steepening near 27. The market discounts ahead of the field. This VALIDATES the
+sell-early direction of the sell-window doctrine while sharpening its wording: on
+AVERAGE the market is already discounting from the mid-20s, so "the market has not
+discounted him yet" is a claim about specific outliers (exactly what cornerstone-
+priced flags), not about typical aging players. Product implication recorded, not yet
+acted on: the codebase's runway is a PRODUCTION clock; the market runs an earlier
+VALUE clock; both are real and the gap between them is the sell window itself.
+QB detail: value growth is BEST at ages 25-30 (rel 1.14-1.26) and young QBs (21-23)
+gain no faster than baseline - supporting prime-entry at 27 and cautioning against
+reading a 22-year-old QB's green as market-safe.
+
+**Pre-registered experience hypothesis: REJECTED by the held-out era.** In 2020-22,
+same-age (22-23) rookie RBs/WRs crushed 3+year vets (1.07-1.25 vs 0.60-0.79); in
+2023-25 the effect vanished or inverted (RB rookies 0.53 vs vets 0.64). Either a
+rookie-mania era artifact or the market learning to price entry hype - both readings
+mean it does not graduate. The overcook guard caught a plausible intuition exactly as
+designed; the old-rookie (24+) case specifically never reached sample size and stays
+open. Original hypothesis text kept below for the record.
+
 Pre-registered hypothesis for the same study: **experience as a separate axis from
 age** - an older rookie (RJ Harvey type) is age-late but experience-early, and the
 NFL-adjustment period may make him behave like an ascender. Testable because DP
