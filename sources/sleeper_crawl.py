@@ -70,6 +70,39 @@ def crawl_chain(league_id: str) -> list[Path]:
     return written
 
 
+def snowball(seed_league_ids: list[str], max_chains: int = 60) -> None:
+    """Widen the corpus one hop: every manager in the seed leagues, every dynasty
+    league those managers play in, full chains. All public Sleeper data, stored only
+    in the gitignored data/ dir. 13 own-league seasons is not a dataset."""
+    user_ids = []
+    for lid in seed_league_ids:
+        for u in _get(f"/league/{lid}/users"):
+            if u["user_id"] not in user_ids:
+                user_ids.append(u["user_id"])
+    print(f"{len(user_ids)} managers across {len(seed_league_ids)} seed leagues")
+
+    chains = []
+    for uid in user_ids:
+        for year in ("2026", "2025", "2024"):
+            for lg in _get(f"/user/{uid}/leagues/nfl/{year}") or []:
+                if lg["settings"]["type"] == 2 and lg["league_id"] not in chains:
+                    chains.append(lg["league_id"])
+    print(f"{len(chains)} dynasty leagues discovered; crawling up to {max_chains}")
+
+    for i, lid in enumerate(chains[:max_chains]):
+        try:
+            crawl_chain(lid)
+        except requests.HTTPError as e:
+            print(f"  skipped {lid}: {e}")
+        if (i + 1) % 10 == 0:
+            print(f"  ...{i + 1}/{min(len(chains), max_chains)} chains done, "
+                  f"{len(list(CRAWL_DIR.glob('*.json')))} season files on disk")
+
+
 if __name__ == "__main__":
-    written = crawl_chain(sys.argv[1])
-    print(f"{len(written)} new season file(s) in {CRAWL_DIR}")
+    if sys.argv[1] == "snowball":
+        snowball(sys.argv[2].split(","),
+                 int(sys.argv[3]) if len(sys.argv) > 3 else 60)
+    else:
+        written = crawl_chain(sys.argv[1])
+        print(f"{len(written)} new season file(s) in {CRAWL_DIR}")
