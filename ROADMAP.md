@@ -39,9 +39,12 @@ eventually to learn from.
   window per stream (superflex + 1QB), no history, ~500-700/day/stream. Pieces
   carry point-in-time values resolved at poll time — FC has no public value
   history (probed thoroughly), so poll-time resolution is the only point-in-time
-  there will ever be. **OPEN: where the poller runs** (GitHub Actions cron or a
-  tiny Cloud Run job beat local — every unpolled ~2h window is data lost
-  forever).
+  there will ever be. **Demoted to nice-to-have (2026-08-13):** the Sleeper
+  crawl also yields trades — historical, with roster context, valued via the
+  DP archive — so this stream's remaining niche is a dense real-time market
+  pulse with exact FC values attached and zero crawl infrastructure. Run a
+  poller if it stays nearly free (a small cron); nothing downstream depends
+  on it.
 - **Early findings (n≈93, keep re-measuring):** consolidation premium is real
   and monotonic (2-for-1 clears at median 1.36x the single piece, 3-for-1 1.50x,
   4-for-1 1.64x — the eyeballed OVERPAY_LIMIT 1.5 sits inside the band); the
@@ -129,8 +132,11 @@ number would be quietly wrong.
 - **Sportsbook lines / news-flow value arb**: the long-held idea — market
   dynasty values move slower than real news; sportsbook lines (and possibly
   curated Twitter/X flow) lead them. Find the lag, surface the buy/sell window
-  before the market reprices. Anything with a paid feed obeys the CLAUDE.md
-  rule: budget cap before it's wired to anything automated.
+  before the market reprices. Once an odds feed is pulling for our own
+  projections anyway, **surfacing betting angles becomes a cheap side product**
+  of the same data — same feed, second consumer. Anything with a paid feed
+  obeys the CLAUDE.md rule: budget cap before it's wired to anything
+  automated.
 - **Redraft**: far future state. Most machinery transfers (lineups, waivers,
   luck, format conditioning); windows/runway/picks do not. Do not build toward
   it speculatively — note what transfers when designing, nothing more.
@@ -138,7 +144,8 @@ number would be quietly wrong.
 ## Sequencing (plan of record)
 
 1. Finish trade_eval to Caleb's taste; wire as MCP tool behind the doctrine.
-2. Decide the FC poller home; start it (data loss is permanent until then).
+2. (Optional, cheap) FC poller as a small cron for the market pulse — demoted,
+   nothing depends on it; the crawl + DP archive is the primary trade dataset.
 3. Manager scores v1 on our own leagues (lineups + schedule luck first — zero
    new data needed — then waivers, drafts, trades with the DP join).
 4. League report card as a product surface for the friends test.
