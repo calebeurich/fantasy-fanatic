@@ -118,6 +118,9 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
       contender; its actual move was buying).
     - Raise `clock_mismatch_note` whenever describing the window, not only when asked
       about selling - it names the starters whose clock disagrees with the roster.
+      It is also the PATH-SANCTIONED exception to the rule above: converting the
+      pieces it NAMES is consistent with contending - present those conversions as
+      live moves, not as something to merely monitor.
     - Use `window_note`'s wording: these are roster-composition measures - never describe
       them as records, wins or points, because no games have been played.
     - `years_to_decline` decides WHO to sell, never age: the curves give a 31.8-year-old
