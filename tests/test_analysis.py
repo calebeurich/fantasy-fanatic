@@ -2001,6 +2001,15 @@ def test_the_package_tripwire_fires_on_real_bundles_and_not_on_real_alternatives
     assert not packaged_pieces("You could offer Harold Fannin, DK Metcalf, or Jalen Nailor "
                                "- one of them, not several.", mine)
 
+    # The third false-fire, from the live eval run after the level collapse: a colon
+    # list of alternatives. Splitting clauses on ":" orphaned the names from the
+    # "any of" that marks them as alternatives, and the comma list then read as a
+    # bundle. Correct behaviour, flagged - so the split keeps colon lists whole and
+    # the cue check knows more words than bare "or".
+    assert not packaged_pieces(
+        "**Offer any of:** Jalen Nailor, Malik Washington, Greg Dulcich, Dallas Goedert",
+        mine | {"Malik Washington", "Greg Dulcich", "Dallas Goedert"})
+
 
 def test_every_list_of_offerable_pieces_says_it_is_not_a_package():
     """A bare list of names invites the one construction this project forbids, and a live

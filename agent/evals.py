@@ -56,8 +56,11 @@ def packaged_pieces(text: str, mine: set[str]) -> list[str]:
     import re
 
     found = []
-    for clause in re.split(r"[.;:!?\n]", text):
-        if " or " in clause.lower():
+    # No split on ":" - a colon is how an alternatives list attaches to its cue
+    # ("Offer any of: A, B, C"), and splitting there orphaned the names from the
+    # words that mark them as alternatives, firing on correct behaviour.
+    for clause in re.split(r"[.;!?\n]", text):
+        if re.search(r"\bor\b|any of|any one|one of|either", clause.lower()):
             continue
         named = [n for n in mine if n in clause]
         if len(named) < 2:
