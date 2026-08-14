@@ -274,6 +274,17 @@ misaligned flavor, which this supersedes conceptually) and spugz13 (rank 9, 8/11
 war chest → uncommitted, "the first trade is for a direction"). The old
 window/flavor fields remain computed and shipped alongside during the migration.
 
+**The table is deterministic; the logic lives in the agent** (owner's deciding rule,
+2026-08-15): the UI renders measured facts - chips, values, colors, counts - and
+carries NO prose judgment beyond a hover tooltip. Every "should" sentence belongs to
+the agent, which holds all the payloads and can fuse them per question. This rule
+settled three disputes in one evening: the expanded panel's blurbs (removed - the
+grey line contradicted the orange one on shivvv), the needs-x-path interaction
+(not wired - the two chips sit adjacent and the agent fuses them), and the key
+(compressed to six short cells). The proof case: Travis Etienne is never named
+anywhere, and his orange age still sticks out - which is the point. When a fact
+matters, make it visible; when it needs a sentence, it is the agent's sentence.
+
 **Alignment is a dial, not a switch** (2026-08-15, owner's Vicdank/Smith reads):
 aligned means NO FORCED MOVE, not perfection - a team can always trim toward better
 alignment. Aligned reasons carry a brief clause when the trim is real: measured on
