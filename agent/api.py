@@ -149,6 +149,10 @@ def league_overview(league_id: str) -> dict:
                 "window": t["window"],
                 "contention": t["contention"],
                 "trajectory": t["trajectory"],
+                # The flavor word ("stalled", "convertible") often says more than the
+                # trajectory ("steady") - a steady rebuild IS a stalled one, and the
+                # table hiding that word read as false comfort to the league.
+                "flavor": t["flavor"],
                 "ascending_pct": t["ascending_pct"],
                 "declining_pct": t["declining_pct"],
                 "owns_next_first": t["owns_next_first"],

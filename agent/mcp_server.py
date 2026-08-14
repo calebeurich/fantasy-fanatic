@@ -137,10 +137,11 @@ def get_roster_needs(league_id: str) -> dict:
     """Positional needs for every team as a list, each entry carrying the owner's NAME
     (use it - a live answer addressed a manager as "Owner 637083353878695936" because
     this payload was keyed by id alone). A need's `level` names the
-    SHAPE of the problem - critical (bodies and quality), top-heavy (bodies, NOT an
-    upgrade), weak (an upgrade, NOT more depth) - and each entry's `note` states the
-    finding in words: use that wording, never a generic "thin". Fine positions are
-    omitted; mid-league is not a need.
+    SHAPE of the problem - critical (a body is needed NOW; whether what's started is
+    good rides in `body_solid` and the note, so never read critical alone as "their
+    players are bad"), weak (an upgrade eventually, NOT more depth) - and each entry's
+    `note` states the finding in words: use that wording, never a generic "thin".
+    Fine positions are omitted; mid-league is not a need.
 
     `drop_if_injured`/`exposure`/`position_miss_rate` measure injury exposure, which is
     NOT a need - raise it when asked about depth or risk, never as a hole in the lineup.

@@ -73,7 +73,7 @@ def check_best_available_is_surfaced(league_id, ctx, results) -> list[str]:
         # rosters) - an audit calibrated against a pool the code was never meant to reach
         # reports noise, and a noisy audit gets muted.
         for position, need in _blocks(result).get("needs", {}).items():
-            if need["level"] not in ("critical", "top-heavy"):
+            if need["level"] != "critical":
                 continue  # a quality need wants an upgrade, which has its own bar
             available = [
                 (entry.get("redraft_value") or 0, entry["name"])

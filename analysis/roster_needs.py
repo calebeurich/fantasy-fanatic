@@ -84,7 +84,7 @@ MIN_TEAMS_FOR_QUALITY = 4
 
 # Which shortage to go fix first. A position you can't field at all outranks one you can
 # field badly.
-NEED_PRIORITY = {"critical": 0, "top-heavy": 1, "weak": 2}
+NEED_PRIORITY = {"critical": 0, "weak": 2}
 
 # A bench player marginally better than the worst starter is ordinary depth; one producing
 # double is a starter's worth of scoring the lineup never collects. The live cases sit at
@@ -236,10 +236,12 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
     quality are separate problems with opposite fixes, so the level names the SHAPE of the
     problem:
 
-    - `critical`   - can't field the slots AND the group is weak. A real hole.
-    - `top-heavy`  - can't field the slots, but what's there is good. Wants bodies.
+    - `critical`   - can't field the slots: a body is needed NOW. Whether what's
+                     there is good rides in `body_solid` and the note, never in the
+                     level - needing an RB2 badly is the same shape whether the RB1
+                     is elite or fringe.
     - `weak`       - slots fillable, group bottom-tertile or under `WEAK_VS_MEDIAN` of the
-                     median. Wants an upgrade, not depth.
+                     median. Wants an upgrade eventually, not a body now.
     - `ok`         - neither; middle-of-the-league with no star is not a need.
 
     Injury exposure (`drop_if_injured`, ranked) is measured but is deliberately NOT a
@@ -270,11 +272,11 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                   for oid in groups} if starters and lineup else {})
         drop_rank = rank_map({o: d for o, d in drops.items() if d is not None})
 
-        # Quality PER STARTABLE BODY, for judging count-short groups: ranking the group
-        # TOTAL let the empty slot drag the verdict on the players who exist - a
-        # superflex room of Mahomes-plus-nobody ranked "among the league's worst" and
-        # read as critical, when the honest label is top-heavy (a body, NOT an upgrade).
-        # The hole is the count problem; quality is about the bodies. Averaged over the
+        # Quality PER STARTABLE BODY, feeding `body_solid` and the note for count-short
+        # groups: ranking the group TOTAL let the empty slot drag the verdict on the
+        # players who exist (a Mahomes-plus-nobody room read as "among the league's
+        # worst"). The hole is the count problem; quality is about the bodies, and it
+        # picks the SENTENCE, never the level. Averaged over the
         # usable bodies' OWN values - the first version divided the starting-group
         # total by the usable count, a mismatched numerator (a lone 2,724 startable RB
         # measured as 3,529 "per body" because a below-bar filler rode in the sum, and
@@ -300,13 +302,20 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
             count, required = len(usable[owner_id][pos]), slots[pos]
             is_weak = quality_known and (rank > bottom_third or total < median * WEAK_VS_MEDIAN)
 
+            body_solid = None
             if count < required:
-                # Judged on the bodies that exist, not the hole-dragged total. Without a
-                # quality read there's no basis to call a shortage merely top-heavy, so
-                # it stays `critical` - the old, conservative label.
-                body_weak = (body_ranks[owner_id] > bottom_third
-                             or per_body[owner_id] < body_median * WEAK_VS_MEDIAN)
-                level = "top-heavy" if (quality_known and not body_weak) else "critical"
+                # Count-short is ONE level. The axis that matters to a manager is
+                # "I need a body NOW" vs "I want an upgrade eventually" - needing an
+                # RB2 badly is the same shape whether the RB1 is elite or fringe.
+                # There used to be a quality split here (top-heavy vs critical) and
+                # its boundary could not be placed: every league-relative bar scored
+                # a fine lone QB and a fringe lone RB identically, and the label
+                # "top-heavy" read back to a manager as "RB-rich". The quality of
+                # the bodies that do exist rides in `body_solid` and the note.
+                level = "critical"
+                if quality_known:
+                    body_solid = not (body_ranks[owner_id] > bottom_third
+                                      or per_body[owner_id] < body_median * WEAK_VS_MEDIAN)
             elif is_weak:
                 level = "weak"
             else:
@@ -325,8 +334,10 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                 # group rather than just join it - what `weak` needs, by definition.
                 "weakest_starter": round(group[pos][-1]) if group[pos] else 0,
                 "rostered_bodies": bodies[owner_id],
+                # None = quality unknowable at this league size, which is not False.
+                "body_solid": body_solid,
                 "note": _position_note(pos, level, count, required, total, rank, num_teams,
-                                       median, top_third, body_ranks[owner_id],
+                                       median, body_solid, body_ranks[owner_id],
                                        bodies[owner_id]),
             }
             drop = drops.get(owner_id)
@@ -365,7 +376,7 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                     " Low only because the last starter here is already so weak that replacing "
                     "him costs little - that is the hole above restated, not comfort about it."
                     if entry["exposure"] == "low"
-                    and entry["level"] in ("critical", "top-heavy") else "")
+                    and entry["level"] == "critical" else "")
                 entry["note"] += (
                     f" Depth: losing the last {pos} in this lineup costs {round(drop):,} of "
                     f"production before a replacement starts, {entry['exposure_rank']} of "
@@ -376,7 +387,7 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
 
 
 def _position_note(pos: str, level: str, count: int, required: int, total: float, rank: int,
-                   num_teams: int, median: float, top_third: float,
+                   num_teams: int, median: float, body_solid: bool | None = None,
                    body_rank: int | None = None, bodies: int | None = None) -> str:
     have = f"No startable {pos}s" if count == 0 else f"{count} startable {pos}{'' if count == 1 else 's'}"
     short = f"{have} for {required} slot{'' if required == 1 else 's'}"
@@ -391,20 +402,21 @@ def _position_note(pos: str, level: str, count: int, required: int, total: float
                 f"({round(total):,} against a league median of {round(median):,}).")
 
     if level == "critical":
-        return (f"{short}, and the group is among the league's worst. {standing} "
-                f"A real hole - needs both bodies and quality.")
-    if level == "top-heavy":
-        # The total is dragged by the hole, and saying so is the whole point of this
-        # label: "ranks 9 of 12" about a Mahomes-plus-nobody room reads as a weak group,
-        # and a manager who knows the room will (rightly) call that wrong.
-        strength = ("among the league's best per starter" if body_rank and body_rank <= top_third
-                    else "solid per starter")
-        return (f"{short}, but the {pos}{'' if count == 1 else 's'} actually started "
-                f"{'is' if count == 1 else 'are'} {strength} "
-                f"(rank {body_rank} of {num_teams} per body). Group total ranks {rank} of "
-                f"{num_teams} ({round(total):,} against a median of {round(median):,}) - "
-                f"dragged by the empty slot, not by the players. Needs a body to fill the "
-                f"slot, not an upgrade at the top - the good players are already here.")
+        # One level, two quality stories. The self-defense matters in both directions:
+        # "ranks 9 of 12" about a Mahomes-plus-nobody room reads as a weak group and a
+        # manager who knows the room calls it wrong; and calling a fringe lone starter
+        # "solid" got caught the same way from the other side.
+        if body_solid:
+            return (f"{short}, but the {pos}{'' if count == 1 else 's'} actually started "
+                    f"{'is' if count == 1 else 'are'} solid per starter "
+                    f"(rank {body_rank} of {num_teams} per body). Group total ranks {rank} of "
+                    f"{num_teams} ({round(total):,} against a median of {round(median):,}) - "
+                    f"dragged by the empty slot, not by the players. Needs a body to fill the "
+                    f"slot, not an upgrade at the top - the good players are already here.")
+        quality = (f", and the bodies that do exist are fringe per starter "
+                   f"(rank {body_rank} of {num_teams} per body) - this hole needs both a "
+                   f"body and quality" if body_solid is False else "")
+        return f"{short}{quality}. {standing} A real hole - a body is needed now."
     if level == "weak":
         return (f"{have} covers all {required} slot{'' if required == 1 else 's'}, so this "
                 f"isn't a shortage of bodies. {standing} The group itself is the problem - "

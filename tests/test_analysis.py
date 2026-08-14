@@ -136,14 +136,15 @@ def _league(specs: dict[str, list[tuple[str, int]]]) -> tuple[list[dict], dict]:
 
 
 def test_needs_name_the_shape_of_the_problem_not_just_its_severity():
-    """The four levels, in one league, at one position.
+    """The levels, in one league, at one position: critical = a body now, weak = an
+    upgrade eventually, ok = not a need.
 
     This replaced a pure count rule (fewer usable than slots = critical, exactly = thin)
     that measured close to *inverted* on a real 12-team league: the 2nd-best WR room in
     the league read `critical` because its WR3 sat below the bar, while the 10th-best read
-    as no need at all because four players cleared a low bar by a little. `top-heavy` and
-    `weak` are the two halves that count alone conflated - one wants bodies, one wants an
-    upgrade.
+    as no need at all because four players cleared a low bar by a little. Count and
+    quality are the two halves that rule conflated - one wants bodies, one wants an
+    upgrade - and quality now rides in `body_solid` and the note, never the level.
     """
     slots = {"QB": 0, "RB": 0, "WR": 3, "TE": 0}
     thresholds = {"QB": 100, "RB": 100, "WR": 100, "TE": 100}
@@ -159,9 +160,14 @@ def test_needs_name_the_shape_of_the_problem_not_just_its_severity():
     level = {owner: entry["WR"]["level"] for owner, entry in assessed.items()}
 
     assert level["empty"] == "critical", "no startable bodies and a bottom-of-league room"
-    assert level["quality"] == "top-heavy", (
-        "2 of 3 slots filled but the 3rd-best room in the league - wants a body, not an "
-        "upgrade. The old count rule called this critical")
+    assert level["quality"] == "critical", (
+        "2 of 3 slots filled - a body is needed NOW whatever the quality of what's "
+        "there. This was briefly its own level ('top-heavy') and the boundary could "
+        "not be placed: every league-relative bar scored a fine lone QB and a fringe "
+        "lone RB identically, and the label read back to a manager as 'RB-rich'")
+    assert assessed["quality"]["WR"]["body_solid"] is True, (
+        "quality of the existing bodies rides in data and the note, never the level")
+    assert "good players are already here" in assessed["quality"]["WR"]["note"]
     assert level["quantity"] == "weak", (
         "4 bodies over the bar for 3 slots, and the worst room in the league bar one - "
         "wants an upgrade, not depth. The old count rule called this no need at all")
@@ -171,20 +177,21 @@ def test_needs_name_the_shape_of_the_problem_not_just_its_severity():
 
     # And the priority ordering follows the shape: can't-field beats can-field-badly.
     assert (roster_needs.NEED_PRIORITY["critical"]
-            < roster_needs.NEED_PRIORITY["top-heavy"]
             < roster_needs.NEED_PRIORITY["weak"])
 
 
-def test_a_superflex_room_of_mahomes_plus_nobody_is_top_heavy_not_critical():
-    """The first friend-tester pushback: the agent pitched selling a QB to teams it
-    called "short at QB (critical)... group among the league's worst" - and one of those
-    rooms was Patrick Mahomes plus nothing. The manager said "those teams have great QB
-    rooms" and the agent apologised for advice that was RIGHT (superflex: they need a
-    second BODY). The bug: group quality was ranked on the group TOTAL, and the empty
-    second slot dragged a one-stud room to the bottom - the hole contaminated the verdict
-    on the players. Count-short groups are now judged per startable body.
+def test_count_short_is_one_level_and_quality_picks_the_sentence():
+    """Three rounds of tester pushback settled this design. Round one: "short at QB
+    (critical)... among the league's worst" about a Mahomes-plus-nobody superflex room -
+    the empty slot dragged the group total, contaminating the verdict on the players.
+    Round two: the split level invented to fix that ('top-heavy') scored a fine lone QB
+    and a fringe lone RB identically under every league-relative bar, and its name read
+    back to a manager as "RB-rich". Round three, the resolution, in the manager's own
+    words: needing an RB2 badly is different from having two mid RBs and no slot need -
+    the LEVEL is the count shape, and the quality of the bodies that exist picks the
+    SENTENCE (and the `body_solid` field), never the level.
 
-    Two count-short rooms, same hole, opposite bodies - only the bodies should differ."""
+    Two count-short rooms, same hole, opposite bodies - only the notes should differ."""
     slots = {"QB": 2, "RB": 0, "WR": 0, "TE": 0}
     thresholds = {"QB": 2000, "RB": 0, "WR": 0, "TE": 0}
     rosters, players = _league({
@@ -199,24 +206,25 @@ def test_a_superflex_room_of_mahomes_plus_nobody_is_top_heavy_not_critical():
     out = roster_needs.assess_positions(rosters, players, slots, thresholds)
 
     m = out["mahomes"]["QB"]
-    assert m["level"] == "top-heavy", (
-        "one elite starter and an empty slot is a BODY problem - ranking the hole-dragged "
-        "total called this room among the league's worst")
+    assert m["level"] == "critical" and m["body_solid"] is True
     assert "dragged by the empty slot, not by the players" in m["note"]
     assert "per body" in m["note"]
 
-    # The owner's second correction ("the Love/Willis guy had a fine QB room"): startable
-    # is a BAR, not a headcount. This room holds three QBs - saying "1 startable QB" with
-    # no mention of the others reads as a count of players, and anyone who knows the
-    # roster catches the tool being "wrong". The note must say the gap is the quality of
-    # the next body, not an empty room.
+    # The owner's correction ("the Love/Willis guy had a fine QB room"): startable is a
+    # BAR, not a headcount. This room holds three QBs - saying "1 startable QB" with no
+    # mention of the others reads as a count of players, and anyone who knows the
+    # roster catches the tool being "wrong". The note must say the gap is the quality
+    # of the next body, not an empty room.
     love = out["love"]["QB"]
-    assert love["level"] == "top-heavy" and love["rostered_bodies"] == 3
+    assert love["level"] == "critical" and love["rostered_bodies"] == 3
     assert "3 QBs rostered" in love["note"] and "below the startable bar" in love["note"]
     assert "not an empty room" in love["note"]
 
-    assert out["scrub"]["QB"]["level"] == "critical", (
-        "a genuinely weak body plus a hole is still both problems at once")
+    scrub = out["scrub"]["QB"]
+    assert scrub["level"] == "critical" and scrub["body_solid"] is False, (
+        "same level as the Mahomes room - the count shape is the same")
+    assert "fringe per starter" in scrub["note"], (
+        "the note, not the level, says the bodies are the second problem")
 
 
 def test_a_mid_ranked_group_can_still_be_weak_in_absolute_terms():

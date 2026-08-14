@@ -61,7 +61,7 @@ def find_upgrades(roster: dict, players: dict[str, dict], available: dict[str, d
         best = max(candidates, key=lambda info: info["value"])
         if best["value"] > worst_mine:
             reason = "upgrade over your worst rostered player at the position"
-        elif needs.get(position, {}).get("level") in ("critical", "top-heavy"):
+        elif needs.get(position, {}).get("level") == "critical":
             # Only count-shaped needs. A `weak` position has the bodies and wants a better
             # starter - the best name on waivers is by definition not that, so claiming
             # one there is churn, not a fix.

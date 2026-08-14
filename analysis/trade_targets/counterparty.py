@@ -172,7 +172,7 @@ def wanted_by(player: dict, me_roster: dict, board: Board) -> list[dict]:
             # the need, so it survives the pushback it is guaranteed to get.
             if need["startable"] < need["slots"]:
                 good = (" - what they start is good, the slot is the problem"
-                        if need["level"] == "top-heavy" else "")
+                        if need.get("body_solid") else "")
             else:
                 good = " - wants an upgrade, not another body"
             reasons.append(f"short at {player['position']} ({need['level']}: "

@@ -369,17 +369,29 @@ on their entries, and exposure is explicitly not a risk for them).
 to inverted on a real league (the 2nd-best WR room read critical because its WR3 sat
 below the bar; the 9th-best read fine because four bodies barely cleared it):
 
-- `critical` - can't field the slots AND the group is weak: bodies and quality.
-- `top-heavy` - can't field the slots, but what's there is good: a body, NOT an upgrade.
+- `critical` - can't field the slots: a body is needed NOW. Whether what's started is
+  good rides in `body_solid` and the note, never in the level.
 - `weak` - slots fillable, group bottom-tertile or under `WEAK_VS_MEDIAN` (0.5) of the
   league median (the median test catches skewed positions rank alone hides): an
-  upgrade, NOT depth. Had no representation at all under the old rule.
+  upgrade eventually, NOT depth. Had no representation at all under the old rule.
 - `ok` - includes mid-league with no star, which is not a need.
 
-Quality is not asserted below `MIN_TEAMS_FOR_QUALITY` (4) - a shortage falls back to
-`critical` rather than a label derived from nothing. Downstream, the shape decides the
-fix: the buy path applies the weakest-starter upgrade bar, waivers only fill count-shaped
-needs, and the persuasion tier requires beating the weakest starter at every need level.
+**Why count-short is one level** - this took three rounds of tester pushback to settle.
+Ranking the hole-dragged group total called a Mahomes-plus-nobody superflex room "among
+the league's worst" (round one). The quality-split level invented to fix that
+("top-heavy") failed both ways: its boundary could not be placed - every league-relative
+bar scored a fine lone QB (Love, 0.87x the median started body) and a fringe lone RB
+(a 28yo RB2, 0.68x) identically - and its NAME read back to the manager as "RB-rich"
+(round two). The resolution is the manager's own articulation (round three): *needing an
+RB2 badly is different from having two mid RBs and no slot need* - the level is the
+count shape, and per-body quality (averaged over the USABLE bodies' own values, a
+numerator/denominator match its first version got wrong) picks the sentence: "the good
+players are already here" vs "this hole needs both a body and quality".
+
+Quality is not asserted below `MIN_TEAMS_FOR_QUALITY` (4) - `body_solid` stays None,
+which is not False. Downstream, the shape decides the fix: the buy path applies the
+weakest-starter upgrade bar, waivers only fill count-shaped needs, and the persuasion
+tier requires beating the weakest starter at every need level.
 
 **Injury exposure is measured and is NOT a need** (`drop_if_injured`, `exposure`,
 ranked): magnitude if it happens, computed by removing the weakest starter and refilling
@@ -779,11 +791,13 @@ on a named player.
 advice was RIGHT and the label made it indefensible. Superflex: those rooms (Mahomes
 plus nobody, Love plus nobody) genuinely need a second BODY - but group quality ranked
 the group TOTAL, the empty slot dragged a one-stud room to "among the league's worst",
-and `top-heavy` (a body, NOT an upgrade) flipped to `critical`. The hole contaminated
-the verdict on the players. Count-short groups are now judged per startable body, the
-note says "dragged by the empty slot, not by the players", and the `wanted_by` why
-carries the shape ("1 startable for 2 slots - what they start is good") so the model
-can survive the pushback it is guaranteed to get. The capitulation itself ("oops my
+and the room read as "bodies AND quality" when only the body was missing. The hole
+contaminated the verdict on the players. Count-short groups are now judged per
+startable body (the read lives in `body_solid` and the note - see "Why count-short is
+one level" under Positional needs for where the label design finally landed), the note
+says "dragged by the empty slot, not by the players", and the `wanted_by` why carries
+the shape ("1 startable for 2 slots - what they start is good") so the model can
+survive the pushback it is guaranteed to get. The capitulation itself ("oops my
 bad") is addressed as rule 13: re-check the disputed claim, then stand corrected with
 data or explain what the number measures - most disputes are a label read differently
 than it was measured.
