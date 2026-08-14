@@ -181,32 +181,32 @@ def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: f
 
     if contention == "contender":
         if barbell:
-            return ("unaligned", "push or pivot - lean push",
+            return ("unaligned", "press",
                     "real aging production AND real arriving production cancelling out, "
                     "at a rank that already delivers - the delivering side is the one to keep")
         if arriving:
             # NOT a conflict: an ascending starter is delivering now AND later - a young
             # contender is the best spot on the board, and "decide something" advice
             # here would tell a team already competing to unwind the point of competing.
-            return ("aligned", "hold",
+            return ("aligned", "contend",
                     "young and good - the production is arriving and already winning at "
-                    "the same time. The best spot on the board; nothing needs deciding")
+                    "the same time. The best spot on the board" + _aging_clause(aging_pct))
         if leaving:
-            return ("aligned", "buy - on a clock",
+            return ("aligned", "contend - on a clock",
                     "a contender whose production is aging out: the window is open and "
                     "closing on its own, so buying now is the aligned move")
-        return ("aligned", "hold",
+        return ("aligned", "contend",
                 "good now with no wave aging out - nothing needs buying at a premium, "
                 "nothing needs selling" + _aging_clause(aging_pct))
     if contention == "fringe":
         if leaving or barbell:
             why = ("holding decline a middle rank isn't cashing"
                    if leaving else "cancellation, not calm")
-            return ("unaligned", "push or pivot - no lean",
+            return ("unaligned", "decide",
                     f"{why} - both paths are live and the middle rank gives no lean, "
                     "so letting the season pick the direction is legitimate")
         if picks_heavy and not arriving:
-            return ("unaligned", "push or pivot - no lean",
+            return ("unaligned", "decide",
                     "an unspent war chest on an undecided roster - the option is real "
                     "and unexercised, and the middle rank gives no lean")
         if arriving:
@@ -223,18 +223,18 @@ def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: f
     # pure future - but the assets_bottom guard applies to both: neither an ascending
     # tilt nor a pick pile that isn't accumulating into actual value is a working rebuild.
     if (arriving or picks_heavy) and not assets_bottom:
-        return ("aligned", "keep accumulating",
+        return ("aligned", "build",
                 "the rebuild is working - young production arriving and value accumulating"
                 + _aging_clause(aging_pct))
     if arriving:  # ascending tilt that isn't accumulating into a war chest
-        return ("unaligned", "hard rebuild - lean pivot",
+        return ("unaligned", "sell",
                 "an ascending tilt that is not accumulating value - the young pieces "
                 "are not good enough yet to be the plan, so keep converting")
     if leaving or barbell:
-        return ("unaligned", "hard rebuild - lean pivot",
+        return ("unaligned", "sell",
                 "aging value at a rebuild rank - selling has a deadline, and the "
                 "arriving side (if any) is the side to keep")
-    return ("unaligned", "hard rebuild - lean pivot",
+    return ("unaligned", "sell",
             "uncommitted - nothing arriving and no war chest, so the first trade is "
             "for a direction")
 

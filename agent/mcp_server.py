@@ -93,10 +93,10 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
     THE HEADLINE for any team is its three-tier read, on every row:
       `alignment` - "aligned" (roster composition agrees with what its rank asks;
         the path is a continue verb) or "unaligned" (a real decision is pending).
-      `path` - the action: "hold" / "buy - on a clock" / "wait" / "keep accumulating"
-        when aligned; "push or pivot - lean push/pivot" or "hard rebuild" when not.
-        The lean comes from rank: the side already delivering it is the side to keep;
-        a middle rank has NO lean and letting the season decide is legitimate.
+      `path` - the action: "contend" (optionally "- on a clock") / "wait" / "build"
+        when aligned; "press" / "decide" / "sell" when not. The lean comes from rank:
+        press = convert future into now, sell = convert aging value into future, and
+        decide (a middle rank) has NO lean - letting the season decide is legitimate.
       `path_reason` - why, in words. OPEN with path + path_reason and support it with
         the measurements - never open with the window label and walk it back (a live
         answer led "Contend - no clock" and then spent four paragraphs on the clock).

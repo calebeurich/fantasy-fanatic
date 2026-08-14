@@ -392,14 +392,10 @@ async function toggleDetail(tr, leagueId) {
         seasons.map(s => `<span class="pv">${kfmt(bySeason[s].total)}</span>`).join("") +
         `</div></div>`
       : "";
+    // No prose in the panel: the table is the clean part, the chip tooltip carries the
+    // why, and nuance is the agent's job. The data speaks - an aging Etienne sticks
+    // out by his orange age without a sentence saying so.
     row.innerHTML = `<td colspan="7">` +
-      `<div class="cs" style="margin-bottom:6px"><strong>${d.alignment} · ${d.path}</strong>` +
-      ` — ${d.path_reason}</div>` +
-      (d.clock_mismatch_note && d.alignment === "aligned"
-        // The orange line is the exception to a CALM chip (hold + Henry aging out).
-        // On an unaligned team the grey line already names the pieces on the clock -
-        // the same names twice in adjacent lines read as clutter. Agent gets it always.
-        ? `<div class="cs warn" style="margin-bottom:8px">${d.clock_mismatch_note}</div>` : "") +
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}${picksHtml}</div>` +
       `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--ok)">▸</span>` +
@@ -454,11 +450,9 @@ async function loadLeague(id) {
       const tn = t.team_name
         ? `<div class="cs" style="font-weight:400;max-width:190px;overflow:hidden;text-overflow:ellipsis">${t.team_name.replace(/[&<>"]/g,
             c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}</div>` : "";
-      // The chip is exactly tier 1 x tier 2 - a symmetric six-cell grid. Clock and
-      // lean are the hover and the expanded view's business.
-      const chip = t.alignment === "unaligned"
-        ? {contender: ["p-press", "press"], fringe: ["p-decide", "decide"]}[t.contention] || ["p-sell", "sell"]
-        : {contender: ["p-contend", "contend"], fringe: ["p-wait", "wait"]}[t.contention] || ["p-build", "build"];
+      // One vocabulary, sourced from the analysis: the path's first word IS the chip.
+      const word = t.path.split(" - ")[0];
+      const chip = ["p-" + word, word];
       const heat = t.alignment === "unaligned" ? "hot" : "cool";
       return `<tr class="team" data-owner="${t.owner}">
         <td class="rk">${t.rank}</td>
@@ -480,16 +474,15 @@ async function loadLeague(id) {
       <tbody>${rows}</tbody></table>
       ${d.tier === "degraded" ? '<div class="note warn">Shallow league — percentile-based numbers are rougher than usual.</div>' : ""}
       ${d.no_trade_history ? '<div class="note warn">No trades in this league yet — window labels are less reliable this early.</div>' : ""}
-      <div class="note" style="line-height:2">
-        The chip is <strong>what each roster's position calls for</strong> — the recommended move, not what its manager is actually doing (a <em>sell</em> team may well be holding).<br>
-        <span class="tag p-contend cool">contend</span> good and it fits — add production at the right price; premiums only if you're on a clock (hover says) &nbsp;
-        <span class="tag p-wait cool">wait</span> middle and patient — waiting costs nothing &nbsp;
-        <span class="tag p-build cool">build</span> rebuild working — keep stacking youth and picks &nbsp;
-        <span class="tag p-press hot">press</span> contender carried by aging pieces — convert future into now, or decide fast &nbsp;
-        <span class="tag p-decide hot">decide</span> middle with a split roster — press or sell both live, and no rush: letting the early season pick for you is a legitimate choice &nbsp;
-        <span class="tag p-sell hot">sell</span> bottom rank, not accumulating — sell aging value, start stacking the future
+      <div class="note" style="display:grid;grid-template-columns:repeat(3,auto);gap:4px 18px;justify-content:start">
+        <span><span class="tag p-contend cool">contend</span> add production at fair prices</span>
+        <span><span class="tag p-wait cool">wait</span> patience is free</span>
+        <span><span class="tag p-build cool">build</span> keep stacking youth + picks</span>
+        <span><span class="tag p-press hot">press</span> convert future into now</span>
+        <span><span class="tag p-decide hot">decide</span> press or sell — season can pick</span>
+        <span><span class="tag p-sell hot">sell</span> trade aging value for future</span>
       </div>
-      <div class="note">Ranked by current starting production (redraft value) — what decides whether a team can compete <em>this</em> season. Bright chip = a real decision is pending; muted = continue as-is (hover for why). Core: <strong>bold</strong> = build-around pieces; <span class="pp">orange</span> = priced on what they do now — the aging load-bearers and sell-window watch list. Click a team to ask about them.</div>`;
+      <div class="note">The chip = the move each roster's <em>position</em> calls for, not what its manager is doing. Bright = decision pending; hover for why. Core: <strong>bold</strong> = build-around, <span class="pp">orange</span> = priced on this season. Rows ranked by current starting production. Click a team to ask about them.</div>`;
     const pick = tr => {
       myTeam = tr.dataset.owner;
       document.querySelectorAll("tr.team").forEach(x => x.classList.remove("mine"));
