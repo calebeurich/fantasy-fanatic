@@ -108,6 +108,20 @@ archive: measure realized value decay past the breakpoint by position; validates
 corrects the sell-window doctrine, and could graduate the display tails into
 measured constants.
 
+**The curve-validation study** (spec'd 2026-08-14, not yet run): for every
+player-season in the DP archive, value at age A vs one year later, by position x
+archetype - tags computed from THAT season's nflverse usage, never career hindsight.
+Grades every claim the product makes: the breakpoints (RB 24/27, WR 25/29, QB
+27/34-37), the pass-catcher +2 and pocket-passer extension, the display decline
+tails (RB 2 / WR-TE 3 / QB 3), and the color-band predictions (green gains, prime
+HOLDS, orange loses, red is a loaner). Methodological guards, the owner's first:
+**survivorship** - players who crater vanish from the values list, so exits count as
+value-to-floor and exit RATES by age ship alongside the medians (an age where 40% of
+RBs disappear IS the falloff); bottom-censoring at DP's ~700-player floor reported,
+not interpolated; injury-wrecked seasons flagged via nflverse rather than read as
+aging; era drift checked (early vs late halves) before pooling. Findings graduate
+into constants; misses correct them - either way the curves stop being vibes.
+
 **Representative, not sharp:** trade data describes what the market accepts, not
 what is correct. It feeds realism framing ("a gap like this is the median
 accepted trade"), never normative advice ("people do it, so should you").
