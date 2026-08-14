@@ -59,6 +59,20 @@ CONTEND_CHOICE_NOTE = (
     "contender with no clock can wait for a good price rather than chase one."
 )
 
+# The barbell version: same two paths, but "no clock" and "neither is urgent" are both
+# false of an unaligned contender - the aging half sheds value while it waits, and the
+# lean is already set by rank (a live answer quoted the calm note back at a press team).
+PRESS_CHOICE_NOTE = (
+    "TWO LIVE PATHS, WITH A LEAN. This roster contends now while real aging production "
+    "and real arriving production cancel out - its path is press, and the lean says the "
+    "delivering side is the one to keep. STACK: buy current production and press the "
+    "rank home. CONVERT: move the aging starters named above while their price still "
+    "says starter - the same list every other manager is being handed as the reason to "
+    "call. Both stay defensible, but this is NOT a no-clock roster: the aging half "
+    "sheds value while you deliberate, so waiting applies to the ask, never to the "
+    "decision."
+)
+
 
 def _holding_kind(produced: float, costs: float, mine: dict) -> str | None:
     """Is this player a better thing to own than one of my starters, and in which of the

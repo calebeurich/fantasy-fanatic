@@ -25,7 +25,8 @@ from .outlook import OUTLOOK_NOTE, outlook_from_board, player_outlook
 from .pivot import STRANDED_NOTE, _pivot_path
 from .report import _print_report
 from .upgrades import (CONTEND_CHOICE_NOTE, RETURNS_PER_MOVE, VALUE_UPGRADE_NOTE,
-                       _conversion_candidates, _holding_kind, find_value_upgrades)
+                       PRESS_CHOICE_NOTE, _conversion_candidates, _holding_kind,
+                       find_value_upgrades)
 
 # The choice a Middling team is actually facing, stated rather than left implicit. Two
 # versions, because patience is only free for a rising roster - handing the rising text
@@ -202,7 +203,8 @@ def find_targets(league_id: str, owner_query: str,
     # whichever path it takes, so this is a choice about HOW, not whether.
     conversions = _conversion_candidates(me, board)
     if conversions:
-        result["choice_note"] = CONTEND_CHOICE_NOTE
+        result["choice_note"] = (PRESS_CHOICE_NOTE if me.get("alignment") == "unaligned"
+                                 else CONTEND_CHOICE_NOTE)
         result["conversion_candidates"] = conversions
     return result
 
