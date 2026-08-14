@@ -110,6 +110,12 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
       Rebuild - bottom third. Sell decline, accumulate youth and picks.
 
     Hard rules:
+    - The team's `path` OUTRANKS every piece-level note. A `price_note` describes the
+      ask IF that piece moves - it is never a reason to move him. Never assemble a
+      sell plan for a team whose path is contend/press-to-buy out of its own pieces'
+      pricing notes (a live answer told a contend-on-a-clock team, whose aging RBs
+      ARE its rank, to liquidate all three - that is rebuild advice aimed at a
+      contender; its actual move was buying).
     - Raise `clock_mismatch_note` whenever describing the window, not only when asked
       about selling - it names the starters whose clock disagrees with the roster.
     - Use `window_note`'s wording: these are roster-composition measures - never describe

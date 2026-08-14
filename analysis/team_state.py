@@ -325,13 +325,20 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
             # not fall off a cliff with the label. Without this, a roster read
             # "cornerstones: none" while holding a top-6 receiver, and the seller's own
             # tool framed its premium asset as an ordinary piece.
+            # price_notes are PRICING facts - what the ask is IF a piece moves - never
+            # an instruction to move him. Unconditional "now is the selling window"
+            # wording made a live answer tell a contend-on-a-clock team to liquidate
+            # its own RB room: three pieces each carried the sentence, and the model
+            # assembled them into a "Must Sell" plan that inverted the team's path.
             if info["value"] >= threshold and entry["years_to_decline"] is not None:
                 entry["price_note"] = (
                     f"cornerstone-priced: his {entry['value']:,} clears the same top-10% "
                     f"bar this league's cornerstones do, and only the clock "
                     f"({entry['years_to_decline']} years) keeps the tag off. The market "
-                    f"has not discounted the remaining years yet - that is exactly what "
-                    f"makes now the selling window, and the ask is a cornerstone's ask.")
+                    f"has not discounted the remaining years yet - so IF this team's "
+                    f"path calls for converting him, now prices best and the ask is a "
+                    f"cornerstone's ask. A pricing fact, not an instruction: whether he "
+                    f"moves at all is the team's path's call.")
             elif info["value"] < threshold and (entry["years_to_decline"] or 0) < MIN_MEANINGFUL_RUNWAY:
                 entry["price_note"] = (
                     f"production-priced: his {entry['redraft_value']:,} this-season value "
@@ -339,7 +346,8 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
                     f"({entry['value']:,}) no longer does - the market has already "
                     f"discounted the future, so whoever buys him is buying this season "
                     f"only. His market is any team whose path says buy, and it peaks at "
-                    f"the deadline.")
+                    f"the deadline. A pricing fact, not an instruction: a team consuming "
+                    f"his production itself (contend/press) rides him, it doesn't sell him.")
             elif info["value"] < threshold:
                 # The Goff shape: top-10% production, discount price, YEARS of runway.
                 # The market doubts the asset, not this season - cheap real production
