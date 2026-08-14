@@ -6,11 +6,15 @@ history has to be built by ACCUMULATING: each `accumulate()` call appends whatev
 new, deduped by trade id. Measured volume is ~500-700 trades/day per stream, so a few
 polls a day builds a real dataset in weeks.
 
-Records are trimmed before storing: each piece keeps name/position/sleeperId (enough
-to join values - players by sleeperId via fantasycalc.get_players, picks by name via
-get_pick_values), and the trade keeps its format fields plus maybeTradedValueDiff,
-FantasyCalc's own value imbalance at trade time. The raw payload's dozen maybe-fields
-per piece would multiply storage for nothing.
+Records are trimmed before storing: each piece keeps name/position/sleeperId plus
+`value` - resolved AT ACCUMULATION TIME (players by sleeperId via
+fantasycalc.get_players, picks by name via get_pick_values, per the trade's own
+format). The poll runs within the ~2-hour trade window, so these are point-in-time
+values; joining old records to future prices would fold value drift into every
+measurement, and there is no public FantasyCalc history to recover them from later
+(probed: every history-shaped endpoint 404s, the player endpoint carries only a
+30-day trend). The trade also keeps its format fields plus maybeTradedValueDiff,
+FantasyCalc's own imbalance at trade time.
 
 The dataset lives in data/fc_trades.jsonl, gitignored - it regrows anywhere by
 polling, and a growing data file has no business in the repo's history.
@@ -41,7 +45,13 @@ def fetch_recent(num_qbs: int, is_dynasty: bool = True) -> list[dict]:
     return resp.json()
 
 
-def _trim(raw: dict) -> dict:
+def _piece_value(p: dict, players: dict, picks: dict):
+    if p["position"] == "PICK":
+        return picks.get(p["name"])
+    return (players.get(p.get("sleeperId")) or {}).get("value")
+
+
+def _trim(raw: dict, players: dict, picks: dict) -> dict:
     return {
         "id": raw["id"],
         "date": raw["date"],
@@ -53,7 +63,8 @@ def _trim(raw: dict) -> dict:
         "maybeTradedValueDiff": raw.get("maybeTradedValueDiff"),
         "maybeScore": raw.get("maybeScore"),
         "sides": [
-            [{"name": p["name"], "position": p["position"], "sleeperId": p.get("sleeperId")}
+            [{"name": p["name"], "position": p["position"], "sleeperId": p.get("sleeperId"),
+              "value": _piece_value(p, players, picks)}
              for p in raw[side]]
             for side in ("side1", "side2")
         ],
@@ -70,6 +81,8 @@ def load(path: Path = DEFAULT_PATH) -> list[dict]:
 def accumulate(path: Path = DEFAULT_PATH) -> dict:
     """Fetch every stream and append what's new. Safe to call as often as you like -
     dedupe is by trade id, so overlapping windows just contribute nothing."""
+    from . import fantasycalc
+
     seen = {t["id"] for t in load(path)}
     path.parent.mkdir(parents=True, exist_ok=True)
     new = 0
@@ -79,7 +92,11 @@ def accumulate(path: Path = DEFAULT_PATH) -> dict:
                 if raw["id"] in seen:
                     continue
                 seen.add(raw["id"])
-                f.write(json.dumps(_trim(raw)) + "\n")
+                players = fantasycalc.get_players(int(raw["numQbs"]), raw["numTeams"],
+                                                  raw["ppr"], raw["isDynasty"])
+                picks = fantasycalc.get_pick_values(int(raw["numQbs"]), raw["numTeams"],
+                                                    raw["ppr"], raw["isDynasty"])
+                f.write(json.dumps(_trim(raw, players, picks)) + "\n")
                 new += 1
     return {"new": new, "total": len(seen), "path": str(path)}
 
