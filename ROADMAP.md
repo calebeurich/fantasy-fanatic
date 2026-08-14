@@ -96,6 +96,18 @@ eventually to learn from.
   started AT THE TIME" — season-to-date stats are noisy in September and absent
   in week 1), and the eventual redraft track's data foundation.
 
+**The falloff question (settled 2026-08-14):** no value-decay model in the product -
+both currencies are live market measurements and dynasty value already prices the
+market's own falloff forecast; a DIY decay curve would be us against the market with
+no calibration (same reasoning that keeps contract years out). Runway answers the one
+thing values don't: WHEN the slide starts. The UI's position-specific decline tails
+(RB 2yr / WR-TE 3 / QB 5 to full red) are display intuition only. The one falloff
+claim the product already makes - the cornerstone-priced sell-window note, "the
+market has not discounted the remaining years yet" - is now TESTABLE against the DP
+archive: measure realized value decay past the breakpoint by position; validates or
+corrects the sell-window doctrine, and could graduate the display tails into
+measured constants.
+
 **Representative, not sharp:** trade data describes what the market accepts, not
 what is correct. It feeds realism framing ("a gap like this is the median
 accepted trade"), never normative advice ("people do it, so should you").
