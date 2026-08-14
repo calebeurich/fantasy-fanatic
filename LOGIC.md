@@ -753,6 +753,53 @@ a time, and agent rule 8 says the rest is a negotiation the tool cannot price.
   current-owner view, confirmed against chronological transactions.
 - Usage-role tags on all 18 rostered tagged players match real-world knowledge.
 
+## Judging a proposed trade (`analysis/trade_eval.py`)
+
+The question testers actually bring: "I'm being offered X and Y for Z - good deal?"
+Every other surface discovers trades; none could judge one the user arrived with.
+
+This is NOT the deleted `find_surplus` returning: that tool *generated* packages and
+priced their balance by summing both sides, and the summing is why it died. Here the
+package is the user's premise - the module never constructs one, never totals one, and
+declares no winner by margin. Values ride per piece; judgment comes from four facts
+this codebase already knows how to compute:
+
+- **Best single piece** (`_best_chip`'s logic on the deal itself), players and picks
+  alike: which side gets it. Consolidation favors that side; the side sending it needs
+  the rest of the deal to buy something specific. One piece against one piece stays
+  the only comparison.
+- **Need changes against the real bar**: the whole league re-assessed
+  (`assess_positions`) with the two rosters swapped, before vs. after, so the diff can
+  only come from the trade. Declared starters are omitted from BOTH runs (stale in a
+  hypothetical); that costs only the injury-exposure notes. "Closes the QB need
+  (critical -> ok)" is a recomputed fact, not a position-label guess.
+- **Lineup production delta** via `fill_lineup` - the cascade, not the traded pieces'
+  raw values, because a vacated FLEX does not refill the way a manager assumes.
+- **Timeline fit on what each side takes back**, with the bar matched to the window:
+  a true Rebuild is judged on the buyer's two-season horizon (`MIN_MEANINGFUL_RUNWAY` -
+  the next competitive season is past a 1.4-year piece, which is exactly the Higgins
+  case), while a merely-accumulating roster is flagged only for a piece at his own edge
+  (`INSIDE_FINAL_YEAR`, the `_sells_him` clock pointed the other way). Both bars
+  already existed; the module introduces no threshold of its own.
+
+**Picks are the main case, not an extra**: replaying every completed trade of the
+current season across the three validation leagues, 25 of 28 included a draft pick.
+A pick resolves against the sender's owned picks (`picks_by_owner` - keyed by
+roster_id despite the name) under the same fuzzy-match-or-name-the-candidates
+contract as players, and rides as a piece with its value and `slot_basis`. It never
+enters the needs or lineup math (it fills no slot this season), it never trips the
+short-runway flag (no runway is not zero runway - it is the longest-dated asset
+there is), and a Push/Contend side taking one back is told the value pays after its
+window.
+
+Each side's `read` is composed from that side's own seat, and a trade can read well
+for both - which is what a real trade usually is. Validated two ways: reconstructing
+jwall's actual Higgins+Thornton-for-Fannin deal in reverse (the reversal reads as bad
+for jwall on all three axes, which is the market agreeing with the trade he made),
+and replaying the six current-season trades whose pieces are still where they landed -
+no crashes, and every read survives an eye-check against how the league actually
+discussed those deals.
+
 ## Waiver wire (`analysis/waiver_wire.py`)
 
 Same relevance floor as everywhere else. Surfaces an available player who beats a
