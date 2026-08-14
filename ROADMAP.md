@@ -264,11 +264,15 @@ not by preference:
   for the current season as it happens — the report card gets a weekly pulse.
 - **Projections stop being backlog**: in-season, "who should I start" questions
   arrive immediately, and roster values alone cannot answer them.
-- **The deadline rental market** (owner-articulated 2026-08-15, from the
-  kierankieran barbell case): a deep-decline producer's value is not a smooth
-  melt - it has one last liquidity spike at the trade deadline, when playoff-bound
-  teams pay for the boost weeks specifically (the two-clocks surplus bought as a
-  rental). Consequence for an unaligned push-or-pivot team: the branch decides
+- **The rental market for deep-decline producers** (owner-articulated 2026-08-15,
+  from the kierankieran barbell case): a deep-decline producer's value is not a
+  smooth melt, because he always has a buyer class - any team whose path says
+  "buy" pays the discounted price for production it intends to consume now (the
+  two-clocks surplus bought as a rental; the owner's own Push team would buy
+  Barkley in August). The market runs year-round wherever contenders exist,
+  PEAKS at the trade deadline (playoff-bound buyers get desperate and specific),
+  and then closes for the season - which is what makes the deadline the deadline.
+  Consequence for an unaligned push-or-pivot team: the branch decides
   which pieces move first. Push -> sell the mispriced-future piece you have
   redundancy in (the JT shape: barely past breakpoint, still cornerstone-priced);
   pivot -> sell the deep-decline producers FIRST (the Barkley shape: already
