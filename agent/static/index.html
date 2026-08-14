@@ -49,10 +49,18 @@
   .who{font-weight:600}
   .tag{display:inline-block;padding:1.5px 7px;border-radius:999px;font-size:11.5px;
        font-weight:600;letter-spacing:.2px}
-  .Push{background:rgba(245,158,11,.15);color:var(--win)}
-  .Contend{background:rgba(52,211,153,.15);color:#34d399}
-  .Middling{background:rgba(96,165,250,.15);color:var(--mid)}
-  .Rebuild{background:rgba(167,139,250,.15);color:var(--rebuild)}
+  /* Rank order already says good/middle/bad, so the tags carry what order can't:
+     alignment (does the roster agree with its rank) and the suggested path,
+     colored by path family so the table keeps its color variety. */
+  .aligned{background:rgba(74,222,128,.13);color:var(--ok)}
+  .unaligned{background:rgba(251,191,36,.16);color:var(--thin)}
+  .p-buy{background:rgba(245,158,11,.15);color:var(--win)}
+  .p-hold{background:rgba(52,211,153,.15);color:#34d399}
+  .p-wait{background:rgba(96,165,250,.15);color:var(--mid)}
+  .p-stack{background:rgba(45,212,191,.15);color:#2dd4bf}
+  .p-decide{background:rgba(251,146,60,.15);color:#fb923c}
+  .p-accum{background:rgba(167,139,250,.15);color:var(--rebuild)}
+  .p-rebuild{background:rgba(248,113,113,.14);color:var(--crit)}
   .need{display:inline-block;padding:1px 6px;border-radius:5px;font-size:11.5px;margin-right:4px}
   .critical{background:rgba(248,113,113,.15);color:var(--crit)}
   .weak{background:rgba(251,191,36,.13);color:var(--thin)}
@@ -379,8 +387,8 @@ async function toggleDetail(tr, leagueId) {
         `</div></div>`
       : "";
     row.innerHTML = `<td colspan="7">` +
-      `<div class="cs" style="margin-bottom:6px"><strong>${d.window}${d.flavor !== d.window ? " · " + d.flavor : ""}</strong>` +
-      `${d.flavor_note ? " — " + d.flavor_note : ""}</div>` +
+      `<div class="cs" style="margin-bottom:6px"><strong>${d.alignment} · ${d.path}</strong>` +
+      ` — ${d.path_reason}</div>` +
       (d.clock_mismatch_note
         ? `<div class="cs warn" style="margin-bottom:8px"><strong>⚑ extra flag — aging core:</strong> ` +
           `${d.clock_mismatch_note}</div>` : "") +
@@ -445,10 +453,19 @@ async function loadLeague(id) {
       const tn = t.team_name
         ? ` <span class="cs" style="font-weight:400">· ${t.team_name.replace(/[&<>"]/g,
             c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}</span>` : "";
+      const pathCls =
+        t.path.startsWith("buy") ? "p-buy" : t.path.startsWith("hold") ? "p-hold" :
+        t.path.startsWith("wait") ? "p-wait" : t.path.startsWith("stack") ? "p-stack" :
+        t.path.startsWith("push or pivot") ? "p-decide" :
+        t.path.startsWith("keep") ? "p-accum" : "p-rebuild";
+      const pathWord = t.path.split(" - ")[0];
+      const lean = t.path.includes(" - ") ? t.path.split(" - ")[1] : "";
       return `<tr class="team" data-owner="${t.owner}">
         <td class="rk">${t.rank}</td>
         <td class="who">${t.owner}${tn}<div class="cs">${flags}</div></td>
-        <td><span class="tag ${t.window}">${t.window}</span></td>
+        <td><span class="tag ${t.alignment}">${t.alignment}</span><br>
+            <span class="tag ${pathCls}" title="${t.path_reason.replace(/"/g, "&quot;")}">${pathWord}</span>
+            ${lean ? `<div class="cs">${lean}</div>` : ""}</td>
         <td class="cs">${t.starting_production.toLocaleString()}<div class="cs">${t.pct_of_best}% of best · ${t.ascending_pct}%asc / ${t.declining_pct}%dec</div></td>
         <td class="cs">${t.starter_value.toLocaleString()}<div class="cs">${firsts}</div></td>
         <td>${needs}</td>
@@ -457,7 +474,7 @@ async function loadLeague(id) {
       </tr>`;
     }).join("");
     $("overview").innerHTML = `
-      <table><thead><tr><th></th><th>Owner</th><th>Window</th><th>This season</th><th>Dynasty</th><th>Needs</th><th>Core</th></tr></thead>
+      <table><thead><tr><th></th><th>Owner</th><th>Path</th><th>This season</th><th>Dynasty</th><th>Needs</th><th>Core</th></tr></thead>
       <tbody>${rows}</tbody></table>
       ${d.tier === "degraded" ? '<div class="note warn">Shallow league — percentile-based numbers are rougher than usual.</div>' : ""}
       ${d.no_trade_history ? '<div class="note warn">No trades in this league yet — window labels are less reliable this early.</div>' : ""}

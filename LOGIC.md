@@ -247,6 +247,28 @@ aging out while a quarter arrives is cancellation, not calm. Middling-only by
 construction: Push/Contend and Rebuild flavors resolve before trajectory is consulted,
 and their machinery (clock_mismatch, the sell lists) already names their aging pieces.
 
+**The three-tier read** (`alignment` / `path` / `path_reason`, owner-designed
+2026-08-15): tier 1 is the contention tertile and is shown by RANK ORDER, not a tag -
+a "Rebuild" tag on the last row says nothing the row's position doesn't. Tier 2 asks
+whether the roster's composition agrees with the game that rank implies; tier 3 is
+the path: a continue verb when aligned (hold / buy-on-a-clock / wait / keep
+accumulating), both paths with a lean when not. **The lean comes from tier 1**: the
+side of the roster already delivering rank is the side to keep (contender barbell →
+lean push; rebuilder barbell → lean pivot; middle rank → genuinely no lean, "let the
+season decide" - the old Middling doctrine falling out of the structure). Signals are
+the existing instruments, no scale blending: production tilt for the players (a
+dynasty-value version was tried and washed out - 44 of 46 teams read "arriving"
+because dynasty value is future-weighted by construction), `pick_share` for the war
+chest (>= PICKS_HEAVY_PCT 25 - picks are pure arriving-side value: no roster spot, no
+injury, and the year ladder prices their appreciation), the `assets_bottom` guard on
+rebuilds (an ascending tilt that isn't accumulating value is not a working rebuild),
+and ARRIVING_MARGIN_PCT (15) so "young and good" fires on real tilts, not 25/20
+noise (without it: 11 of 19 contenders, wallpaper). Anchors: kierankieran XFL 2
+(rank 3, 37/35 barbell → unaligned lean push - invisible to the Middling-only
+misaligned flavor, which this supersedes conceptually) and spugz13 (rank 9, 8/11, no
+war chest → uncommitted, "the first trade is for a direction"). The old
+window/flavor fields remain computed and shipped alongside during the migration.
+
 **Clock mismatch** (`clock_mismatch` + note, per team): `_cliff_case` pointed at
 one's own roster - an ascending-tilt team STARTING a short-runway premium piece
 (win_now_core's starters) is holding seasons it isn't built for. Exists because the

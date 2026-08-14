@@ -148,6 +148,9 @@ def league_overview(league_id: str) -> dict:
                 "pct_of_best": t["pct_of_best"],
                 "starter_value": t["starter_value"],
                 "window": t["window"],
+                "alignment": t["alignment"],
+                "path": t["path"],
+                "path_reason": t["path_reason"],
                 "contention": t["contention"],
                 "trajectory": t["trajectory"],
                 # The flavor word ("stalled", "convertible") often says more than the
@@ -229,6 +232,7 @@ def team_detail(league_id: str, owner: str) -> dict:
     return {
         "owner": owner_name, "window": t["window"], "flavor": t["flavor"],
         "flavor_note": team_state.FLAVOR_NOTE.get(t["flavor"], ""),
+        "alignment": t["alignment"], "path": t["path"], "path_reason": t["path_reason"],
         "clock_mismatch_note": t.get("clock_mismatch_note"),
         "players": by_pos,
         "picks": [{"pick": p["pick"], "value": p["value"]}

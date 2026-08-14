@@ -141,6 +141,81 @@ def flavor_for(window: str, trajectory: str, leverage: str | None,
     return trajectory
 
 
+# The three-tier read (owner-designed, 2026-08-15): tier 1 is the contention tertile
+# (shown by rank order, not a tag), tier 2 asks whether the roster's composition AGREES
+# with the game that rank implies, tier 3 is the path - a continue verb when aligned,
+# both paths with a lean when not. The lean comes FROM TIER 1: the side of the roster
+# already delivering rank is the side to keep. Middle rank = genuinely no lean, which
+# is the old Middling doctrine falling out of the structure instead of being a window.
+ARRIVING_MARGIN_PCT = 15   # asc must beat dec by this much before "young and good"
+                           # fires - without it the flag hit 11 of 19 contenders (wallpaper)
+PICKS_HEAVY_PCT = 25       # a quarter of asset value in picks = a real war chest
+
+
+def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: float,
+                  assets_bottom: bool) -> tuple[str, str, str]:
+    """(alignment, path, reason) for one team. Production tilt for the players, pick
+    share as its own signal - measuring the sides in dynasty value instead washed out
+    completely (44 of 46 teams read 'arriving', the market's youth premium reported
+    back as a roster fact)."""
+    barbell = min(asc_pct, dec_pct) >= BARBELL_MIN_PCT
+    arriving = (not barbell and asc_pct >= BARBELL_MIN_PCT
+                and asc_pct - dec_pct >= ARRIVING_MARGIN_PCT)
+    leaving = not barbell and not arriving and dec_pct >= BARBELL_MIN_PCT
+    picks_heavy = pick_share >= PICKS_HEAVY_PCT
+
+    if contention == "contender":
+        if barbell:
+            return ("unaligned", "push or pivot - lean push",
+                    "real aging production AND real arriving production cancelling out, "
+                    "at a rank that already delivers - the delivering side is the one to keep")
+        if arriving:
+            return ("unaligned", "stack or convert - lean push",
+                    "young and good - both paths are winning moves, and the rank says "
+                    "converting some future into now is the one with the trophy in it")
+        if leaving:
+            return ("aligned", "buy - on a clock",
+                    "a contender whose production is aging out: the window is open and "
+                    "closing on its own, so buying now is the aligned move")
+        return ("aligned", "hold",
+                "good now and not declining - nothing needs buying at a premium, "
+                "nothing needs selling")
+    if contention == "fringe":
+        if leaving or barbell:
+            why = ("holding decline a middle rank isn't cashing"
+                   if leaving else "cancellation, not calm")
+            return ("unaligned", "push or pivot - no lean",
+                    f"{why} - both paths are live and the middle rank gives no lean, "
+                    "so letting the season pick the direction is legitimate")
+        if picks_heavy and not arriving:
+            return ("unaligned", "push or pivot - no lean",
+                    "an unspent war chest on an undecided roster - the option is real "
+                    "and unexercised, and the middle rank gives no lean")
+        if arriving:
+            return ("aligned", "wait - production is arriving",
+                    "next season's production is already on the roster - patience is free")
+        return ("aligned", "wait",
+                "nothing arriving and nothing aging out - waiting costs nothing here")
+    # also-ran: the rank itself urges the rebuild; unaligned just means it isn't underway.
+    # A real war chest counts as arriving even before the production shows - picks are
+    # pure future - but the assets_bottom guard applies to both: neither an ascending
+    # tilt nor a pick pile that isn't accumulating into actual value is a working rebuild.
+    if (arriving or picks_heavy) and not assets_bottom:
+        return ("aligned", "keep accumulating",
+                "the rebuild is working - young production arriving and value accumulating")
+    if arriving:  # ascending tilt that isn't accumulating into a war chest
+        return ("unaligned", "hard rebuild - lean pivot",
+                "an ascending tilt that is not accumulating value - the young pieces "
+                "are not good enough yet to be the plan, so keep converting")
+    if leaving or barbell:
+        return ("unaligned", "hard rebuild - lean pivot",
+                "aging value at a rebuild rank - selling has a deadline, and the "
+                "arriving side (if any) is the side to keep")
+    return ("unaligned", "hard rebuild - lean pivot",
+            "uncommitted - nothing arriving and no war chest, so the first trade is "
+            "for a direction")
+
+
 def next_first_note(owns_next_first: bool, window: str) -> str:
     """What not owning your own next 1st means, which depends entirely on the window: a
     real constraint for a rebuilder (tanking pays nothing), the window working as intended
@@ -628,6 +703,9 @@ def classify_league(league_id: str) -> list[dict]:
                                    row["ascending_pct"], row["declining_pct"],
                                    _assets_bottom(row["asset_rank"], num_teams))
         row["flavor_note"] = FLAVOR_NOTE[row["flavor"]]
+        row["alignment"], row["path"], row["path_reason"] = alignment_for(
+            contention, row["ascending_pct"], row["declining_pct"], row["pick_share"],
+            _assets_bottom(row["asset_rank"], num_teams))
         # After flavor: an edge is only an edge if crossing the line changes the message.
         row["window_edge"] = window_edge(row, contention_edges, trajectory_edges)
         row["leverage_note"] = (
