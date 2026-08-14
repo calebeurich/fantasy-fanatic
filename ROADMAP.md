@@ -264,6 +264,13 @@ not by preference:
   for the current season as it happens — the report card gets a weekly pulse.
 - **Projections stop being backlog**: in-season, "who should I start" questions
   arrive immediately, and roster values alone cannot answer them.
+- **Contend harder vs contend longer** (owner-backlogged 2026-08-15): the aligned
+  contender's real question - convert future into a stronger NOW, or keep the
+  young core and contend more consistently now AND later - is a durability
+  trade-off the label system deliberately does not answer (its chip just says
+  "buy"). It becomes computable exactly when championship equity does: two
+  5-year equity curves, one peaked and one flat, compared honestly. Until then
+  the nuance stays in the hover, not in a heuristic.
 - **The rental market for deep-decline producers** (owner-articulated 2026-08-15,
   from the kierankieran barbell case): a deep-decline producer's value is not a
   smooth melt, because he always has a buyer class - any team whose path says

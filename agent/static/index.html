@@ -53,12 +53,12 @@
      can't: the move, colored by family. Alignment is the chip's WEIGHT - a muted
      chip means "continue as-is", a bright bold one means a decision is pending.
      One word per chip; the reason lives in the tooltip and the expanded view. */
-  .p-buy{background:rgba(245,158,11,.15);color:var(--win)}
-  .p-hold{background:rgba(52,211,153,.15);color:#34d399}
+  .p-buy{background:rgba(52,211,153,.15);color:#34d399}
   .p-wait{background:rgba(96,165,250,.15);color:var(--mid)}
   .p-build{background:rgba(167,139,250,.15);color:var(--rebuild)}
+  .p-push{background:rgba(245,158,11,.22);color:var(--win)}
   .p-decide{background:rgba(251,146,60,.22);color:#fdba74}
-  .p-rebuild{background:rgba(248,113,113,.2);color:var(--crit)}
+  .p-pivot{background:rgba(248,113,113,.2);color:var(--crit)}
   .tag.cool{opacity:.8}
   .tag.hot{font-weight:700;outline:1px solid currentColor}
   /* The production-priced core line: pieces whose price is what they do NOW
@@ -447,12 +447,11 @@ async function loadLeague(id) {
       const tn = t.team_name
         ? ` <span class="cs" style="font-weight:400">· ${t.team_name.replace(/[&<>"]/g,
             c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}</span>` : "";
-      const chip =
-        t.path.startsWith("buy") ? ["p-buy", "buy"] :
-        t.path.startsWith("hold") ? ["p-hold", "hold"] :
-        t.path.startsWith("wait") ? ["p-wait", "wait"] :
-        t.path.startsWith("keep") ? ["p-build", "build"] :
-        t.path.startsWith("push or pivot") ? ["p-decide", "decide"] : ["p-rebuild", "rebuild"];
+      // The chip is exactly tier 1 x tier 2 - a symmetric six-cell grid. Clock and
+      // lean are the hover and the expanded view's business.
+      const chip = t.alignment === "unaligned"
+        ? {contender: ["p-push", "push"], fringe: ["p-decide", "decide"]}[t.contention] || ["p-pivot", "pivot"]
+        : {contender: ["p-buy", "buy"], fringe: ["p-wait", "wait"]}[t.contention] || ["p-build", "build"];
       const heat = t.alignment === "unaligned" ? "hot" : "cool";
       return `<tr class="team" data-owner="${t.owner}">
         <td class="rk">${t.rank}</td>
@@ -475,12 +474,12 @@ async function loadLeague(id) {
       ${d.tier === "degraded" ? '<div class="note warn">Shallow league — percentile-based numbers are rougher than usual.</div>' : ""}
       ${d.no_trade_history ? '<div class="note warn">No trades in this league yet — window labels are less reliable this early.</div>' : ""}
       <div class="note" style="line-height:2">
-        <span class="tag p-hold cool">hold</span> good with no clock — nothing forces a move, so never pay a premium, but pounce when value comes cheap &nbsp;
-        <span class="tag p-buy cool">buy</span> window closing on its own — paying a premium for production is rational now &nbsp;
-        <span class="tag p-wait cool">wait</span> patience is free, let it develop &nbsp;
+        <span class="tag p-buy cool">buy</span> contending and it fits — add production; premiums only if you're on a clock (hover says) &nbsp;
+        <span class="tag p-wait cool">wait</span> middle and patient — waiting costs nothing &nbsp;
         <span class="tag p-build cool">build</span> rebuild working — keep stacking youth and picks &nbsp;
-        <span class="tag p-decide hot">decide</span> roster and rank disagree — push or pivot, both live &nbsp;
-        <span class="tag p-rebuild hot">rebuild</span> not competing and not accumulating — sell aging value, get a direction
+        <span class="tag p-push hot">push</span> contender carried by aging pieces — convert future into now, or decide fast &nbsp;
+        <span class="tag p-decide hot">decide</span> middle with a split roster — push or pivot both live, season decides &nbsp;
+        <span class="tag p-pivot hot">pivot</span> bottom rank, not accumulating — sell aging value, commit to the rebuild
       </div>
       <div class="note">Ranked by current starting production (redraft value) — what decides whether a team can compete <em>this</em> season. Bright chip = a real decision is pending; muted = continue as-is (hover for why). Core: <strong>bold</strong> = build-around pieces; <span class="pp">orange</span> = priced on what they do now — the aging load-bearers and sell-window watch list. Click a team to ask about them.</div>`;
     const pick = tr => {
