@@ -335,11 +335,11 @@ async function toggleDetail(tr, leagueId) {
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}${picksHtml}</div>` +
       `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--ok)">▸</span>` +
-      `<strong> starter</strong> · now = this-season, dyn = dynasty · age = life stage: ` +
-      `<span style="color:hsl(120,65%,58%)">pre-prime</span> · ` +
-      `<span style="color:hsl(68,65%,58%)">prime</span> · ` +
-      `<span style="color:hsl(25,65%,55%)">declining</span> · ` +
-      `<span style="color:hsl(0,60%,38%)">past it</span> ` +
+      `<strong> starter</strong> · now = this-season, dyn = dynasty · age color = what his ` +
+      `value is doing: <span style="color:hsl(120,65%,58%)">gaining</span> · ` +
+      `<span style="color:hsl(68,65%,58%)">holding (prime)</span> · ` +
+      `<span style="color:hsl(25,65%,55%)">losing</span> · ` +
+      `<span style="color:hsl(0,60%,38%)">short-term loaner</span> ` +
       `(shade = how deep; each position falls at its own speed)</div></td>`;
   } catch (e) {
     row.innerHTML = `<td colspan="7" class="cs warn">Couldn't load roster: ${e}</td>`;

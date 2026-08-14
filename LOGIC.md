@@ -1086,7 +1086,11 @@ position-specific decline tail, dark red past it). Colors therefore cannot drift
 the trade age logic; a curve change server-side recolors the page automatically. The
 one display-only judgment is the decline-tail shading, which lives past the
 breakpoint where the analysis only says "negative runway" - nothing to contradict -
-and is queued for measurement against the DP archive.
+and is queued for measurement against the DP archive. The bands read as
+value-trajectory claims, in the owner's words: green is gaining value, yellow is
+holding it (which is genuinely what primes do - peak production, flat price), orange
+is losing it, red is a short-term production loaner. Stated that way each band is a
+testable prediction against the DP value history, same queue as the tails.
 
 Clicking a team expands its full roster inline - position groups with dynasty values
 and ages (ascending green, declining red), cornerstones starred, projected starters
