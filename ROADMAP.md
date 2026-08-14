@@ -38,6 +38,24 @@ is the planned evolution of judgment-not-price, named - the rule was never "no
 numbers", it was "market values don't add"; championship equity is an OUTCOME
 currency, which is what the judgment was always approximating in words.
 
+Three consequences (2026-08-14, owner's extensions): **strategy becomes
+computable** - timeline alignment is win-positive because production moved into
+your highest-share seasons compounds; league competitiveness sets the price of
+pushing (the marginal equity of buying depends on rivals' equity curves); and
+stabilize-vs-push while ahead is a choice between two equity DISTRIBUTIONS with the
+same total (front-loaded vs back-to-back-shaped) - the model shows the trade-off,
+the owner picks the risk appetite. **The hard breakpoints dissolve** - the recurring
+cliff-edge defect family (window tertiles, need levels, noise bands) becomes
+emergent descriptions of a continuous equity curve: labels stay for humans,
+decisions ride the gradient. **The model self-grades** - anything we forecast that
+the outside world also prices (player props and season totals at books, expert
+consensus values) turns disagreement into data: our error or our alpha, refereed
+only by a tracked proper-scoring calibration record, out of sample. Epistemic
+default: a liquid book is calibrated by money, so disagreement starts as evidence
+we're wrong. If the record ever shows edge, exploitation order is dynasty buys
+first (home field, zero cost), real-money surfaces only with receipts - and if it
+never does, we got free tuning against the sharpest calibrators there are.
+
 ---
 
 ## Track 1: Trade evaluation (branch `trade-eval`, active)
