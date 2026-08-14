@@ -264,6 +264,15 @@ not by preference:
   for the current season as it happens — the report card gets a weekly pulse.
 - **Projections stop being backlog**: in-season, "who should I start" questions
   arrive immediately, and roster values alone cannot answer them.
+- **Gap-grouping instead of tertiles** (owner-backlogged 2026-08-15): the
+  contention tertile cuts at fixed ranks, but leagues cluster naturally - if
+  teams 4 and 5 sit just under the top three and well above the middle, they
+  belong WITH the top group; the honest boundary is the biggest gap in starting
+  production, not count/3. window_edge already hedges the symptom (labels within
+  refresh noise of the line); gap-grouping removes the cause. Applies to tier 1
+  and to the asset tertiles leverage uses. Guard: small leagues need a minimum
+  group size, and the grouping must be stable under weekly value refreshes
+  (the same stability test the tertile hard-breakpoint fix already passes).
 - **Contend harder vs contend longer** (owner-backlogged 2026-08-15): the aligned
   contender's real question - convert future into a stronger NOW, or keep the
   young core and contend more consistently now AND later - is a durability
