@@ -2329,3 +2329,24 @@ def test_an_ascending_roster_starting_a_final_year_piece_gets_the_clock_mismatch
     out2 = team_state.classify({"players": list(old)}, old,
                                threshold=4500, starter_ids={"kid", "cook"})
     assert out2["clock_mismatch"] == [] and out2["clock_mismatch_note"] is None
+
+
+def test_a_no_clock_contender_gets_told_about_a_position_on_one():
+    """The Push/Contend split survives a challenge ("shiv's RBs are all old - should
+    they merge?") by getting more precise instead of less: the clock is positional.
+    A durable roster whose entire started RB production sits inside the two-season
+    bar reads Contend with an RB exception - not Push (which would tell him to pay
+    premiums at positions where patience is free), and not silence."""
+    players = {
+        "qb": {"name": "YoungQB", "position": "QB", "value": 7000, "redraft_value": 6000, "age": 26},
+        "wr": {"name": "YoungWR", "position": "WR", "value": 8000, "redraft_value": 5000, "age": 24},
+        "rb1": {"name": "OldBack1", "position": "RB", "value": 3000, "redraft_value": 3000, "age": 28},
+        "rb2": {"name": "OldBack2", "position": "RB", "value": 2400, "redraft_value": 2500, "age": 27.5},
+    }
+    out = team_state.classify({"players": list(players)}, players,
+                              threshold=6500, starter_ids=set(players))
+    clocks = {c["position"]: c for c in out["position_clocks"]}
+    assert "RB" in clocks and clocks["RB"]["expiring_pct"] == 100
+    assert clocks["RB"]["names"][0] == "OldBack1", "biggest producer named first"
+    assert "QB" not in clocks and "WR" not in clocks, (
+        "durable rooms carry no clock - the whole point is the contrast")

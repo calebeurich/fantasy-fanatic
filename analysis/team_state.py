@@ -231,6 +231,32 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
     # on rosters whose tilt makes the mismatch real.
     clock_mismatch = ([e for e in win_now_core if e["is_starter"]]
                       if asc_pct > dec_pct else [])
+
+    # The clock can be POSITIONAL: a "no clock" roster whose entire RB room expires
+    # (live: Walker 1.2 / Henry -5.6 / Swift -0.6 under durable QBs and WRs) reads
+    # "Contend, steady" because the young positions' production swamps the tilt. Per
+    # position: what share of STARTED production sits inside the buyer's two-season
+    # bar. Majority = the room ages out together; clock_mismatch misses these when
+    # the pieces are individually below the premium-value bar.
+    position_clocks = []
+    by_pos: dict[str, list] = {}
+    for pid in starter_ids:
+        info = players.get(pid)
+        if info:
+            by_pos.setdefault(info["position"], []).append(info)
+    for pos, infos in by_pos.items():
+        total = sum(i.get("redraft_value") or 0 for i in infos)
+        expiring = [i for i in infos
+                    if (yrs := years_to_decline(i["position"], i["age"],
+                                                i.get("usage_role"))) is not None
+                    and yrs < MIN_MEANINGFUL_RUNWAY]
+        exp_total = sum(i.get("redraft_value") or 0 for i in expiring)
+        if total and exp_total / total > 0.5:
+            position_clocks.append({
+                "position": pos,
+                "expiring_pct": round(100 * exp_total / total),
+                "names": [i["name"] for i in
+                          sorted(expiring, key=lambda i: -(i.get("redraft_value") or 0))]})
     mismatch_note = (
         "Built for later, starting now: " +
         ", ".join(f"{e['name']} ({e['years_to_decline']} yrs of runway)"
@@ -243,6 +269,7 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
 
     return {"clock_mismatch": clock_mismatch,
             "clock_mismatch_note": mismatch_note,
+            "position_clocks": position_clocks,
             "starting_production": round(production),
             "trajectory_score": round(asc_pct - dec_pct),
             "ascending_pct": round(asc_pct), "declining_pct": round(dec_pct),
@@ -550,6 +577,21 @@ def classify_league(league_id: str) -> list[dict]:
                                          row["ascending_pct"], row["declining_pct"],
                                          trajectory)
         row["next_first_note"] = next_first_note(row["owns_next_first"], window)
+
+        # Only Contend gets this sentence: it is the one label that claims "no clock",
+        # and a majority-expiring position room is the exception that claim needs.
+        # Push already knows it is on a clock; a rebuilder's aging room is sell fodder
+        # the seller machinery handles.
+        if window == "Contend" and row["position_clocks"]:
+            parts = [f"the {c['position']} room ages out together - {c['expiring_pct']}% "
+                     f"of its started production ({', '.join(c['names'])}) is inside two "
+                     f"seasons of runway" for c in row["position_clocks"]]
+            row["position_clock_note"] = (
+                "No roster-wide clock, with one positional exception: " + "; ".join(parts)
+                + ". Contend everywhere else, but at "
+                + "/".join(c["position"] for c in row["position_clocks"])
+                + " act like a Push team: succession there is the action this window "
+                  "actually requires, and 'no action needed' is not true of it.")
 
         # What a team could *become*, alongside what it currently is. Additive, and not a
         # fifth window - see `leverage`.

@@ -243,6 +243,19 @@ to the reader). The note tells the model to raise it whenever describing the win
 not only when asked about selling. Gated on tilt: an aging team starting aging pieces
 is consistent, not conflicted.
 
+**Positional clocks** (`position_clocks` + note): the split's sharpest challenge -
+"this Contender's RBs are all old, so should Push and Contend merge?" - resolved by
+getting more precise instead of less. The clock can be positional: a durable roster
+whose ENTIRE started RB production sits inside the buyer's two-season bar (live:
+Walker 1.2 / Henry -5.6 / Swift -0.6 under young QBs and WRs) reads "Contend, steady"
+because the young positions swamp the aggregate tilt. Per position: the share of
+started production inside MIN_MEANINGFUL_RUNWAY; a majority means the room ages out
+together. The NOTE fires only on Contend - the one label that claims "no clock" -
+and says to act like Push at that position while Contending everywhere else. Merging
+the flavors instead would have told this team to pay Push premiums at positions where
+patience is free. clock_mismatch catches the premium-priced individual; this catches
+the room whose pieces are individually below that bar.
+
 | state | flavors | wants | can spare |
 |---|---|---|---|
 | **Contending** | `Push` (clock) / `Contend` (none) | production now | future years |
