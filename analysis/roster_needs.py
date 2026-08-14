@@ -274,8 +274,13 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
         # TOTAL let the empty slot drag the verdict on the players who exist - a
         # superflex room of Mahomes-plus-nobody ranked "among the league's worst" and
         # read as critical, when the honest label is top-heavy (a body, NOT an upgrade).
-        # The hole is the count problem; quality is about the bodies.
-        per_body = {oid: totals[oid] / len(usable[oid][pos]) if usable[oid][pos] else 0
+        # The hole is the count problem; quality is about the bodies. Averaged over the
+        # usable bodies' OWN values - the first version divided the starting-group
+        # total by the usable count, a mismatched numerator (a lone 2,724 startable RB
+        # measured as 3,529 "per body" because a below-bar filler rode in the sum, and
+        # got called good; the manager knew better).
+        per_body = {oid: (sum(e.get("redraft_value") or 0 for e in usable[oid][pos])
+                          / len(usable[oid][pos]) if usable[oid][pos] else 0)
                     for oid in groups}
         body_ranks = {oid: i for i, oid
                       in enumerate(sorted(per_body, key=lambda o: -per_body[o]), start=1)}
