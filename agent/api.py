@@ -153,10 +153,6 @@ def league_overview(league_id: str) -> dict:
                 "path_reason": t["path_reason"],
                 "contention": t["contention"],
                 "trajectory": t["trajectory"],
-                # The flavor word ("stalled", "convertible") often says more than the
-                # trajectory ("steady") - a steady rebuild IS a stalled one, and the
-                # table hiding that word read as false comfort to the league.
-                "flavor": t["flavor"],
                 "ascending_pct": t["ascending_pct"],
                 "declining_pct": t["declining_pct"],
                 "owns_next_first": t["owns_next_first"],
@@ -230,8 +226,7 @@ def team_detail(league_id: str, owner: str) -> dict:
                                     ctx.league["settings"]["draft_rounds"],
                                     [r["roster_id"] for r in ctx.rosters], pick_values)
     return {
-        "owner": owner_name, "window": t["window"], "flavor": t["flavor"],
-        "flavor_note": team_state.FLAVOR_NOTE.get(t["flavor"], ""),
+        "owner": owner_name, "window": t["window"],
         "alignment": t["alignment"], "path": t["path"], "path_reason": t["path_reason"],
         "clock_mismatch_note": t.get("clock_mismatch_note"),
         "players": by_pos,

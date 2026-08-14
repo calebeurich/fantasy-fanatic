@@ -155,6 +155,11 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
     # that. Format read once at the top of a conversation does not survive to the point where
     # it matters; attached to the roster it is being reasoned about, it does.
     fmt = sleeper.describe_format(context(league_id).league)
+    # The flavor dialect (state/flavor/flavor_note) predates the six-tag vocabulary
+    # and stays an internal field: two dialects in one payload is how a model ends up
+    # quoting "no clock" at a press team. The model reads window + the tier trio only.
+    teams = [{k: v for k, v in t.items()
+              if k not in ("state", "flavor", "flavor_note")} for t in teams]
     # Wrapped in a dict rather than returned as a bare list - this MCP SDK version
     # splits a top-level list return into one content block per item instead of one
     # JSON array, which is fragile to rely on. A dict always serializes as one block.

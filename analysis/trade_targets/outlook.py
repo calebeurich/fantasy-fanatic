@@ -85,7 +85,8 @@ def outlook_from_board(board: Board, player_query: str,
 
     result = {"found": True, "player": player,
               "owner": owner["owner"], "owner_window": owner["window"],
-              "owner_flavor": owner["flavor"], "owner_window_note": owner["window_note"],
+              "owner_path": owner.get("path", owner["window"]),
+              "owner_window_note": owner["window_note"],
               "owner_is_short_at": {pos: n["level"] for pos, n in
                                     board.needs_by_owner_id.get(owner["owner_id"], {}).items()},
               "note": OUTLOOK_NOTE}
@@ -99,7 +100,7 @@ def outlook_from_board(board: Board, player_query: str,
     if _sells_him(owner, entry):
         result["availability"] = (
             f"{owner['owner']} is a seller of exactly this kind of piece "
-            f"({owner['state']}, {owner['flavor']}) - no persuasion needed, this is a "
+            f"(their path: {owner.get('path', owner['window'])}) - no persuasion needed, this is a "
             f"price conversation from the first call.")
     else:
         ratio = ((entry.get("redraft_value") or 0) / entry["value"]) if entry.get("value") else 0

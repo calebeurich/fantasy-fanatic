@@ -771,7 +771,7 @@ def classify_league(league_id: str) -> list[dict]:
                 "No roster-wide clock, with one positional exception: " + "; ".join(parts)
                 + ". Contend everywhere else, but at "
                 + "/".join(c["position"] for c in row["position_clocks"])
-                + " act like a Push team: succession there is the action this window "
+                + " the room is on a clock: succession there is the action this window "
                   "actually requires, and 'no action needed' is not true of it.")
 
         # What a team could *become*, alongside what it currently is. Additive, and not a

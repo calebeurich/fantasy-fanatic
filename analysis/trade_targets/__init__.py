@@ -215,8 +215,11 @@ def find_targets(league_id: str, owner_query: str,
 # duplication was what pushed that payload past the 50KB wire limit where the SDK
 # replaces the whole result with a 2KB preview (LOGIC.md, "The tool result the model
 # never saw"). Roster lists have exactly one home.
-_ME_FIELDS = ("owner", "owner_id", "roster_id", "window", "state", "flavor",
-              "window_note", "flavor_note", "window_edge", "next_first_note",
+# state/flavor/flavor_note are the pre-tier dialect - internal fields, never shipped
+# to the model (two dialects in one payload is how answers contradict the chips).
+_ME_FIELDS = ("owner", "owner_id", "roster_id", "window",
+              "alignment", "path", "path_reason",
+              "window_note", "window_edge", "next_first_note",
               "leverage", "leverage_note", "owns_next_first", "trajectory",
               "contention_rank", "of_teams", "pct_of_best", "starting_production",
               "ascending_pct", "declining_pct", "pick_capital", "no_trade_history")

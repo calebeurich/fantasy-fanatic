@@ -183,7 +183,7 @@ def _print_report(result: dict) -> None:
         _print_pivot(me, result)
         _print_depth(result)
     elif result["mode"] == "middling":
-        print(f"{me['owner']}: {me['state']} ({me['flavor']}) - both directions are open")
+        print(f"{me['owner']}: {me['window']} ({me['alignment']} - {me['path']}) - both directions are open")
         print(f"  {me['window_note']}")
         print(f"\n  {result['timing_note']}")
         print(f"\n-- if pushing (needs: {_needs_summary(result['push']['needs'])}) --")
@@ -191,7 +191,7 @@ def _print_report(result: dict) -> None:
         print("\n-- if pivoting --")
         _print_pivot(me, result["pivot"])
     else:
-        print(f"{me['owner']}: {me['state']} ({me['flavor']}), needs: {_needs_summary(result['needs'])}")
+        print(f"{me['owner']}: {me['window']} ({me['alignment']} - {me['path']}), needs: {_needs_summary(result['needs'])}")
         print(f"  {me['window_note']}")
         _print_push(result, result)
         _print_conversion_candidates(result)
