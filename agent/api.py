@@ -194,6 +194,10 @@ def team_detail(league_id: str, owner: str) -> dict:
             "name": r["name"], "value": r["value"], "age": r["age"],
             "bucket": r["bucket"], "starter": r["lineup_role"] == "starter",
             "cornerstone": r["name"] in corner,
+            # The continuous variable behind the bucket - the UI colors on it, because
+            # a 0.1-year piece and a 3.9-year piece are different facts the same
+            # bucket color was hiding (the James Cook effect, visually).
+            "years_to_decline": r.get("years_to_decline"),
         })
     for rows in by_pos.values():
         rows.sort(key=lambda x: -(x["value"] or 0))

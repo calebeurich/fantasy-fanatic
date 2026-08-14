@@ -64,7 +64,9 @@
   .ptitle{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px;
           margin-bottom:4px;border-bottom:1px solid var(--line);padding-bottom:3px}
   .prow{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:1.5px 0}
+  .prow span:first-child{color:var(--dim)}
   .prow.st span:first-child{font-weight:600;color:#fff}
+  .prow.st span:first-child::before{content:"▸ ";color:var(--ok)}
   .pv{font-variant-numeric:tabular-nums}
   .pv.asc{color:var(--ok)} .pv.dec{color:var(--crit)}
   .pa{color:var(--dim);width:36px;text-align:right;font-variant-numeric:tabular-nums}
@@ -286,12 +288,20 @@ async function toggleDetail(tr, leagueId) {
       detailCache[key] = await res.json();
     }
     const d = detailCache[key];
-    const bucketCls = b => b === "ascending" ? "asc" : b === "declining" ? "dec" : "";
+    // Color IS the runway, continuously: red at the cliff through green at 5+ years.
+    // The buckets flattened it - a 0.1-year piece and a 3.9-year piece showed the same
+    // green, which hid exactly the James Cook effect the clock warning talks about.
+    const runwayColor = y => {
+      if (y == null) return "var(--muted)";
+      const t = Math.max(0, Math.min(1, y / 5));
+      return `hsl(${Math.round(t * 120)}, 65%, 58%)`;
+    };
     const group = (title, rows) => `<div class="pgroup"><div class="ptitle">${title}</div>` +
       rows.map(p => `<div class="prow${p.starter ? " st" : ""}">` +
         `<span>${p.cornerstone ? "★ " : ""}${p.name}</span>` +
-        `<span class="pv ${bucketCls(p.bucket)}">${(p.value || 0).toLocaleString()}</span>` +
-        `<span class="pa">${p.age != null ? p.age.toFixed(1) : ""}</span></div>`).join("") + `</div>`;
+        `<span class="pv">${(p.value || 0).toLocaleString()}</span>` +
+        `<span class="pa" style="color:${runwayColor(p.years_to_decline)}">` +
+        `${p.age != null ? p.age.toFixed(1) : ""}</span></div>`).join("") + `</div>`;
     const picksHtml = d.picks.length
       ? group("Picks", d.picks.map(p => ({name: p.pick, value: p.value})))
       : "";
@@ -300,9 +310,10 @@ async function toggleDetail(tr, leagueId) {
         ? `<div class="cs warn" style="margin-bottom:8px">${d.clock_mismatch_note}</div>` : "") +
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}${picksHtml}</div>` +
-      `<div class="cs" style="margin-top:8px">★ cornerstone · <strong>bold</strong> = projected ` +
-      `starter · <span class="pv asc">ascending</span> / <span class="pv dec">declining</span> · ` +
-      `dynasty values, age on the right</div></td>`;
+      `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--ok)">▸</span>` +
+      `<strong> starter</strong> · dynasty value · age colored by runway left ` +
+      `(<span style="color:hsl(0,65%,58%)">at the cliff</span> → ` +
+      `<span style="color:hsl(120,65%,58%)">5+ years</span>)</div></td>`;
   } catch (e) {
     row.innerHTML = `<td colspan="7" class="cs warn">Couldn't load roster: ${e}</td>`;
   }
@@ -373,7 +384,7 @@ async function loadLeague(id) {
     document.querySelectorAll("tr.team").forEach(tr => {
       // Click = select for asking AND toggle the expanded roster. Deterministic data
       // rendered directly, same doctrine as the table itself.
-      tr.onclick = () => { pick(tr); toggleDetail(tr, id); $("q").focus(); };
+      tr.onclick = () => { pick(tr); toggleDetail(tr, id); };
       // They told us their username to find this league, so which team is theirs is
       // already known - making them click it (and the agent ask for it) is a question
       // the page can answer itself.
