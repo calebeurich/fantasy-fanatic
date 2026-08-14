@@ -162,9 +162,9 @@ def _aging_clause(aging_pct: float) -> str:
     roster starting a 38-year-old QB was told nothing was aging out)."""
     if aging_pct < AGING_WORTH_NOTING_PCT:
         return ""
-    return (f". One trim available: {round(aging_pct)}% of started production is inside "
-            f"two seasons of runway - not enough to force anything, enough to keep "
-            f"converting at the right price")
+    return (f". One trim available: {round(aging_pct)}% of the starting lineup's "
+            f"production is aging out over the next couple seasons - not enough to "
+            f"force anything, enough to keep converting at the right price")
 
 
 def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: float,
@@ -215,7 +215,7 @@ def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: f
                     + _aging_clause(aging_pct))
         return ("aligned", "wait",
                 ("nothing arriving and nothing aging out - waiting costs nothing here"
-                 if dec_pct < AGING_WORTH_NOTING_PCT else
+                 if aging_pct < AGING_WORTH_NOTING_PCT else
                  "no wave big enough to force a move - waiting is cheap here")
                 + _aging_clause(aging_pct))
     # also-ran: the rank itself urges the rebuild; unaligned just means it isn't underway.
