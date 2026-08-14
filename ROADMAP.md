@@ -121,6 +121,15 @@ RBs disappear IS the falloff); bottom-censoring at DP's ~700-player floor report
 not interpolated; injury-wrecked seasons flagged via nflverse rather than read as
 aging; era drift checked (early vs late halves) before pooling. Findings graduate
 into constants; misses correct them - either way the curves stop being vibes.
+Pre-registered hypothesis for the same study: **experience as a separate axis from
+age** - an older rookie (RJ Harvey type) is age-late but experience-early, and the
+NFL-adjustment period may make him behave like an ascender. Testable because DP
+carries draft_year: among SAME-AGE players, do rookies/sophomores gain value while
+third-year vets hold or fade? Graduates only if it survives held-out years. Overcook
+guard, in the owner's words ("this feels like it could easily get overcooked"): each
+archetype slices the sample thinner and offers another chance to find noise that
+flatters an intuition, so hypotheses are named before looking - never fished for -
+and one at a time.
 
 **Representative, not sharp:** trade data describes what the market accepts, not
 what is correct. It feeds realism framing ("a gap like this is the median
