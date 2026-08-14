@@ -126,14 +126,16 @@ season data (nflreadpy), thresholds picked from natural gaps in the real distrib
 - `rushing_qb` (carries/game >= 5.0, not an elite passer): 26/32
 - `dual_threat_qb` (>= 5.0 carries AND elite passer): 26/34 - the point is the absence
   of the rushing discount, not a bonus; elite passing survives the legs
-- `pocket_passer` (elite passer, not a runner): 26/38 - not 40, because the curve should
+- `pocket_passer` (elite passer, not a runner): 26/37 - not 40, because the curve should
   turn before the market does; the top passing-EPA tier over three seasons is all pocket
-  throwers, so the tag is earned by production
+  throwers, so the tag is earned by production. (Tuned 38 -> 37 on the author's eye
+  test - a 34-year-old pocket passer is fine but not a green light - paired with the
+  UI's QB decline tail of 3, which puts full red at exactly 40: any QB is done by 40.)
 - `pass_catching_rb` (targets/game >= 4.0): 24/29
 
 "Elite passer" = top third of passing EPA/game over three seasons. EPA over CPOE
 despite CPOE being better isolated, because CPOE penalises aggressive downfield throwing
-(Stafford: 5.33 EPA, -0.47 CPOE). The pocket/rushing spread (38 vs 32) is the only
+(Stafford: 5.33 EPA, -0.47 CPOE). The pocket/rushing spread (37 vs 32) is the only
 constant in this project changed on an outside opinion - a sports-modelling data
 scientist argued the pocket end was too pessimistic - and it was changed because the
 measured data backed it: the top three-season EPA tier (Goff 6.87, Purdy 6.62,

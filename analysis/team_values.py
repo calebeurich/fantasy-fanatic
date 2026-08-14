@@ -15,13 +15,14 @@ AGE_CURVE = {
 
 # Role overrides on the curve (see player_roles.py). Mobility-dependent QBs decline
 # earlier; a dual threat keeps the default because elite passing survives the legs; a
-# pocket passer holds value far longer (38, not 40 - the curve should turn before the
-# market does); receiving-down RBs age more like WRs. Tags are earned by measured usage,
-# not reputation - LOGIC.md, "Age curves and runway".
+# pocket passer holds value far longer (37 - the curve should turn before the market
+# does, and a 34-year-old pocket passer is fine but not a green light; tuned down from
+# 38 on the author's eye test); receiving-down RBs age more like WRs. Tags are earned
+# by measured usage, not reputation - LOGIC.md, "Age curves and runway".
 AGE_CURVE_OVERRIDES = {
     "rushing_qb": (26, 32),
     "dual_threat_qb": (26, 34),
-    "pocket_passer": (26, 38),
+    "pocket_passer": (26, 37),
     "pass_catching_rb": (24, 29),
 }
 

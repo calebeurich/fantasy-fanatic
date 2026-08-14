@@ -70,10 +70,12 @@ def test_elite_pocket_passers_get_a_much_later_decline():
 def test_runway_distinguishes_two_players_in_the_same_bucket():
     """`age_bucket` throws away the distance to the boundary, which is what a dynasty seller
     wants. The live case: a 28.0 rushing QB and a 31.8 pocket passer both read `prime` while
-    being three years apart in runway - and the older man has more of it."""
+    being over a year apart in runway - and the older man has more of it. (Pocket cutoff
+    tuned 38 -> 37 on the author's eye test: a 34-year-old pocket passer is fine, not a
+    green light.)"""
     assert age_bucket("QB", 28.0, "rushing_qb") == age_bucket("QB", 31.8, "pocket_passer")
     assert years_to_decline("QB", 28.0, "rushing_qb") == 4.0
-    assert years_to_decline("QB", 31.8, "pocket_passer") == 6.2
+    assert years_to_decline("QB", 31.8, "pocket_passer") == 5.2
     # The third archetype sits between them: a QB who runs *and* throws well carries no
     # rushing discount, because when the legs go he is still a good passer.
     assert years_to_decline("QB", 28.0, "dual_threat_qb") == 6.0
