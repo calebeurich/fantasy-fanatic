@@ -2323,7 +2323,9 @@ def test_an_ascending_roster_starting_a_final_year_piece_gets_the_clock_mismatch
                               threshold=4500, starter_ids={"kid", "cook"})
     assert [e["name"] for e in out["clock_mismatch"]] == ["OldCook"]
     assert "Built for later, starting now" in out["clock_mismatch_note"]
-    assert "natural sells" in out["clock_mismatch_note"]
+    assert "window to convert" in out["clock_mismatch_note"]
+    assert "yrs past his breakpoint" in out["clock_mismatch_note"], (
+        "negative runway reads as a slope position, never as nothing left")
 
     # Same roster, declining tilt: no mismatch - an aging team starting aging pieces
     # is consistent, not conflicted.

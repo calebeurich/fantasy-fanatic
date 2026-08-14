@@ -317,9 +317,10 @@ async function toggleDetail(tr, leagueId) {
       }
       return `hsl(${Math.round(10 + 30 * (1 + y / tail))}, 65%, 55%)`;
     };
-    const group = (title, rows) => `<div class="pgroup"><div class="ptitle">${title}</div>` +
-      `<div class="prow phead"><span></span><span class="pv">now</span>` +
-      `<span class="pv">dyn</span><span class="pa">age</span></div>` +
+    const group = (title, rows, heads = ["now", "dyn", "age"]) =>
+      `<div class="pgroup"><div class="ptitle">${title}</div>` +
+      `<div class="prow phead"><span></span><span class="pv">${heads[0]}</span>` +
+      `<span class="pv">${heads[1]}</span><span class="pa">${heads[2]}</span></div>` +
       rows.map(p => `<div class="prow${p.starter ? " st" : ""}">` +
         `<span>${p.cornerstone ? "★ " : ""}${p.name}</span>` +
         `<span class="pv">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
@@ -327,9 +328,11 @@ async function toggleDetail(tr, leagueId) {
         `<span class="pa" style="color:${runwayColor(p, title)}">` +
         `${p.age != null ? p.age.toFixed(1) : ""}</span></div>`).join("") + `</div>`;
     const picksHtml = d.picks.length
-      ? group("Picks", d.picks.map(p => ({name: p.pick, value: p.value})))
+      ? group("Picks", d.picks.map(p => ({name: p.pick, value: p.value})), ["", "value", ""])
       : "";
     row.innerHTML = `<td colspan="7">` +
+      `<div class="cs" style="margin-bottom:6px"><strong>${d.window}${d.flavor !== d.window ? " · " + d.flavor : ""}</strong>` +
+      `${d.flavor_note ? " — " + d.flavor_note : ""}</div>` +
       (d.clock_mismatch_note
         ? `<div class="cs warn" style="margin-bottom:8px">${d.clock_mismatch_note}</div>` : "") +
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
@@ -415,7 +418,10 @@ async function loadLeague(id) {
       // They told us their username to find this league, so which team is theirs is
       // already known - making them click it (and the agent ask for it) is a question
       // the page can answer itself.
-      if (myName && tr.dataset.owner.toLowerCase() === myName.toLowerCase()) pick(tr);
+      if (myName && tr.dataset.owner.toLowerCase() === myName.toLowerCase()) {
+        pick(tr);
+        toggleDetail(tr, id);  // seeing your own roster is why you loaded the league
+      }
     });
   } catch (e) {
     $("overview").innerHTML = `<div class="empty warn">Failed to load: ${e}</div>`;

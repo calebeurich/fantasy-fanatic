@@ -227,6 +227,7 @@ def team_detail(league_id: str, owner: str) -> dict:
                                     [r["roster_id"] for r in ctx.rosters], pick_values)
     return {
         "owner": owner_name, "window": t["window"], "flavor": t["flavor"],
+        "flavor_note": team_state.FLAVOR_NOTE.get(t["flavor"], ""),
         "clock_mismatch_note": t.get("clock_mismatch_note"),
         "players": by_pos,
         "picks": [{"pick": p["pick"], "value": p["value"]}

@@ -257,15 +257,25 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
                 "expiring_pct": round(100 * exp_total / total),
                 "names": [i["name"] for i in
                           sorted(expiring, key=lambda i: -(i.get("redraft_value") or 0))]})
+    def _slope_phrase(e):
+        y = e["years_to_decline"]
+        if y is None:
+            return e["name"]
+        if y >= 0:
+            return f"{e['name']} ({y} yrs before his decline starts)"
+        # Past the breakpoint is a slope, not a cliff - he still contributes, the
+        # seasons ahead just aren't the ones this roster is accumulating.
+        return (f"{e['name']} ({abs(y):.1f} yrs past his breakpoint - still productive "
+                f"today, declining from here)")
+
     mismatch_note = (
         "Built for later, starting now: " +
-        ", ".join(f"{e['name']} ({e['years_to_decline']} yrs of runway)"
-                  for e in clock_mismatch) +
+        ", ".join(_slope_phrase(e) for e in clock_mismatch) +
         f" - this roster's tilt is ascending ({round(asc_pct)}% vs {round(dec_pct)}%), "
-        f"so it is accumulating seasons these starters won't be part of. That makes "
-        f"them this team's natural sells while their price still says starter - "
-        f"raise this whenever describing the window, not only when asked about "
-        f"selling." if clock_mismatch else None)
+        f"so it is accumulating seasons these starters won't be part of. They still "
+        f"contend today, and that is exactly the window to convert them in - while "
+        f"the price still says starter. Raise this whenever describing the window, "
+        f"not only when asked about selling." if clock_mismatch else None)
 
     return {"clock_mismatch": clock_mismatch,
             "clock_mismatch_note": mismatch_note,
