@@ -27,8 +27,12 @@ future state once the dynasty machinery earns it.
 Judge a user-proposed trade per side without pricing packages. Built: best
 single piece (players and picks), needs recomputed league-wide with rosters
 swapped, lineup-cascade production delta, window-matched runway bars. Next:
-Caleb's redline of the reads → MCP tool + agent doctrine reconciliation (the UI
-promise "not a trade calculator" stays true: it judges, it never prices).
+Caleb's redline of the reads → **two surfaces off the one core**: a
+calculator-style UI panel rendering the per-side reads straight from Python
+(free per use, no retries, shareable — same pattern as the league table), and
+an MCP tool where the agent adds the team-analysis flavor in conversation.
+The UI promise "not a trade calculator" stays true on both: it judges, it
+never prices. Training never touches the LLM.
 
 ## Track 2: The trade-market dataset
 
@@ -73,7 +77,12 @@ eventually to learn from.
   Warren, Loveland, McBride), and trades are cross-position comparisons;
   (2) DP's picks file carries **ECR only, no values** — derive pick values by
   fitting the ECR-to-value curve from DP's own players file. Rank/percentile-
-  space training needs neither.
+  space training needs neither. **Bonus (2026-08-14): DP's `db_fpecr` archive
+  carries BOTH dynasty and redraft FantasyPros ECR per scrape_date, back
+  years** — point-in-time redraft rankings exist after all. Two uses: the fair
+  lineup-decision baseline for manager scores ("start who consensus would have
+  started AT THE TIME" — season-to-date stats are noisy in September and absent
+  in week 1), and the eventual redraft track's data foundation.
 
 **Representative, not sharp:** trade data describes what the market accepts, not
 what is correct. It feeds realism framing ("a gap like this is the median
