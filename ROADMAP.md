@@ -265,6 +265,38 @@ not by preference:
 - **Projections stop being backlog**: in-season, "who should I start" questions
   arrive immediately, and roster values alone cannot answer them.
 
+## Engineering discipline for the model era (2026-08-14, owner's spec)
+
+- **The crawl's full shopping list**: per season chain - league object (scoring +
+  roster settings), users, rosters, ALL transactions, ALL matchups, drafts, traded
+  picks. Matchups carry per-player LEAGUE-SCORED points - production in the exact
+  format, no conversion - which is the ground truth the simulations stand on.
+  Point-in-time NFL stats come from nflverse (already historical, gsis-keyed);
+  point-in-time values from the DP archive.
+- **Scale discipline**: the historicals are RANKS (FantasyPros ECR) and 1QB/2QB
+  values, NOT league-format-calibrated and not FantasyCalc's scale. Never mix
+  scales: rank/percentile space per position internally, the measured per-position
+  DP-to-FC calibration at the bridge, and league-scored matchup points wherever the
+  question is production. Anything cross-scale states which bridge it crossed.
+- **Manager execution in the simulations**: rosters don't play themselves - Track
+  3's measured manager scores (lineup efficiency, waiver capture) become an
+  execution parameter, which also tests whether good managers are more predictable.
+- **One box at a time**: every model component is a separate module with a frozen
+  interface and versioned measured constants (the market_drift.py pattern - table +
+  provenance + regeneration command). Tune one box against its own tests; no
+  component reads another's internals. The alternative is the cascading refactor
+  this project has avoided for a month by catching label drift early.
+- **Drift detection as a framework**: every measured table gets a cheap re-fit
+  check (the tep_drift_check pattern, generalized) - re-run the measurement, diff
+  against the frozen constants, and a threshold breach is a loud failure, never a
+  silent one. Calibration records are append-only so degradation is visible as a
+  trend, not discovered in a bug report.
+- **Serving stays thin**: heavy math runs offline (research scripts, batch jobs,
+  the crawler) and ships frozen artifacts - tables, constants, calibration files -
+  that the Cloud Run service only READS. The single-instance in-process design
+  keeps working precisely because simulation compute never moves into the request
+  path. Scale the batch plane, not the serving plane.
+
 ## The format-conditioning rule (applies to every track)
 
 Anything that enters a training or measurement set carries its league's
