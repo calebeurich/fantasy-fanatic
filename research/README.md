@@ -60,6 +60,35 @@ readings mean it does not graduate into the product. The overcook guard did its 
 on the first swing. The specifically-older-rookie case (24+, the RJ Harvey shape)
 never reached sample size and remains open.
 
+## Study: the two clocks, production vs value (2026-08-14)
+
+`redraft_curves.py` - the dynasty cohorts joined to historical POSITIONAL redraft
+ECR (FantasyPros via db_fpecr, weekly since 2020) by FantasyPros id. 3,301
+dynasty-relevant observations, 2,951 with a production rank.
+
+**Finding 4 - the clocks cross, and that IS the market's age discount.** Among
+players still dynasty-relevant, positional production rank IMPROVES with age while
+dynasty value falls: an RB at 23 ranks ~RB30 as a producer at 1.27x baseline value;
+at 27-29 he ranks ~RB17 while priced at 0.37-0.66x. WRs: rank ~45 at 22 (1.26x) vs
+~20 at 29 (0.72x). Selection is doing honest work here - the aged players still on
+the list are precisely the survivors - but that is the point: the market's discount
+on them is NOT about current production, which is the best on the board; it prices
+the missing future seasons. This puts numbers behind the shipped persuasion-tier
+sentence "the market discounts age the buyer isn't paying for", and behind green's
+mirror: young players carry the highest values while ranking WORST as producers -
+green is a price about the future, not the present.
+
+**Finding 5 - "how chopped is red, really": the decline tails roughly measure out.**
+Among players PAST the production breakpoint who still rank startable: RBs stay
+57-66% startable with 62-83% one-year survival through +2 years past the breakpoint,
+then 0% survival at 3+ - the display tail of 2 is about right. WRs hold ~70%
+survival through +1, drop to 20% at +2 and 0% at 3+ - the tail of 3 is, if
+anything, generous. QB numbers are small and scattered (the survivors keep
+surviving); elite TEs that remain relevant at 3+ past the break are the Kelce
+pattern - rank ~TE2, 89% survival, pure survivor selection at n=13. First-pass
+support for graduating the RB/WR tails from eye-test to measured constants after
+one more year of data.
+
 **What changed in the product because of this study:** nothing, yet - by design.
 The findings are recorded here and in ROADMAP.md; constants graduate only when a
 finding survives a re-run after more data accumulates, and the first candidate is
