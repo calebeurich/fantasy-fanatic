@@ -280,7 +280,10 @@ number would be quietly wrong.
 
 - **Projections source**: still the biggest single upgrade to the live agent's
   advice (jwall's sessions are the standing argument).
-- **Sportsbook lines / news-flow value arb**: the long-held idea — market
+- **Sportsbook lines / news-flow value arb** (ordering decided 2026-08-14:
+  SEASON-LONG lines first - player season totals and futures for calibration and
+  draft-season/dynasty-valuation use - before any week-by-week props; weekly is an
+  in-season Track 4 consumer later): the long-held idea — market
   dynasty values move slower than real news; sportsbook lines (and possibly
   curated Twitter/X flow) lead them. Find the lag, surface the buy/sell window
   before the market reprices. Once an odds feed is pulling for our own
