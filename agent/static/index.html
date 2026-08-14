@@ -63,6 +63,9 @@
   .pgroup{min-width:230px;flex:1}
   .ptitle{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px;
           margin-bottom:4px;border-bottom:1px solid var(--line);padding-bottom:3px}
+  /* Picks wrap below the four position columns; without a cap the lone group
+     stretches the full row and the value lands a screen-width from its label. */
+  .pgroup.picks{flex:0 1 auto;min-width:280px;max-width:420px}
   .prow{display:flex;gap:8px;font-size:13px;padding:1.5px 0;align-items:baseline}
   .prow span:first-child{color:var(--dim);flex:1;white-space:nowrap;overflow:hidden;
                          text-overflow:ellipsis;min-width:0}
@@ -155,6 +158,7 @@
       Load a league, then click your team to get question ideas — or type anything.
     </div></div>
     <div class="pad" style="border-top:1px solid var(--line)">
+      <div class="cs" id="askctx" style="margin-bottom:8px;display:none"></div>
       <form id="f" class="row">
         <input id="q" type="text" autocomplete="off" placeholder="e.g. who should rjl22 target in a trade?" required>
         <button id="send" class="primary" type="submit">Ask</button>
@@ -205,8 +209,19 @@ const hdrs = extra => Object.assign({"X-FF-Key": KEY()}, extra || {});
 
 const $ = id => document.getElementById(id);
 let currentLeague = null;
+let currentLeagueName = null;
 let myTeam = null;
 let myName = null;   // the Sleeper display name they looked themselves up with
+
+// Questions are silently pinned to the selected league/team (withContext) - silently
+// was the problem, so the pin is shown right where the question is typed.
+function showAskContext() {
+  const el = $("askctx");
+  if (!currentLeague) { el.style.display = "none"; return; }
+  el.textContent = "questions are about: " + (currentLeagueName || "league " + currentLeague)
+    + (myTeam ? " · your team: " + myTeam : "");
+  el.style.display = "block";
+}
 
 // ---- find leagues by username: Sleeper's API is CORS-open, so this never touches
 // our server (or our budget) - the one thing a friend knows is their own username ----
@@ -236,6 +251,7 @@ $("find").onclick = async () => {
       b.onclick = () => {
         document.querySelectorAll(".lg").forEach(x => x.classList.remove("on"));
         b.classList.add("on");
+        currentLeagueName = l.name;
         loadLeague(l.league_id);
       };
       $("leagues").appendChild(b);
@@ -274,6 +290,22 @@ function showChips(owner) {
 
 // ---- expanded team view: full roster + picks, one fetch per team, cached ----
 const detailCache = {};
+async function fetchDetail(leagueId, owner) {
+  const key = leagueId + "/" + owner;
+  if (!detailCache[key]) {
+    const res = await fetch(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}`,
+                            {headers: hdrs()});
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    detailCache[key] = await res.json();
+  }
+  return detailCache[key];
+}
+// The server builds a team detail in ~10ms from the cached league context - the wait a
+// clicker feels is purely the round trip. Warm every team right after the table renders
+// so clicking around is instant.
+function prefetchDetails(leagueId, owners) {
+  owners.forEach(o => fetchDetail(leagueId, o).catch(() => {}));
+}
 async function toggleDetail(tr, leagueId) {
   const open = tr.nextElementSibling;
   if (open && open.classList.contains("detail")) { open.remove(); return; }
@@ -284,14 +316,7 @@ async function toggleDetail(tr, leagueId) {
   tr.after(row);
   const owner = tr.dataset.owner;
   try {
-    const key = leagueId + "/" + owner;
-    if (!detailCache[key]) {
-      const res = await fetch(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}`,
-                              {headers: hdrs()});
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      detailCache[key] = await res.json();
-    }
-    const d = detailCache[key];
+    const d = await fetchDetail(leagueId, owner);
     // Color IS the runway, anchored to the analysis' own constants rather than an
     // arbitrary ramp: red at the cliff (0), amber at exactly MIN_MEANINGFUL_RUNWAY
     // (2 yrs - the buyer's two-season horizon, so amber means "inside the sell
@@ -317,8 +342,8 @@ async function toggleDetail(tr, leagueId) {
       }
       return `hsl(${Math.round(10 + 30 * (1 + y / tail))}, 65%, 55%)`;
     };
-    const group = (title, rows, heads = ["now", "dyn", "age"]) =>
-      `<div class="pgroup"><div class="ptitle">${title}</div>` +
+    const group = (title, rows, heads = ["now", "dyn", "age"], cls = "") =>
+      `<div class="pgroup${cls}"><div class="ptitle">${title}</div>` +
       `<div class="prow phead"><span></span><span class="pv">${heads[0]}</span>` +
       `<span class="pv">${heads[1]}</span><span class="pa">${heads[2]}</span></div>` +
       rows.map(p => `<div class="prow${p.starter ? " st" : ""}">` +
@@ -327,14 +352,30 @@ async function toggleDetail(tr, leagueId) {
         `<span class="pv">${(p.value || 0).toLocaleString()}</span>` +
         `<span class="pa" style="color:${runwayColor(p, title)}">` +
         `${p.age != null ? p.age.toFixed(1) : ""}</span></div>`).join("") + `</div>`;
+    // One row per draft season, not per pick - 21 single-pick lines was a wall that
+    // pushed the legend off-screen, and every 2027 1st carries the same generic value
+    // anyway, so listing four of them said nothing four times.
+    const bySeason = {};
+    d.picks.forEach(p => {
+      const [season, round] = [p.pick.split(" ")[0], p.pick.split(" ").slice(1).join(" ")];
+      const s = bySeason[season] = bySeason[season] || {rounds: {}, total: 0};
+      s.rounds[round] = (s.rounds[round] || 0) + 1;
+      s.total += p.value || 0;
+    });
     const picksHtml = d.picks.length
-      ? group("Picks", d.picks.map(p => ({name: p.pick, value: p.value})), ["", "value", ""])
+      ? group("Picks", Object.keys(bySeason).sort().map(season => {
+          const s = bySeason[season];
+          const parts = Object.keys(s.rounds).sort((a, b) => parseInt(a) - parseInt(b))
+            .map(r => r + (s.rounds[r] > 1 ? "×" + s.rounds[r] : ""));
+          return {name: season + " — " + parts.join(" · "), value: s.total};
+        }), ["", "total", ""], " picks")
       : "";
     row.innerHTML = `<td colspan="7">` +
       `<div class="cs" style="margin-bottom:6px"><strong>${d.window}${d.flavor !== d.window ? " · " + d.flavor : ""}</strong>` +
       `${d.flavor_note ? " — " + d.flavor_note : ""}</div>` +
       (d.clock_mismatch_note
-        ? `<div class="cs warn" style="margin-bottom:8px">${d.clock_mismatch_note}</div>` : "") +
+        ? `<div class="cs warn" style="margin-bottom:8px"><strong>⚑ extra flag — aging core:</strong> ` +
+          `${d.clock_mismatch_note}</div>` : "") +
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}${picksHtml}</div>` +
       `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--ok)">▸</span>` +
@@ -387,9 +428,13 @@ async function loadLeague(id) {
         ? "1sts: " + Object.entries(fc).map(([s, n]) =>
             "'" + String(s).slice(2) + (n > 1 ? "×" + n : "")).join(", ")
         : "no future 1sts";
+      // Team names are league-member-typed text going into HTML - escape them.
+      const tn = t.team_name
+        ? ` <span class="cs" style="font-weight:400">· ${t.team_name.replace(/[&<>"]/g,
+            c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}</span>` : "";
       return `<tr class="team" data-owner="${t.owner}">
         <td class="rk">${t.rank}</td>
-        <td class="who">${t.owner}<div class="cs">${flags}</div></td>
+        <td class="who">${t.owner}${tn}<div class="cs">${flags}</div></td>
         <td><span class="tag ${t.window}">${t.window}</span></td>
         <td class="cs">${t.starting_production.toLocaleString()}<div class="cs">${t.pct_of_best}% of best · ${t.ascending_pct}%asc / ${t.declining_pct}%dec</div></td>
         <td class="cs">${t.starter_value.toLocaleString()}<div class="cs">${firsts}</div></td>
@@ -410,7 +455,10 @@ async function loadLeague(id) {
       tr.classList.add("mine");
       showChips(myTeam);
       $("q").placeholder = `ask anything about ${myTeam} or the league…`;
+      showAskContext();
     };
+    showAskContext();
+    prefetchDetails(id, d.teams.map(t => t.owner));
     document.querySelectorAll("tr.team").forEach(tr => {
       // Click = select for asking AND toggle the expanded roster. Deterministic data
       // rendered directly, same doctrine as the table itself.
@@ -427,7 +475,7 @@ async function loadLeague(id) {
     $("overview").innerHTML = `<div class="empty warn">Failed to load: ${e}</div>`;
   }
 }
-$("load").onclick = () => loadLeague($("league").value.trim());
+$("load").onclick = () => { currentLeagueName = null; loadLeague($("league").value.trim()); };
 
 // ---- minimal markdown: the model answers in markdown and raw ## / ** looked bad ----
 // Tables are handled because the model reaches for them constantly on this data (offer
@@ -480,7 +528,15 @@ const HISTORY_MAX = 30;
 // used a bare URL, so the crash lived in production only.
 const savedHistory = () => JSON.parse(localStorage.getItem("ff_history") || "[]");
 const remember = entry => localStorage.setItem(
-  "ff_history", JSON.stringify([...savedHistory(), entry].slice(-HISTORY_MAX)));
+  "ff_history", JSON.stringify([...savedHistory(), {...entry, at: Date.now()}].slice(-HISTORY_MAX)));
+// A day-old answer reappearing unlabelled reads as "why is this still here?" -
+// restore recent history (it's genuinely the same conversation), expire the rest.
+const HISTORY_TTL_MS = 24 * 3600 * 1000;
+const pruneHistory = () => {
+  const kept = savedHistory().filter(h => h.at && Date.now() - h.at < HISTORY_TTL_MS);
+  localStorage.setItem("ff_history", JSON.stringify(kept));
+  return kept;
+};
 
 $("reset").onclick = () => {
   sessionId = crypto.randomUUID();
@@ -647,7 +703,14 @@ $("f").onsubmit = async e => {
 // go and collect the answer: the server finished it regardless (measured), so the only
 // thing that was ever lost is the delivery.
 (async () => {
-  const past = savedHistory();
+  const past = pruneHistory();
+  if (past.length) {
+    // Restored messages must announce themselves - an unlabelled old answer looks
+    // like the page never finished with it.
+    add(`<p class="cs">↺ picking up your conversation from earlier — the assistant still ` +
+        `remembers it (unless an answer below says otherwise). ` +
+        `"new conversation" starts clean.</p>`);
+  }
   for (const h of past) {
     add(`<p>${h.typed.replace(/</g, "&lt;")}</p>`, "me");
     renderAnswer(add(""), h.answer, h.question);
