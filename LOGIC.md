@@ -1063,6 +1063,12 @@ plus a sold-own-next-1st flag, and the Dynasty column shows starter dynasty valu
 the actual future firsts held ("1sts: '27×2, '28") - the detail behind the percentage,
 already computed inside classify_league and previously discarded after summing.
 
+Clicking a team expands its full roster inline - position groups with dynasty values
+and ages (ascending green, declining red), cornerstones starred, projected starters
+bold, the picks with their market prices, and the clock-mismatch warning leading when
+it exists. One deterministic fetch per team, cached client-side - the same
+no-tokens-to-recite-a-roster doctrine as the table itself.
+
 The table's "Core" column merges cornerstones with `win_now_core`, cornerstones in
 bold. Cornerstones alone made the column lie by omission: a roster showed only
 "Lamar" while holding CeeDee Lamb, because Lamb misses the tag on the CLOCK, not on

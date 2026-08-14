@@ -173,6 +173,46 @@ def league_overview(league_id: str) -> dict:
     }
 
 
+@app.get("/api/league/{league_id}/team/{owner}", dependencies=[Depends(require_key)])
+def team_detail(league_id: str, owner: str) -> dict:
+    """One team expanded: full roster by position with values/ages/buckets, the picks
+    with their market prices, and the team-level reads (window, clock mismatch).
+    Deterministic and rendered directly by the UI, same reasoning as the league table -
+    the analysis already knows all of it, so no tokens are spent reciting a roster."""
+    from analysis import roster_detail as rd, team_values
+    from analysis.league import context
+    from sources import fantasycalc
+
+    detail = rd.get_roster_rows(league_id, owner)
+    t = next(t for t in team_state.classify_league(league_id)
+             if t["owner"] == detail["owner"])
+    corner = {e["name"] for e in t["cornerstones"]}
+
+    by_pos: dict[str, list] = {}
+    for r in detail["rows"]:
+        by_pos.setdefault(r["position"], []).append({
+            "name": r["name"], "value": r["value"], "age": r["age"],
+            "bucket": r["bucket"], "starter": r["lineup_role"] == "starter",
+            "cornerstone": r["name"] in corner,
+        })
+    for rows in by_pos.values():
+        rows.sort(key=lambda x: -(x["value"] or 0))
+
+    ctx = context(league_id)
+    pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.fmt["num_teams"],
+                                              ctx.fmt["ppr"], ctx.fmt["is_dynasty"])
+    picks = team_values.owned_picks(league_id, int(ctx.league["season"]),
+                                    ctx.league["settings"]["draft_rounds"],
+                                    [r["roster_id"] for r in ctx.rosters], pick_values)
+    return {
+        "owner": detail["owner"], "window": t["window"], "flavor": t["flavor"],
+        "clock_mismatch_note": t.get("clock_mismatch_note"),
+        "players": by_pos,
+        "picks": [{"pick": p["pick"], "value": p["value"]}
+                  for p in picks.get(t["roster_id"], [])],
+    }
+
+
 @app.get("/sessions", dependencies=[Depends(require_key)])
 def session_status() -> dict:
     """Visible so session count/idle time can be checked against the memory ceiling
