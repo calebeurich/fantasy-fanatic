@@ -312,7 +312,7 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
                     f"({entry['years_to_decline']} years) keeps the tag off. The market "
                     f"has not discounted the remaining years yet - that is exactly what "
                     f"makes now the selling window, and the ask is a cornerstone's ask.")
-            elif info["value"] < threshold:
+            elif info["value"] < threshold and (entry["years_to_decline"] or 0) < MIN_MEANINGFUL_RUNWAY:
                 entry["price_note"] = (
                     f"production-priced: his {entry['redraft_value']:,} this-season value "
                     f"clears the league's top-10% production bar while his dynasty price "
@@ -320,6 +320,17 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
                     f"discounted the future, so whoever buys him is buying this season "
                     f"only. His market is any team whose path says buy, and it peaks at "
                     f"the deadline.")
+            elif info["value"] < threshold:
+                # The Goff shape: top-10% production, discount price, YEARS of runway.
+                # The market doubts the asset, not this season - cheap real production
+                # that is fine to hold through a wait, not a rental.
+                entry["price_note"] = (
+                    f"production-priced with runway: his {entry['redraft_value']:,} "
+                    f"this-season value clears the league's top-10% production bar at a "
+                    f"discount dynasty price ({entry['value']:,}), with "
+                    f"{entry['years_to_decline']} years before his decline - the market "
+                    f"doubts the asset, not this season. Cheap production that is fine "
+                    f"to hold; nothing here forces a sale.")
             win_now_core.append(entry)
             sellable.append(entry)  # valuable but short - still sellable, just pricier
         else:
@@ -333,10 +344,13 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
     # short-runway premium piece is holding seasons it isn't built for, and the answer
     # to "what window am I in" kept describing the young core without naming the one
     # starter whose clock disagrees with it (live: a 45%-ascending Middling roster
-    # starting a 0.1-year RB the market still prices as a cornerstone). win_now_core
-    # is already exactly the value-cleared short-runway set; this is its starters,
-    # on rosters whose tilt makes the mismatch real.
-    clock_mismatch = ([e for e in win_now_core if e["is_starter"]]
+    # starting a 0.1-year RB the market still prices as a cornerstone). The runway
+    # check is explicit, NOT inherited from win_now_core membership: since core went
+    # either-currency, win_now_core also holds long-runway production-priced pieces
+    # (a 31.9 pocket QB with 5.1 years was flagged as "seasons he won't be part of" -
+    # he will be part of all of them; he is fine for the wait).
+    clock_mismatch = ([e for e in win_now_core if e["is_starter"]
+                       and (e["years_to_decline"] or 0) < MIN_MEANINGFUL_RUNWAY]
                       if asc_pct > dec_pct else [])
 
     # The clock can be POSITIONAL: a "no clock" roster whose entire RB room expires
