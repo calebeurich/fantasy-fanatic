@@ -2305,3 +2305,27 @@ def test_a_falling_rebuild_gets_the_deadline_clause_not_a_new_flavor():
     assert "conversion has a deadline" in falling
     assert "conversion has a deadline" not in steady, (
         "a steady rebuild is stalled, not on fire - jq at 18/21 stays un-alarmed")
+
+
+def test_an_ascending_roster_starting_a_final_year_piece_gets_the_clock_mismatch():
+    """The window answer kept describing a rising team's young core without naming the
+    one starter whose clock disagrees with it (live: a 45%-ascending roster starting a
+    0.1-year RB the market still prices as a cornerstone). _cliff_case pointed at one's
+    own roster: win_now_core's starters, on a tilt that makes the mismatch real."""
+    players = {
+        "kid": {"name": "Kid", "position": "WR", "value": 6000, "redraft_value": 6000, "age": 22},
+        "cook": {"name": "OldCook", "position": "RB", "value": 5000, "redraft_value": 2000, "age": 27.4},
+        "role": {"name": "Role", "position": "TE", "value": 300, "redraft_value": 200, "age": 25},
+    }
+    out = team_state.classify({"players": list(players)}, players,
+                              threshold=4500, starter_ids={"kid", "cook"})
+    assert [e["name"] for e in out["clock_mismatch"]] == ["OldCook"]
+    assert "Built for later, starting now" in out["clock_mismatch_note"]
+    assert "natural sells" in out["clock_mismatch_note"]
+
+    # Same roster, declining tilt: no mismatch - an aging team starting aging pieces
+    # is consistent, not conflicted.
+    old = {**players, "kid": {**players["kid"], "age": 31}}
+    out2 = team_state.classify({"players": list(old)}, old,
+                               threshold=4500, starter_ids={"kid", "cook"})
+    assert out2["clock_mismatch"] == [] and out2["clock_mismatch_note"] is None

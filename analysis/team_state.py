@@ -222,7 +222,28 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
     tradeable_surplus.sort(key=lambda e: -e["value"])
     sellable.sort(key=lambda e: -e["value"])
 
-    return {"starting_production": round(production),
+    # `_cliff_case` pointed at one's own roster: an ascending-tilt team STARTING a
+    # short-runway premium piece is holding seasons it isn't built for, and the answer
+    # to "what window am I in" kept describing the young core without naming the one
+    # starter whose clock disagrees with it (live: a 45%-ascending Middling roster
+    # starting a 0.1-year RB the market still prices as a cornerstone). win_now_core
+    # is already exactly the value-cleared short-runway set; this is its starters,
+    # on rosters whose tilt makes the mismatch real.
+    clock_mismatch = ([e for e in win_now_core if e["is_starter"]]
+                      if asc_pct > dec_pct else [])
+    mismatch_note = (
+        "Built for later, starting now: " +
+        ", ".join(f"{e['name']} ({e['years_to_decline']} yrs of runway)"
+                  for e in clock_mismatch) +
+        f" - this roster's tilt is ascending ({round(asc_pct)}% vs {round(dec_pct)}%), "
+        f"so it is accumulating seasons these starters won't be part of. That makes "
+        f"them this team's natural sells while their price still says starter - "
+        f"raise this whenever describing the window, not only when asked about "
+        f"selling." if clock_mismatch else None)
+
+    return {"clock_mismatch": clock_mismatch,
+            "clock_mismatch_note": mismatch_note,
+            "starting_production": round(production),
             "trajectory_score": round(asc_pct - dec_pct),
             "ascending_pct": round(asc_pct), "declining_pct": round(dec_pct),
             "cornerstones": cornerstones, "win_now_core": win_now_core,

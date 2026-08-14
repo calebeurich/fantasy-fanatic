@@ -233,6 +233,16 @@ entry. It landed as a clause on the Rebuild window_note instead ("conversion has
 deadline, not just a direction"), gated by the same falling tertile Push uses - the
 existing instrument, no new threshold.
 
+**Clock mismatch** (`clock_mismatch` + note, per team): `_cliff_case` pointed at
+one's own roster - an ascending-tilt team STARTING a short-runway premium piece
+(win_now_core's starters) is holding seasons it isn't built for. Exists because the
+window answer kept describing a rising team's young core without naming the one
+starter whose clock disagrees with it (live: a 45%-ascending Middling roster starting
+a 0.1-year RB the market still prices as a cornerstone - the textbook sell, invisible
+to the reader). The note tells the model to raise it whenever describing the window,
+not only when asked about selling. Gated on tilt: an aging team starting aging pieces
+is consistent, not conflicted.
+
 | state | flavors | wants | can spare |
 |---|---|---|---|
 | **Contending** | `Push` (clock) / `Contend` (none) | production now | future years |
