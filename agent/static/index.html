@@ -64,7 +64,10 @@
   /* The production-priced core line: pieces whose price is what they do NOW
      (Henry, JT, Kelce shapes) - visually the "aging but load-bearing" row. */
   .pp{color:hsl(25,65%,55%)}
-  .need{display:inline-block;padding:1px 6px;border-radius:5px;font-size:11.5px;margin-right:4px}
+  /* One chip per line, always - inline flow let wide rows pair chips while narrow
+     ones stacked them, and the mix read ragged. */
+  .need{display:block;width:max-content;padding:1px 6px;border-radius:5px;
+        font-size:11.5px;margin:2px 0;white-space:nowrap}
   .critical{background:rgba(248,113,113,.15);color:var(--crit)}
   .weak{background:rgba(251,191,36,.13);color:var(--thin)}
   .cs{color:var(--muted);font-size:12.5px}
@@ -444,9 +447,10 @@ async function loadLeague(id) {
             "'" + String(s).slice(2) + (n > 1 ? "×" + n : "")).join(", ")
         : "no future 1sts";
       // Team names are league-member-typed text going into HTML - escape them.
+      // Own line, not appended: inline it wrapped mid-name into a ragged cell.
       const tn = t.team_name
-        ? ` <span class="cs" style="font-weight:400">· ${t.team_name.replace(/[&<>"]/g,
-            c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}</span>` : "";
+        ? `<div class="cs" style="font-weight:400;max-width:190px;overflow:hidden;text-overflow:ellipsis">${t.team_name.replace(/[&<>"]/g,
+            c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}</div>` : "";
       // The chip is exactly tier 1 x tier 2 - a symmetric six-cell grid. Clock and
       // lean are the hover and the expanded view's business.
       const chip = t.alignment === "unaligned"
@@ -455,9 +459,9 @@ async function loadLeague(id) {
       const heat = t.alignment === "unaligned" ? "hot" : "cool";
       return `<tr class="team" data-owner="${t.owner}">
         <td class="rk">${t.rank}</td>
-        <td class="who">${t.owner}${tn}<div class="cs">${flags}</div></td>
+        <td class="who" style="white-space:nowrap">${t.owner}${tn}<div class="cs">${flags}</div></td>
         <td><span class="tag ${chip[0]} ${heat}" title="${t.path_reason.replace(/"/g, "&quot;")}">${chip[1]}</span></td>
-        <td class="cs">${t.starting_production.toLocaleString()}
+        <td class="cs" style="white-space:nowrap">${t.starting_production.toLocaleString()}
           <div class="cs">${t.pct_of_best}% of best</div>
           <div class="cs">${t.ascending_pct}% asc · ${t.declining_pct}% dec</div></td>
         <td class="cs">${t.starter_value.toLocaleString()}<div class="cs">${firsts}</div></td>
