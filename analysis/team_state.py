@@ -283,9 +283,18 @@ def window_note(window: str, contention_rank: int, num_teams: int, pct_of_best: 
         lead = MIDDLING_RISING
     else:
         lead = WINDOW_NOTE[window]
+    # The mirror of Push's clock, as a clause rather than a flavor: a rebuilder in the
+    # league's falling tertile is holding value that is aging out - the SELLING has a
+    # deadline. Not its own flavor because it changes the tempo of "convert", never
+    # the verb - and the per-piece runway on every sell entry already prices the
+    # urgency at the right resolution.
+    deadline = (" The value still here is aging out faster than this league's - "
+                "conversion has a deadline, not just a direction."
+                if window == "Rebuild" and trajectory == "falling" else "")
     return (f"{lead} Current starting production ranks {contention_rank} of "
             f"{num_teams} ({pct_of_best}% of the league's best lineup); {asc_pct}% of that "
-            f"production comes from ascending players and {dec_pct}% from declining ones. "
+            f"production comes from ascending players and {dec_pct}% from declining ones."
+            f"{deadline} "
             f"Both are roster-composition measures - there are no wins or points scored "
             f"behind them.")
 

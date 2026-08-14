@@ -221,6 +221,18 @@ mid-pack), and **trajectory** = ascending minus declining share of that producti
 on the growth being measured). This replaced an age-only model plus two patch flags that
 were crude proxies for the missing contention axis.
 
+**The window/flavor algebra** (settled 2026-08-14, testing "firesale" as a candidate
+flavor): the STATE answers "what game am I playing", the FLAVOR answers "what is my
+tempo or leverage in that game", and a flavor earns existence only if it changes the
+VERB of the advice, not the adverb. Push vs Contend changes the verb (pay the premium
+now vs never pay one) - which is why the clock is promoted into the window tag itself.
+"Firesale" (a rebuilder in the falling tertile, holding value that is aging out) fails
+the test: stalled says *sell*, firesale says *sell faster* - same verb - and the
+urgency already lives at the right resolution, the per-piece runway on every sell
+entry. It landed as a clause on the Rebuild window_note instead ("conversion has a
+deadline, not just a direction"), gated by the same falling tertile Push uses - the
+existing instrument, no new threshold.
+
 | state | flavors | wants | can spare |
 |---|---|---|---|
 | **Contending** | `Push` (clock) / `Contend` (none) | production now | future years |

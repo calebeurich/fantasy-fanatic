@@ -2294,3 +2294,14 @@ def test_a_data_gap_reaches_the_tool_result_not_only_stderr():
     assert "say this in your answer" in note, (
         "the note is addressed to the model, because the reader can see it no other way")
     degraded._MISSING.clear()
+
+
+def test_a_falling_rebuild_gets_the_deadline_clause_not_a_new_flavor():
+    """The mirror of Push's clock: a rebuilder in the falling tertile holds value that
+    is aging out, so conversion has a deadline. A clause, not a flavor - it changes the
+    tempo of "convert", never the verb (LOGIC.md, "The window/flavor algebra")."""
+    falling = team_state.window_note("Rebuild", 11, 12, 40, 10, 30, trajectory="falling")
+    steady = team_state.window_note("Rebuild", 11, 12, 40, 18, 21, trajectory="steady")
+    assert "conversion has a deadline" in falling
+    assert "conversion has a deadline" not in steady, (
+        "a steady rebuild is stalled, not on fire - jq at 18/21 stays un-alarmed")
