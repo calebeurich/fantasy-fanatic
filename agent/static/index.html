@@ -274,12 +274,17 @@ async function loadLeague(id) {
     const rows = d.teams.map(t => {
       const needs = Object.entries(t.needs)
         .map(([pos, n]) => `<span class="need ${n.level}" title="${n.note}">${pos} ${n.level}</span>`).join("") || "—";
-      // The flavor word beats the trajectory when it says something the window and
-      // trajectory don't - "steady" about a Rebuild read as comfort when the flavor
-      // was "stalled", which is the honest word.
+      // Two labels, matching how a manager thinks: the window (the big tag) and one
+      // shade word. The contention tier ("contender"/"also-ran") was a third
+      // vocabulary saying what the rank order and %-of-best already show - showing
+      // "Push" AND "contender" on one row read as two systems disagreeing about one
+      // fact. The flavor word beats the trajectory when it says something the window
+      // and trajectory don't - "steady" about a Rebuild read as comfort when the
+      // flavor was "stalled".
       const shade = (t.flavor && t.flavor !== t.window && t.flavor !== t.trajectory)
         ? t.flavor : t.trajectory;
-      const flags = [`${t.contention} · ${shade}`,
+      const flags = [shade,
+                     t.pick_share > 0 ? `${t.pick_share}% in picks` : null,
                      !t.owns_next_first ? "no 1st" : null].filter(Boolean).join(" · ");
       return `<tr class="team" data-owner="${t.owner}">
         <td class="rk">${t.rank}</td>

@@ -1032,6 +1032,13 @@ already computes it exactly, and recitation is where confabulation creeps in. Th
 is reserved for reasoning. Client-generated session ids, so an expired session degrades
 to a new conversation rather than an error.
 
+Each row carries two labels, matching how a manager thinks: the window tag and one
+shade word (flavor when it beats the trajectory - "stalled" over "steady"). The
+contention tier was a third vocabulary restating what rank order and %-of-best
+already show, and reading "Push" beside "contender" looked like two systems
+disagreeing about one fact. Pick capital surfaces as `pick_share` ("19% in picks")
+plus the no-1st flag - reported, not weighted, same reasoning as the field itself.
+
 The table's "Core" column merges cornerstones with `win_now_core`, cornerstones in
 bold. Cornerstones alone made the column lie by omission: a roster showed only
 "Lamar" while holding CeeDee Lamb, because Lamb misses the tag on the CLOCK, not on
