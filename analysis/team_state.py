@@ -168,7 +168,8 @@ def _aging_clause(aging_pct: float) -> str:
 
 
 def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: float,
-                  assets_bottom: bool, aging_pct: float = 0) -> tuple[str, str, str]:
+                  assets_bottom: bool, aging_pct: float = 0,
+                  convertible: bool = False) -> tuple[str, str, str]:
     """(alignment, path, reason) for one team. Production tilt for the players, pick
     share as its own signal - measuring the sides in dynasty value instead washed out
     completely (44 of 46 teams read 'arriving', the market's youth premium reported
@@ -205,7 +206,11 @@ def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: f
             return ("unaligned", "decide",
                     f"{why} - both paths are live and the middle rank gives no lean, "
                     "so letting the season pick the direction is legitimate")
-        if picks_heavy and not arriving:
+        # `convertible` is the measured war-chest concept (top-third assets under a
+        # weak lineup, small-league guarded) - a second pick-share bar here once let
+        # a convertible team read "aligned - wait" while leverage called it an
+        # unspent option (Vicdank: assets #3 on rank 7, but 22% picks missed the bar).
+        if convertible and not arriving:
             return ("unaligned", "decide",
                     "an unspent war chest on an undecided roster - the option is real "
                     "and unexercised, and the middle rank gives no lean")
@@ -780,7 +785,8 @@ def classify_league(league_id: str) -> list[dict]:
         row["flavor_note"] = FLAVOR_NOTE[row["flavor"]]
         row["alignment"], row["path"], row["path_reason"] = alignment_for(
             contention, row["ascending_pct"], row["declining_pct"], row["pick_share"],
-            _assets_bottom(row["asset_rank"], num_teams), row["expiring_pct"])
+            _assets_bottom(row["asset_rank"], num_teams), row["expiring_pct"],
+            convertible=(row["leverage"] == "convertible"))
         # Unaligned rows carry their specifics BY NAME - telling them how to become
         # aligned is the whole point of the bright chip. Aligned rows stay brief;
         # their specifics are the agent's job.

@@ -258,11 +258,17 @@ lean push; rebuilder barbell → lean pivot; middle rank → genuinely no lean, 
 season decide" - the old Middling doctrine falling out of the structure). Signals are
 the existing instruments, no scale blending: production tilt for the players (a
 dynasty-value version was tried and washed out - 44 of 46 teams read "arriving"
-because dynasty value is future-weighted by construction), `pick_share` for the war
-chest (>= PICKS_HEAVY_PCT 25 - picks are pure arriving-side value: no roster spot, no
-injury, and the year ladder prices their appreciation), the `assets_bottom` guard on
-rebuilds (an ascending tilt that isn't accumulating value is not a working rebuild),
-and ARRIVING_MARGIN_PCT (15) so "arriving" means a real tilt, not 25/20 noise. A
+because dynasty value is future-weighted by construction), `leverage == convertible`
+for the middle rank's unspent-option case (the MEASURED war-chest concept; a second
+pick-share bar here once let Vicdank read "aligned - wait" at assets #3 on rank 7
+because 22% picks missed an arbitrary 25 - same concept, two instruments, caught in
+the 2026-08-15 audit), `pick_share >= PICKS_HEAVY_PCT 25` only where picks
+specifically are the accumulation currency (a rebuild counts a real pick pile as
+arriving - no roster spot, no injury, the year ladder prices their appreciation),
+the `assets_bottom` guard on rebuilds (an ascending tilt that isn't accumulating
+value is not a working rebuild), and ARRIVING_MARGIN_PCT (15) so "arriving" means a
+real tilt, not 25/20 noise. An arriving-tilt convertible stays ALIGNED (bergenjay:
+war chest plus an incoming wave is a plan, not an undecided option). A
 young CONTENDER is aligned, not a pending decision: an ascending starter delivers
 now AND later, so "stack or convert - decide" advice there would tell the best spot
 on the board to unwind the point of competing (the owner's RJL test: two young stud
