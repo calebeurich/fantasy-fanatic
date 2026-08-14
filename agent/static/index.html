@@ -32,6 +32,12 @@
   button.primary{background:var(--ok);color:#06240f;font-weight:600;border-color:transparent}
   button:disabled{opacity:.45;cursor:default}
   button.ghost{background:transparent;color:var(--muted);font-size:13px;padding:6px 10px}
+  /* Wide tables scroll inside their own box on a phone instead of being clipped -
+     a tester reported the league chart was half-invisible on mobile with no way
+     to reach the rest. */
+  #overview{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #overview table{min-width:640px}
+  .msg{overflow-x:auto}
   table{width:100%;border-collapse:collapse;font-size:14px}
   th{text-align:left;font-weight:500;color:var(--dim);font-size:11.5px;
      text-transform:uppercase;letter-spacing:.6px;padding:8px 12px;border-bottom:1px solid var(--line)}

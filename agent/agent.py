@@ -462,7 +462,7 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
     all_tool_calls: list[dict] = []
     all_tool_results: list[dict] = []
     total_turns, retries, result = 0, 0, None
-    outcome, error_message = "ok", None
+    outcome, error_message, answer_text = "ok", None, None
     try:
         # A caller may hand in a live client (agent/sessions.py does, to keep a
         # conversation - and both the prompt cache and the MCP data cache - warm across
@@ -541,8 +541,9 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
                 need_violations = _need_claim_violations(turn["text"], flagged,
                                                          league_owner_names)
 
+        answer_text = turn["text"]
         return {
-            "text": turn["text"],
+            "text": answer_text,
             "tool_calls": all_tool_calls,
             "num_turns": total_turns,
             "cost_usd": result.total_cost_usd if result else None,
@@ -554,6 +555,9 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
     finally:
         observability.log_run({
             "question": question[:300],
+            # Enough of the answer to audit a bad claim after the fact - the Spoto
+            # incident was undiagnosable because only the question survived.
+            "answer": answer_text[:600] if answer_text else None,
             "outcome": outcome,
             "error": error_message,
             "latency_seconds": round(time.monotonic() - start, 2),
