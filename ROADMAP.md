@@ -66,8 +66,13 @@ eventually to learn from.
 - **DynastyProcess values archive** (verified): weekly per-player 1QB/2QB values
   with scrape_date, in git history back years — the retro point-in-time value
   source for historical trades. **GPL-3.0: fetch at analysis time, never vendor
-  the CSVs into this repo.** Coarser format-conditioning than FC (no
-  teams/ppr axis) — acceptable, FC's own ppr effect measured at ~0.6% on RBs.
+  the CSVs into this repo.** Coarser format-conditioning than FC (only a
+  1QB/2QB axis; no teams/ppr) — measured acceptable: on FC's side both missing
+  axes are flat per-position scalars (ppr ~0.6-2%; team count ≤3.2%, worst
+  case QBs in 10-team, near-zero spread within position), so they cannot
+  reorder players within a position and are absorbed by the per-position
+  calibration. The mesh comparison below matched the one axis DP has
+  (value_2qb vs numQbs=2).
   **Meshes with FC (measured 2026-08-14, same-day scrapes):** FC's universe is
   a strict subset of DP's (397/399 join by name+pos, FC's entire top-200
   covered). But the headline Spearman 0.968 is tail-flattered — stratified:
