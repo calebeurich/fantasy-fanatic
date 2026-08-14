@@ -56,7 +56,7 @@
   .p-buy{background:rgba(52,211,153,.15);color:#34d399}
   .p-wait{background:rgba(96,165,250,.15);color:var(--mid)}
   .p-build{background:rgba(167,139,250,.15);color:var(--rebuild)}
-  .p-push{background:rgba(245,158,11,.22);color:var(--win)}
+  .p-press{background:rgba(245,158,11,.22);color:var(--win)}
   .p-decide{background:rgba(251,146,60,.22);color:#fdba74}
   .p-pivot{background:rgba(248,113,113,.2);color:var(--crit)}
   .tag.cool{opacity:.8}
@@ -450,7 +450,7 @@ async function loadLeague(id) {
       // The chip is exactly tier 1 x tier 2 - a symmetric six-cell grid. Clock and
       // lean are the hover and the expanded view's business.
       const chip = t.alignment === "unaligned"
-        ? {contender: ["p-push", "push"], fringe: ["p-decide", "decide"]}[t.contention] || ["p-pivot", "pivot"]
+        ? {contender: ["p-press", "press"], fringe: ["p-decide", "decide"]}[t.contention] || ["p-pivot", "pivot"]
         : {contender: ["p-buy", "buy"], fringe: ["p-wait", "wait"]}[t.contention] || ["p-build", "build"];
       const heat = t.alignment === "unaligned" ? "hot" : "cool";
       return `<tr class="team" data-owner="${t.owner}">
@@ -477,7 +477,7 @@ async function loadLeague(id) {
         <span class="tag p-buy cool">buy</span> contending and it fits — add production; premiums only if you're on a clock (hover says) &nbsp;
         <span class="tag p-wait cool">wait</span> middle and patient — waiting costs nothing &nbsp;
         <span class="tag p-build cool">build</span> rebuild working — keep stacking youth and picks &nbsp;
-        <span class="tag p-push hot">push</span> contender carried by aging pieces — convert future into now, or decide fast &nbsp;
+        <span class="tag p-press hot">press</span> contender carried by aging pieces — convert future into now, or decide fast &nbsp;
         <span class="tag p-decide hot">decide</span> middle with a split roster — push or pivot both live, season decides &nbsp;
         <span class="tag p-pivot hot">pivot</span> bottom rank, not accumulating — sell aging value, commit to the rebuild
       </div>
