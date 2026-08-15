@@ -4,8 +4,9 @@ third state".
 """
 
 from .. import team_state, roster_needs
-from ..team_values import age_bucket, pick_equivalent
+from ..team_values import age_bucket, pick_equivalent, years_to_decline
 from .board import (Board, CORNERSTONE_ASK, MIGHT_SELL, NOISE_RETAINED, _best_chip,
+                    _rental,
                     _buy_friction, _friction, _others, _sells_him, _with_trade_note)
 from .counterparty import PERSUASION_NOTE, _counterparty_fit, _persuasion_targets
 
@@ -268,9 +269,17 @@ def _depth_adds(me_roster: dict, board: Board, filling_lineup: bool,
             if not info or not info.get("value") or info["name"] in already:
                 continue
             entry = {**info, "bucket": age_bucket(info["position"], info.get("age"),
-                                                  info.get("usage_role"))}
+                                                  info.get("usage_role")),
+                     "years_to_decline": years_to_decline(info["position"],
+                                                          info.get("age"),
+                                                          info.get("usage_role"))}
             if (info.get(metric) or 0) >= bars[info["position"]]:
                 continue  # a real fix, not depth - belongs to the buy path
+            # The direction gate reaches the lottery tier too: a rebuild holds tickets
+            # with a future, not rentals - Kelce and Kirk Cousins were being offered
+            # to rebuilds as "cheap bodies" because these entries carried no runway.
+            if not filling_lineup and _rental(entry):
+                continue
             if not roster_needs.would_start_if_one_out(me_roster, ctx.players, player_id,
                                                       my_starters, ctx.lineup_dedicated,
                                                       ctx.lineup_flex):

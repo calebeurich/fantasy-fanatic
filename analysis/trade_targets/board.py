@@ -98,9 +98,12 @@ def MIGHT_SELL(window: str) -> bool:
 # nonsense by construction, and a labelled nonsense suggestion is still noise.
 def _rental(piece: dict) -> bool:
     """Value that is mostly this-season: a player inside the buyer's two-season bar.
-    Picks are never rentals - they are the purest future-weighted asset."""
+    Picks are never rentals - they are the purest future-weighted asset - and neither
+    is a piece with UNKNOWN runway (`is not None`, the same guard the pick-runway bug
+    needed: `None or 0` reads absence as a 0-year clock)."""
+    y = piece.get("years_to_decline")
     return (piece.get("position") != "PICK"
-            and (piece.get("years_to_decline") or 0) < MIN_MEANINGFUL_RUNWAY)
+            and y is not None and y < MIN_MEANINGFUL_RUNWAY)
 
 
 def acquires_by_default(window: str, piece: dict) -> bool:

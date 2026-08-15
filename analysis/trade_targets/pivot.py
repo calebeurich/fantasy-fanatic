@@ -177,7 +177,7 @@ def _pivot_path(me: dict, board: Board,
                                      trade_counts.get(other["owner_id"], 0), others_have_traded),
                      # Why the owner is a seller of youth is the same sentence for all of
                      # them, so it lives in ACQUIRE_NOTE; only what varies rides here.
-                     "seller_state": f"{other['state']}, not rising"}
+                     "seller_state": f"{other['window']}, not rising"}
             by_position.setdefault(player["position"], []).append(entry)
     acquire_targets = []
     for pos in sorted(by_position):
