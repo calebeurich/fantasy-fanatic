@@ -205,7 +205,8 @@ def get_roster_needs(league_id: str) -> dict:
 WIRE_BUDGET_CHARS = 36_000
 
 
-def _within_wire_limit(league_id: str, owner_name: str, max_per_position: int) -> dict:
+def _within_wire_limit(league_id: str, owner_name: str, max_per_position: int,
+                       stance: str = None) -> dict:
     """The full report if it fits, otherwise the same report with shorter lists.
 
     Shrinking `max_per_position` is the right lever because it is the one the tool
@@ -215,7 +216,7 @@ def _within_wire_limit(league_id: str, owner_name: str, max_per_position: int) -
     import json
 
     for attempt in range(max_per_position, 0, -1):
-        result = trade_targets.find_targets(league_id, owner_name, attempt)
+        result = trade_targets.find_targets(league_id, owner_name, attempt, stance=stance)
         if len(json.dumps(result)) <= WIRE_BUDGET_CHARS or attempt == 1:
             break
 
@@ -245,10 +246,17 @@ def _within_wire_limit(league_id: str, owner_name: str, max_per_position: int) -
 
 
 @mcp.tool()
-def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3) -> dict:
+def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3,
+                      stance: str = None) -> dict:
     """Trade recommendations for one team, shaped by its window (see get_team_state):
     buy blocks for Push/Contend, sell blocks for Rebuild, or BOTH (keyed push/pivot) for
     Middling.
+
+    `stance`: pass ONLY when the user declares their own direction ("I want to press
+    this season", "I'm selling") that disagrees with the team's label - one of
+    press/contend/buy/decide/wait/sell/build. The manager outranks the default: the
+    report runs their chosen side's paths, and `stance_note` says how to present the
+    choice next to the measured read. Never pass it on your own initiative.
 
     Every block ships with its own note ("..._note", plus per-entry fields like
     "cost_note", "why_they_might_listen", "their_reason", "starter_caveat", "friction").
@@ -274,7 +282,7 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     - These lists answer "who fits best", not "who is available": if the user asks about
       a SPECIFIC player who isn't in them, that absence is not a verdict - call
       get_player_outlook for him instead of declaring him untradeable."""
-    return _within_wire_limit(league_id, owner_name, max_per_position)
+    return _within_wire_limit(league_id, owner_name, max_per_position, stance)
 
 
 @mcp.tool()

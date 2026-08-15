@@ -89,10 +89,24 @@ def _my_offer_pool(me: dict, board: Board, needs: dict[str, dict],
         return covered.get(e["name"]) == 0 or (
             me.get("window") == "Push" and e["bucket"] == "ascending")
 
+    # The junk tier is cut (owner: "I don't think anyone cares about the sell list of
+    # Nailor, Washington or Dulcich at all"): an offer must be market-relevant in at
+    # least ONE currency - above the position's trade-value replacement, or carrying
+    # startable production (the Tony Pollard depth shape: cheap in dynasty, real this
+    # season). Below both bars is waiver fodder, and listing it wastes the reader.
+    start_bars = getattr(board.ctx, "start_thresholds", None)
+
+    def worth_offering(e):
+        if not start_bars:  # minimal test boards carry no lineup context
+            return True
+        return (e["value"] > thresholds[e["position"]]
+                or (e.get("redraft_value") or 0) >= start_bars.get(e["position"], 0))
+
     offers = [{**e, "lineup_cost": round(covered[e["name"]])} if e["name"] in covered else e
               for e in me["sellable"] + me["tradeable_surplus"]
               if offerable(e) and e["position"] not in needs
-              and team_state.clears_relevance_floor(e, thresholds)]
+              and team_state.clears_relevance_floor(e, thresholds)
+              and worth_offering(e)]
 
     for e in offers:
         # The same friction vocabulary the buy side uses, read from my side of the table.

@@ -55,11 +55,31 @@ MIDDLING_TIMING_NOTE = (
 
 
 def find_targets(league_id: str, owner_query: str,
-                 max_per_position: int = DEFAULT_MAX_PER_POSITION) -> dict:
+                 max_per_position: int = DEFAULT_MAX_PER_POSITION,
+                 stance: str | None = None) -> dict:
     board = build_board(league_id)
     ctx = board.ctx
 
     me = ctx.pick_owner(owner_query, board.states)
+
+    # The direction gate is a DEFAULT and the manager outranks it: the chip says what
+    # the position calls for, never what its manager is doing - so a manager who
+    # declares a direction ("the tool says I'm on the Middling cutoff, but I want to
+    # press this season") gets that side's full report. The measured read still rides
+    # in `me` and the note says both, so the answer can honestly disagree.
+    stance_note = None
+    if stance:
+        declared = {"press": "Push", "contend": "Push", "buy": "Push",
+                    "decide": "Middling", "wait": "Middling",
+                    "sell": "Rebuild", "build": "Rebuild", "rebuild": "Rebuild"}.get(stance.lower())
+        if declared and declared != me["window"]:
+            stance_note = (
+                f"MANAGER-DECLARED DIRECTION: this report runs the {declared}-side "
+                f"paths because the manager chose '{stance}', overriding the measured "
+                f"label ({me['window']} - {me.get('path', '')}). The measurements have "
+                f"not changed - state the declared direction as the manager's choice "
+                f"and note where the measured read would push back.")
+            me = {**me, "window": declared}
 
     # What each of my starters actually costs to lose after the lineup refills itself
     # (zero = the bench covers him for free), and who backfills - see buy._my_offer_pool.
@@ -175,24 +195,28 @@ def find_targets(league_id: str, owner_query: str,
                                     else DEPTH_NOTE)
         return result
 
+    stamped = (lambda r: {**r, "stance_note": stance_note} if stance_note else r)
+
     if me["window"] == "Rebuild":
-        return with_extras({"me": _me_summary(me), "mode": "rebuild",
+        return stamped(with_extras({"me": _me_summary(me), "mode": "rebuild",
                             **_pivot_path(me, board, stranded, my_roster=my_roster,
-                                          max_per_position=max_per_position)})
+                                          max_per_position=max_per_position)}))
 
     if me["window"] == "Middling":
         # Both directions are open, so show both - whichever makes sense usually depends
         # on how the season starts, which nothing here has yet.
         timing = (MIDDLING_TIMING_NOTE_RISING if me["trajectory"] == "rising"
                   else MIDDLING_TIMING_NOTE)
-        return with_extras({"me": _me_summary(me), "mode": "middling", "timing_note": timing,
+        return stamped(with_extras({"me": _me_summary(me), "mode": "middling", "timing_note": timing,
                 "push": _buy_path(me, board, max_per_position, my_picks, covered, backfills),
                 "pivot": _pivot_path(me, board, stranded, committed=False,
                                      my_roster=my_roster,
-                                     max_per_position=max_per_position)})
+                                     max_per_position=max_per_position)}))
 
     result = {"me": _me_summary(me), "mode": "buy",
               **_buy_path(me, board, max_per_position, my_picks, covered, backfills)}
+    if stance_note:
+        result["stance_note"] = stance_note
 
     result = with_extras(result)
     if stranded:

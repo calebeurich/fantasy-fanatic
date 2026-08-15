@@ -299,6 +299,24 @@ rental at a rebuilding counterparty. A rental = a player inside
 MIN_MEANINGFUL_RUNWAY; picks are never rentals. Contender/middle asker pools were
 already direction-correct by mode structure.
 
+**The stance override** (2026-08-15, from the spugz hypothetical: "the tool says I'm
+right on the cutoff of Middling, what if I actually want to press this season?"):
+the direction gate is a DEFAULT and the manager outranks it - the chip says what the
+position calls for, never what its manager is doing, and that cuts both ways.
+`find_targets(..., stance=)` accepts press/contend/buy/decide/wait/sell/build and
+runs the declared side's full paths regardless of label; `stance_note` instructs the
+model to present the choice as the manager's, next to the unchanged measured read.
+The agent passes it ONLY when the user declares a direction, never on its own.
+
+**The offer floor** (owner: "I don't think anyone cares about the sell list of
+Nailor, Washington or Dulcich at all"): an offer must be market-relevant in at least
+ONE currency - dynasty value above the position's trade-replacement bar, or redraft
+at/above the startable bar (the Tony Pollard shape: cheap in dynasty, real this
+season, a legitimate depth chip). Below both bars is waiver fodder and is cut from
+`my_offers` (and therefore from every `offer_any_one_of`). Depth-adds keep the
+production-body class for lineup-filling askers; the rebuild lottery tier already
+cuts rentals via the direction gate.
+
 **Payload prose obeys the tiers** (2026-08-15 agent audit, Caleb-triggered): the
 model reasons FROM the notes it is handed, so any note whose wording predates the
 tier structure can invert an answer. Three data-level rules from the audit: (1)
