@@ -172,11 +172,21 @@ def _buy_path(me: dict, board: Board, max_per_position: int,
         # A `weak` position has its slots filled - anyone who wouldn't displace the worst
         # starter is not a fix. Count-shaped needs have an empty slot, so any relevant
         # body helps (and a player without a redraft price isn't excluded for lacking one).
-        upgrade_bar = need["weakest_starter"] if need["level"] == "weak" else None
+        # The FLEX is the exception both ways: its occupant is a real (bad) player, so the
+        # displacement bar always applies - and ANY eligible position clears it, which is
+        # how a team reading ok at RB still gets shown an RB (the flex is an open upgrade
+        # slot). Positions that are needs in their own right are skipped here: their
+        # candidates already appear under the real need.
+        if pos == "FLEX":
+            wanted = tuple(p for p in need["eligible"] if p not in my_needs)
+            upgrade_bar = need["weakest_starter"]
+        else:
+            wanted = (pos,)
+            upgrade_bar = need["weakest_starter"] if need["level"] == "weak" else None
         pos_targets = []
         for other in _others(states, me, MIGHT_SELL):
             for player in other["sellable"]:
-                if player["position"] != pos or not team_state.clears_relevance_floor(player, thresholds):
+                if player["position"] not in wanted or not team_state.clears_relevance_floor(player, thresholds):
                     continue
                 if not _sells_him(other, player):
                     continue
@@ -200,7 +210,8 @@ def _buy_path(me: dict, board: Board, max_per_position: int,
                 fit = _counterparty_fit(
                     other, board.needs_by_owner_id.get(other["owner_id"], {}), my_pool,
                     target=player) or {}
-                pos_targets.append({"position": pos, "need_level": need["level"],
+                pos_targets.append({"position": pos, "for_slot": pos,
+                                     "need_level": need["level"],
                                      "over_weakest_starter": over_weakest,
                                      "sells_because": ("rebuilding" if other["window"] == "Rebuild"
                                                        else "rising, so selling age not youth"),

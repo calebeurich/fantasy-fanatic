@@ -311,6 +311,15 @@ not by preference:
   on losing teams fetch a premium near the deadline vs the same profile in the
   offseason? The rental premium either shows up in real trades or it doesn't.
 
+- **Flex-need follow-ups** (2026-08-15, from the FLEX label build - see LOGIC.md
+  "The flex is an open upgrade slot"): the FLEX need currently drives only the
+  asking team's buy path. Two consumers don't read it yet: `_counterparty_fit`
+  (my surplus RB could fill THEIR weak flex, opening two-way conversations the
+  positional match misses) and the waiver wire (a critical FLEX is count-shaped
+  - a body is needed - but waivers only fill positional criticals). Both are
+  one-bar checks against the counterparty's displacement bar when they're
+  wanted.
+
 ## Engineering discipline for the model era (2026-08-14, owner's spec)
 
 - **The crawl's full shopping list**: per season chain - league object (scoring +

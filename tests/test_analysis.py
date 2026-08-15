@@ -1391,6 +1391,76 @@ def test_unreachable_targets_are_split_out_rather_than_ranked_below():
     assert "biggest single chip (MyChip, 3,000)" in blocked["Unaffordable"][0]
 
 
+def test_the_flex_gets_its_own_bars_and_the_same_grammar():
+    """The positional bars count only dedicated demand, so the league's flex starts are
+    fed by definitionally below-bar players and any per-position verdict on a flex body
+    measures the bar, not the roster (a live run flagged a rank-1 flex of Ashton Jeanty
+    as critical). The flex tier is the next num_teams * flex_slots players once every
+    dedicated slot has taken its bodies; its last player is the `critical` bar and the
+    top third's last the `competitive` bar (owner ruling: the tier's midpoint, Tony
+    Pollard, "is still a bad flex for a competing team")."""
+    dedicated = {"QB": 0, "RB": 1, "WR": 0, "TE": 0}
+    flex = [("RB", "WR", "TE")]
+    thresholds = {"QB": 0, "RB": 100, "WR": 100, "TE": 100}
+    rosters, players = _league({
+        "comp":  [("RB", 1000), ("WR", 800), ("WR", 300)],
+        "comp2": [("RB", 980), ("WR", 700), ("WR", 200)],
+        "soft":  [("RB", 960), ("WR", 400)],
+        "soft2": [("RB", 940), ("WR", 500)],
+        "soft3": [("RB", 930), ("WR", 600)],
+        "hole":  [("RB", 920), ("WR", 10)],
+    })
+    # Dedicated demand consumes the six RBs; the tier is the eight WRs left, n = 6.
+    bars = roster_needs.flex_bars(players, dedicated, flex, num_teams=6)
+    assert bars["critical"] == 300 and bars["competitive"] == 700
+
+    out = roster_needs.assess_positions(rosters, players, dedicated, thresholds,
+                                        lineup=(dedicated, flex))
+    level = {owner: entry["FLEX"]["level"] for owner, entry in out.items()}
+    assert level == {"comp": "ok", "comp2": "ok", "soft": "weak", "soft2": "weak",
+                     "soft3": "weak", "hole": "critical"}
+    assert out["soft"]["FLEX"]["weakest_starter"] == 400, (
+        "the displacement bar is the roster's own weakest flex occupant, not a league bar")
+    assert "FLEX" in roster_needs.needs_only(out["soft"])
+    assert "FLEX" not in roster_needs.needs_only(out["comp"])
+    # No flex slots in the lineup = no FLEX entry, not an ok one.
+    without = roster_needs.assess_positions(rosters, players, dedicated, thresholds,
+                                            lineup=(dedicated, []))
+    assert "FLEX" not in without["comp"]
+
+
+def test_the_flex_need_is_position_blind_and_fills_from_ok_positions():
+    """The kieran case: RB reads ok (Kyren plus depth) yet another RB helps, because the
+    flex is an open upgrade slot - its own weakest occupant (Likely, the TE floor) is the
+    bar, and ANY eligible position above it walks into the lineup. Positions that are
+    needs in their own right are skipped under FLEX, so a candidate is never listed
+    under two needs at once."""
+    me = {"owner_id": "me", "window": "Push", "sellable": [], "tradeable_surplus": []}
+    thresholds = {"RB": 100, "WR": 100, "TE": 100}
+    seller = {"owner_id": "them", "owner": "them", "window": "Rebuild", "sellable": [
+        {"name": "RealRB", "position": "RB", "value": 3000, "redraft_value": 2000,
+         "bucket": "prime", "is_starter": False},
+        {"name": "FloorRB", "position": "RB", "value": 900, "redraft_value": 300,
+         "bucket": "prime", "is_starter": False},
+        {"name": "NeededWR", "position": "WR", "value": 2500, "redraft_value": 1500,
+         "bucket": "prime", "is_starter": False},
+    ]}
+    wr_need = {"level": "critical", "weakest_starter": 0, "note": "", "rank": 12, "of": 12}
+    flex_need = {"level": "weak", "weakest_starter": 687, "eligible": ["RB", "WR", "TE"],
+                 "note": "", "rank": 3, "of": 12}
+    out = trade_targets._buy_path(
+        me, _board(None, [seller],
+                   needs_by_owner_id={"me": {"WR": wr_need, "FLEX": flex_need}},
+                   thresholds=thresholds), max_per_position=5)
+
+    slots = {t["name"]: t["for_slot"] for t in out["targets"]}
+    assert slots["RealRB"] == "FLEX", "an ok-position player still fills the flex"
+    assert slots["NeededWR"] == "WR", "a real positional need keeps its own candidates"
+    assert "FloorRB" not in slots, "below the displacement bar is not an upgrade"
+    over = {t["name"]: t["over_weakest_starter"] for t in out["targets"]}
+    assert over["RealRB"] == 2000 - 687, "the margin is stated against the flex occupant"
+
+
 def test_no_trade_history_anywhere_does_not_block_every_target():
     """A zero trade count only says something about an owner when SOMEBODY ELSE in the league
     has traded. In a fresh league it describes the league, and treating it as friction would

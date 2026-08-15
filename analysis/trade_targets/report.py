@@ -118,11 +118,12 @@ def _print_push(push: dict, extras: dict) -> None:
             trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "no trades yet"
             price_note = BUY_PRICE_NOTE[team_state.value_basis(t)]
             ow = t.get("over_weakest_starter")
-            beats = "" if ow is None else f", {ow:+,} vs your weakest {t['position']} starter"
+            slot = t.get("for_slot", t["position"])
+            beats = "" if ow is None else f", {ow:+,} vs your weakest {slot} starter"
             # A body at a count-shaped need still fills a slot - label, don't hide.
             kind = " [DEPTH - does not beat who you start there]" if (ow is not None and ow <= 0) else ""
             print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}{beats}) from "
-                  f"{t['from_owner']} [{t['sells_because']}] - need: {t['need_level']} - "
+                  f"{t['from_owner']} [{t['sells_because']}] - need: {slot} {t['need_level']} - "
                   f"{trade_note}{kind}")
             if t.get("offer_any_one_of"):
                 print(f"      send back any ONE of (not a bundle): "
@@ -137,9 +138,10 @@ def _print_push(push: dict, extras: dict) -> None:
         for t in push["long_shots"]:
             price_note = BUY_PRICE_NOTE[team_state.value_basis(t)]
             beats = ("" if t.get("over_weakest_starter") is None else
-                     f", {t['over_weakest_starter']:+,} vs your weakest {t['position']} starter")
+                     f", {t['over_weakest_starter']:+,} vs your weakest "
+                     f"{t.get('for_slot', t['position'])} starter")
             print(f"  {t['name']} ({t['position']}, value={t['value']}, {price_note}{beats}) from "
-                  f"{t['from_owner']} - need: {t['need_level']}")
+                  f"{t['from_owner']} - need: {t.get('for_slot', t['position'])} {t['need_level']}")
             if t.get("offer_any_one_of"):
                 print(f"      send back any ONE of (not a bundle): "
                       f"{', '.join(t['offer_any_one_of'])}")

@@ -572,6 +572,45 @@ which is not False. Downstream, the shape decides the fix: the buy path applies 
 weakest-starter upgrade bar, waivers only fill count-shaped needs, and the persuasion
 tier requires beating the weakest starter at every need level.
 
+**The flex is an open upgrade slot** (`flex_bars`, `flex_occupants`, the `FLEX` entry) -
+the positional bars cannot judge flex bodies, by arithmetic: replacement level counts
+only dedicated demand, so leaguewide supply above the bar roughly equals dedicated slots
+and the flex starts (24 of them in a 2-FLEX 12-teamer) are fed by definitionally
+"below-bar" players. Applying the positional grammar to real flex occupants flagged 9 of
+12 teams critical, including the league's rank-1 flex (Ashton Jeanty + Rico Dowdle). So
+the FLEX gets its own bars from the **flex tier**: the next `num_teams x flex_slots`
+players by redraft value once every dedicated slot has taken its bodies, position-blind
+within eligibility - which position fills a flex is an outcome of `fill_lineup`'s
+residual, never an assertion (distributing flex demand into per-position slots was tried
+and flagged a team critical at RB while its WR surplus covered the flex fine).
+
+Same critical/weak/ok grammar, two bars:
+
+- `critical` = an occupant below the tier's last player (444 in XFL - can't field a
+  flex-startable body at all). Fired for exactly the four genuinely thin rosters.
+- `weak` = fielded, but an occupant below the **top third of the tier**
+  (`FLEX_COMPETITIVE_FRACTION`; J.K. Dobbins, 796, in XFL). The midpoint was rejected by
+  the owner ("Tony Pollard is still a bad flex for a competing team"); anything from
+  top-third to top-sixth (796-952) labels identically on the live league, and above 952
+  the bar starts calling the #1 production team flex-weak (Dowdle is its actual flex), so
+  top third is the defensible sentence. Owner sign-off: "Dobbins honestly feels about
+  right. Good enough but for sure upgradable."
+- Rejected: the league-median real flex start (1,028) as a bar - half the league sits
+  below its own median by definition, so it flags six teams forever. Also rejected:
+  excluding the bottom-25% teams' demand from the tier ("incomplete rosters") - chopping
+  their demand without chopping their supply leaks their startable players (Etienne,
+  Swift) into the tier as phantom flex bodies, and the consistent version read ZERO teams
+  ok. The incomplete-roster intuition is already priced in: those teams still start their
+  startable players; what they lack is the flex depth the all-teams tier measures.
+
+The entry's `weakest_starter` is the **displacement bar** - the roster's own weakest flex
+occupant, per-team and self-calibrating, and ANY eligible position above it improves the
+lineup. That is the payoff downstream: the buy path fills a FLEX need from every eligible
+position that is not itself a need (owner, on a team reading ok at RB with Kyren + a
+floor-value TE in the flex: "another RB could help him out"), with the margin stated "vs
+your weakest FLEX starter" and `for_slot` marking which need a target fills. QB never
+enters any of this: SUPER_FLEX is folded into QB everywhere, unchanged.
+
 **Injury exposure is measured and is NOT a need** (`drop_if_injured`, `exposure`,
 ranked): magnitude if it happens, computed by removing the weakest starter and refilling
 optimally (flex-aware, so a superflex QB3 build reads sound rather than exposed), with

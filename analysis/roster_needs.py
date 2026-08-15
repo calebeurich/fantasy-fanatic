@@ -54,6 +54,50 @@ def replacement_thresholds(players: dict[str, dict], slots: dict[str, int], num_
     return thresholds
 
 
+def flex_bars(players: dict[str, dict], dedicated: dict[str, int],
+              flex: list[tuple[str, ...]], num_teams: int) -> dict | None:
+    """Replacement level for the FLEX slot, which the positional bars cannot express: they
+    count only dedicated demand, so the league's flex starts are fed by definitionally
+    "below-bar" players and any per-position verdict on a flex body measures the bar, not
+    the roster. The flex tier is the next `num_teams * flex_slots` players by redraft value
+    once every dedicated slot has taken its bodies, position-blind within eligibility.
+    `critical` is the tier's last player (can't field a flex body at all); `competitive` is
+    the top third's last (what competing rosters actually run there). SUPER_FLEX is not a
+    flex here - it is folded into QB everywhere in this module."""
+    slots = [e for e in flex if e != FLEX_ELIGIBILITY["SUPER_FLEX"]]
+    if not slots:
+        return None
+    eligible = tuple(p for p in POSITIONS if p != "QB" and any(p in e for e in slots))
+    pool = []
+    for pos in eligible:
+        vals = sorted((i.get("redraft_value") or 0 for i in players.values()
+                       if i["position"] == pos and i.get("redraft_value")), reverse=True)
+        pool += vals[num_teams * dedicated.get(pos, 0):]
+    pool.sort(reverse=True)
+    n = num_teams * len(slots)
+    if len(pool) < n:
+        return None
+    return {"critical": pool[n - 1], "competitive": pool[n // FLEX_COMPETITIVE_FRACTION - 1],
+            "eligible": eligible, "slots": len(slots)}
+
+
+def flex_occupants(roster: dict, players: dict[str, dict], dedicated: dict[str, int],
+                   flex: list[tuple[str, ...]]) -> list[dict]:
+    """Who actually holds the flex slots - `fill_lineup`'s residual after every dedicated
+    slot takes its player. The right measure for the flex specifically: it IS the residual,
+    so "which position fills it" is an outcome here, never an assertion. A QB in the
+    SUPER_FLEX belongs to the QB count, not the flex."""
+    out = []
+    for slot, pid in fill_lineup(roster, players, dedicated, flex):
+        if slot not in POSITIONS and pid in players:
+            info = players[pid]
+            if slot == "SUPER_FLEX" and info["position"] == "QB":
+                continue
+            out.append({"name": info["name"], "position": info["position"],
+                        "redraft_value": round(info.get("redraft_value") or 0)})
+    return out
+
+
 def _usable_by_position(roster: dict, players: dict[str, dict], thresholds: dict[str, float],
                         metric: str, starters: set[str] | None = None) -> dict[str, list[dict]]:
     """Every rostered player at each position clearing this league's replacement level,
@@ -76,6 +120,12 @@ def _usable_by_position(roster: dict, players: dict[str, dict], thresholds: dict
 # distributions are skewed, TE especially) - half the median production is a starter's
 # worth of scoring given up weekly, wherever it sorts.
 WEAK_VS_MEDIAN = 0.5
+
+# The competitive flex bar sits at the top third of the flex tier: the whole tier is what
+# the league's flex slots demand, but a competing roster runs the good end of it (owner
+# ruling: Tony Pollard, the tier's exact midpoint, "is still a bad flex for a competing
+# team").
+FLEX_COMPETITIVE_FRACTION = 3
 
 # Below this, tertiles and medians describe a sample too small to mean anything, so
 # quality isn't assessed and a shortage falls back to `critical` rather than a confident
@@ -244,6 +294,11 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                      median. Wants an upgrade eventually, not a body now.
     - `ok`         - neither; middle-of-the-league with no star is not a need.
 
+    When the real lineup is known (`starters` + `lineup`), a `FLEX` entry joins the
+    positions, same grammar but its own bars (`flex_bars` - the positional bars cannot
+    judge flex bodies). Its `weakest_starter` is a displacement bar any eligible position
+    can clear: LOGIC.md, "The flex is an open upgrade slot".
+
     Injury exposure (`drop_if_injured`, ranked) is measured but is deliberately NOT a
     need - it is a separate axis, and the drop-off sidesteps the replacement bar, which by
     construction leaves almost nobody with "startable bench". Numbers ship with the
@@ -383,7 +438,49 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                     f"{len(drop_rank)} in the league - {entry['exposure']} exposure.{consolation}"
                     f" This is the magnitude IF it happens, not an expected loss.{likelihood}"
                     f"{caveat} Separate from the need above, and not one.")
+
+    bars = flex_bars(players, lineup[0], lineup[1], num_teams) if lineup else None
+    if bars:
+        occupants = {r["owner_id"]: flex_occupants(r, players, *lineup) for r in rosters}
+        totals = {oid: sum(e["redraft_value"] for e in ents) for oid, ents in occupants.items()}
+        flex_ranks = rank_map(totals)
+        for r in rosters:
+            oid = r["owner_id"]
+            out[oid]["FLEX"] = _assess_flex(occupants[oid], bars, flex_ranks[oid], num_teams)
     return out
+
+
+def _assess_flex(occupants: list[dict], bars: dict, rank: int, num_teams: int) -> dict:
+    """The FLEX entry, same grammar as the positions: `critical` is count-shaped (a slot
+    with no flex-startable body in it), `weak` is quality-shaped (fielded, but below what
+    competing rosters run). `weakest_starter` is the displacement bar - the flex is an open
+    upgrade slot, so ANY eligible position above it improves the lineup, whatever that
+    position's own label says (the reason a team can read ok at RB and still want an RB)."""
+    weakest = min((e["redraft_value"] for e in occupants), default=0)
+    held = ", ".join(f"{e['name']} ({e['position']}, {e['redraft_value']:,})"
+                     for e in occupants) or "nobody"
+    slots = bars["slots"]
+    if len(occupants) < slots or any(e["redraft_value"] < bars["critical"] for e in occupants):
+        level = "critical"
+        note = (f"The flex is a real hole: this lineup fills its {slots} flex "
+                f"slot{'' if slots == 1 else 's'} with {held}, below the flex-startable bar "
+                f"({round(bars['critical']):,} - the league's lineups demand "
+                f"{num_teams * slots} flex bodies and this is what the last one is worth).")
+    elif any(e["redraft_value"] < bars["competitive"] for e in occupants):
+        level = "weak"
+        note = (f"The flex is fielded but below what competing rosters run there: {held}, "
+                f"against a competitive flex bar of {round(bars['competitive']):,} (the top "
+                f"third of the league's flex tier).")
+    else:
+        level = "ok"
+        note = f"Flex slots held by competitive bodies: {held}. Not a need."
+    return {"level": level, "occupants": occupants, "slots": slots,
+            "eligible": list(bars["eligible"]), "weakest_starter": weakest,
+            "rank": rank, "of": num_teams,
+            "note": note + (f" Any {'/'.join(bars['eligible'])} above {weakest:,} walks "
+                            f"straight into this lineup - the flex takes any of them, so "
+                            f"this need is position-blind."
+                            if level != "ok" else "")}
 
 
 def _position_note(pos: str, level: str, count: int, required: int, total: float, rank: int,
