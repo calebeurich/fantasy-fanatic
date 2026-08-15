@@ -264,6 +264,18 @@ not by preference:
   for the current season as it happens — the report card gets a weekly pulse.
 - **Projections stop being backlog**: in-season, "who should I start" questions
   arrive immediately, and roster values alone cannot answer them.
+- **Pick-timeline fit** (owner-backlogged 2026-08-15, flagged as a rabbit hole): a
+  pick's distance is its own window question - a 3-years-out 1st may be "almost too
+  future to fit a rebuild window", and there is a world where a REBUILDER should be
+  selling far-out picks (they mature after the rebuild should already be competing).
+  The rental-market year-ladder math (a held 2029 1st drifts up ~55% becoming a 2027
+  1st) is the same object seen from the other side. Too complex to encode now; the
+  ruling that stands meanwhile: middling teams' picks stay askable in a rebuild's
+  picks_to_acquire (they are close enough to converting that selling a pick fits
+  their contend/sell path - the rising-Middling exclusion deliberately does NOT
+  extend from players to picks, because picks are also the easiest trading material
+  there is and belong wherever they make any sense), and rebuilds' own picks are
+  never listed as acquirable (already true by construction).
 - **Gap-grouping instead of tertiles** (owner-backlogged 2026-08-15): the
   contention tertile cuts at fixed ranks, but leagues cluster naturally - if
   teams 4 and 5 sit just under the top three and well above the middle, they
