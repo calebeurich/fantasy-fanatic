@@ -1639,8 +1639,9 @@ def test_persuasion_surfaces_a_cliff_player_when_the_owners_window_outlasts_him(
 
     A team-level read cannot reach this: the trajectory is `steady` because a young core
     dilutes one old starter, and the old gate rejected the roster before any player on it
-    was examined. Real case - the league's best team starting a 32.6-year-old RB at 1.54x."""
-    holder = _holder("young", "Contend", "steady", [_aging("Stud", 4000, 6000)],
+    was examined. Since the direction gate, the holder must be MIDDLING - a contender's
+    production is not on anyone's board by default, whatever its tilt says."""
+    holder = _holder("young", "Middling", "steady", [_aging("Stud", 4000, 6000)],
                      asc=26, dec=16)
     out = trade_targets._persuasion_targets(
         ME, _board(states=[holder], thresholds={"RB": 100},
@@ -1680,7 +1681,7 @@ def test_persuasion_bar_is_relative_to_the_players_own_position():
     te = _aging("Kelce", 1810, 1504, pos="TE")   # 0.83 - clears the 0.81 TE bar
     rb = _aging("Jacobs", 2770, 2300)            # 0.83 - misses the 1.05 RB bar
     needs = {"RB": NEED_RB["RB"], "TE": NEED_RB["RB"]}
-    holder = _holder("kk", "Contend", "rising", [te, rb], asc=30, dec=15)
+    holder = _holder("kk", "Middling", "steady", [te, rb], asc=30, dec=15)
     out = trade_targets._persuasion_targets(
         ME, _board(states=[holder], thresholds={"RB": 100, "TE": 100},
                    prior={"kk": _prior(3)}, premium_bars=BARS), needs)
@@ -1722,8 +1723,8 @@ def test_a_persuasion_target_has_to_beat_who_you_already_start():
     Tyrone Tracy at 255 against a weakest RB starter of 638, 0.18x production per unit of cost,
     which is the market pricing him far ABOVE what he produces."""
     need = {"level": "critical", "weakest_starter": 638, "note": "", "rank": 12, "of": 12, "startable": 0, "slots": 1}
-    holder = _holder("kk", "Push", "falling", [_aging("Tracy", 1386, 255),
-                                               _aging("Harvey", 2032, 865)], traj_rank=11)
+    holder = _holder("kk", "Middling", "falling", [_aging("Tracy", 1386, 255),
+                                                   _aging("Harvey", 2032, 865)], traj_rank=11)
     out = trade_targets._persuasion_targets(
         ME, _board(states=[holder], thresholds={"RB": 100},
                    prior={"kk": _prior(9, made_playoffs=False)}, premium_bars=BARS), {"RB": need})
@@ -1783,21 +1784,58 @@ def test_a_contender_with_no_hole_holds_to_win_rather_than_needing_a_pivot():
     assert pivot["friction"][0]["flavor"] == "needs_a_pivot"
     assert "change direction" in pivot["friction"][0]["why"]
 
-    # And the persuasion tier says the same thing about the same seller: cost_note carries
-    # the holds-to-win price and the entry still prices it ("not currently a seller").
+    # The persuasion tier no longer reaches that seller at all: the direction gate cuts
+    # contender-held production from every default board ("shivvv might sell Henry" is
+    # nonsense with or without a label - the owner's rule). The holds-to-win read above
+    # survives for get_player_outlook, where the user asked about the piece by name.
     holder = _holder("kk", "Contend", "steady", [_aging("Stud", 4000, 6000)], asc=26, dec=16)
     out = trade_targets._persuasion_targets(
         ME, _board(states=[holder], thresholds={"RB": 100},
                    prior={"kk": _prior(3)}, premium_bars=BARS), NEED_RB)
-    assert "probably holds" in out[0]["cost_note"] and "not currently a seller" in out[0]["cost_note"]
-    assert out[0]["seller_window"] == "Contend", "the CLI marker derives from this, not a guess"
-    assert [f["flavor"] for f in out[0]["friction"]] == ["holds_to_win"]
+    assert out == [], "a contender's production is not on anyone's board by default"
 
 
-def test_persuasion_includes_a_falling_contender_that_has_not_won():
-    """The mirror: same window, same kind of asset, but the roster is aging out and the
-    core has not delivered. That team has a real reason to listen."""
-    falling = _holder("kk", "Push", "falling", [_aging("Aging", 4000, 6000)], traj_rank=11)
+def test_the_direction_gate_cuts_cross_direction_suggestions():
+    """The owner's rule, stated as the foundation: contenders acquire production and part
+    with future; rebuilds acquire future and part with production; the middle can do
+    either. Violations are CUT, never surfaced with a friction label. Three cuts:
+    a contender's production is on nobody's board (persuasion, tested above with the
+    Contend holder), a rebuild is never listed as wanting a rental, and a rental is
+    never dangled at a rebuild as trade bait."""
+    rental = _aging("Rental", 3000, 4500, runway=0.5)
+    keeper = {"name": "Kid", "position": "RB", "value": 3000, "redraft_value": 1000,
+              "bucket": "ascending", "is_starter": False, "years_to_decline": 5.0}
+    assert not trade_targets.acquires_by_default("Rebuild", rental)
+    assert trade_targets.acquires_by_default("Rebuild", keeper)
+    assert trade_targets.acquires_by_default("Rebuild", {"position": "PICK", "value": 2000})
+    assert trade_targets.acquires_by_default("Middling", rental)
+    assert trade_targets.acquires_by_default("Contend", rental)
+
+    # A rebuild short at RB does not "want" a rental: the hole is real, the direction
+    # is nonsense ("Stafford to a rebuilder" was suggested off exactly this match).
+    rebuild = {"owner_id": "jq", "owner": "jq", "window": "Rebuild",
+               "ascending_pct": 10, "declining_pct": 11}
+    board = _board(states=[rebuild], needs_by_owner_id={
+        "jq": {"RB": {"level": "critical", "startable": 0, "slots": 2,
+                      "rank": 12, "of": 12, "weakest_starter": 0}}})
+    wants = trade_targets.wanted_by(rental, {"owner_id": "me"}, board)
+    assert wants == [], "a rebuild's positional hole never buys this-season value by default"
+    wants_kid = trade_targets.wanted_by(keeper, {"owner_id": "me"}, board)
+    assert [w["owner"] for w in wants_kid] == ["jq"], (
+        "the same hole DOES want a future-weighted piece")
+
+    # And the offer side: my rental is not trade bait for a rebuilding counterparty.
+    fit = trade_targets._counterparty_fit(rebuild, board.needs_by_owner_id["jq"],
+                                          [rental, keeper])
+    assert fit and "Rental" not in fit["offer_any_one_of"]
+    assert "Kid" in fit["offer_any_one_of"]
+
+
+def test_persuasion_includes_a_falling_middling_that_has_not_won():
+    """The mirror: same kind of asset, but the roster is aging out and the core has not
+    delivered. That team has a real reason to listen. Middling since the direction gate:
+    a falling CONTENDER's production is still what it is winning with, and it is cut."""
+    falling = _holder("kk", "Middling", "falling", [_aging("Aging", 4000, 6000)], traj_rank=11)
     out = trade_targets._persuasion_targets(
         ME, _board(states=[falling], thresholds={"RB": 100},
                    prior={"kk": _prior(9, made_playoffs=False)}, premium_bars=BARS), NEED_RB)
@@ -2041,7 +2079,7 @@ def test_persuasion_ranks_by_production_per_cost_not_by_value():
     current production per unit paid, because the market discounts him for seasons a
     pushing team isn't buying. Modelled on the real pair - Barkley 3,746/5,081 (1.36x)
     against Taylor 5,240/6,649 (1.27x)."""
-    holder = _holder("kk", "Push", "falling",
+    holder = _holder("kk", "Middling", "falling",
                      [_aging("Taylor", 5240, 6649), _aging("Barkley", 3746, 5081)])
     out = trade_targets._persuasion_targets(
         ME, _board(states=[holder], thresholds={"RB": 100},
@@ -2060,7 +2098,7 @@ def test_the_persuasion_tier_is_defined_by_runway_not_by_the_price_ratio():
 
     Both players here have a team reason to listen, so runway is the only thing separating them
     - and their ratios point the OPPOSITE way to the verdict, which is the whole point."""
-    holder = _holder("kk", "Push", "falling", [
+    holder = _holder("kk", "Middling", "falling", [
         _aging("OnAClock", 3000, 2000, runway=-0.6),       # ratio 0.67, well under the 1.05 bar
         _aging("YearsLeft", 3000, 4000, runway=3.0),       # ratio 1.33, comfortably over it
     ])
@@ -2076,7 +2114,7 @@ def test_persuasion_ignores_last_season_when_the_roster_turned_over():
     "This core hasn't won" is a real second reason to listen when the team still has that
     core, and meaningless once it has been torn down - so continuity gates the reason
     without changing whether the player surfaces at all."""
-    holder = _holder("kk", "Push", "falling", [_aging("Stud", 3000, 4500)])
+    holder = _holder("kk", "Middling", "falling", [_aging("Stud", 3000, 4500)])
     intact = trade_targets._persuasion_targets(
         ME, _board(states=[holder], thresholds={"RB": 100},
                    prior={"kk": _prior(9, made_playoffs=False, continuity=1.0)}, premium_bars=BARS), NEED_RB)

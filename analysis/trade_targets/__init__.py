@@ -17,7 +17,7 @@ python -m analysis.trade_targets <league_id> [owner_name] [max_per_position]
 
 from .. import roster_needs, team_state
 from .board import (Board, DEFAULT_MAX_PER_POSITION, NOISE_BAND, NOISE_RETAINED,
-                    NOW_PREMIUM_PERCENTILE, build_board, _sells_him)
+                    NOW_PREMIUM_PERCENTILE, acquires_by_default, build_board, _sells_him)
 from .buy import _buy_path, _depth_adds, _my_offer_pool, DEPTH_NOTE, DEPTH_NOTE_REBUILD
 from .counterparty import (_cliff_case, _counterparty_fit, _persuasion_targets,
                            _seller_case, _why_they_would_move_him, wanted_by, wanted_line)

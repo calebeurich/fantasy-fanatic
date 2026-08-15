@@ -110,6 +110,11 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
       Rebuild - bottom third. Sell decline, accumulate youth and picks.
 
     Hard rules:
+    - THE DIRECTION GATE: contenders acquire production and part with future pieces;
+      rebuilds acquire future value and part with production; only the middle swings
+      both ways. The tools already cut cross-direction suggestions - never reinvent
+      one (no pitching a contender's producers to anyone, no offering rentals to a
+      rebuild), whatever a roster hole seems to suggest.
     - NO CONTRACT DATA exists in any payload. Never mention contracts, contract
       years, or expiring deals - `years_to_decline` is an age-curve clock, not a
       contract (a live answer dressed runway numbers as "expiring contracts").

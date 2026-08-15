@@ -280,6 +280,25 @@ misaligned flavor, which this supersedes conceptually) and spugz13 (rank 9, 8/11
 war chest → uncommitted, "the first trade is for a direction"). The old
 window/flavor fields remain computed and shipped alongside during the migration.
 
+**The direction gate** (owner's rule, 2026-08-15, verbatim: "Good teams never trade
+for future weighted assets by default, bad teams never trade for production leaning
+assets by default, middling teams could choose either... cut out all this nonsense
+systematically"): trade suggestions are generated only along each side's default
+direction - contenders acquire production and part with future; rebuilds acquire
+future and part with production; the middle swings both ways. Violations are CUT,
+never surfaced with a friction label - "shivvv might sell Henry (holds_to_win)" and
+"offer Stafford to a rebuilder (they're short at QB)" are nonsense by construction,
+and labelled nonsense is still noise. Three cuts, one named rule
+(`acquires_by_default` + a contender skip in `_persuasion_targets`): the persuasion
+tier never lists contender-held production (this deliberately retires the
+cliff-case-on-a-contender behavior the tier was once rebuilt for - that read
+survives seller-side as clock_mismatch, and in get_player_outlook when a user asks
+about the piece BY NAME); `wanted_by` never lists a rebuild as wanting a rental
+(the hole is real, the direction is nonsense); `_counterparty_fit` never dangles a
+rental at a rebuilding counterparty. A rental = a player inside
+MIN_MEANINGFUL_RUNWAY; picks are never rentals. Contender/middle asker pools were
+already direction-correct by mode structure.
+
 **Payload prose obeys the tiers** (2026-08-15 agent audit, Caleb-triggered): the
 model reasons FROM the notes it is handed, so any note whose wording predates the
 tier structure can invert an answer. Three data-level rules from the audit: (1)

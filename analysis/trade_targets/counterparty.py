@@ -6,7 +6,7 @@ History: LOGIC.md, "The counterparty".
 from .. import team_state, roster_needs
 from ..team_values import INSIDE_FINAL_YEAR, MIN_MEANINGFUL_RUNWAY
 from .board import (Board, NOT_SELLER, _best_chip, _buy_friction, _friction, _others,
-                    _sells_him, _with_trade_note)
+                    acquires_by_default, _sells_him, _with_trade_note)
 
 # "Still there later" is the same question `team_state` asks of a cornerstone, so it uses
 # the same answer - see team_values.MIN_MEANINGFUL_RUNWAY.
@@ -161,6 +161,12 @@ def wanted_by(player: dict, me_roster: dict, board: Board) -> list[dict]:
             continue
         reasons = []
         need = needs_by_owner_id.get(other["owner_id"], {}).get(player["position"])
+        # The direction gate: a rebuild does not buy this-season value by default, so a
+        # positional hole never makes it "want" a rental ("Stafford to a rebuilder"
+        # was suggested off a QB-shortage match; the shortage was real, the direction
+        # was nonsense). Future-weighted pieces still reach them via the second reason.
+        if need and not acquires_by_default(other["window"], player):
+            need = None
         # The trajectory reason below is about future value and stands on its own, so the
         # production test gates only the positional one.
         their_roster = rosters_by_owner.get(other["owner_id"])
@@ -234,8 +240,12 @@ def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict],
     # DK Metcalf". The clock is INSIDE_FINAL_YEAR, the same bar `_sells_him` uses.
     accumulating = other.get("ascending_pct", 0) > other.get("declining_pct", 0)
     ceiling = (target or {}).get("value", 0) * OVERPAY_LIMIT
+    # The direction gate on the offer side: never dangle a rental at a rebuild - their
+    # positional hole is real, but this-season value is the one thing their default
+    # direction does not buy.
     fitting = [e for e in my_offers
                if e["position"] in their_needs
+               and acquires_by_default(other.get("window", ""), e)
                and not (accumulating
                         and (e.get("years_to_decline") or 0) < INSIDE_FINAL_YEAR)]
     # The ceiling picks the SENTENCE, never whether a piece is mentioned: dropping
@@ -323,6 +333,12 @@ def _persuasion_targets(me: dict, board: Board, my_needs: dict,
     others_have_traded = board.others_have_traded(me["owner_id"])
     plausible = []
     for other in _others(states, me, NOT_SELLER):  # sellers are the normal buy path's job
+        # The direction gate: contenders part with future, not production - by default
+        # their rentals are simply not on anyone's board ("shivvv might sell Henry" is
+        # nonsense with or without a holds_to_win label). A user asking about a named
+        # player still gets the honest holds-to-win read from get_player_outlook.
+        if other["window"] in ("Push", "Contend"):
+            continue
         team_why = _seller_case(other, prior.get(other["owner_id"]))
         for player in other["sellable"]:
             pos, need = player["position"], my_needs.get(player["position"])

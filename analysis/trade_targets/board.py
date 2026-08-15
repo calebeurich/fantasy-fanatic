@@ -11,7 +11,7 @@ from sources import fantasycalc
 from .. import team_state, roster_needs, trade_activity, prior_season
 from ..league import context
 from ..team_values import (owned_picks, now_premium_bar, INSIDE_FINAL_YEAR,
-                           NOISE_BAND, NOISE_RETAINED)
+                           MIN_MEANINGFUL_RUNWAY, NOISE_BAND, NOISE_RETAINED)
 
 # A parameter, not a hard limit - "give me more" means call again with a higher number.
 DEFAULT_MAX_PER_POSITION = 5
@@ -88,6 +88,26 @@ def NOT_SELLER(window: str) -> bool:
 def MIGHT_SELL(window: str) -> bool:
     """Teams the buy path is allowed to look at - see `_sells_him` for which of their players."""
     return window in ("Rebuild", "Middling")
+
+
+# THE DIRECTION GATE (owner's rule, 2026-08-15): trade suggestions are only generated
+# along each side's default direction - contenders acquire production and part with
+# future; rebuilds acquire future and part with production; the middle can do either.
+# Violations are CUT, never surfaced with a friction label: "shivvv might sell Henry
+# (holds_to_win)" and "offer Stafford to a rebuilder (they're short at QB)" are both
+# nonsense by construction, and a labelled nonsense suggestion is still noise.
+def _rental(piece: dict) -> bool:
+    """Value that is mostly this-season: a player inside the buyer's two-season bar.
+    Picks are never rentals - they are the purest future-weighted asset."""
+    return (piece.get("position") != "PICK"
+            and (piece.get("years_to_decline") or 0) < MIN_MEANINGFUL_RUNWAY)
+
+
+def acquires_by_default(window: str, piece: dict) -> bool:
+    """The asker-side gate: would this team's default direction want this piece at all?"""
+    if window == "Rebuild":
+        return not _rental(piece)
+    return True  # contenders' pools are production-only by construction; middle takes either
 
 
 def _sells_him(other: dict, player: dict) -> bool:
