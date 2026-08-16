@@ -3,63 +3,75 @@
 import sys
 import requests
 
-from .cache import ttl_cache, LIVE_TTL, LEAGUE_CONFIG_TTL
+from .cache import ttl_cache, LIVE_TTL, LEAGUE_CONFIG_TTL, REFERENCE_TTL
 
 BASE = "https://api.sleeper.app/v1"
 
 # Sleeper's own league type flag: 0 = redraft, 1 = keeper, 2 = dynasty
 DYNASTY_TYPE = 2
 
+# One connection pool for every call. `requests.get` opens a fresh TLS connection each
+# time, and the handshake was half the cost of each of the ~40 small fetches a cold
+# page load makes.
+_http = requests.Session()
+
+
+def _get(path: str):
+    resp = _http.get(f"{BASE}/{path}")
+    resp.raise_for_status()
+    return resp.json()
+
 
 @ttl_cache(LEAGUE_CONFIG_TTL)
 def get_user_id(username: str) -> str:
-    resp = requests.get(f"{BASE}/user/{username}")
-    resp.raise_for_status()
-    return resp.json()["user_id"]
+    return _get(f"user/{username}")["user_id"]
 
 
 @ttl_cache(LEAGUE_CONFIG_TTL)
 def get_leagues(user_id: str, year: str) -> list[dict]:
-    resp = requests.get(f"{BASE}/user/{user_id}/leagues/nfl/{year}")
-    resp.raise_for_status()
-    return resp.json()
+    return _get(f"user/{user_id}/leagues/nfl/{year}")
 
 
 @ttl_cache(LEAGUE_CONFIG_TTL)
 def get_league(league_id: str) -> dict:
-    resp = requests.get(f"{BASE}/league/{league_id}")
-    resp.raise_for_status()
-    return resp.json()
+    return _get(f"league/{league_id}")
 
 
 @ttl_cache(LIVE_TTL)
 def get_rosters(league_id: str) -> list[dict]:
-    resp = requests.get(f"{BASE}/league/{league_id}/rosters")
-    resp.raise_for_status()
-    return resp.json()
+    return _get(f"league/{league_id}/rosters")
 
 
 @ttl_cache(LEAGUE_CONFIG_TTL)
 def get_users(league_id: str) -> list[dict]:
-    resp = requests.get(f"{BASE}/league/{league_id}/users")
-    resp.raise_for_status()
-    return resp.json()
+    return _get(f"league/{league_id}/users")
 
 
 @ttl_cache(LIVE_TTL)
 def get_traded_picks(league_id: str) -> list[dict]:
     """Future picks that have changed hands at least once. A pick not listed here is
     still owned by the roster whose original pick it is."""
-    resp = requests.get(f"{BASE}/league/{league_id}/traded_picks")
-    resp.raise_for_status()
-    return resp.json()
+    return _get(f"league/{league_id}/traded_picks")
+
+
+def get_transactions(league_id: str, week: int) -> list[dict]:
+    """A completed season's transactions never change again, so they are held for the
+    long TTL; only the live season is refreshed on the short one. Before this split the
+    36-fetch trade-history walk expired every 60s and was the single biggest cost of a
+    page load."""
+    if get_league(league_id).get("status") == "complete":
+        return _past_transactions(league_id, week)
+    return _live_transactions(league_id, week)
+
+
+@ttl_cache(REFERENCE_TTL)
+def _past_transactions(league_id: str, week: int) -> list[dict]:
+    return _get(f"league/{league_id}/transactions/{week}")
 
 
 @ttl_cache(LIVE_TTL)
-def get_transactions(league_id: str, week: int) -> list[dict]:
-    resp = requests.get(f"{BASE}/league/{league_id}/transactions/{week}")
-    resp.raise_for_status()
-    return resp.json()
+def _live_transactions(league_id: str, week: int) -> list[dict]:
+    return _get(f"league/{league_id}/transactions/{week}")
 
 
 @ttl_cache(LEAGUE_CONFIG_TTL)
@@ -67,9 +79,7 @@ def get_winners_bracket(league_id: str) -> list[dict]:
     """The playoff bracket. Each match carries `w`/`l` (winning/losing roster_id) and, for
     placement games, `p` - the place being played for. `p == 1` is the championship, so
     its `w` is the champion. Only meaningful for a completed season."""
-    resp = requests.get(f"{BASE}/league/{league_id}/winners_bracket")
-    resp.raise_for_status()
-    return resp.json()
+    return _get(f"league/{league_id}/winners_bracket")
 
 
 def get_season_chain(league_id: str) -> list[str]:

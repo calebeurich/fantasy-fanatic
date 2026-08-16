@@ -13,9 +13,11 @@ Two cost ceilings apply here, at different units:
 """
 
 import asyncio
+import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 from contextlib import asynccontextmanager
@@ -42,8 +44,24 @@ from .agent import run_query, MCP_SERVER_PATH, _options
 from .sessions import SessionManager
 
 
+def _warm(league_ids: list[str]) -> None:
+    """Pull every source a page load needs, so a friend arriving at a cold container
+    gets a warm one. Cloud Run scales to zero between visits, and a cold load pays
+    ~10s of fetches (nflverse alone is ~5s) that no request should wait on. Runs off
+    the event loop; a failure here costs nothing but the warm-up."""
+    for league_id in league_ids:
+        try:
+            team_state.classify_league(league_id)
+            roster_needs.league_needs(league_id)
+        except Exception as e:  # noqa: BLE001 - best effort, the request path will retry
+            print(f"warm-up failed for {league_id}: {type(e).__name__}: {e}", file=sys.stderr)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    warm = [l for l in os.environ.get("WARM_LEAGUES", "").split(",") if l]
+    if warm:
+        threading.Thread(target=_warm, args=(warm,), daemon=True).start()
     yield
     # Sessions hold live subprocesses; without this they'd be orphaned on shutdown.
     await sessions.close_all()
@@ -58,7 +76,6 @@ MAX_QUESTION_CHARS = 1000  # a real question is far shorter; this just bounds ab
 # or exposes internals. Not real auth - it keeps bots and drive-by traffic off the daily
 # budget once the Cloud Run service goes public, and a leaked key rotates by changing
 # one GitHub secret. Unset (local dev) means no gate at all.
-import os
 LINK_KEY = os.environ.get("FF_LINK_KEY")
 
 
