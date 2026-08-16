@@ -2487,11 +2487,14 @@ def test_a_rebuilder_taking_short_runway_production_is_flagged():
     """b (Rebuild) takes back OldBack-class runway: the read says those seasons won't be
     part of the next competitive team. The bar is the buyer's two-season horizon for a
     true Rebuild, not the seller's final-year clock."""
-    # a (Contend, not accumulating) receiving OldBack: no flag - runway is his problem
-    # only on a roster whose window is further out than the player's remaining seasons.
+    # a (contend - a buying lens) receiving OldBack: a rental is the direction gate
+    # working, so the read states it as a fact about the piece, never as a scolding
+    # (owner, 2026-08-16: a contender told a rental was "the piece it should be
+    # selling, not buying" was wrong).
     out = trade_eval.evaluate_from_board(_eval_fixture(), "b", ["oldback"], "a", ["spareqb"])
     a_side = next(s for s in out["sides"] if s["owner"] == "a")
-    assert not any("runway" in r for r in a_side["read"])
+    rental = [r for r in a_side["read"] if "runway" in r]
+    assert rental and "a rental" in rental[0] and "should be selling" not in rental[0], rental
 
     # The real case: b (Rebuild) receives OldBack.
     board = _eval_fixture()
@@ -2527,16 +2530,22 @@ def test_picks_ride_as_pieces_with_the_right_timeline_reads():
     assert not any("runway" in r for r in b_side["read"]), (
         "a Rebuild receiving a pick is buying exactly its own timeline - no flag")
     a_side = next(s for s in out["sides"] if s["owner"] == "a")
-    assert any("value that pays after the window" in r for r in a_side["read"]), (
-        "an aligned contend team taking back futures gets the mirror warning")
+    assert not any("value that pays after the window" in r for r in a_side["read"]), (
+        "swapping a pick for a pick is not taking back futures")
+    assert not any(r.startswith("BALLPARK") for r in a_side["read"] + b_side["read"]), (
+        "the shape table describes players - a pick as the best piece gets no ballpark")
     assert a_side["path"] == "contend" and "window" not in a_side, (
         "sides ship the path, never the retired window label")
 
-    # The redline: a PRESS team (unaligned contender) taking back futures is doing its
-    # own path - converting the aging half - and must not be scolded for it. The
-    # evaluator used to read the window (Contend) and warn anyway.
+    # A NET intake of futures by an aligned contender gets the mirror warning...
+    out = trade_eval.evaluate_from_board(board, "a", ["spareqb"], "b", ["2026 1st"])
+    a_side = next(s for s in out["sides"] if s["owner"] == "a")
+    assert any("value that pays after the window" in r for r in a_side["read"])
+    # ...and the redline: a PRESS team (unaligned contender) taking back futures is
+    # doing its own path - converting the aging half - and must not be scolded for it.
+    # The evaluator used to read the window (Contend) and warn anyway.
     board.states[0]["path"], board.states[0]["alignment"] = "press", "unaligned"
-    out = trade_eval.evaluate_from_board(board, "a", ["2027 1st"], "b", ["2026 1st"])
+    out = trade_eval.evaluate_from_board(board, "a", ["spareqb"], "b", ["2026 1st"])
     a_side = next(s for s in out["sides"] if s["owner"] == "a")
     assert not any("value that pays after the window" in r for r in a_side["read"])
 

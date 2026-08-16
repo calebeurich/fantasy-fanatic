@@ -114,6 +114,10 @@ def _resolve(ctx, roster, owned_picks, owner_name, queries):
             problems.append(f"'{q}' matches several players on {owner_name}'s roster")
             continue
         pick_matches = [p for p in owned_picks if q.lower() in p["pick"].lower()]
+        # Two picks can be literally identical (a team holding two "2028 1st"s) - the
+        # user can't disambiguate those by name and doesn't need to; take the first.
+        if len({(p["pick"], p["value"]) for p in pick_matches}) == 1:
+            pick_matches = pick_matches[:1]
         if len(pick_matches) == 1:
             picks.append(pick_matches[0])
         elif pick_matches:
@@ -169,8 +173,8 @@ def _package_read(receives: list[dict], best: dict, receives_best: bool, pct: fl
     here and nowhere else - the benchmark was measured that way. Silent when this side
     holds the best piece (nothing to benchmark) or the piece is mid-tier and the return
     is a single player (a plain swap - the shape table has nothing to add)."""
-    if receives_best:
-        return None
+    if receives_best or best["position"] == "PICK":
+        return None  # the shape table describes players; a pick-for-pick swap has no comp here
     label, pieces, (q1, med, q3), summed, has_first, no_picks = _shape_for(pct)
     if len(receives) < 2 and label == "mid-tier":
         return None
@@ -216,7 +220,7 @@ def _goal_line(lens: str, lineup_delta: int, changes: list[dict], value_in: int,
 
 
 def _side_read(state, receives, changes, lineup_delta, best, receives_best,
-               best_pct: float = 1.0) -> list[str]:
+               best_pct: float = 1.0, lens: str = "both", sends: list[dict] = ()) -> list[str]:
     read = []
     if receives_best:
         read.append(f"gets the best single piece in the deal ({best['name']}, "
@@ -238,13 +242,20 @@ def _side_read(state, receives, changes, lineup_delta, best, receives_best,
     # a roster that is merely tilting young is closer in, and only a piece at his own
     # edge (INSIDE_FINAL_YEAR, the _sells_him clock) is the trade backwards.
     path = state.get("path", "")
-    if path.split(" - ")[0] in SELL_PATHS:
+    if lens == "value":
         bar, horizon = MIN_MEANINGFUL_RUNWAY, ("a rebuild's next competitive season is "
                                                "past that runway, so he won't be part of it")
-    elif state.get("ascending_pct", 0) > state.get("declining_pct", 0):
+    elif lens == "both" and state.get("ascending_pct", 0) > state.get("declining_pct", 0):
         bar, horizon = INSIDE_FINAL_YEAR, ("a roster tilting young is accumulating the "
                                            "seasons he won't be there for - the piece it "
                                            "should be selling, not buying")
+    elif lens == "lineup":
+        # A buyer taking a rental is the direction gate working, not a mistake - said
+        # as a fact about the piece (this season only), never as a scolding (owner: a
+        # contender being told a rental is "the piece it should be selling" was wrong).
+        bar, horizon = INSIDE_FINAL_YEAR, ("a rental - this season's production is the "
+                                           "whole purchase, and he holds no resale value "
+                                           "after it")
     else:
         bar = None
     # `is not None` matters: a pick has no runway at all - it is the longest-dated
@@ -256,9 +267,10 @@ def _side_read(state, receives, changes, lineup_delta, best, receives_best,
     # Only an ALIGNED contender is scolded for taking back futures: for a press team,
     # converting the aging half into future value IS its path (redline from the first
     # spot check - it read the window and told a press team off for its own move).
-    if path.split(" - ")[0] == "contend":
+    if path.split(" - ")[0] == "contend" and lens == "lineup":
         futures = [p["name"] for p in receives if p["position"] == "PICK"]
-        if futures:
+        # Swapping picks for picks is not "taking back futures" - only a net intake is.
+        if futures and len(futures) > sum(1 for p in sends if p["position"] == "PICK"):
             read.append(f"takes back futures ({', '.join(futures)}) while built to win "
                         f"now - value that pays after the window, so the rest of the "
                         f"return has to carry this season")
@@ -337,7 +349,7 @@ def evaluate_from_board(board, owner_a: str, sends_a: list[str],
             **({"stance_note": stance_note} if stance_note else {}),
             "read": _side_read(state, receives, changes, delta, best,
                                receives_best=(state["owner"] == best_to),
-                               best_pct=best_pct),
+                               best_pct=best_pct, lens=lens, sends=sends),
         })
     return {"ok": True, "note": EVAL_NOTE,
             "best_piece": {**best, "to": best_to}, "sides": sides}
