@@ -252,6 +252,8 @@ def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty:
 # so a window maps to a rough draft position. FantasyCalc publishes Early/Mid/Late prices
 # for the next class, which is exactly this distinction already priced by the market.
 WINDOW_TO_PICK_TIER = {"Rebuild": "Early", "Middling": "Mid", "Contend": "Late", "Push": "Late"}
+# The slot expectation stated as the contention fact behind it, not the internal label.
+PICK_TIER_REASON = {"Early": "bottom third", "Mid": "middle third", "Late": "top third"}
 
 
 def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list[int],
@@ -289,8 +291,8 @@ def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list
                     "round": round_num,
                     "season": pick_season,
                     "originally": rid,  # whose pick it was, so "their own 1st" is visible
-                    "slot_basis": (f"expected {tier.lower()} - originating team is "
-                                   f"{(strategy_by_roster or {}).get(rid)}")
+                    "slot_basis": (f"expected {tier.lower()} - the originating team ranks in "
+                                   f"the {PICK_TIER_REASON[tier]} of current production")
                                   if tiered_value else "flat round average (slot unknowable this far out)",
                 })
     for picks in owned.values():

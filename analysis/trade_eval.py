@@ -124,7 +124,8 @@ def _side_read(state, receives, changes, lineup_delta, best, receives_best) -> l
     # two-season horizon, so anything under MIN_MEANINGFUL_RUNWAY won't be part of it;
     # a roster that is merely tilting young is closer in, and only a piece at his own
     # edge (INSIDE_FINAL_YEAR, the _sells_him clock) is the trade backwards.
-    if state["window"] == "Rebuild":
+    path = state.get("path", "")
+    if path.split(" - ")[0] in ("sell", "build"):
         bar, horizon = MIN_MEANINGFUL_RUNWAY, ("a rebuild's next competitive season is "
                                                "past that runway, so he won't be part of it")
     elif state.get("ascending_pct", 0) > state.get("declining_pct", 0):
@@ -139,7 +140,10 @@ def _side_read(state, receives, changes, lineup_delta, best, receives_best) -> l
         if bar and p.get("years_to_decline") is not None and p["years_to_decline"] < bar:
             read.append(f"takes on {p['name']} with {p['years_to_decline']} yrs of "
                         f"runway - {horizon}")
-    if state["window"] in ("Push", "Contend"):
+    # Only an ALIGNED contender is scolded for taking back futures: for a press team,
+    # converting the aging half into future value IS its path (redline from the first
+    # spot check - it read the window and told a press team off for its own move).
+    if path.split(" - ")[0] == "contend":
         futures = [p["name"] for p in receives if p["position"] == "PICK"]
         if futures:
             read.append(f"takes back futures ({', '.join(futures)}) while built to win "
@@ -193,8 +197,8 @@ def evaluate_from_board(board, owner_a: str, sends_a: list[str],
         delta = (_lineup_production(ctx, after[changes_key])
                  - _lineup_production(ctx, rosters[changes_key]["players"]))
         sides.append({
-            "owner": state["owner"], "window": state["window"],
-            "trajectory": state.get("trajectory"),
+            "owner": state["owner"], "path": state.get("path"),
+            "alignment": state.get("alignment"),
             "sends": sends, "receives": receives,
             "need_changes": changes, "lineup_production_delta": delta,
             "read": _side_read(state, receives, changes, delta, best,

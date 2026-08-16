@@ -192,6 +192,7 @@ def wanted_by(player: dict, me_roster: dict, board: Board) -> list[dict]:
         if not reasons:
             continue
         wanting.append({"owner": other["owner"], "window": other["window"],
+                        "path": other.get("path", other["window"]),
                         "need_level": need["level"] if need else None,
                         "rank": need.get("rank") if need else None,
                         "reason_count": len(reasons), "why": "; ".join(reasons)})
@@ -209,10 +210,10 @@ def wanted_line(wanting: list[dict]) -> str:
     # contending, so this buy would BE the commitment. Without the clause the model
     # presented an undecided team's need with a contender's urgency.
     return " | ".join(
-        f"{w['owner']} [{w['window']}] {w['why']}"
+        f"{w['owner']} [{w.get('path', w['window'])}] {w['why']}"
         + (" (a contender - pays a premium for production, worth more there than here)"
            if w["window"] in ("Push", "Contend") else
-           " (undecided window - buying is what would push them in, so expect interest "
+           " (an undecided team - buying is what would push them in, so expect interest "
            "without a contender's urgency or price)"
            if w["window"] == "Middling" else "")
         for w in wanting)
@@ -399,7 +400,7 @@ def _persuasion_targets(me: dict, board: Board, my_needs: dict,
                 "need_level": need["level"],
                 **(fit or {}),
                 **_with_trade_note(player, other, trade_counts),
-                "seller_window": other["window"],
+                "seller_path": other.get("path", other["window"]),
                 "production_per_cost": round(ratio, 2),
                 "why_they_might_listen": why,
                 "friction": friction,

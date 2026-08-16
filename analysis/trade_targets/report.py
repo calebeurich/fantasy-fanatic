@@ -68,7 +68,7 @@ def _print_pivot(me: dict, pivot: dict) -> None:
     for t in pivot["acquire_targets"]:
         trade_note = f"{t['from_owner_trades']} trade(s) made" if t["from_owner_trades"] else "NEVER TRADES - unlikely"
         print(f"  {t['name']} ({t['position']}, value={t['value']}) from {t['from_owner']} "
-              f"[{t['seller_state']}] - {trade_note}")
+              f"[{t.get('seller_path', '')}] - {trade_note}")
         for f in t["friction"]:
             print(f"      - [{f['flavor']}] {f['why']}")
     print(f"  {pivot['acquire_note']}")
@@ -157,7 +157,7 @@ def _print_push(push: dict, extras: dict) -> None:
         for t in sorted(push["persuasion_targets"], key=lambda t: t["needs_a_pivot"]):
             marker = ""
             if t["needs_a_pivot"]:
-                marker = (" [HOLDS TO WIN]" if t.get("seller_window") in ("Push", "Contend")
+                marker = (" [HOLDS TO WIN]" if str(t.get("seller_path", "")).startswith("contend")
                           else " [PIVOT]")
             print(f"  {t['name']} ({t['position']}, {t['production_per_cost']}x production "
                   f"per unit of cost - dyn {t['value']:,} / redraft {t['redraft_value']:,}) "
@@ -185,16 +185,16 @@ def _print_report(result: dict) -> None:
         _print_pivot(me, result)
         _print_depth(result)
     elif result["mode"] == "middling":
-        print(f"{me['owner']}: {me['window']} ({me['alignment']} - {me['path']}) - both directions are open")
-        print(f"  {me['window_note']}")
+        print(f"{me['owner']}: {me['path']} ({me['alignment']}) - both directions are open")
+        print(f"  {me['posture_note']}")
         print(f"\n  {result['timing_note']}")
         print(f"\n-- if pushing (needs: {_needs_summary(result['push']['needs'])}) --")
         _print_push(result["push"], result)
         print("\n-- if pivoting --")
         _print_pivot(me, result["pivot"])
     else:
-        print(f"{me['owner']}: {me['window']} ({me['alignment']} - {me['path']}), needs: {_needs_summary(result['needs'])}")
-        print(f"  {me['window_note']}")
+        print(f"{me['owner']}: {me['path']} ({me['alignment']}), needs: {_needs_summary(result['needs'])}")
+        print(f"  {me['posture_note']}")
         _print_push(result, result)
         _print_conversion_candidates(result)
 
@@ -264,8 +264,8 @@ def _print_outlook(o: dict) -> None:
     if o.get("rostered") is False:
         print(f"  {o['note']}")
         return
-    print(f"owned by {o['owner']} - {o['owner_window']} ({o['owner_flavor']})")
-    print(f"  {o['owner_window_note']}")
+    print(f"owned by {o['owner']} - {o['owner_path']}")
+    print(f"  {o['owner_posture_note']}")
     print(f"availability: {o.get('availability')}")
     for f in o.get("friction") or []:
         print(f"  - [{f['flavor']}] {f['why']}")

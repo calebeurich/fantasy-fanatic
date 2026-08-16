@@ -7,6 +7,7 @@ Run: python -m agent.evals (from the repo root)
 """
 
 import asyncio
+import re
 
 from analysis import trade_targets
 from .agent import run_query, _trade_violations
@@ -87,22 +88,25 @@ def _weighs_as_sale(text: str, name: str) -> bool:
     return False
 
 
-async def case_team_window() -> None:
-    """A team-window question should use get_team_state's own classification
-    (validated to happen with the owner_name filter after a real bug was found and
-    fixed: without the filter, the model gave up on the full-league result and
-    re-derived its own answer from roster_detail instead)."""
+async def case_team_read() -> None:
+    """A what-should-this-team-do question must use get_team_state's own read and
+    speak its vocabulary: the path word (chip) has to appear, and none of the retired
+    window labels may - they were stripped from every model-visible payload after five
+    of twelve slate answers echoed "Push window"/"Middling team" (LOGIC.md, "The
+    window-label retirement"). Also guards the two invention classes rule 15 bans:
+    runway dressed as a contract, and calendar claims."""
     result = await _ask(
-        f"For Sleeper league {DYNASTY_LEAGUE}, what team window is dezdroppedit27 in and why?")
+        f"For Sleeper league {DYNASTY_LEAGUE}, tell me about dezdroppedit27 and what they should do.")
     assert "get_team_state" in " ".join(_tool_names(result)), f"didn't call get_team_state: {_tool_names(result)}"
-    # Asserted against the production label set rather than one hardcoded string, so this
-    # tracks team_state instead of going stale the next time a window is renamed - and so
-    # it can't pass on a window this team isn't actually in.
     from analysis import team_state
-    expected = next(t["window"] for t in team_state.classify_league(DYNASTY_LEAGUE)
-                    if t["owner"] == "dezdroppedit27")
-    assert expected.lower() in result["text"].lower(),         f"expected window {expected!r} in response: {result['text']}"
-    print(f"case_team_window: PASS (${result['cost_usd']:.4f}, {result['num_turns']} turns)")
+    row = next(t for t in team_state.classify_league(DYNASTY_LEAGUE) if t["owner"] == "dezdroppedit27")
+    text = result["text"]
+    chip = row["path"].split(" - ")[0]
+    assert chip in text.lower(), f"expected the path word {chip!r} in response: {text}"
+    stray = re.findall(r"\b(Push|Middling|Rebuild) (window|mode|team)\b|\bin (Push|Middling|Rebuild)\b", text)
+    assert not stray, f"retired window label in response: {stray}"
+    assert not re.search(r"expiring (contract|deal)|[Ww]eek \d", text), f"invented detail: {text}"
+    print(f"case_team_read: PASS (${result['cost_usd']:.4f}, {result['num_turns']} turns)")
 
 
 async def case_non_dynasty_refusal() -> None:
@@ -357,7 +361,7 @@ async def case_sells_on_runway_not_age() -> None:
 
 
 CASES = [
-    case_team_window,
+    case_team_read,
     case_non_dynasty_refusal,
     case_trade_targets,
     case_resists_out_of_scope_request,

@@ -486,7 +486,7 @@ async function loadLeague(id) {
         <th>Needs</th><th>Core</th></tr></thead>
       <tbody>${rows}</tbody></table>
       ${d.tier === "degraded" ? '<div class="note warn">Shallow league — percentile-based numbers are rougher than usual.</div>' : ""}
-      ${d.no_trade_history ? '<div class="note warn">No trades in this league yet — window labels are less reliable this early.</div>' : ""}
+      ${d.no_trade_history ? '<div class="note warn">No trades in this league yet — the team reads are less reliable this early.</div>' : ""}
       <div class="note" style="display:grid;grid-template-columns:repeat(3,auto);gap:4px 18px;justify-content:start">
         <span><span class="tag p-contend cool">contend</span> add production at fair prices</span>
         <span><span class="tag p-wait cool">wait</span> patience is free</span>

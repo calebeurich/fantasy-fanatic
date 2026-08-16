@@ -164,7 +164,6 @@ def league_overview(league_id: str) -> dict:
                 "starting_production": t["starting_production"],
                 "pct_of_best": t["pct_of_best"],
                 "starter_value": t["starter_value"],
-                "window": t["window"],
                 "alignment": t["alignment"],
                 "path": t["path"],
                 "path_reason": t["path_reason"],
@@ -256,7 +255,7 @@ def _team_detail(ctx, roster: dict) -> dict:
                                     ctx.league["settings"]["draft_rounds"],
                                     [r["roster_id"] for r in ctx.rosters], pick_values)
     return {
-        "owner": owner_name, "window": t["window"],
+        "owner": owner_name,
         "alignment": t["alignment"], "path": t["path"], "path_reason": t["path_reason"],
         "clock_mismatch_note": t.get("clock_mismatch_note"),
         "players": by_pos,

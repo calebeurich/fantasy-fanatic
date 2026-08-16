@@ -86,28 +86,31 @@ def check_league_format(league_id: str) -> dict:
 
 @mcp.tool()
 def get_team_state(league_id: str, owner_name: str = None) -> dict:
-    """Strategic window per team - THE authoritative classification (never re-derive a
-    window from get_roster_detail) - with cornerstones, sellable players and tradeable
-    surplus. Pass owner_name for one team; omit only when you need every team.
+    """Each team's read - THE authoritative classification (never re-derive one from
+    get_roster_detail) - with cornerstones, sellable players and tradeable surplus. Pass
+    owner_name for one team; omit only when you need every team.
 
     THE HEADLINE for any team is its three-tier read, on every row:
+      `contention_rank` of `of_teams` - the tertile it sits in is tier 1.
       `alignment` - "aligned" (roster composition agrees with what its rank asks;
         the path is a continue verb) or "unaligned" (a real decision is pending).
-      `path` - the action: "contend" (optionally "- on a clock") / "wait" / "build"
-        when aligned; "press" / "decide" / "sell" when not. The lean comes from rank:
-        press = convert future into now, sell = convert aging value into future, and
-        decide (a middle rank) has NO lean - letting the season decide is legitimate.
+      `path` - the action: "contend" (optionally "- on a clock") / "wait" (optionally
+        "- production is arriving") / "build" when aligned; "press" / "decide" / "sell"
+        when not. The lean comes from rank: press = convert future into now, sell =
+        convert aging value into future, and decide (a middle rank) has NO lean -
+        letting the season decide is legitimate.
       `path_reason` - why, in words. OPEN with path + path_reason and support it with
-        the measurements - never open with the window label and walk it back (a live
-        answer led "Contend - no clock" and then spent four paragraphs on the clock).
-
-    `window`, from two measured axes (current starting production ranked against the
-    league, and ascending vs declining share of it) - name it, and it still governs
-    the premium rules below:
-      Push    - contender that declines if it waits. Buy production, spend picks.
-      Contend - contender with no clock. Don't pay premiums.
-      Middling- the middle. Both paths live; `window_note` says whether patience is free.
-      Rebuild - bottom third. Sell decline, accumulate youth and picks.
+        the measurements - never open with a label and walk it back.
+      `posture_note` - what the path means for premiums and tempo, plus the measured
+        numbers behind the read. Use its wording: these are roster-composition
+        measures - never describe them as records, wins or points, because no games
+        have been played. Premium rules live here: "contend - on a clock" is the one
+        path where buying production is worth a premium; plain "contend" and "press"
+        buy at fair prices; "sell" converts aging value while it still has a price.
+      `path_edge`, when present - the read sits within refresh noise of a tertile
+        line and names the path across it: present that path's advice as live
+        alongside this one, and a different read on a re-ask is pricing noise, never
+        the team changing direction.
 
     Hard rules:
     - THE DIRECTION GATE: contenders acquire production and part with future pieces;
@@ -115,22 +118,20 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
       both ways. The tools already cut cross-direction suggestions - never reinvent
       one (no pitching a contender's producers to anyone, no offering rentals to a
       rebuild), whatever a roster hole seems to suggest.
-    - NO CONTRACT DATA exists in any payload. Never mention contracts, contract
-      years, or expiring deals - `years_to_decline` is an age-curve clock, not a
-      contract (a live answer dressed runway numbers as "expiring contracts").
+    - `years_to_decline` is an age-curve clock, NOT a contract - never dress runway
+      as an "expiring contract" (a live answer did). Real contract terms exist only
+      in get_roster_detail's `contract` field; cite them from there or not at all.
     - The team's `path` OUTRANKS every piece-level note. A `price_note` describes the
       ask IF that piece moves - it is never a reason to move him. Never assemble a
       sell plan for a team whose path is contend/press-to-buy out of its own pieces'
       pricing notes (a live answer told a contend-on-a-clock team, whose aging RBs
       ARE its rank, to liquidate all three - that is rebuild advice aimed at a
       contender; its actual move was buying).
-    - Raise `clock_mismatch_note` whenever describing the window, not only when asked
+    - Raise `clock_mismatch_note` whenever describing the team, not only when asked
       about selling - it names the starters whose clock disagrees with the roster.
       It is also the PATH-SANCTIONED exception to the rule above: converting the
       pieces it NAMES is consistent with contending - present those conversions as
       live moves, not as something to merely monitor.
-    - Use `window_note`'s wording: these are roster-composition measures - never describe
-      them as records, wins or points, because no games have been played.
     - `years_to_decline` decides WHO to sell, never age: the curves give a 31.8-year-old
       pocket passer 6.2 years and a 28.0-year-old running QB 4.0. It cuts across lists - a
       short-runway cornerstone is often a rebuilder's right sale.
@@ -140,13 +141,10 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
       INDIVIDUALLY, never a set to combine. Naming two of them as one offer prices a
       bundle, and dynasty value does not add across players (a live answer paired a
       3,650 TE with a 3,379 QB against a 4,473 target). One piece against one piece.
-    - `window_edge`, when present, means the label itself sits within refresh noise of
-      the adjacent tier: present that tier's advice as live alongside this one, and a
-      different label on a re-ask is pricing noise, never the team changing direction.
     - Read `lineup` before saying how many of a position a team can start.
     - `leverage`/`leverage_note`, when present, say what a team could BECOME (convertible:
       weak lineup, top-third war chest; mortgaged: the reverse) - raise it whenever asked
-      whether a team is good, because a Rebuild label on a convertible team understates it."""
+      whether a team is good, because a "sell" path on a convertible team understates it."""
     from analysis.league import context
     teams = team_state.classify_league(league_id)
     if owner_name:
@@ -160,11 +158,13 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
     # that. Format read once at the top of a conversation does not survive to the point where
     # it matters; attached to the roster it is being reasoned about, it does.
     fmt = sleeper.describe_format(context(league_id).league)
-    # The flavor dialect (state/flavor/flavor_note) predates the six-tag vocabulary
-    # and stays an internal field: two dialects in one payload is how a model ends up
-    # quoting "no clock" at a press team. The model reads window + the tier trio only.
+    # One dialect: window/state/flavor are internal measurement labels (window still
+    # dispatches the trade paths); the model reads the tier trio + posture_note only.
+    # Two vocabularies in one payload is how a model ends up saying "Middling window"
+    # about a team whose chip says decide (LOGIC.md, "The window-label retirement").
     teams = [{k: v for k, v in t.items()
-              if k not in ("state", "flavor", "flavor_note")} for t in teams]
+              if k not in ("window", "state", "flavor", "flavor_note", "trajectory",
+                           "trajectory_rank")} for t in teams]
     # Wrapped in a dict rather than returned as a bare list - this MCP SDK version
     # splits a top-level list return into one content block per item instead of one
     # JSON array, which is fragile to rely on. A dict always serializes as one block.
@@ -248,9 +248,9 @@ def _within_wire_limit(league_id: str, owner_name: str, max_per_position: int,
 @mcp.tool()
 def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3,
                       stance: str = None) -> dict:
-    """Trade recommendations for one team, shaped by its window (see get_team_state):
-    buy blocks for Push/Contend, sell blocks for Rebuild, or BOTH (keyed push/pivot) for
-    Middling.
+    """Trade recommendations for one team, shaped by its path (see get_team_state):
+    buy blocks for contend/press, sell blocks for sell/build, or BOTH (keyed push/pivot)
+    for wait/decide.
 
     `stance`: pass ONLY when the user declares their own direction ("I want to press
     this season", "I'm selling") that disagrees with the team's label - one of
@@ -292,7 +292,7 @@ def get_player_outlook(league_id: str, player_name: str, your_team: str = None) 
     get_trade_targets' lists is NEVER a verdict on a named player (those lists are
     ranked, capped and filtered to scored needs); this answers about him directly.
 
-    Returns one player with both sides of the call: who owns him, that owner's window,
+    Returns one player with both sides of the call: who owns him, that owner's path,
     `availability` (why the owner would or wouldn't move him - use its wording),
     `friction` (same vocabulary as everywhere), what the owner is short at, and - when
     your_team is given - `your_fit` with `offer_any_one_of`: single pieces THAT owner

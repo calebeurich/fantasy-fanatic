@@ -84,9 +84,9 @@ def outlook_from_board(board: Board, player_query: str,
     player = {**player, **entry}
 
     result = {"found": True, "player": player,
-              "owner": owner["owner"], "owner_window": owner["window"],
+              "owner": owner["owner"],
               "owner_path": owner.get("path", owner["window"]),
-              "owner_window_note": owner["window_note"],
+              "owner_posture_note": owner.get("posture_note", ""),
               "owner_is_short_at": {pos: n["level"] for pos, n in
                                     board.needs_by_owner_id.get(owner["owner_id"], {}).items()},
               "note": OUTLOOK_NOTE}

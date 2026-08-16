@@ -360,6 +360,50 @@ production-priced pieces - a 5.1-year pocket QB was being flagged as aging core)
 and production-priced pieces WITH runway get their own price_note (the Goff shape:
 the market doubts the asset, not this season - fine to hold, nothing forces a sale).
 
+**The dial cuts both ways at the ends** (2026-08-16, owner: "I fear this agent misses
+the concept that the secondary tier is less real at the top end and the bottom end...
+contending teams aren't buying AJ Brown, only Pushing teams - I don't think that is
+true. Build teams should be trying to sell their aging assets too, it's just not as
+clearly urgent. Just because you are contending doesn't mean you wouldn't try to win
+harder"). The old Contend note said "nothing needs to be bought at a premium, and
+nothing needs selling", and the model heard the first clause as "isn't buying". Now:
+the `contend` posture says a contender is STILL A BUYER of production that upgrades a
+slot, at fair prices, without spending its future - what the rank removes is the
+premium, never the direction; the `build` posture says a working rebuild STILL SELLS
+its aging pieces at the market's pace - the difference from `sell` is tempo, not
+direction. System-prompt principle F states the dial rule generally.
+
+**The waiting window runs to the trade deadline** (2026-08-16, owner: "the general
+waiting window could be until the trade deadline, not week 5 like it says - often
+closer to week 10 irl"). The wait/decide postures and the middling timing notes say
+the decision has until the deadline (a few weeks of results usually settle it sooner);
+rule 15(b) still bans invented week numbers but names the deadline as the one timing
+anchor the model may use (principle G).
+
+**The window-label retirement** (2026-08-16): the model no longer sees `window` at
+all. Every model-visible payload (get_team_state rows, the trade_targets me-block,
+wanted_by lines, seller/owner fields, pick notes, trade_eval sides) ships path +
+`posture_note` + `path_edge` instead of window + window_note + path_edge. The
+regenerated 12-team slate found the residue's ROOT in the system prompt itself
+("team windows (Push/Contend/Middling/Rebuild)"), echoed by five of twelve answers,
+and Push (an aligned contend-on-a-clock) vs press (an unaligned barbell) are
+DIFFERENT cells, so the echo was sometimes wrong, not just old. `posture_note` is
+keyed by path (POSTURE dict) and carries the premium/tempo doctrine plus the measured
+numbers; `path_edge` names the PATH across a contention tertile line, computed from
+the same composition (trajectory edges are no longer hedged - the path never reads
+trajectory; TRAJECTORY_NOISE_POINTS and the EDGE_CLOCK/EDGE_FLAVOR templates went
+with it). Windows stay computed forever: `window` still dispatches the trade paths
+(Rebuild -> pivot, Middling -> both) and keys the pick-slot tier; it is the
+measurement layer, just no longer spoken. The eval `case_team_window` became
+`case_team_read`: the path word must appear, no retired label may, and the two
+rule-15 invention classes are asserted absent. Redline #2 of trade-eval landed in
+the same change: `_side_read` reasons from `path` (a press team taking back futures
+is doing its own path and is no longer scolded for it; only aligned `contend` gets
+the mirror warning). Correction recorded in passing: "NO CONTRACT DATA" was FALSE as
+a global rule - get_roster_detail ships real nflverse contract terms - so the rule
+is now "runway is never a contract; cite contract terms from that field or not at
+all" (BenSimonds' "durable contracts" was mostly real data, wrong only about Kraft).
+
 **Core membership is either-currency** (2026-08-15, the Walker-but-not-Henry note):
 a piece is core-sized if EITHER its dynasty value or its redraft value clears the
 league's top-10% bar (`cornerstone_threshold`, same percentile both currencies).
@@ -424,14 +468,14 @@ not the tertile: "is the rebuild working" is about the roster, and in a league f
 ascending rebuilds the tertile called the clearest working rebuild "stalled". Middling
 keeps the tertile because whether waiting is free is genuinely league-relative.
 
-### Boundary noise and the hedge (`window_edge`)
+### Boundary noise and the hedge (`path_edge`)
 
 The tertiles are hard breakpoints on continuous measures, and the core labels used to
 flip a team's whole identity when a value refresh nudged one rank ("ask twice, get two
 windows" - it happened live twice, once mid-refactor when an nflverse role flap moved
 one runway). The fix keeps the tertile as the label and ships the label's *stability*
 next to it: the two teams straddling a tertile line, when their scores are within
-refresh noise of each other, each carry `window_edge` - prose naming the tier across
+refresh noise of each other, each carry `path_edge` - prose naming the tier across
 the line, saying the flip would be pricing noise, and telling the reader to hold both
 tiers' advice live.
 
@@ -968,7 +1012,7 @@ families, named so the next instance is recognized rather than re-patched:
 3. **Hard breakpoints on continuous measures** - 24% of starters sit within one year of
    the 2.0 runway bar, and `years_to_decline` itself degrades to position defaults when
    nflverse flaps. Fixed for ages (runway everywhere a boundary decides), and at the
-   core by `window_edge` (Team windows, "Boundary noise"): a label within refresh noise
+   core by `path_edge` (Team windows, "Boundary noise"): a label within refresh noise
    of a tertile line now says so, instead of flipping silently between runs.
 4. **Computed, attached, rendered by nothing** - six live instances in one module.
    Guarded by `check_everything_computed_is_printed` (renders through `_print_report`
@@ -1336,7 +1380,7 @@ to build around is a flag on the name, not a filter on the list.
 
 Measured or confirmed, none urgent, kept so nobody re-derives them:
 
-- **The window hedge discloses instability rather than removing it** - `window_edge`
+- **The window hedge discloses instability rather than removing it** - `path_edge`
   says when a label is one refresh from flipping, but the label still flips.
   Hysteresis would pin it and needs persisted prior state the stateless pipeline
   doesn't have; build it only if testers find the hedged flips confusing. Role-flap

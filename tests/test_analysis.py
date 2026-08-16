@@ -465,58 +465,26 @@ def test_the_hedge_band_splits_the_measured_flip_boundary():
 
 def _edge_row(**kw):
     row = {"owner_id": "me", "contention": "fringe", "trajectory": "steady",
-           "window": "Middling", "flavor": "steady", "leverage": None,
+           "path": "wait", "leverage": None, "pick_share": 10, "expiring_pct": 10,
            "ascending_pct": 20, "declining_pct": 20, "starting_production": 30_000,
            "asset_rank": 6, "of_teams": 12}
     return {**row, **kw}
 
 
-def test_an_edge_is_only_an_edge_when_crossing_the_line_changes_the_message():
-    """A Rebuild's flavor is absolute and `convertible` outranks trajectory, so a
-    trajectory flip tells neither team anything new - hedging them would be noise about
-    noise. The same flip IS news to a contender (the clock: Push vs Contend) and to a
-    plain Middling team (whether patience is free)."""
-    a_point_from_lower = {"me": ("middle", 1, 20)}
-    rebuild = _edge_row(window="Rebuild", contention="also-ran", trajectory="rising",
-                        flavor="ascending", ascending_pct=40, declining_pct=3)
-    assert team_state.window_edge(rebuild, {}, a_point_from_lower) is None
-
-    convertible = _edge_row(trajectory="rising", flavor="convertible",
-                            leverage="convertible")
-    assert team_state.window_edge(convertible, {}, a_point_from_lower) is None
-
-    middling = _edge_row(trajectory="rising", flavor="rising")
-    note = team_state.window_edge(middling, {}, a_point_from_lower)
-    assert "'rising'" in note and "'steady'" in note, (
-        "whether patience is free is the thing that can flip")
-
-    contender = _edge_row(window="Contend", contention="contender", flavor="Contend")
-    note = team_state.window_edge(contender, {}, {"me": ("bottom", 2, 20)})
-    assert "Push" in note, "the clock is the thing that can flip"
-
-    assert team_state.window_edge(middling, {}, {}) is None
-
-
-def test_a_contention_edge_names_the_window_across_the_line():
-    """The alternate window is computed with the team's OWN trajectory - a falling team
-    one refresh from the top tier would arrive there as Push, not generic Contending."""
-    note = team_state.window_edge(_edge_row(), {"me": ("top", 300, 30_000)}, {})
-    assert "Contend" in note and "1.0%" in note, (
+def test_a_contention_edge_names_the_path_across_the_line():
+    """The alternate read is computed from the team's OWN composition with only the rank
+    changed - a flat middle roster one refresh from the top tier arrives there as
+    'contend', a barbell one as 'press'. Silent when the rank across the line yields the
+    same path (no edge that matters), and trajectory is never hedged: the path does not
+    read it. This replaced window_edge, which named the retired window labels."""
+    note = team_state.path_edge(_edge_row(), {"me": ("top", 300, 30_000)})
+    assert "'contend'" in note and "1.0%" in note, (
         "the gap ships labelled, against the shared reference score")
-    note = team_state.window_edge(_edge_row(trajectory="falling"),
-                                  {"me": ("top", 300, 30_000)}, {})
-    assert "Push" in note
-
-
-def test_the_trajectory_band_is_in_points_and_matches_its_calibration():
-    """2, in POINTS not a share - the score crosses zero, where a relative band means
-    nothing. Calibrated: the score moved 1 point at p95 under refresh jitter, so a pair
-    2 apart is one update from swapping and a pair 3 apart is not."""
-    same = lambda a, b: a - b <= team_state.TRAJECTORY_NOISE_POINTS
-    scores = {"o1": 40, "o2": 20, "o3": 17, "o4": 5, "o5": 3, "o6": -30}
-    edges = team_state.tertile_edges(team_values.rank_map(scores), scores, 6, same)
-    assert edges == {"o4": ("bottom", 2, 5), "o5": ("middle", 2, 5)}, (
-        "3 points across the top line holds; 2 across the bottom line is a coin flip")
+    barbell = _edge_row(ascending_pct=35, declining_pct=35, path="decide")
+    assert "'press'" in team_state.path_edge(barbell, {"me": ("top", 300, 30_000)})
+    # bottom-of-middle flat roster: 'wait' here, 'sell' across the line
+    assert "'sell'" in team_state.path_edge(_edge_row(), {"me": ("bottom", 300, 30_000)})
+    assert team_state.path_edge(_edge_row(), {}) is None
 
 
 def test_value_basis_uses_the_final_year_clock_not_the_buyer_horizon():
@@ -869,8 +837,8 @@ def test_middling_note_promises_free_patience_only_when_actually_rising():
     """Middling shows both paths regardless, but only a rising roster gets next season's
     production for free - claiming that for a falling one is the label lying about the
     data printed in the same sentence."""
-    rising = team_state.window_note("Middling", 6, 12, 74, 39, 0, trajectory="rising")
-    falling = team_state.window_note("Middling", 7, 12, 71, 8, 14, trajectory="falling")
+    rising = team_state.posture_note("wait - production is arriving", 6, 12, 74, 39, 0)
+    falling = team_state.posture_note("wait", 7, 12, 71, 8, 14)
     assert "for free" in rising
     assert "for free" not in falling
     assert "will not be cheaper" in falling
@@ -1241,8 +1209,8 @@ def test_window_ships_with_an_explanation_not_a_bare_number():
     result = team_state.classify(roster, players, 10_000, starters)
     assert "diff" not in result, "bare unlabelled 'diff' must not come back"
 
-    note = team_state.window_note("Push", contention_rank=4, num_teams=12,
-                                  pct_of_best=80, asc_pct=3, dec_pct=23).lower()
+    note = team_state.posture_note("contend - on a clock", contention_rank=4, num_teams=12,
+                                   pct_of_best=80, asc_pct=3, dec_pct=23).lower()
     assert "4 of 12" in note and "80%" in note, "the measurements that produced it"
     assert "no wins or points scored" in note, "the note must rule out the wrong reading"
 
@@ -2055,11 +2023,11 @@ def test_a_named_player_gets_an_answer_not_a_verdict_about_list_membership():
     rice_entry = {"name": "Rice", "position": "WR", "value": 3500, "redraft_value": 2600,
                   "bucket": "prime", "years_to_decline": 2.7, "is_starter": True}
     fitz = {"owner_id": "fitz", "owner": "fitz", "window": "Rebuild", "state": "Rebuilding",
-            "flavor": "stalled", "window_note": "n", "trajectory": "steady",
+            "flavor": "stalled", "posture_note": "n", "trajectory": "steady",
             "ascending_pct": 26, "declining_pct": 8,
             "sellable": [rice_entry], "tradeable_surplus": []}
     me = {"owner_id": "me", "owner": "me", "window": "Rebuild", "state": "Rebuilding",
-          "flavor": "convertible", "window_note": "n", "trajectory": "steady",
+          "flavor": "convertible", "posture_note": "n", "trajectory": "steady",
           "ascending_pct": 23, "declining_pct": 2,
           "sellable": [{"name": "Goff", "position": "QB", "value": 3400,
                         "redraft_value": 4600, "bucket": "prime", "years_to_decline": 6.1,
@@ -2410,8 +2378,8 @@ def test_a_falling_rebuild_gets_the_deadline_clause_not_a_new_flavor():
     """The mirror of Push's clock: a rebuilder in the falling tertile holds value that
     is aging out, so conversion has a deadline. A clause, not a flavor - it changes the
     tempo of "convert", never the verb (LOGIC.md, "The window/flavor algebra")."""
-    falling = team_state.window_note("Rebuild", 11, 12, 40, 10, 30, trajectory="falling")
-    steady = team_state.window_note("Rebuild", 11, 12, 40, 18, 21, trajectory="steady")
+    falling = team_state.posture_note("sell", 11, 12, 40, 10, 30, trajectory="falling")
+    steady = team_state.posture_note("sell", 11, 12, 40, 18, 21, trajectory="steady")
     assert "conversion has a deadline" in falling
     assert "conversion has a deadline" not in steady, (
         "a steady rebuild is stalled, not on fire - jq at 18/21 stays un-alarmed")
@@ -2491,10 +2459,10 @@ def _eval_fixture():
     ctx.lineup_dedicated = ctx.needs_slots
     ctx.lineup_flex = []
     ctx.pick_owner = lambda q, rows: next(r for r in rows if q in r["owner"])
-    states = [{"owner_id": "a", "owner": "a", "window": "Contend",
-               "trajectory": "steady", "ascending_pct": 10, "declining_pct": 20},
-              {"owner_id": "b", "owner": "b", "window": "Rebuild",
-               "trajectory": "steady", "ascending_pct": 30, "declining_pct": 5}]
+    states = [{"owner_id": "a", "owner": "a", "window": "Contend", "path": "contend",
+               "alignment": "aligned", "ascending_pct": 10, "declining_pct": 20},
+              {"owner_id": "b", "owner": "b", "window": "Rebuild", "path": "sell",
+               "alignment": "unaligned", "ascending_pct": 30, "declining_pct": 5}]
     return _board(ctx, states)
 
 
@@ -2560,4 +2528,14 @@ def test_picks_ride_as_pieces_with_the_right_timeline_reads():
         "a Rebuild receiving a pick is buying exactly its own timeline - no flag")
     a_side = next(s for s in out["sides"] if s["owner"] == "a")
     assert any("value that pays after the window" in r for r in a_side["read"]), (
-        "a Contend team taking back futures gets the mirror warning")
+        "an aligned contend team taking back futures gets the mirror warning")
+    assert a_side["path"] == "contend" and "window" not in a_side, (
+        "sides ship the path, never the retired window label")
+
+    # The redline: a PRESS team (unaligned contender) taking back futures is doing its
+    # own path - converting the aging half - and must not be scolded for it. The
+    # evaluator used to read the window (Contend) and warn anyway.
+    board.states[0]["path"], board.states[0]["alignment"] = "press", "unaligned"
+    out = trade_eval.evaluate_from_board(board, "a", ["2027 1st"], "b", ["2026 1st"])
+    a_side = next(s for s in out["sides"] if s["owner"] == "a")
+    assert not any("value that pays after the window" in r for r in a_side["read"])

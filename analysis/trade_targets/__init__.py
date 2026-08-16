@@ -45,9 +45,10 @@ MIDDLING_TIMING_NOTE_RISING = (
 MIDDLING_TIMING_NOTE = (
     "TIMING: both paths are shown because both are live, and neither is free. This roster is "
     "not scheduled to improve on its own, so waiting does not lower the price of contending - "
-    "it just spends a season. What waiting does buy is information: a few weeks of real "
-    "results settle whether this team is closer to the top than the standings currently say, "
-    "and that is a legitimate reason to hold. Push when the price is below market (a seller "
+    "it just spends a season. What waiting does buy is information: real results settle "
+    "whether this team is closer to the top than the standings currently say, and that is a "
+    "legitimate reason to hold - the decision has until the trade deadline, though a few "
+    "weeks usually settle it sooner. Push when the price is below market (a seller "
     "who has to move a piece) or when a need is count-shaped rather than quality-shaped - an "
     "empty starting slot costs points every week and no amount of patience fills it. Pivot if "
     "the season opens badly, while the aging production still prices well."
@@ -73,12 +74,13 @@ def find_targets(league_id: str, owner_query: str,
                     "decide": "Middling", "wait": "Middling",
                     "sell": "Rebuild", "build": "Rebuild", "rebuild": "Rebuild"}.get(stance.lower())
         if declared and declared != me["window"]:
+            side = {"Push": "buy", "Middling": "both-doors", "Rebuild": "sell"}[declared]
             stance_note = (
-                f"MANAGER-DECLARED DIRECTION: this report runs the {declared}-side "
+                f"MANAGER-DECLARED DIRECTION: this report runs the {side}-side "
                 f"paths because the manager chose '{stance}', overriding the measured "
-                f"label ({me['window']} - {me.get('path', '')}). The measurements have "
-                f"not changed - state the declared direction as the manager's choice "
-                f"and note where the measured read would push back.")
+                f"read (path: {me.get('path', '')}). The measurements have not changed - "
+                f"state the declared direction as the manager's choice and note where "
+                f"the measured read would push back.")
             me = {**me, "window": declared}
 
     # What each of my starters actually costs to lose after the lineup refills itself
@@ -241,10 +243,10 @@ def find_targets(league_id: str, owner_query: str,
 # never saw"). Roster lists have exactly one home.
 # state/flavor/flavor_note are the pre-tier dialect - internal fields, never shipped
 # to the model (two dialects in one payload is how answers contradict the chips).
-_ME_FIELDS = ("owner", "owner_id", "roster_id", "window",
+_ME_FIELDS = ("owner", "owner_id", "roster_id",
               "alignment", "path", "path_reason",
-              "window_note", "window_edge", "next_first_note",
-              "leverage", "leverage_note", "owns_next_first", "trajectory",
+              "posture_note", "path_edge", "next_first_note",
+              "leverage", "leverage_note", "owns_next_first",
               "contention_rank", "of_teams", "pct_of_best", "starting_production",
               "ascending_pct", "declining_pct", "pick_capital", "no_trade_history")
 

@@ -15,7 +15,7 @@ most of the codebase keys on:
 Contending and rebuilding complement each other in both directions; same-state pairs do
 not; a Middling team is a "maybe" until it picks a side (`_sells_him` in trade_targets).
 Owning your own next 1st is a constraint on the pivot, not a fourth tier. A label within
-refresh noise of a tertile line carries `window_edge` - the adjacent tier's advice is
+refresh noise of a tertile line carries `path_edge` - the adjacent tier's advice is
 live too, and a flip between runs is pricing noise, not news. History and the models
 this replaced: LOGIC.md, "Team windows".
 
@@ -454,68 +454,67 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
             "tradeable_surplus": tradeable_surplus[:5], "sellable": sellable}
 
 
-WINDOW_NOTE = {
-    "Push": ("Top-third in current production, with a roster that declines if you wait - "
-             "the window is open and closing on its own. Buying production is worth a "
-             "premium here, and future picks are the right currency to pay with. Pivoting "
-             "is still *available*, it just returns poorly: the current production that "
-             "makes this team competitive is priced on already-realized value, so selling "
-             "it converts a lot of what wins games into comparatively little dynasty "
-             "value. Being decent now is itself the argument against tearing down."),
-    "Contend": ("Top-third in current production and not declining, so there's no clock. "
-                "Nothing needs to be bought at a premium, and nothing needs selling."),
-    "Middling": ("In the middle of the league and not committed in either direction - which "
-                 "is a position, not an unmade decision. Both paths are shown because either "
-                 "is defensible from here, and waiting to see how the season actually starts "
-                 "is a legitimate choice. What this roster does not have is the free option a "
-                 "rising one gets: it is not supplying next season's production by itself, so "
-                 "pushing later will not be cheaper than pushing now."),
-    "Rebuild": ("Not in contention this season and not rising fast enough to change that. "
-                "Sell what's declining while it still has value, and accumulate youth "
-                "and picks."),
+# What each path means for premiums and tempo - keyed by the path the model reads,
+# never by the internal window label (LOGIC.md, "The window-label retirement").
+POSTURE = {
+    "contend": ("Top-third in current production and the roster agrees with that rank - "
+                "no clock. Still a buyer: a contender tries to win harder, and production "
+                "that upgrades a starting slot is worth acquiring at a fair price - what "
+                "this rank does NOT need is to pay a premium or spend its future to get "
+                "there. Nothing needs selling."),
+    "contend - on a clock": (
+        "Top-third in current production, carried by aging production - the window is "
+        "open and closing on its own. Buying production is worth a premium here, and "
+        "future picks are the right currency to pay with. Pivoting is still *available*, "
+        "it just returns poorly: the current production that makes this team competitive "
+        "is priced on already-realized value, so selling it converts a lot of what wins "
+        "games into comparatively little dynasty value. Being decent now is itself the "
+        "argument against tearing down."),
+    "press": ("Top-third in current production, but carried by two halves pulling opposite "
+              "directions - the aging half is a clock of its own, and path_reason names its "
+              "pieces. Premiums are still not required - this rank buys at fair prices - "
+              "but 'nothing needs doing' is not true here."),
+    "wait": ("In the middle of the league and not committed in either direction - which "
+             "is a position, not an unmade decision. Both paths are shown because either "
+             "is defensible from here, and waiting on the season is a legitimate choice - "
+             "the decision has until the trade deadline, not until some early week. What "
+             "this roster does not have is the free option an "
+             "arriving one gets: it is not supplying next season's production by itself, so "
+             "pushing later will not be cheaper than pushing now."),
+    "wait - production is arriving": (
+        "Not top-third yet, but the roster rises on its own - your own ascending players "
+        "supply next season's production for free. Pushing now means paying a market "
+        "premium for what patience delivers, so both paths are shown: push only where the "
+        "price is right, otherwise keep accumulating."),
+    "decide": ("In the middle of the league with a roster that does not agree with sitting "
+               "there - both directions are genuinely open, and neither is free. Waiting on "
+               "the season is still legitimate, as late as the trade deadline; what is not "
+               "is treating the middle as a place to stay."),
+    "build": ("Not in contention this season, and the roster is already young or pick-rich - "
+              "the rebuild is working. Still a seller of anything aging: whatever production "
+              "here doesn't fit the timeline should move to a contender while it holds a "
+              "price - the difference from 'sell' is tempo, not direction (the market's "
+              "pace, not urgency). Keep accumulating youth and picks, and convert anything "
+              "the lineup cannot actually field."),
+    "sell": ("Not in contention this season and not rising fast enough to change that. Sell "
+             "what's declining while it still has value, and accumulate youth and picks."),
 }
 
-# A rising middling team has something the others don't - its own ascending players deliver
-# next season's production at no cost - so patience is genuinely free and a push has to clear
-# a higher bar. Same window and the same two paths, a different reason to prefer waiting.
-MIDDLING_RISING = (
-    "Not top-third yet, but the roster rises on its own - your own ascending players supply "
-    "next season's production for free. Pushing now means paying a market premium for what "
-    "patience delivers, so both paths are shown: push only where the price is right, "
-    "otherwise keep accumulating."
-)
 
-# The Rebuild line assumes something declining to sell, and the teams furthest into a
-# rebuild - exactly the audience - have nothing. Advice has to be keyed on the roster it
-# describes, not the window label.
-REBUILD_NOTHING_DECLINING = (
-    "Not in contention this season and not rising fast enough to change that. Nothing here "
-    "is declining, so there is no aging value to cash in - this roster is already young. "
-    "That makes the sell list short by nature, and what it has to trade is production that "
-    "doesn't fit its timeline rather than players running out of time. Keep accumulating "
-    "youth and picks, and convert anything the lineup cannot actually field."
-)
-
-
-def window_note(window: str, contention_rank: int, num_teams: int, pct_of_best: int,
-                asc_pct: int, dec_pct: int, trajectory: str = "steady") -> str:
-    """The measurements that produced the window, in words, alongside it - an unlabelled
-    number in a tool result gets a meaning invented for it (a bare {"diff": -11} was once
-    narrated as games underperformed, in the preseason)."""
-    if window == "Rebuild" and dec_pct == 0:
-        lead = REBUILD_NOTHING_DECLINING
-    elif window == "Middling" and trajectory == "rising":
-        lead = MIDDLING_RISING
-    else:
-        lead = WINDOW_NOTE[window]
-    # The mirror of Push's clock, as a clause rather than a flavor: a rebuilder in the
-    # league's falling tertile is holding value that is aging out - the SELLING has a
-    # deadline. Not its own flavor because it changes the tempo of "convert", never
-    # the verb - and the per-piece runway on every sell entry already prices the
+def posture_note(path: str, contention_rank: int, num_teams: int, pct_of_best: int,
+                 asc_pct: int, dec_pct: int, trajectory: str = "steady") -> str:
+    """What the path means for premiums and tempo, plus the measurements that produced
+    the read, in words - an unlabelled number in a tool result gets a meaning invented
+    for it (a bare {"diff": -11} was once narrated as games underperformed, in the
+    preseason)."""
+    lead = POSTURE.get(path, POSTURE[path.split(" - ")[0]])
+    # A seller in the league's falling tertile is holding value that is aging out - the
+    # SELLING has a deadline. A clause, not a path of its own: it changes the tempo of
+    # "convert", never the verb, and per-piece runway on every sell entry prices the
     # urgency at the right resolution.
     deadline = (" The value still here is aging out faster than this league's - "
                 "conversion has a deadline, not just a direction."
-                if window == "Rebuild" and trajectory == "falling" else "")
+                if path == "sell" and trajectory == "falling" else "")
     return (f"{lead} Current starting production ranks {contention_rank} of "
             f"{num_teams} ({pct_of_best}% of the league's best lineup); {asc_pct}% of that "
             f"production comes from ascending players and {dec_pct}% from declining ones."
@@ -568,14 +567,6 @@ def leverage(contention_rank: int, asset_rank: int, num_teams: int) -> str | Non
     return None
 
 
-# How close two trajectory scores sit before a refresh can swap their ranks. In points,
-# not a share - the score crosses zero, where a relative band means nothing. Under the
-# same +/-2% value jitter that calibrated NOISE_BAND, the score moved 1 point at the 95th
-# percentile and 3 at most, so a pair within 2 points is one ordinary update from
-# trading places (calibration: LOGIC.md, "Boundary noise").
-TRAJECTORY_NOISE_POINTS = 2
-
-
 def tertile_edges(ranks: dict, scores: dict, num_teams: int, same) -> dict:
     """The teams whose tertile is one value refresh from flipping: each pair straddling a
     tertile line whose scores `same` calls indistinguishable. Maps owner_id -> (the
@@ -598,61 +589,33 @@ def tertile_edges(ranks: dict, scores: dict, num_teams: int, same) -> dict:
     return out
 
 
-EDGE_CONTENTION = (
-    "This label is within refresh noise of the line: {gap_pct}% of starting production "
-    "separates this team from the one across the tertile boundary, and a routine value "
-    "refresh moves lineup totals about 1%, so an ordinary update can relabel it "
-    "{alt_window}. That flip would be pricing noise, not the team changing direction - "
-    "treat {alt_window}'s advice as live alongside this window's."
-)
-
-EDGE_CLOCK = (
-    "The clock is within refresh noise: {gap} of trajectory separate{s} this team from "
-    "the one across the line, so an ordinary update can relabel it {alt_window}. Whether "
-    "this roster is declining is genuinely unclear at this margin - don't let {window} "
-    "vs {alt_window} decide a premium on its own."
-)
-
-EDGE_FLAVOR = (
-    "The trajectory read is within refresh noise: {gap} separate{s} this team from the "
-    "one across the line, so '{flavor}' can read '{alt_flavor}' after an ordinary "
-    "update. At this margin the tilt is a coin flip, not a measurement."
+PATH_EDGE = (
+    "This read is within refresh noise of the tertile line: {gap_pct}% of starting "
+    "production separates this team from the one across it, and a routine value refresh "
+    "moves lineup totals about 1%, so an ordinary update can re-read it as '{alt_path}'. "
+    "That flip would be pricing noise, not the team changing direction - treat "
+    "'{alt_path}''s advice as live alongside this one's."
 )
 
 
-def _points(n: int) -> str:
-    return f"{n} point" + ("" if n == 1 else "s")
-
-
-def window_edge(row: dict, contention_edges: dict, trajectory_edges: dict) -> str | None:
-    """The stability of the label, next to the label. Which flip matters depends on the
-    axis and the window: a contention flip always changes the window; a trajectory flip
-    only matters where trajectory decides something (the Push/Contend clock, or a
-    Middling flavor - never a Rebuild, whose flavor is absolute)."""
-    notes = []
+def path_edge(row: dict, contention_edges: dict) -> str | None:
+    """The stability of the read, next to the read: when the contention tertile sits
+    within refresh noise of its line, name the path the team would carry across it -
+    computed from the SAME composition, only the rank changed. Silent when the alternate
+    rank yields the same path (a middle-rank team one refresh from the bottom that reads
+    'wait' either way is not on an edge that matters). Trajectory edges are not hedged:
+    the path never reads trajectory."""
     edge = contention_edges.get(row["owner_id"])
-    if edge:
-        alt_tier, gap, ref = edge
-        alt_window = window_for(CONTENTION_TIER[alt_tier], row["trajectory"])
-        notes.append(EDGE_CONTENTION.format(
-            gap_pct=round(100 * gap / ref, 1) if ref else 0,
-            alt_window=alt_window))
-    edge = trajectory_edges.get(row["owner_id"])
-    if edge:
-        alt_tier, gap, _ = edge
-        alt_trajectory = TRAJECTORY_TIER[alt_tier]
-        alt_window = window_for(row["contention"], alt_trajectory)
-        alt_flavor = flavor_for(alt_window, alt_trajectory, row["leverage"],
-                                row["ascending_pct"], row["declining_pct"],
-                                _assets_bottom(row["asset_rank"], row["of_teams"]))
-        s = "s" if gap == 1 else ""
-        if alt_window != row["window"]:
-            notes.append(EDGE_CLOCK.format(gap=_points(gap), s=s,
-                                           window=row["window"], alt_window=alt_window))
-        elif alt_flavor != row["flavor"]:
-            notes.append(EDGE_FLAVOR.format(gap=_points(gap), s=s,
-                                            flavor=row["flavor"], alt_flavor=alt_flavor))
-    return " ".join(notes) or None
+    if not edge:
+        return None
+    alt_tier, gap, ref = edge
+    _, alt_path, _ = alignment_for(
+        CONTENTION_TIER[alt_tier], row["ascending_pct"], row["declining_pct"],
+        row.get("pick_share", 0), _assets_bottom(row["asset_rank"], row["of_teams"]),
+        row.get("expiring_pct", 0), convertible=(row.get("leverage") == "convertible"))
+    if alt_path == row["path"]:
+        return None
+    return PATH_EDGE.format(gap_pct=round(100 * gap / ref, 1) if ref else 0, alt_path=alt_path)
 
 
 def classify_league(league_id: str) -> list[dict]:
@@ -734,8 +697,6 @@ def classify_league(league_id: str) -> list[dict]:
     best_production = max(production.values()) or 1
     contention_edges = tertile_edges(contention_rank, production, num_teams,
                                      lambda a, b: a - b <= a * NOISE_BAND)
-    trajectory_edges = tertile_edges(trajectory_rank, trajectory_scores, num_teams,
-                                     lambda a, b: a - b <= TRAJECTORY_NOISE_POINTS)
 
     for row in rows:
         c_rank = contention_rank[row["owner_id"]]
@@ -754,9 +715,6 @@ def classify_league(league_id: str) -> list[dict]:
         row["of_teams"] = num_teams
         row["window"] = window
         row["state"] = STATE[window]
-        row["window_note"] = window_note(window, c_rank, num_teams, row["pct_of_best"],
-                                         row["ascending_pct"], row["declining_pct"],
-                                         trajectory)
         row["next_first_note"] = next_first_note(row["owns_next_first"], window)
 
         # Only Contend gets this sentence: it is the one label that claims "no clock",
@@ -787,25 +745,18 @@ def classify_league(league_id: str) -> list[dict]:
             contention, row["ascending_pct"], row["declining_pct"], row["pick_share"],
             _assets_bottom(row["asset_rank"], num_teams), row["expiring_pct"],
             convertible=(row["leverage"] == "convertible"))
-        # A barbell contender must never carry Contend's "not declining, so there's
-        # no clock" - both clauses are false of it (live: an answer built a correct
-        # press case and then closed with "no clock means you have that luxury").
-        if window == "Contend" and row["alignment"] == "unaligned":
-            row["window_note"] = (
-                f"Top-third in current production, but carried by two halves pulling "
-                f"opposite directions ({row['ascending_pct']}% ascending vs "
-                f"{row['declining_pct']}% declining) - the usual Contend claim of 'no "
-                f"clock' does NOT apply: the aging half is a clock of its own, and "
-                f"path_reason names its pieces. Premiums are still not required - this "
-                f"rank buys at fair prices - but 'nothing needs doing' is not true here.")
+        # The model reads path + posture_note + path_edge; window stays an internal
+        # dispatch label (LOGIC.md, "The window-label retirement").
+        row["posture_note"] = posture_note(row["path"], c_rank, num_teams, row["pct_of_best"],
+                                           row["ascending_pct"], row["declining_pct"],
+                                           trajectory)
         # Unaligned rows carry their specifics BY NAME - telling them how to become
         # aligned is the whole point of the bright chip. Aligned rows stay brief;
         # their specifics are the agent's job.
         if row["alignment"] == "unaligned" and row["expiring_names"]:
             row["path_reason"] += (
                 ". The pieces on the clock: " + ", ".join(row["expiring_names"]))
-        # After flavor: an edge is only an edge if crossing the line changes the message.
-        row["window_edge"] = window_edge(row, contention_edges, trajectory_edges)
+        row["path_edge"] = path_edge(row, contention_edges)
         row["leverage_note"] = (
             LEVERAGE_NOTE[row["leverage"]].format(
                 asset_rank=row["asset_rank"], contention_rank=c_rank, num_teams=num_teams,
@@ -837,8 +788,8 @@ def main(league_id: str) -> None:
               f"{row['ascending_pct']:4}/{row['declining_pct']:<4} "
               f"{row['starter_value']:8,} {dyn_rank:3}{tank_note}")
         print(f"       {row['contention']} + {row['trajectory']}")
-        if row["window_edge"]:
-            print(f"       borderline: {row['window_edge']}")
+        if row["path_edge"]:
+            print(f"       borderline: {row['path_edge']}")
         names = lambda entries: ", ".join(e["name"] for e in entries)
         print(f"       cornerstones: {names(row['cornerstones']) if row['cornerstones'] else 'none'}")
         if row["win_now_core"]:
