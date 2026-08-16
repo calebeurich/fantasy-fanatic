@@ -311,6 +311,19 @@ not by preference:
   on losing teams fetch a premium near the deadline vs the same profile in the
   offseason? The rental premium either shows up in real trades or it doesn't.
 
+- **Two clocks in tier 2** (owner-caught 2026-08-16, Paulyt101 in Insert: `wait`
+  at 24% asc / 17% dec by BUCKET, while his own path_reason says 47% of starting
+  production is aging out by RUNWAY - "real aging players and dec rate", and the
+  system disagreeing with itself across two measures). The barbell/leaving tests
+  read the declining bucket; the aging clause reads expiring share (runway under
+  MIN_MEANINGFUL_RUNWAY), which is a SUPERSET (declining + late prime) and so
+  systematically higher. Measured: swapping the tests to runway at the same 25 bar
+  flips 14 of 48 teams (some right - GordieRudd rank 1 at 43% expiring reads
+  contend-on-a-clock; Paulyt -> decide; some doubtful - shivvv 40/14/25 tips to
+  press). Not a one-liner: pick the clock (prior: runway, per age-is-a-proxy), then
+  find ITS bar from the crawl-corpus distribution, then re-verify all 48 by eye
+  against the current chips as the reference read. Belongs with the window-label
+  retirement (same measurement layer).
 - **Flex-need follow-ups** (2026-08-15, from the FLEX label build - see LOGIC.md
   "The flex is an open upgrade slot"): the FLEX need currently drives only the
   asking team's buy path. Two consumers don't read it yet: `_counterparty_fit`
