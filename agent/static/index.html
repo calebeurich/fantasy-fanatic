@@ -298,10 +298,9 @@ function showChips(owner) {
   CHIPS(owner).forEach(q => {
     const c = document.createElement("button");
     c.type = "button"; c.className = "chip"; c.textContent = q;
-    c.onclick = () => {
-      $("q").value = `For Sleeper league ${currentLeague}, ${q.charAt(0).toLowerCase()}${q.slice(1)}`;
-      $("q").focus();
-    };
+    // Just the question: withContext pins the league id on send, invisibly. Putting
+    // the raw id in the box read as a machine talking (tester feedback).
+    c.onclick = () => { $("q").value = q; $("q").focus(); };
     box.appendChild(c);
   });
   box.style.display = "flex";
