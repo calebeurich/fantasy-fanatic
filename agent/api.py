@@ -196,16 +196,30 @@ def team_detail(league_id: str, owner: str) -> dict:
     with their market prices, and the team-level reads (window, clock mismatch).
     Deterministic and rendered directly by the UI, same reasoning as the league table -
     the analysis already knows all of it, so no tokens are spent reciting a roster."""
-    from analysis import team_values
     from analysis.league import context
+    ctx = context(league_id)
+    return _team_detail(ctx, ctx.roster_for(owner))
+
+
+@app.get("/api/league/{league_id}/teams", dependencies=[Depends(require_key)])
+def all_team_details(league_id: str) -> dict:
+    """Every team's detail in one response, keyed by owner. The UI prefetches all of
+    them right after the table renders so clicks are instant; as twelve parallel
+    requests that read as request spam to a tester watching the network tab."""
+    from analysis.league import context
+    ctx = context(league_id)
+    return {ctx.owner_names[r["owner_id"]]: _team_detail(ctx, r) for r in ctx.rosters}
+
+
+def _team_detail(ctx, roster: dict) -> dict:
+    from analysis import team_values
     from analysis.team_values import age_bucket, years_to_decline
     from sources import fantasycalc
 
     # Built straight from the cached league context, NOT get_roster_rows - that path
     # downloads nflverse contracts and injury rates, neither of which this view shows,
     # and the first click paid several seconds for data it never rendered.
-    ctx = context(league_id)
-    roster = ctx.roster_for(owner)
+    league_id = ctx.league_id
     owner_name = ctx.owner_names[roster["owner_id"]]
     starters = ctx.starters_for(roster)
     t = next(t for t in team_state.classify_league(league_id)
@@ -236,7 +250,6 @@ def team_detail(league_id: str, owner: str) -> dict:
     for rows in by_pos.values():
         rows.sort(key=lambda x: (-(x["redraft_value"] or 0), -(x["value"] or 0)))
 
-    ctx = context(league_id)
     pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.fmt["num_teams"],
                                               ctx.fmt["ppr"], ctx.fmt["is_dynasty"])
     picks = team_values.owned_picks(league_id, int(ctx.league["season"]),

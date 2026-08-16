@@ -320,9 +320,15 @@ async function fetchDetail(leagueId, owner) {
 }
 // The server builds a team detail in ~10ms from the cached league context - the wait a
 // clicker feels is purely the round trip. Warm every team right after the table renders
-// so clicking around is instant.
-function prefetchDetails(leagueId, owners) {
-  owners.forEach(o => fetchDetail(leagueId, o).catch(() => {}));
+// so clicking around is instant - in ONE request, not one per team (tester feedback:
+// twelve parallel fetches looked like request spam).
+async function prefetchDetails(leagueId) {
+  try {
+    const res = await fetch(`/api/league/${encodeURIComponent(leagueId)}/teams`, {headers: hdrs()});
+    if (!res.ok) return;
+    const all = await res.json();
+    Object.entries(all).forEach(([owner, d]) => { detailCache[leagueId + "/" + owner] = d; });
+  } catch (_) { /* clicks fall back to per-team fetches */ }
 }
 async function toggleDetail(tr, leagueId) {
   const open = tr.nextElementSibling;
@@ -513,7 +519,7 @@ async function loadLeague(id) {
           .forEach(tr => body.appendChild(tr));
       };
     });
-    prefetchDetails(id, d.teams.map(t => t.owner));
+    prefetchDetails(id);
     document.querySelectorAll("tr.team").forEach(tr => {
       // Click = select for asking AND toggle the expanded roster. Deterministic data
       // rendered directly, same doctrine as the table itself.
@@ -701,15 +707,19 @@ $("f").onsubmit = async e => {
   // from a scripted sequence - a fake progress bar that finishes before the answer does
   // is worse than none.
   const started = Date.now();
+  let beat = 0;
   const ticker = setInterval(async () => {
     const el = document.getElementById("tick");
     if (el) el.textContent = Math.round((Date.now() - started) / 1000) + "s";
+    // The clock ticks every second; the step is polled every fifth tick - the agent
+    // changes tools every 10-20s, and polling at 2s was 30-45 requests per question.
+    if (++beat % 5) return;
     try {
       const p = await (await fetch(`/progress/${sessionId}`, {headers: hdrs()})).json();
       const s = document.getElementById("step");
       if (s && p.step) s.textContent = p.step + "…";
     } catch (_) { /* progress is decoration; never let it break the answer */ }
-  }, 2000);
+  }, 1000);
   // Note the question as in-flight BEFORE sending, so a reload mid-answer knows to go
   // looking for it rather than showing an empty page.
   localStorage.setItem("ff_pending", JSON.stringify({typed, question, started}));
