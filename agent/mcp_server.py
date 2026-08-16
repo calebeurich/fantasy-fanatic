@@ -303,6 +303,30 @@ def get_player_outlook(league_id: str, player_name: str, your_team: str = None) 
 
 
 @mcp.tool()
+def evaluate_trade(league_id: str, owner_a: str, sends_a: list[str],
+                   owner_b: str, sends_b: list[str]) -> dict:
+    """Judge ONE concrete proposed trade from both seats. Call this whenever the user
+    lays out a specific deal ("X for Y", "would you do A + a 2027 1st for B"). Names
+    are matched fuzzily within what each sender actually holds - players by name, picks
+    like "2027 1st" or "2026 Pick 1.03" - and `problem` says what didn't resolve.
+
+    Each side carries the LENS its own path sets (`lens`): a buying path (contend,
+    press) is judged on its STARTING LINEUP - `lineup_production_delta` after the lineup
+    re-settles and `need_changes`, where a hole newly OPENED matters as much as one
+    closed; a selling path (sell, build) is judged on DYNASTY VALUE overall with package
+    concerns; wait/decide sees both. `goal` is that judgment in one sentence - lead with
+    it for each side. `read` carries the rest: who holds the best single piece, timeline
+    flags (a rebuild taking a rental; an aligned contender taking back futures), and
+    `BALLPARK` lines - the measured consolidation premium for N-for-1 packages. Quote
+    the ballpark as the tool's benchmark from real trades and STOP there: it is the one
+    place this project sums values, and only because the benchmark was measured that
+    way; never extend the arithmetic, never call a side the winner, never say "fair".
+    A trade can be right for both seats; say so when it is."""
+    from analysis import trade_eval
+    return trade_eval.evaluate_trade(league_id, owner_a, sends_a, owner_b, sends_b)
+
+
+@mcp.tool()
 def get_waiver_upgrades(league_id: str, owner_name: str = None) -> dict:
     """Unrostered players with real dynasty value that would upgrade a team, plus FAAB
     budget remaining per team. Pass owner_name to filter to one team; omit for the

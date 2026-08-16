@@ -27,11 +27,34 @@ from .team_values import (age_bucket, years_to_decline, INSIDE_FINAL_YEAR,
 from .trade_targets.board import build_board
 
 EVAL_NOTE = (
-    "JUDGMENT, NOT A PRICE. Values appear per piece and are never summed - a package "
-    "has no arithmetic total, and nothing here says which side 'wins by' an amount. "
-    "Each side's `read` is the case for and against FROM THAT SIDE'S OWN SEAT; a trade "
-    "can be right for both. Need changes are recomputed against the real league bar, "
-    "not guessed from position labels.")
+    "JUDGMENT, NOT A PRICE. Each side is judged by the lens ITS OWN PATH sets: a buying "
+    "path (contend, press) wants a better STARTING LINEUP - production after the lineup "
+    "re-settles, holes closed and, just as important, holes newly opened; a selling path "
+    "(sell, build) wants more DYNASTY VALUE overall, judged with package concerns (how "
+    "many bodies for one, and the measured consolidation premium) rather than roster "
+    "concerns; wait/decide sees both lenses. `package_read` is a BALLPARK from ~93 real "
+    "accepted trades, not a verdict - quote it as the tool's benchmark, never extend the "
+    "arithmetic. Nothing here says which side 'wins by' an amount; a trade can be right "
+    "for both seats.")
+
+# Measured on accepted FantasyCalc trades (n~93, ROADMAP "Early findings"): what an
+# N-for-1 package has cleared at, as a multiple of the single best piece it bought.
+# Median accepted trade sits 23% off additive parity (quartiles 10/23/38), so a package
+# under these marks is not "unfair" - it is lighter than the market usually asks.
+PACKAGE_PREMIUM = {2: 1.36, 3: 1.50, 4: 1.64}
+PARITY_SPREAD = "median accepted trade sits 23% off additive parity (quartiles 10/23/38%)"
+
+BUY_PATHS = ("contend", "press")
+SELL_PATHS = ("sell", "build")
+
+
+def _lens(path: str) -> str:
+    word = (path or "").split(" - ")[0]
+    if word in BUY_PATHS:
+        return "lineup"
+    if word in SELL_PATHS:
+        return "value"
+    return "both"
 
 
 def evaluate_trade(league_id: str, owner_a: str, sends_a: list[str],
@@ -103,6 +126,48 @@ def _need_changes(before: dict, after: dict) -> list[dict]:
     return changes
 
 
+def _package_read(receives: list[dict], best: dict, receives_best: bool) -> str | None:
+    """The consolidation ballpark, only where the deal IS a package: the side sending
+    the best piece for several. Ratio of what comes back (summed - the one place this
+    project sums, because the benchmark it is held against was measured that way)
+    to the single best piece, against the measured clearing multiple for that many
+    pieces. Pick-heavy packages clear cheaper (1.38x vs 1.57x body-heavy) - said, not
+    modelled."""
+    if receives_best or len(receives) < 2:
+        return None
+    n = min(len(receives), max(PACKAGE_PREMIUM))
+    ratio = sum(p["value"] for p in receives) / best["value"] if best["value"] else 0
+    mark = PACKAGE_PREMIUM[n]
+    picks = sum(1 for p in receives if p["position"] == "PICK")
+    shape = f"{len(receives)}-for-1" + (f", {picks} of them picks" if picks else "")
+    verdict = ("in line with" if abs(ratio - mark) <= 0.1
+               else "lighter than" if ratio < mark else "richer than")
+    return (f"BALLPARK: this is a {shape} package for {best['name']}; it sums to "
+            f"{ratio:.2f}x his value, {verdict} what {n}-for-1 packages have cleared at in "
+            f"measured trades (median {mark:.2f}x; {PARITY_SPREAD}). Bodies cost roster "
+            f"spots and picks don't, so a pick-heavy package clears cheaper than this mark "
+            f"and a body-heavy one dearer. A benchmark for the ask, not a fairness verdict.")
+
+
+def _goal_line(lens: str, lineup_delta: int, changes: list[dict], value_in: int,
+               value_out: int, n_in: int, n_out: int) -> str:
+    """One sentence per side saying whether the trade serves what that side's path is
+    FOR - a better starting lineup for buyers, more dynasty value for sellers."""
+    opened = [c["position"] for c in changes if c["direction"] == "opens"]
+    closed = [c["position"] for c in changes if c["direction"] == "closes"]
+    sign = "+" if lineup_delta >= 0 else ""
+    lineup = (f"starting lineup {sign}{lineup_delta:,} after it re-settles"
+              + (f", closes {'/'.join(closed)}" if closed else "")
+              + (f", but OPENS A NEW HOLE at {'/'.join(opened)}" if opened else ""))
+    value = (f"dynasty value {value_in:,} in for {value_out:,} out, across "
+             f"{n_in} piece{'s' if n_in != 1 else ''} received / {n_out} sent")
+    if lens == "lineup":
+        return f"GOAL for a buying path is a better starting lineup: {lineup}."
+    if lens == "value":
+        return f"GOAL for a selling path is more dynasty value overall: {value}."
+    return f"Both doors open here - lineup lens: {lineup}; value lens: {value}."
+
+
 def _side_read(state, receives, changes, lineup_delta, best, receives_best) -> list[str]:
     read = []
     if receives_best:
@@ -125,7 +190,7 @@ def _side_read(state, receives, changes, lineup_delta, best, receives_best) -> l
     # a roster that is merely tilting young is closer in, and only a piece at his own
     # edge (INSIDE_FINAL_YEAR, the _sells_him clock) is the trade backwards.
     path = state.get("path", "")
-    if path.split(" - ")[0] in ("sell", "build"):
+    if path.split(" - ")[0] in SELL_PATHS:
         bar, horizon = MIN_MEANINGFUL_RUNWAY, ("a rebuild's next competitive season is "
                                                "past that runway, so he won't be part of it")
     elif state.get("ascending_pct", 0) > state.get("declining_pct", 0):
@@ -149,6 +214,9 @@ def _side_read(state, receives, changes, lineup_delta, best, receives_best) -> l
             read.append(f"takes back futures ({', '.join(futures)}) while built to win "
                         f"now - value that pays after the window, so the rest of the "
                         f"return has to carry this season")
+    package = _package_read(receives, best, receives_best)
+    if package:
+        read.append(package)
     return read
 
 
@@ -196,11 +264,16 @@ def evaluate_from_board(board, owner_a: str, sends_a: list[str],
         changes = _need_changes(needs_before[changes_key], needs_after[changes_key])
         delta = (_lineup_production(ctx, after[changes_key])
                  - _lineup_production(ctx, rosters[changes_key]["players"]))
+        lens = _lens(state.get("path", ""))
+        value_in = sum(p["value"] for p in receives)
+        value_out = sum(p["value"] for p in sends)
         sides.append({
             "owner": state["owner"], "path": state.get("path"),
-            "alignment": state.get("alignment"),
+            "alignment": state.get("alignment"), "lens": lens,
             "sends": sends, "receives": receives,
             "need_changes": changes, "lineup_production_delta": delta,
+            "goal": _goal_line(lens, delta, changes, value_in, value_out,
+                               len(receives), len(sends)),
             "read": _side_read(state, receives, changes, delta, best,
                                receives_best=(state["owner"] == best_to)),
         })

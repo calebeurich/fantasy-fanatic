@@ -2539,3 +2539,36 @@ def test_picks_ride_as_pieces_with_the_right_timeline_reads():
     out = trade_eval.evaluate_from_board(board, "a", ["2027 1st"], "b", ["2026 1st"])
     a_side = next(s for s in out["sides"] if s["owner"] == "a")
     assert not any("value that pays after the window" in r for r in a_side["read"])
+
+
+def test_each_side_is_judged_by_the_lens_its_path_sets():
+    """Owner's framing (2026-08-16): a buying path wants a better STARTING LINEUP - and a
+    hole newly opened counts against it as much as one closed counts for it; a selling
+    path wants more DYNASTY VALUE overall, with package concerns; wait/decide sees both.
+    The BALLPARK line is the one place this project sums values, held against the
+    consolidation premium measured in real trades (2-for-1 clears at 1.36x median)."""
+    board = _eval_fixture()
+    # a (contend) sends its spare QB for b's two WRs: a lineup-lens side receiving two.
+    out = trade_eval.evaluate_from_board(board, "a", ["spareqb"], "b", ["bigwr", "smallwr"])
+    a_side = next(s for s in out["sides"] if s["owner"] == "a")
+    b_side = next(s for s in out["sides"] if s["owner"] == "b")
+    assert a_side["lens"] == "lineup" and a_side["goal"].startswith("GOAL for a buying path")
+    assert b_side["lens"] == "value" and b_side["goal"].startswith("GOAL for a selling path")
+    assert "6,800 in for 2,000 out" not in b_side["goal"], "b receives 2,000 (SpareQB), sends 6,800"
+    assert "2,000 in for 6,800 out" in b_side["goal"]
+    # b sends the best piece (BigWR) and gets one back - no package, no ballpark.
+    assert not any(r.startswith("BALLPARK") for r in b_side["read"])
+
+    # The package case: b sends BigWR and receives SpareQB + OkWR - a 2-for-1 for BigWR.
+    out = trade_eval.evaluate_from_board(board, "a", ["spareqb", "okwr"], "b", ["bigwr"])
+    b_side = next(s for s in out["sides"] if s["owner"] == "b")
+    ball = next(r for r in b_side["read"] if r.startswith("BALLPARK"))
+    assert "2-for-1 package for BigWR" in ball and "0.48x" in ball and "lighter than" in ball, ball
+    assert "median 1.36x" in ball
+
+    # A newly OPENED hole is named in the goal line - the "don't create new holes" rule:
+    # a sends its only TE for a WR it can't start over BigWR... it can (one WR slot),
+    # but the TE slot is now empty, and the goal line says so in capitals.
+    out = trade_eval.evaluate_from_board(board, "a", ["tighta"], "b", ["smallwr"])
+    a_side = next(s for s in out["sides"] if s["owner"] == "a")
+    assert "OPENS A NEW HOLE at TE" in a_side["goal"], a_side["goal"]

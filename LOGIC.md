@@ -953,6 +953,46 @@ and replaying the six current-season trades whose pieces are still where they la
 no crashes, and every read survives an eye-check against how the league actually
 discussed those deals.
 
+**The framer (2026-08-16, exposed as the `evaluate_trade` MCP tool).** Owner's ruling on
+what a trade calculator should be here: NOT one - "assets on both sides + roster-based
+needs", no exposed math, "no calculator can ever be that good since things are so
+situational". Two additions and a lens:
+
+- **Each side is judged by the lens its own PATH sets** (`lens`, `goal`). Owner: "the
+  goal is to end up with a better starting lineup for pressing path types, and more
+  dynasty value overall (with package concerns instead of roster concerns) for
+  production-selling paths." Buying paths (`contend`, `press`) -> the lineup lens:
+  production after the lineup re-settles, holes closed and - owner's worry, "we want to
+  be careful of creating new holes with the offers" - holes newly OPENED, which the
+  goal line names in capitals. Selling paths (`sell`, `build`) -> the value lens: dynasty
+  value in vs out across N pieces, judged with package concerns. `wait`/`decide` -> both
+  lenses, both doors. Correction recorded on the way: press means BUY production now;
+  selling the aging half is a press team's PIVOT branch, and the framer judges the
+  chip's lean only (entertaining the pivot branch = scope for later, owner: "probably
+  too much scope for now").
+- **The consolidation ballpark** (`PACKAGE_PREMIUM`, `_package_read`), owner: "bake in
+  the discovered premium package numbers for ballparking, then start spot checking."
+  The one place this project sums values, and only because the benchmark was measured
+  that way: for the side sending the deal's best piece against several, the return's
+  sum as a multiple of that piece, held against what N-for-1 packages have cleared at
+  in accepted trades (n~93: 2-for-1 median 1.36x, 3-for-1 1.50x, 4-for-1 1.64x; the
+  median accepted trade sits 23% off additive parity, quartiles 10/23/38, so "lighter
+  than" is not "unfair"; pick-heavy packages clear cheaper, 1.38x vs 1.57x body-heavy -
+  said, not modelled). Labelled BALLPARK; system-prompt rule D/8 carve it out as the
+  single exception to never-sum and forbid extending the arithmetic. Re-measure as
+  the fc_trades sample grows.
+- **Redline #2 closed by the window retirement**: `_side_read` reasons from `path`
+  (a press team taking back futures is doing its own path; only aligned `contend` gets
+  the mirror warning; the rental bar keys on sell/build).
+
+Spot check on the five XFL 2 sample trades: JT<->Lamb reads +295 for kieran but "OPENS A
+NEW HOLE at FLEX" (the exact caution the owner raised); Tet+Tate->JSN gets "1.07x,
+lighter than 1.36x" and a -6,099 lineup for shivvv; the Henry-to-a-rebuild control fails
+both seats; Barkley-for-a-2nd fails kieran's lineup lens and serves Vicdank's both. Live
+through the agent: both answers lead with the goal lines, quote the ballpark without
+extending it, and reason from path (bigbuttboi's read even names the tension between
+his sell chip and a contention-shaped move).
+
 ## Waiver wire (`analysis/waiver_wire.py`)
 
 Same relevance floor as everywhere else. Surfaces an available player who beats a
