@@ -970,17 +970,31 @@ situational". Two additions and a lens:
   selling the aging half is a press team's PIVOT branch, and the framer judges the
   chip's lean only (entertaining the pivot branch = scope for later, owner: "probably
   too much scope for now").
-- **The consolidation ballpark** (`PACKAGE_PREMIUM`, `_package_read`), owner: "bake in
-  the discovered premium package numbers for ballparking, then start spot checking."
+- **The shape ballpark** (`RETURN_SHAPES`, `_package_read`), owner: "bake in the
+  discovered premium package numbers for ballparking, then start spot checking" -
+  then, on seeing 3 RBs for Jeanty and 4-for-1 for JSN read as plausible: "the packages
+  really never work like that... trading for studs like those would require a good
+  player like Drake London and 2 first round picks. Can you check real league data?"
+  Checked (research/stud_returns.py, 461 crawled trades with the best piece alone on
+  his side, DP point-in-time values): a stud's return is a CENTERPIECE PLUS PICKS, not
+  a pile - top-5% pieces come back as 2-3 pieces whose best is ~half the stud
+  (q1-q3 0.43-0.66; London-for-JSN is 0.57), with a 1st in ~54% of returns, summing to
+  ~parity; four-plus-piece returns are rare and pick-inclusive (1 of 18 was all
+  players); firsts are a stud currency that vanishes below the top ~10% (41% -> 3%);
+  below the top fifth, trades are 1-for-1 swaps. The fc_trades premium (n~93, all
+  tiers: 2-for-1 at 1.36x) does NOT describe stud deals - the consolidation premium is
+  a mid-tier phenomenon; at the top the binding constraint is centerpiece quality. So
+  the ballpark is a lookup keyed by the best piece's value percentile in the league's
+  pool (top-2/5/10/20/35%, mid), and it speaks SHAPE: what pieces of that tier have
+  fetched (pieces back, centerpiece band, summed multiple, share with a 1st, share
+  with no picks) and then what THIS return looks like against it - centerpiece share
+  inside/below/above the band, picks and 1sts counted, a rarity clause for 4+ pieces
+  and a "usually brings back a 1st; this has none" clause for pick-less stud returns.
   The one place this project sums values, and only because the benchmark was measured
-  that way: for the side sending the deal's best piece against several, the return's
-  sum as a multiple of that piece, held against what N-for-1 packages have cleared at
-  in accepted trades (n~93: 2-for-1 median 1.36x, 3-for-1 1.50x, 4-for-1 1.64x; the
-  median accepted trade sits 23% off additive parity, quartiles 10/23/38, so "lighter
-  than" is not "unfair"; pick-heavy packages clear cheaper, 1.38x vs 1.57x body-heavy -
-  said, not modelled). Labelled BALLPARK; system-prompt rule D/8 carve it out as the
-  single exception to never-sum and forbid extending the arithmetic. Re-measure as
-  the fc_trades sample grows.
+  that way; system-prompt rule D/8 carve it out and forbid extending it. Owner's
+  spectrum request ("make it more of a spectrum and look for other distinct shapes")
+  is the tiering; position was measured and found to matter a little (RB studs most
+  pick-inclusive, QB least - QB-for-QB swaps), not enough to key on.
 - **Redline #2 closed by the window retirement**: `_side_read` reasons from `path`
   (a press team taking back futures is doing its own path; only aligned `contend` gets
   the mirror warning; the rental bar keys on sell/build).

@@ -132,3 +132,57 @@ Graduation queue, in order of evidence strength: the tier-conditioned drift note
 into sell-window payloads; the contract-year signal as a second note; the decline
 tails from eye-test to measured; the rushing-QB override review once the EPA split
 is reconstructed.
+
+## Study: what a stud actually fetches - return shape across the value spectrum (2026-08-16)
+
+`research/stud_returns.py`. Owner's prior, from the framer's first edge cases: "the
+packages really never work like that [3 RBs for Jeanty, 4 bodies + a 1st for JSN] -
+trading for studs would require a good player like Drake London and 2 first round
+picks." Tested on the crawl ledger: every trade whose best piece was ALONE on his side
+(a true "what does he fetch"), priced point-in-time from the DP archive (2QB in
+superflex leagues), picks at FantasyCalc's current flat round averages (an
+approximation - picks aren't in the player archive; fine for shape, not precision).
+461 such trades.
+
+**Findings, by the best piece's value percentile at the time:**
+
+| tier | n | pieces back | centerpiece / stud | summed | has a 1st | no picks | 4+ pieces |
+|---|---|---|---|---|---|---|---|
+| top 2% | 57 | 3 | 0.50 | 0.98x | 54% | 35% | 24% |
+| 2-5% | 88 | 2 | 0.54 | 0.89x | 53% | 29% | 12% |
+| 5-10% | 120 | 2 | 0.65 | 0.88x | 41% | 27% | 5% |
+| 10-20% | 123 | 2 | 0.66 | 0.80x | 3% | 49% | 0% |
+| 20-35% | 57 | 1 | 0.46 | 0.53x | 0% | 89% | 0% |
+| 35-60% | 16 | 1 | 0.33 | 0.33x | 0% | 100% | 0% |
+
+- **A stud's return is a centerpiece plus picks, not a pile.** Top-5% studs come back
+  as 2-3 pieces whose best is ~half the stud (quartiles 0.43-0.66) - Drake London for
+  JSN is 0.57, dead centre - with a 1st in ~54% of returns and two+ firsts in 20%.
+- **Studs move at roughly additive parity, not a premium.** Summed 0.9-1.0x at the
+  top. This DISAGREES with the fc_trades finding (n~93, all tiers: 2-for-1 clears at
+  1.36x, 3-for-1 1.50x). Reconciled: the consolidation premium is a MID-TIER
+  phenomenon; at the top the binding constraint is centerpiece quality, and nobody
+  pays 1.5-1.9x. The framer's ballpark now speaks shape for stud deals and keeps the
+  premium marks only below the top ~10%.
+- **Body-heavy packages barely exist at the top**: 4-for-1s are 12-24% only in the
+  top 5%, and pick-inclusive; of 18 four-piece stud returns exactly 1 was all
+  players. 3 RBs for Jeanty (0.51 centerpiece, zero picks, three roster spots) is
+  the rare shape; 4 bodies + a 1st for JSN at 1.88x is a shape that does not occur.
+- **Firsts are a stud currency.** Below the top ~10% the share of returns with a 1st
+  collapses (41% -> 3%); the mid-tier pays in players and 2nds. Below the top fifth,
+  trades are 1-for-1 player swaps (89-100% no picks).
+- **Position matters a little, not enough to key on**: among top-10% studs, RB
+  returns are the most pick-inclusive (16% without picks) and QB the least (44% -
+  QB-for-QB swaps), TE studs fetch 3 pieces. One clause in the ballpark, not a
+  dimension.
+- **The summed multiple falls with tier** (0.98 -> 0.53) - partly real (mid-tier
+  swaps are lopsided player-for-player), partly construction (a 1-for-1 return is
+  <=1x by definition when the best piece is alone). So summed multiples are only a
+  meaningful benchmark in the top ~10% where packages exist; below that, the shape
+  IS the finding.
+
+Caveats: DP values are the retro source (coarser format conditioning than FC); the
+pick constant is 2026 FC and applied to all seasons; the VEGAS-LIFE ecosystem caveat
+applies (re-check outside any single ecosystem before promoting a threshold).
+Anchors for the eye: Josh Allen <- Jayden Daniels; Allen <- three 1sts + a 2nd;
+Jefferson <- St. Brown + Hockenson; Bijan <- Breece + a 1st; Lamb <- three 1sts + change.

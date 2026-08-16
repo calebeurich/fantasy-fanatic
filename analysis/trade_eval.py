@@ -32,17 +32,45 @@ EVAL_NOTE = (
     "re-settles, holes closed and, just as important, holes newly opened; a selling path "
     "(sell, build) wants more DYNASTY VALUE overall, judged with package concerns (how "
     "many bodies for one, and the measured consolidation premium) rather than roster "
-    "concerns; wait/decide sees both lenses. `package_read` is a BALLPARK from ~93 real "
-    "accepted trades, not a verdict - quote it as the tool's benchmark, never extend the "
+    "concerns; wait/decide sees both lenses. The BALLPARK line is what pieces of the best "
+    "piece's tier have actually fetched in 461 real trades - shape (pieces back, centerpiece "
+    "share, picks) - not a verdict: quote it as the tool's benchmark, never extend the "
     "arithmetic. Nothing here says which side 'wins by' an amount; a trade can be right "
     "for both seats.")
 
-# Measured on accepted FantasyCalc trades (n~93, ROADMAP "Early findings"): what an
-# N-for-1 package has cleared at, as a multiple of the single best piece it bought.
-# Median accepted trade sits 23% off additive parity (quartiles 10/23/38), so a package
-# under these marks is not "unfair" - it is lighter than the market usually asks.
-PACKAGE_PREMIUM = {2: 1.36, 3: 1.50, 4: 1.64}
-PARITY_SPREAD = "median accepted trade sits 23% off additive parity (quartiles 10/23/38%)"
+# What a piece of a given tier has ACTUALLY fetched, measured on 461 crawled trades
+# where the best piece stood alone on his side (research/stud_returns.py, 2026-08-16),
+# keyed by that piece's value percentile at the time. Each row: pieces that came back
+# (median), the centerpiece as a share of the stud (q1, median, q3), the summed
+# multiple (median), the share of returns containing a 1st, and the share with no
+# picks. The consolidation premium measured on fc_trades (2-for-1 at 1.36x etc.) does
+# NOT describe stud deals - at the top the constraint is centerpiece quality and returns
+# sum to ~parity - so the ballpark speaks SHAPE, tiered.
+RETURN_SHAPES = [
+    # (upper pct bound, label, pieces, (cp_q1, cp_med, cp_q3), summed, has_1st, no_picks)
+    (0.02, "top-2%",   3, (0.40, 0.50, 0.62), 0.98, 0.54, 0.35),
+    (0.05, "top-5%",   2, (0.43, 0.54, 0.66), 0.89, 0.53, 0.29),
+    (0.10, "top-10%",  2, (0.52, 0.65, 0.78), 0.88, 0.41, 0.27),
+    (0.20, "top-20%",  2, (0.53, 0.66, 0.80), 0.80, 0.03, 0.49),
+    (0.35, "top-35%",  1, (0.35, 0.46, 0.60), 0.53, 0.00, 0.89),
+    (1.01, "mid-tier", 1, (0.25, 0.33, 0.45), 0.33, 0.00, 1.00),
+]
+
+
+def _shape_for(pct: float):
+    for bound, *rest in RETURN_SHAPES:
+        if pct < bound:
+            return rest
+    return RETURN_SHAPES[-1][1:]
+
+
+def _value_percentile(value: int, players: dict) -> float:
+    """Where a piece sits in this league's valued player pool, 0.0 = the top."""
+    vals = sorted((i.get("value") or 0 for i in players.values() if i.get("value")), reverse=True)
+    if not vals:
+        return 1.0
+    return sum(1 for v in vals if v > value) / len(vals)
+
 
 BUY_PATHS = ("contend", "press")
 SELL_PATHS = ("sell", "build")
@@ -58,8 +86,17 @@ def _lens(path: str) -> str:
 
 
 def evaluate_trade(league_id: str, owner_a: str, sends_a: list[str],
-                   owner_b: str, sends_b: list[str]) -> dict:
-    return evaluate_from_board(build_board(league_id), owner_a, sends_a, owner_b, sends_b)
+                   owner_b: str, sends_b: list[str],
+                   stance_a: str | None = None, stance_b: str | None = None) -> dict:
+    return evaluate_from_board(build_board(league_id), owner_a, sends_a, owner_b, sends_b,
+                               stance_a, stance_b)
+
+
+# A manager who declares a branch ("kieran wants to pivot", "I'm pressing this year")
+# outranks the chip's lean for the lens - the same rule as get_trade_targets' stance.
+STANCE_LENS = {"press": "lineup", "contend": "lineup", "buy": "lineup", "push": "lineup",
+               "sell": "value", "build": "value", "pivot": "value", "rebuild": "value",
+               "wait": "both", "decide": "both"}
 
 
 def _resolve(ctx, roster, owned_picks, owner_name, queries):
@@ -126,27 +163,37 @@ def _need_changes(before: dict, after: dict) -> list[dict]:
     return changes
 
 
-def _package_read(receives: list[dict], best: dict, receives_best: bool) -> str | None:
-    """The consolidation ballpark, only where the deal IS a package: the side sending
-    the best piece for several. Ratio of what comes back (summed - the one place this
-    project sums, because the benchmark it is held against was measured that way)
-    to the single best piece, against the measured clearing multiple for that many
-    pieces. Pick-heavy packages clear cheaper (1.38x vs 1.57x body-heavy) - said, not
-    modelled."""
-    if receives_best or len(receives) < 2:
+def _package_read(receives: list[dict], best: dict, receives_best: bool, pct: float) -> str | None:
+    """The shape ballpark for the side sending the deal's best piece: what pieces of his
+    tier have actually fetched, held against what this return looks like. Sums appear
+    here and nowhere else - the benchmark was measured that way. Silent when this side
+    holds the best piece (nothing to benchmark) or the piece is mid-tier and the return
+    is a single player (a plain swap - the shape table has nothing to add)."""
+    if receives_best:
         return None
-    n = min(len(receives), max(PACKAGE_PREMIUM))
+    label, pieces, (q1, med, q3), summed, has_first, no_picks = _shape_for(pct)
+    if len(receives) < 2 and label == "mid-tier":
+        return None
+    n = len(receives)
+    picks = [p for p in receives if p["position"] == "PICK"]
+    firsts = [p for p in picks if "1st" in p["name"]]
+    cp = max((p["value"] for p in receives), default=0) / best["value"] if best["value"] else 0
     ratio = sum(p["value"] for p in receives) / best["value"] if best["value"] else 0
-    mark = PACKAGE_PREMIUM[n]
-    picks = sum(1 for p in receives if p["position"] == "PICK")
-    shape = f"{len(receives)}-for-1" + (f", {picks} of them picks" if picks else "")
-    verdict = ("in line with" if abs(ratio - mark) <= 0.1
-               else "lighter than" if ratio < mark else "richer than")
-    return (f"BALLPARK: this is a {shape} package for {best['name']}; it sums to "
-            f"{ratio:.2f}x his value, {verdict} what {n}-for-1 packages have cleared at in "
-            f"measured trades (median {mark:.2f}x; {PARITY_SPREAD}). Bodies cost roster "
-            f"spots and picks don't, so a pick-heavy package clears cheaper than this mark "
-            f"and a body-heavy one dearer. A benchmark for the ask, not a fairness verdict.")
+    band = ("inside" if q1 <= cp <= q3 else "below" if cp < q1 else "above")
+    this = (f"THIS RETURN: {n} piece{'s' if n != 1 else ''} ({len(picks)} pick{'s' if len(picks) != 1 else ''}"
+            f"{', ' + str(len(firsts)) + ' of them 1sts' if firsts else ''}), centerpiece "
+            f"{cp:.2f}x of {best['name']} - {band} the usual band - summing to {ratio:.2f}x.")
+    usual = (f"BALLPARK for a {label} piece, from real trades: {pieces} piece{'s' if pieces != 1 else ''} back, "
+             f"centerpiece {q1:.2f}-{q3:.2f}x of him (median {med:.2f}), summing to ~{summed:.2f}x; "
+             f"{round(has_first * 100)}% of returns include a 1st, {round(no_picks * 100)}% include no pick at all.")
+    tail = ""
+    if n >= 4:
+        tail = (" Four-plus-piece returns are rare (12-24% only for top-5% pieces, and nearly always "
+                "pick-inclusive; of 18 measured four-piece stud returns exactly one was all players) - "
+                "bodies cost roster spots.")
+    if label in ("top-2%", "top-5%", "top-10%") and not picks:
+        tail += " Studs of this tier usually bring back a 1st; this return has none."
+    return f"{usual} {this}{tail} A benchmark for the ask, not a fairness verdict."
 
 
 def _goal_line(lens: str, lineup_delta: int, changes: list[dict], value_in: int,
@@ -168,7 +215,8 @@ def _goal_line(lens: str, lineup_delta: int, changes: list[dict], value_in: int,
     return f"Both doors open here - lineup lens: {lineup}; value lens: {value}."
 
 
-def _side_read(state, receives, changes, lineup_delta, best, receives_best) -> list[str]:
+def _side_read(state, receives, changes, lineup_delta, best, receives_best,
+               best_pct: float = 1.0) -> list[str]:
     read = []
     if receives_best:
         read.append(f"gets the best single piece in the deal ({best['name']}, "
@@ -214,14 +262,15 @@ def _side_read(state, receives, changes, lineup_delta, best, receives_best) -> l
             read.append(f"takes back futures ({', '.join(futures)}) while built to win "
                         f"now - value that pays after the window, so the rest of the "
                         f"return has to carry this season")
-    package = _package_read(receives, best, receives_best)
+    package = _package_read(receives, best, receives_best, best_pct)
     if package:
         read.append(package)
     return read
 
 
 def evaluate_from_board(board, owner_a: str, sends_a: list[str],
-                        owner_b: str, sends_b: list[str]) -> dict:
+                        owner_b: str, sends_b: list[str],
+                        stance_a: str | None = None, stance_b: str | None = None) -> dict:
     ctx = board.ctx
     a = ctx.pick_owner(owner_a, board.states)
     b = ctx.pick_owner(owner_b, board.states)
@@ -257,14 +306,25 @@ def evaluate_from_board(board, owner_a: str, sends_a: list[str],
 
     best = max(pieces_a + pieces_b, key=lambda p: p["value"])
     best_to = b["owner"] if best in pieces_a else a["owner"]
+    best_pct = _value_percentile(best["value"], ctx.players) if best["position"] != "PICK" else 1.0
 
     sides = []
-    for state, sends, receives, changes_key in (
-            (a, pieces_a, pieces_b, a["owner_id"]), (b, pieces_b, pieces_a, b["owner_id"])):
+    for state, sends, receives, changes_key, stance in (
+            (a, pieces_a, pieces_b, a["owner_id"], stance_a),
+            (b, pieces_b, pieces_a, b["owner_id"], stance_b)):
         changes = _need_changes(needs_before[changes_key], needs_after[changes_key])
         delta = (_lineup_production(ctx, after[changes_key])
                  - _lineup_production(ctx, rosters[changes_key]["players"]))
         lens = _lens(state.get("path", ""))
+        declared = STANCE_LENS.get((stance or "").lower())
+        stance_note = None
+        if declared and declared != lens:
+            stance_note = (f"MANAGER-DECLARED BRANCH: judged on the {declared} lens because "
+                           f"the manager chose '{stance}'; the measured read (path: "
+                           f"{state.get('path')}) would use the {lens} lens - present the "
+                           f"declared branch as their choice and say where the measured "
+                           f"read would push back.")
+            lens = declared
         value_in = sum(p["value"] for p in receives)
         value_out = sum(p["value"] for p in sends)
         sides.append({
@@ -274,8 +334,10 @@ def evaluate_from_board(board, owner_a: str, sends_a: list[str],
             "need_changes": changes, "lineup_production_delta": delta,
             "goal": _goal_line(lens, delta, changes, value_in, value_out,
                                len(receives), len(sends)),
+            **({"stance_note": stance_note} if stance_note else {}),
             "read": _side_read(state, receives, changes, delta, best,
-                               receives_best=(state["owner"] == best_to)),
+                               receives_best=(state["owner"] == best_to),
+                               best_pct=best_pct),
         })
     return {"ok": True, "note": EVAL_NOTE,
             "best_piece": {**best, "to": best_to}, "sides": sides}

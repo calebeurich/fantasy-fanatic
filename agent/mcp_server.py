@@ -304,7 +304,8 @@ def get_player_outlook(league_id: str, player_name: str, your_team: str = None) 
 
 @mcp.tool()
 def evaluate_trade(league_id: str, owner_a: str, sends_a: list[str],
-                   owner_b: str, sends_b: list[str]) -> dict:
+                   owner_b: str, sends_b: list[str],
+                   stance_a: str = None, stance_b: str = None) -> dict:
     """Judge ONE concrete proposed trade from both seats. Call this whenever the user
     lays out a specific deal ("X for Y", "would you do A + a 2027 1st for B"). Names
     are matched fuzzily within what each sender actually holds - players by name, picks
@@ -321,9 +322,15 @@ def evaluate_trade(league_id: str, owner_a: str, sends_a: list[str],
     the ballpark as the tool's benchmark from real trades and STOP there: it is the one
     place this project sums values, and only because the benchmark was measured that
     way; never extend the arithmetic, never call a side the winner, never say "fair".
-    A trade can be right for both seats; say so when it is."""
+    A trade can be right for both seats; say so when it is.
+
+    `stance_a`/`stance_b`: pass ONLY when the user declares that side's branch ("kieran
+    wants to pivot", "I'm pressing this year") - one of press/contend/buy/sell/build/
+    pivot/wait/decide. It switches that side's lens and adds `stance_note`; the
+    measured read still rides. Never pass it on your own initiative."""
     from analysis import trade_eval
-    return trade_eval.evaluate_trade(league_id, owner_a, sends_a, owner_b, sends_b)
+    return trade_eval.evaluate_trade(league_id, owner_a, sends_a, owner_b, sends_b,
+                                     stance_a, stance_b)
 
 
 @mcp.tool()

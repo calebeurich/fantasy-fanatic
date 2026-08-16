@@ -2556,15 +2556,19 @@ def test_each_side_is_judged_by_the_lens_its_path_sets():
     assert b_side["lens"] == "value" and b_side["goal"].startswith("GOAL for a selling path")
     assert "6,800 in for 2,000 out" not in b_side["goal"], "b receives 2,000 (SpareQB), sends 6,800"
     assert "2,000 in for 6,800 out" in b_side["goal"]
-    # b sends the best piece (BigWR) and gets one back - no package, no ballpark.
-    assert not any(r.startswith("BALLPARK") for r in b_side["read"])
+    # b sends the best piece (BigWR, top of the pool) and gets one back - a stud 1-for-1
+    # still gets the shape ballpark (23 of 145 measured stud returns were 1-for-1).
+    assert any("THIS RETURN: 1 piece" in r for r in b_side["read"])
 
-    # The package case: b sends BigWR and receives SpareQB + OkWR - a 2-for-1 for BigWR.
+    # The package case: b sends BigWR (the pool's top value - a top-2% piece) and gets
+    # SpareQB + OkWR back. The ballpark speaks SHAPE from measured stud returns: what
+    # a piece of that tier usually fetches, then what THIS return looks like against it.
     out = trade_eval.evaluate_from_board(board, "a", ["spareqb", "okwr"], "b", ["bigwr"])
     b_side = next(s for s in out["sides"] if s["owner"] == "b")
     ball = next(r for r in b_side["read"] if r.startswith("BALLPARK"))
-    assert "2-for-1 package for BigWR" in ball and "0.48x" in ball and "lighter than" in ball, ball
-    assert "median 1.36x" in ball
+    assert "BALLPARK for a top-2% piece" in ball and "THIS RETURN: 2 pieces" in ball, ball
+    assert "centerpiece 0.33x of BigWR - below the usual band" in ball, ball
+    assert "usually bring back a 1st; this return has none" in ball
 
     # A newly OPENED hole is named in the goal line - the "don't create new holes" rule:
     # a sends its only TE for a WR it can't start over BigWR... it can (one WR slot),
