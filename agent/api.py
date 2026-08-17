@@ -420,12 +420,20 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
         light, picks, key = ("a", picks_a, "a_sends") if ratio < 1 else ("b", picks_b, "b_sends")
         if not wants_picks["b" if light == "a" else "a"]:
             return None
-        for name, pv in picks:
-            new = dict(prop); new[key] = prop[key] + [name]
-            va2, vb2 = va + (pv if light == "a" else 0), vb + (pv if light == "b" else 0)
+        # One pick, then two 1sts: "young piece + two firsts for the stud" is the common
+        # real-life shape for a stud going to a rebuild (owner), and the summed band for a
+        # top-5% piece (~1.06x) is what two 1sts reach when one doesn't. Picks are the one
+        # thing that can bridge a light centerpiece to a seller whose lens is value.
+        firsts = [(n, pv) for n, pv in picks if " 1st" in n]
+        attempts = [[pk] for pk in picks] + ([firsts[:2]] if len(firsts) >= 2 else [])
+        for combo in attempts:
+            add_v = sum(pv for _, pv in combo)
+            new = dict(prop); new[key] = prop[key] + [n for n, _ in combo]
+            va2, vb2 = va + (add_v if light == "a" else 0), vb + (add_v if light == "b" else 0)
             if 1 / 1.35 <= va2 / vb2 <= 1.35:
-                new["why"] = prop["why"] + f"; {name} tops up the light side"
-                return new if centerpiece_ok(new) else None
+                new["why"] = prop["why"] + f"; {' + '.join(n for n, _ in combo)} tops up the light side"
+                if len(combo) == 2 or centerpiece_ok(new):
+                    return new
         return None
 
     cands = list(proposals(a, b, stance_a))
