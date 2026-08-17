@@ -204,6 +204,12 @@ should be doing, what the trade does to your starting lineup or your dynasty val
 3. If COUNTER: exactly what you would need added, removed or swapped, and why that fixes \
 it for you - name pieces, don't wave at "more value".
 
+Judge by YOUR path's lens, the way evaluate_trade does. If your path is sell or build, \
+you are a rebuild: what matters is dynasty value and timeline - young pieces and picks - \
+and a hole this season at a position you are already selling is not a reason (you are \
+not trying to field a lineup; "I can't absorb an RB hole" is a contender's sentence, \
+not yours). If your path is contend or press, your starting lineup this season is the \
+test and future value is the currency you spend. If you are in the middle, weigh both. \
 Judge only from your own side. The other manager's reasons are their problem. Be a real \
 manager: brief, a little self-interested, no hedging, no advice for the other side, and \
 never total values into a package price - say which single piece matters and why. \
