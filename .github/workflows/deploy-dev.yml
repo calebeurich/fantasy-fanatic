@@ -1,0 +1,128 @@
+name: deploy-dev
+
+# STAGING CD: every push to `dev` that passes tests deploys to a second Cloud Run
+# service, fantasy-fanatic-dev - same image, its own URL, scales to zero, its own
+# (smaller) daily budget cap. Owner's call (2026-08-16): the UI is getting heavier, so
+# deployed changes get tried on a phone here before main ships them to friends. Prod
+# deploys become rarer, which also shrinks the "don't deploy during live use" window.
+# Everything below mirrors deploy.yml except the branch, the service, the environment,
+# and the budget; keep them in step by hand - two files was judged simpler than a
+# parameterised one.
+#
+# Authenticates via Workload Identity Federation, not a service account JSON key. No
+# long-lived credential is stored in GitHub secrets: each run exchanges GitHub's OIDC
+# token for a short-lived GCP token. The pool's attribute-condition restricts that
+# exchange to this repository - without it any GitHub repo could impersonate the
+# deployer service account.
+
+on:
+  workflow_run:
+    workflows: [tests]
+    branches: [dev]
+    types: [completed]
+
+env:
+  PROJECT_ID: fantasy-fanatic
+  REGION: us-central1
+  SERVICE: fantasy-fanatic-dev
+
+jobs:
+  deploy:
+    # The gate: workflow_run fires on failure too, so this must be checked explicitly.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    # Declaring an environment is what makes GitHub record a Deployment object per run -
+    # without it the repo's Deployments panel stays empty no matter what actually shipped.
+    # The url is the bare service origin; the friends key never goes here (public repo).
+    environment:
+      name: staging
+      url: https://fantasy-fanatic-dev-487070873858.us-central1.run.app
+    permissions:
+      contents: read
+      id-token: write # required to mint the OIDC token for WIF
+
+    steps:
+      # Check out the exact commit that passed tests, not whatever main is now - they
+      # can differ if something landed while the test run was in flight.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: projects/487070873858/locations/global/workloadIdentityPools/github/providers/github-provider
+          service_account: github-deployer@fantasy-fanatic.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      # The service is public and the app-level key is the gate - deploying with the
+      # secret unset would ship an ungated public endpoint, so refuse instead.
+      - name: Refuse to deploy public without the link key
+        run: |
+          if [ -z "${{ secrets.FF_LINK_KEY }}" ]; then
+            echo "FF_LINK_KEY repo secret is not set - add it (Settings -> Secrets and"
+            echo "variables -> Actions) before deploying a public service."
+            exit 1
+          fi
+
+      - name: Build and deploy
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --source . \
+            --region "$REGION" \
+            --allow-unauthenticated \
+            --memory 4Gi \
+            --cpu 1 \
+            --timeout 600 \
+            --concurrency 2 \
+            --max-instances 1 \
+            --execution-environment gen2 \
+            --service-account "fantasy-fanatic-run@fantasy-fanatic.iam.gserviceaccount.com" \
+            --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest" \
+            --set-env-vars "^;^FF_LINK_KEY=${{ secrets.FF_LINK_KEY }};DAILY_BUDGET_USD=3.00;DAILY_MAX_REQUESTS=100;MAX_SESSIONS=4;WARM_LEAGUES=1315386978904084480,1319727865188593664,1313999558660857856,1354169522327670784"
+
+      # The settings above are load-bearing and easy to lose in a console edit, so they
+      # are declared here rather than living only as click-state:
+      #   max-instances 1             - budget.py's daily cap is an in-process counter,
+      #                                 exact only while every request lands in ONE
+      #                                 process
+      #   concurrency 2               - two friends can ask at once instead of queueing
+      #                                 behind a 60-90s answer; still one instance, one
+      #                                 event loop, so the budget counter stays exact
+      #   memory 4Gi                  - each concurrent session holds a claude CLI + MCP
+      #                                 subprocess pair (pandas/nflverse in the MCP one);
+      #                                 two lanes of that plus the parent outgrows 2Gi
+      #   gen2                        - full Linux compatibility for subprocess spawning
+      #   allow-unauthenticated       - the service is public; what gates real use is
+      #                                 FF_LINK_KEY (app-level, checked on /ask and
+      #                                 /api/*) plus the daily budget that fails closed.
+      #                                 If this flag errors on deploy the deployer SA
+      #                                 lacks run.services.setIamPolicy - grant
+      #                                 roles/run.admin to github-deployer, or set the
+      #                                 allUsers invoker binding once in the console
+      #   FF_LINK_KEY                 - the friends-link key, a GitHub Actions secret
+      #                                 (repo Settings -> Secrets -> Actions); rotating
+      #                                 it is changing the secret and re-deploying
+      #   DAILY_BUDGET_USD            - $10/day (~110-250 questions), raised from $3 when
+      #   DAILY_MAX_REQUESTS            the first group session nearly hit the ceiling;
+      #                                 the request count is the backstop for calls that
+      #                                 report no cost. This is the whole exposure if the
+      #                                 link key ever leaks - a deliberate number
+      #   WARM_LEAGUES                - league ids pre-fetched in a background thread on
+      #                                 container start (the four leagues friends use), so
+      #                                 a visit after Cloud Run scaled to zero doesn't pay
+      #                                 ~10s of cold fetches. The `^;^` prefix makes `;`
+      #                                 the pair delimiter so the id list can use commas
+      #   MAX_SESSIONS 4              - conversation slots (each holds a claude+MCP
+      #                                 subprocess pair). 2 slots with LRU eviction
+      #                                 silently reset a tester's conversation mid-session
+      #                                 while others were asking; 4Gi covers four pairs
+      #   service-account             - a dedicated runtime identity holding exactly one
+      #                                 permission (read the anthropic-api-key secret),
+      #                                 not the default compute account, which carries
+      #                                 project Editor. A compromised deploy can still
+      #                                 reach that one secret - unavoidable when the code
+      #                                 needs it to run - but no longer inherits the
+      #                                 whole project along with it.
