@@ -230,11 +230,13 @@ def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: f
             return ("aligned", "wait - production is arriving",
                     "next season's production is already on the roster - patience is free"
                     + _aging_clause(aging_pct))
-        return ("aligned", "wait",
-                ("nothing arriving and nothing aging out - waiting costs nothing here"
-                 if aging_pct < AGING_WORTH_NOTING_PCT else
-                 "no wave big enough to force a move - waiting is cheap here")
-                + _aging_clause(aging_pct))
+        # Waiting is earned by ascending, the way contending is earned by rank (owner,
+        # 2026-08-17: "wait and build were supposed to mean you are ascending"). A flat
+        # middle roster is not waiting on anything - both directions are live.
+        return ("unaligned", "decide",
+                "nothing arriving at a middle rank - there is no wave to wait for, so "
+                "waiting is just holding; both paths are live and the middle rank gives "
+                "no lean, so letting the season pick the direction is legitimate")
     # also-ran: the rank itself urges the rebuild; unaligned just means it isn't underway.
     # A real war chest counts as arriving even before the production shows - picks are
     # pure future - but the assets_bottom guard applies to both: neither an ascending
@@ -498,13 +500,6 @@ POSTURE = {
               "directions - the aging half is a clock of its own, and path_reason names its "
               "pieces. Premiums are still not required - this rank buys at fair prices - "
               "but 'nothing needs doing' is not true here."),
-    "wait": ("In the middle of the league and not committed in either direction - which "
-             "is a position, not an unmade decision. Both paths are shown because either "
-             "is defensible from here, and waiting on the season is a legitimate choice - "
-             "the decision has until the trade deadline, not until some early week. What "
-             "this roster does not have is the free option an "
-             "arriving one gets: it is not supplying next season's production by itself, so "
-             "pushing later will not be cheaper than pushing now."),
     "wait - production is arriving": (
         "Not top-third yet, but the roster rises on its own - your own ascending players "
         "supply next season's production for free. Pushing now means paying a market "
@@ -531,7 +526,7 @@ def posture_note(path: str, contention_rank: int, num_teams: int, pct_of_best: i
     the read, in words - an unlabelled number in a tool result gets a meaning invented
     for it (a bare {"diff": -11} was once narrated as games underperformed, in the
     preseason)."""
-    lead = POSTURE.get(path, POSTURE[path.split(" - ")[0]])
+    lead = POSTURE[path] if path in POSTURE else POSTURE[path.split(" - ")[0]]
     # A seller in the league's falling tertile is holding value that is aging out - the
     # SELLING has a deadline. A clause, not a path of its own: it changes the tempo of
     # "convert", never the verb, and per-piece runway on every sell entry prices the

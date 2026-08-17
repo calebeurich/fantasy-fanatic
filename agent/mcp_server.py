@@ -94,9 +94,11 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
       `contention_rank` of `of_teams` - the tertile it sits in is tier 1.
       `alignment` - "aligned" (roster composition agrees with what its rank asks;
         the path is a continue verb) or "unaligned" (a real decision is pending).
-      `path` - the action: "contend" (optionally "- on a clock") / "wait" (optionally
-        "- production is arriving") / "build" when aligned; "press" / "decide" / "sell"
-        when not. The lean comes from rank: press = convert future into now, sell =
+      `path` - the action: "contend" (optionally "- on a clock") / "wait - production
+        is arriving" / "build" when aligned; "press" / "decide" / "sell" when not.
+        Waiting and building are earned by ASCENDING (a wave arriving); contending is
+        earned by rank. A flat middle roster is not waiting on anything - it reads
+        decide. The lean comes from rank: press = convert future into now, sell =
         convert aging value into future, and decide (a middle rank) has NO lean -
         letting the season decide is legitimate.
       `path_reason` - why, in words. OPEN with path + path_reason and support it with

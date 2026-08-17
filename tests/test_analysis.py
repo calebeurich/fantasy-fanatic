@@ -496,7 +496,7 @@ def test_idle_youth_priced_value_makes_a_calm_contender_unaligned():
     alignment, path, reason = team_state.alignment_for(**args, idle_youth=["Prospect WR"])
     assert (alignment, path) == ("unaligned", "press") and "Prospect WR" in reason
     # The middle has no lean, so neither fact changes a fringe read.
-    assert team_state.alignment_for(contention="fringe", asc_pct=30, dec_pct=10, pick_share=10,
+    assert team_state.alignment_for(contention="fringe", asc_pct=40, dec_pct=10, pick_share=10,
                                     assets_bottom=False, clear_sells=["X"])[1].startswith("wait")
 
 
@@ -862,14 +862,16 @@ def test_middle_of_the_league_is_a_window_not_a_leftover():
 
 
 def test_middling_note_promises_free_patience_only_when_actually_rising():
-    """Middling shows both paths regardless, but only a rising roster gets next season's
-    production for free - claiming that for a falling one is the label lying about the
-    data printed in the same sentence."""
+    """Only a rising middle roster gets next season's production for free; a flat middle
+    roster is not waiting on anything and reads `decide` (owner, 2026-08-17: "wait and
+    build were supposed to mean you are ascending"). Plain "wait" no longer exists as a
+    path - the alignment call is where the rule lives."""
     rising = team_state.posture_note("wait - production is arriving", 6, 12, 74, 39, 0)
-    falling = team_state.posture_note("wait", 7, 12, 71, 8, 14)
     assert "for free" in rising
-    assert "for free" not in falling
-    assert "will not be cheaper" in falling
+    flat = team_state.alignment_for("fringe", asc_pct=8, dec_pct=14, pick_share=10, assets_bottom=False)
+    assert flat[:2] == ("unaligned", "decide") and "nothing arriving" in flat[2]
+    assert team_state.alignment_for("fringe", asc_pct=40, dec_pct=5, pick_share=10,
+                                    assets_bottom=False)[1] == "wait - production is arriving"
 
 
 def test_offer_pool_protects_starters_who_are_actually_producing():
