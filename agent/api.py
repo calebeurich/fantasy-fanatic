@@ -369,6 +369,13 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
 
     ctx = context(league_id)
     value = {p["name"]: p["value"] for p in ctx.players.values()}
+    position = {p["name"]: p["position"] for p in ctx.players.values()}
+    bars = ctx.trade_thresholds
+
+    def real_chip(name):
+        """Above the position's trade-relevance bar - nobody cares about a Mike Washington
+        for Charbonnet idea (owner)."""
+        return position.get(name) is None or value.get(name, 0) >= bars.get(position[name], 0)
 
     def spendable_picks(who, stance):
         r = trade_targets.find_targets(league_id, who, stance=stance or None)
@@ -377,6 +384,8 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
     picks_a, picks_b = spendable_picks(a, stance_a), spendable_picks(b, stance_b)
 
     def balance(prop):
+        if not (any(real_chip(n) for n in prop["a_sends"]) and any(real_chip(n) for n in prop["b_sends"])):
+            return None
         va = sum(value.get(n, 0) for n in prop["a_sends"]); vb = sum(value.get(n, 0) for n in prop["b_sends"])
         if not (va and vb):
             return prop
