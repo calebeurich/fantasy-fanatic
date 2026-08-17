@@ -14,20 +14,19 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
        font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
-  header{padding:10px 18px;border-bottom:1px solid var(--line);display:flex;
-         gap:10px;align-items:center;flex-wrap:wrap;background:var(--panel);
-         position:sticky;top:0;z-index:5}
   /* Three views, one on screen at a time - the page had become one long scroll of
-     table + rosters + trade helper + chat ("overwhelmed ... unbearable on phone" - owner). */
-  nav.tabs{display:flex;gap:6px;margin:0 auto}
-  nav.tabs button{padding:8px 22px;border-radius:999px;font-size:15px;font-weight:600;color:var(--muted);background:transparent}
-  nav.tabs button.on{background:var(--panel2);color:var(--ink);border-color:var(--muted)}
+     table + rosters + trade helper + chat ("overwhelmed ... unbearable on phone" - owner).
+     The tab bar IS the header: three equal thirds, nothing else up there. */
+  header{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line)}
+  nav.tabs{display:grid;grid-template-columns:repeat(3,1fr)}
+  nav.tabs button{padding:13px 0;border:0;border-radius:0;border-bottom:2px solid transparent;
+                  font-size:15px;font-weight:600;color:var(--muted);background:transparent}
+  nav.tabs button.on{color:var(--ink);border-bottom-color:var(--ok);background:var(--panel2)}
   nav.tabs button:disabled{opacity:.35}
+  .brand{color:var(--dim);font-size:11.5px;text-align:right;padding:2px 12px 0}
   section.view{display:none}
   section.view.on{display:grid;gap:18px}
-  header{justify-content:space-between}
-  header .sub{margin-left:auto}
-  @media (max-width:600px){header{padding:8px 12px}h1{font-size:14px}.sub{display:none}nav.tabs{width:100%;justify-content:space-between}nav.tabs button{flex:1;padding:8px 0}}
+  @media (max-width:600px){.brand{display:none}}
   h1{font-size:15px;margin:0;letter-spacing:.3px}
   .sub{color:var(--dim);font-size:12.5px}
   main{max-width:1440px;margin:0 auto;padding:18px;display:grid;gap:18px}
@@ -222,14 +221,13 @@
 </head>
 <body>
 <header>
-  <h1>fantasy-fanatic</h1>
-  <span class="sub">dynasty analysis · real Sleeper + FantasyCalc data</span>
   <nav class="tabs" id="tabs">
     <button type="button" data-view="league" class="on">League</button>
     <button type="button" data-view="trade" disabled>Trade</button>
     <button type="button" data-view="ask">Ask</button>
   </nav>
 </header>
+<div class="brand">fantasy-fanatic · dynasty analysis · real Sleeper + FantasyCalc data</div>
 
 <main>
 <section class="view on" data-view="league">
