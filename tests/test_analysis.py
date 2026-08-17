@@ -428,39 +428,29 @@ def test_a_rebuild_flavor_is_absolute_because_the_label_makes_a_claim():
         "a contender's flavor is the clock, whatever its asset base says")
 
 
-_SAME_PRODUCTION = lambda a, b: a - b <= a * team_values.NOISE_BAND
+def test_tier_one_is_a_distance_from_the_median_lineup_not_a_count():
+    """Fixed thirds gave every league 4/4/4 whatever its shape - BBD's #5 sat 0.8 ppg
+    behind #4 and read 'fringe'. Tier 1 is now a distance from the league's median
+    lineup: at or above median+3% contends, at or below median-4% is an also-ran, the
+    rest is the middle. Six teams, median 120: lines at 123.6 and 115.2."""
+    prod = {"o1": 140, "o2": 128, "o3": 121, "o4": 119, "o5": 118, "o6": 100}
+    tiers, edges = team_state.contention_tiers(prod)
+    assert tiers == {"o1": "top", "o2": "top", "o3": "middle", "o4": "middle",
+                     "o5": "middle", "o6": "bottom"}
+    assert edges == {}, "nobody within 2% of a line here"
 
 
-def test_a_tertile_line_through_a_tie_hedges_both_sides_and_a_clear_gap_neither():
-    """A live trajectory line once ran through a literal 37-37 tie - which side each team
-    sat on was decided by dict order, not football. The pair straddling a line is hedged
-    when their scores are within refresh noise of each other; across a clear gap the
-    labels are solid and nothing is hedged."""
-    scores = {f"o{r}": s for r, s in enumerate(
-        [50_000, 46_000, 42_000, 38_000, 34_000, 30_000], start=1)}  # every gap ~10%
-    assert team_state.tertile_edges(team_values.rank_map(scores), scores, 6,
-                                    _SAME_PRODUCTION) == {}
-
-    scores["o3"] = scores["o2"]  # tie exactly on the top line of a 6-team field
-    edges = team_state.tertile_edges(team_values.rank_map(scores), scores, 6,
-                                     _SAME_PRODUCTION)
-    assert edges == {"o2": ("middle", 0, 46_000), "o3": ("top", 0, 46_000)}, (
-        "each side is told which tier it is one refresh from, and both quote the SAME "
-        "gap against the same reference - one line, one number")
-
-
-def test_the_hedge_band_splits_the_measured_flip_boundary():
-    """Calibration, from jittering every player +/-2% across 300 simulated refreshes on
-    three real leagues: the one straddling pair 0.5% apart flipped windows on 20% of
-    refreshes, and the pair 2.4% apart never flipped once. The band (NOISE_BAND, 2%)
-    must land between those - hedge the first pair, trust the second."""
-    scores = {"o1": 50_000,
-              "o2": 40_000, "o3": 39_040,   # 2.4% apart across the top line
-              "o4": 35_000, "o5": 34_825,   # 0.5% apart across the bottom line
-              "o6": 20_000}
-    edges = team_state.tertile_edges(team_values.rank_map(scores), scores, 6,
-                                     _SAME_PRODUCTION)
-    assert edges == {"o4": ("bottom", 175, 35_000), "o5": ("middle", 175, 35_000)}
+def test_a_team_within_noise_of_a_tier_line_is_hedged_toward_the_tier_across_it():
+    """Calibration (jittering every player +/-2% across 300 simulated refreshes): pairs
+    0.5% apart flipped on 20% of refreshes, 2.4% apart never. So a team within
+    NOISE_BAND (2%) of a line names the tier across it; farther out, the label is solid.
+    Median 120 -> contender line 123.6: 123.0 is 0.5% under (hedged, alt 'top'), 126.6
+    is 2.4% over (solid); also-ran line 115.2: 115.0 is on it (alt 'middle')."""
+    prod = {"o1": 140, "o2": 126.6, "o3": 123.0, "o4": 120, "o5": 118, "o6": 115.0, "o7": 100}
+    tiers, edges = team_state.contention_tiers(prod)
+    assert tiers["o2"] == "top" and tiers["o3"] == "middle" and tiers["o6"] == "bottom"
+    assert set(edges) == {"o3", "o6"}
+    assert edges["o3"][0] == "top" and edges["o6"][0] == "middle"
 
 
 def _edge_row(**kw):
@@ -1091,13 +1081,13 @@ def test_leverage_separates_what_a_team_is_from_what_it_could_become():
     The mirror is equally real and comes from the same comparison - a team 1st in production
     and 8th in assets is winning now with nothing left to reload from. Teams whose two ranks
     agree get nothing, which is most of them."""
-    assert team_state.leverage(contention_rank=9, asset_rank=2, num_teams=12) == "convertible"
-    assert team_state.leverage(contention_rank=1, asset_rank=8, num_teams=12) == "mortgaged"
-    assert team_state.leverage(contention_rank=2, asset_rank=3, num_teams=12) is None, \
+    assert team_state.leverage(contention_top=False, asset_rank=2, num_teams=12) == "convertible"
+    assert team_state.leverage(contention_top=True, asset_rank=8, num_teams=12) == "mortgaged"
+    assert team_state.leverage(contention_top=True, asset_rank=3, num_teams=12) is None, \
         "top third on both axes is just a good team"
-    assert team_state.leverage(contention_rank=9, asset_rank=10, num_teams=12) is None, \
+    assert team_state.leverage(contention_top=False, asset_rank=10, num_teams=12) is None, \
         "bottom on both is just a bad team"
-    assert team_state.leverage(contention_rank=4, asset_rank=1, num_teams=4) is None, \
+    assert team_state.leverage(contention_top=False, asset_rank=1, num_teams=4) is None, \
         "in a tiny league 'top third' is one team and the comparison means nothing"
 
 

@@ -517,16 +517,35 @@ not the tertile: "is the rebuild working" is about the roster, and in a league f
 ascending rebuilds the tertile called the clearest working rebuild "stalled". Middling
 keeps the tertile because whether waiting is free is genuinely league-relative.
 
+### Tier 1 is a distance (`contention_tiers`)
+
+Tier 1 used to be the count/3 tertile of contention rank: every league 4/4/4 whatever
+its shape. On the projected-points measure the shape is visible and the count was
+wrong at the seams - BBD's #5 sat 0.8 ppg behind #4 and read "fringe"; Plug's #5 was
+1.0 behind #4 and read "decide". Now (owner-approved 2026-08-17, "more dynamic for
+sure"): **contender = at or above the league's median lineup +3%; also-ran = at or
+below the median -4%; the rest is the middle** (`CONTENDER_ABOVE_MEDIAN` 1.03,
+`ALSO_RAN_BELOW_MEDIAN` 0.96). Anchored on the median, not the best, so one runaway
+roster cannot demote the whole field. Calibrated on the 48-team corpus against a
+best-anchored band (>= 92% / <= 85% of best): both fixed the four clear misses
+(DerekGeter, SeanCenter contenders; obamagg48, jmcgrath77 also-rans); the median band
+keeps Ben in the bottom (owner's read) and its only "misses" are teams on the line
+(Paulyt +2.8%, kieran +2.2%), which the hedge names rather than a threshold nudged to
+fit four leagues. Sizes came out 4/3/5, 4/4/4, 5/2/5, 5/2/5. XFL walk-through: median
+133.2 -> lines 137.2 / 127.9; kb 138.8 contends, kieran 136.1 is fringe (hedged toward
+press), spugz 127.7 is an also-ran (hedged toward decide). `leverage` reads the tier,
+not a rank tertile.
+
 ### Boundary noise and the hedge (`path_edge`)
 
 The tertiles are hard breakpoints on continuous measures, and the core labels used to
 flip a team's whole identity when a value refresh nudged one rank ("ask twice, get two
 windows" - it happened live twice, once mid-refactor when an nflverse role flap moved
-one runway). The fix keeps the tertile as the label and ships the label's *stability*
-next to it: the two teams straddling a tertile line, when their scores are within
-refresh noise of each other, each carry `path_edge` - prose naming the tier across
-the line, saying the flip would be pricing noise, and telling the reader to hold both
-tiers' advice live.
+one runway). The fix keeps the tier as the label and ships the label's *stability*
+next to it: any team within refresh noise (NOISE_BAND) of a tier LINE - the median-band
+lines since 2026-08-17; before that, the two teams straddling a rank tertile - carries
+`path_edge`: prose naming the tier across the line, saying the flip would be pricing
+noise, and telling the reader to hold both tiers' advice live.
 
 Calibrated, not guessed - every player jittered +/-2% (a refresh's observed size), 300
 trials on each of three real leagues:

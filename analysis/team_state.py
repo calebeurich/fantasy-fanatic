@@ -22,6 +22,7 @@ this replaced: LOGIC.md, "Team windows".
 Smoke test: python -m analysis.team_state <league_id>
 """
 
+import statistics
 import sys
 
 from sources import sleeper, fantasycalc
@@ -550,7 +551,7 @@ LEVERAGE_NOTE = {
 }
 
 
-def leverage(contention_rank: int, asset_rank: int, num_teams: int) -> str | None:
+def leverage(contention_top: bool, asset_rank: int, num_teams: int) -> str | None:
     """Whether a team's convertible assets and its starting lineup tell different stories:
     `convertible` (weak lineup, top-third war chest - an unspent option, not simply bad)
     or `mortgaged` (strong lineup, little behind it). Deliberately not a fifth window -
@@ -559,42 +560,44 @@ def leverage(contention_rank: int, asset_rank: int, num_teams: int) -> str | Non
     if num_teams < MIN_TEAMS_FOR_LEVERAGE:
         return None
     assets_top = tertile(asset_rank, num_teams) == "top"
-    production_top = tertile(contention_rank, num_teams) == "top"
-    if assets_top and not production_top:
+    if assets_top and not contention_top:
         return "convertible"
-    if production_top and not assets_top:
+    if contention_top and not assets_top:
         return "mortgaged"
     return None
 
 
-def tertile_edges(ranks: dict, scores: dict, num_teams: int, same) -> dict:
-    """The teams whose tertile is one value refresh from flipping: each pair straddling a
-    tertile line whose scores `same` calls indistinguishable. Maps owner_id -> (the
-    tertile across the line, the score gap). The label keeps the tertile - a cut at the
-    largest GAP instead would relabel several teams at once whenever the gap moved
-    (LOGIC.md, "Boundary noise") - this just says when the line runs through noise."""
-    lines = [r for r in range(1, num_teams)
-             if tertile(r, num_teams) != tertile(r + 1, num_teams)]
-    out = {}
-    for line in lines:
-        above = next(o for o, r in ranks.items() if r == line)
-        below = next(o for o, r in ranks.items() if r == line + 1)
-        if same(scores[above], scores[below]):
-            # One gap, one reference score for BOTH sides - each side quoting the gap
-            # against its own total described the same 691-point gap as 1.8% and 1.9%
-            # in one grid, and a shared number is the point of a shared line.
-            gap = scores[above] - scores[below]
-            out[above] = (tertile(line + 1, num_teams), gap, scores[above])
-            out[below] = (tertile(line, num_teams), gap, scores[above])
-    return out
+# Tier 1 is a DISTANCE from the league's median lineup, not a count: a contender projects
+# at least this far above the median lineup, an also-ran at least this far below. Fixed
+# thirds gave every league 4/4/4 whatever its shape (BBD's #5 sat 0.8 ppg behind #4 and
+# read "fringe"); the median anchor is robust to one runaway roster. Calibrated on the
+# 48-team corpus (LOGIC.md, "Tier 1 is a distance").
+CONTENDER_ABOVE_MEDIAN = 1.03
+ALSO_RAN_BELOW_MEDIAN = 0.96
+
+
+def contention_tiers(production: dict) -> tuple[dict, dict]:
+    """owner_id -> top/middle/bottom, plus the edges: owner_id -> (the tier across the
+    nearest line, gap to it, the line) for every team within NOISE_BAND of a line - a
+    routine refresh could re-read it, so the label is hedged (LOGIC.md, "Boundary noise")."""
+    median = statistics.median(production.values())
+    lines = {"top": median * CONTENDER_ABOVE_MEDIAN, "bottom": median * ALSO_RAN_BELOW_MEDIAN}
+    tiers, edges = {}, {}
+    for oid, p in production.items():
+        tier = "top" if p >= lines["top"] else "bottom" if p <= lines["bottom"] else "middle"
+        tiers[oid] = tier
+        for name, line in lines.items():
+            if abs(p - line) <= line * NOISE_BAND:
+                edges[oid] = ("middle" if tier == name else name, abs(p - line), line)
+    return tiers, edges
 
 
 PATH_EDGE = (
-    "This read is within refresh noise of the tertile line: {gap_pct}% of starting "
-    "production separates this team from the one across it, and a routine value refresh "
-    "moves lineup totals about 1%, so an ordinary update can re-read it as '{alt_path}'. "
-    "That flip would be pricing noise, not the team changing direction - treat "
-    "'{alt_path}''s advice as live alongside this one's."
+    "This read is within refresh noise of a tier line: {gap_pct}% of starting production "
+    "separates this team from the line, and a routine value refresh moves lineup totals "
+    "about 1%, so an ordinary update can re-read it as '{alt_path}'. That flip would be "
+    "pricing noise, not the team changing direction - treat '{alt_path}''s advice as live "
+    "alongside this one's."
 )
 
 
@@ -706,13 +709,12 @@ def classify_league(league_id: str) -> list[dict]:
     asset_rank = rank_map({r["owner_id"]: r["asset_value"] for r in rows})
     trajectory_rank = rank_map(trajectory_scores)
     best_production = max(production.values()) or 1
-    contention_edges = tertile_edges(contention_rank, production, num_teams,
-                                     lambda a, b: a - b <= a * NOISE_BAND)
+    tiers, contention_edges = contention_tiers(production)
 
     for row in rows:
         c_rank = contention_rank[row["owner_id"]]
         t_rank = trajectory_rank[row["owner_id"]]
-        contention = CONTENTION_TIER[tertile(c_rank, num_teams)]
+        contention = CONTENTION_TIER[tiers[row["owner_id"]]]
         trajectory = TRAJECTORY_TIER[tertile(t_rank, num_teams)]
         window = window_for(contention, trajectory)
 
@@ -746,7 +748,7 @@ def classify_league(league_id: str) -> list[dict]:
         # What a team could *become*, alongside what it currently is. Additive, and not a
         # fifth window - see `leverage`.
         row["asset_rank"] = asset_rank[row["owner_id"]]
-        row["leverage"] = leverage(c_rank, row["asset_rank"], num_teams)
+        row["leverage"] = leverage(contention == "contender", row["asset_rank"], num_teams)
         # After `leverage`, because `convertible` outranks trajectory as the flavor.
         row["flavor"] = flavor_for(window, trajectory, row["leverage"],
                                    row["ascending_pct"], row["declining_pct"],

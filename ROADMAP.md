@@ -276,22 +276,11 @@ not by preference:
   extend from players to picks, because picks are also the easiest trading material
   there is and belong wherever they make any sense), and rebuilds' own picks are
   never listed as acquirable (already true by construction).
-- **Gap-grouping instead of tertiles** (owner-backlogged 2026-08-15): the
-  contention tertile cuts at fixed ranks, but leagues cluster naturally - if
-  teams 4 and 5 sit just under the top three and well above the middle, they
-  belong WITH the top group; the honest boundary is the biggest gap in starting
-  production, not count/3. window_edge already hedges the symptom (labels within
-  refresh noise of the line); gap-grouping removes the cause. Applies to tier 1
-  and to the asset tertiles leverage uses. Guard: small leagues need a minimum
-  group size, and the grouping must be stable under weekly value refreshes
-  (the same stability test the tertile hard-breakpoint fix already passes).
-  **Re-opened by the owner 2026-08-16, and now tractable**: with production measured
-  in projected points a game (LOGIC.md "Production is projected points") `pct_of_best`
-  is a real distance - the corpus spans ~70-100 instead of 28-100 - so tier 1 can be
-  "how far from the best lineup" (a bar, or the gap-grouping above) instead of fixed
-  thirds. Do it after eye-testing the 13/48 path moves the ppg switch produced, and
-  re-verify BARBELL_MIN_PCT / ARRIVING_MARGIN_PCT on ppg shares in the same pass
-  (declining shares rose almost everywhere; the value-share calibration is stale).
+- **Tier 1 tertiles -> DONE 2026-08-17** as a distance from the median lineup (LOGIC.md
+  "Tier 1 is a distance"). Gap-grouping was the other candidate; a fixed band from the
+  median won because it is stable under refresh and doesn't relabel several teams when
+  one gap moves. Still open: the asset tertile that `leverage` and `assets_bottom` use
+  is still count/3.
 - **Who starts: DONE 2026-08-17** - fill order is ePPG-first with the market breaking
   near-ties (LOGIC.md "Production is projected points"). Still open from it: a second
   projection source for consensus (every free one needs scraping - waits until it
