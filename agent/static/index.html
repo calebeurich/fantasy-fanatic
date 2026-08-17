@@ -344,6 +344,26 @@ localStorage.setItem("ff_session", sessionId);
 const KEY = () => localStorage.getItem("ff_key") || "";
 const hdrs = extra => Object.assign({"X-FF-Key": KEY()}, extra || {});
 
+// Every read goes through here: a phone in and out of service (the subway - owner) drops
+// single requests constantly, and one dropped packet should not mean "Couldn't load".
+// Retries network failures and 5xx a few times with backoff, waiting for the connection
+// to come back first; the ask has its own reclaim path and doesn't use this.
+async function getJSON(url, init) {
+  let last;
+  for (const wait of [0, 1500, 4000, 8000]) {
+    if (wait) await new Promise(r => setTimeout(r, wait));
+    if (!navigator.onLine) await new Promise(r => addEventListener("online", r, {once: true}));
+    try {
+      const res = await fetch(url, init);
+      if (res.status >= 500) { last = new Error(`server ${res.status}`); continue; }
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);   // 4xx: real answer, don't retry
+      return body;
+    } catch (e) { last = e; }
+  }
+  throw last;
+}
+
 // Start the conversation's subprocesses now, while the reader is still picking a
 // league - the first question then skips ~8s of start-up. Best effort.
 fetch(`/sessions/${sessionId}/warm`, {method: "POST", headers: hdrs()}).catch(() => {});
@@ -384,14 +404,14 @@ $("find").onclick = async () => {
   $("find").textContent = "looking…";
   $("leagues").innerHTML = '<span class="cs">looking up…</span>';
   try {
-    const user = await (await fetch(`https://api.sleeper.app/v1/user/${encodeURIComponent(name)}`)).json();
+    const user = await getJSON(`https://api.sleeper.app/v1/user/${encodeURIComponent(name)}`);
     if (!user) { $("leagues").innerHTML = '<span class="cs warn">No Sleeper user by that name.</span>'; return; }
     myName = user.display_name || name;
     // Sleeper keys leagues by season; around the rollover the new season may be empty.
     const year = new Date().getFullYear();
-    let leagues = await (await fetch(`https://api.sleeper.app/v1/user/${user.user_id}/leagues/nfl/${year}`)).json();
+    let leagues = await getJSON(`https://api.sleeper.app/v1/user/${user.user_id}/leagues/nfl/${year}`);
     if (!leagues || !leagues.length) {
-      leagues = await (await fetch(`https://api.sleeper.app/v1/user/${user.user_id}/leagues/nfl/${year - 1}`)).json();
+      leagues = await getJSON(`https://api.sleeper.app/v1/user/${user.user_id}/leagues/nfl/${year - 1}`);
     }
     if (!leagues || !leagues.length) { $("leagues").innerHTML = '<span class="cs warn">No leagues found for that user.</span>'; return; }
     $("leagues").innerHTML = "";
@@ -444,10 +464,7 @@ const detailCache = {};
 async function fetchDetail(leagueId, owner) {
   const key = leagueId + "/" + owner;
   if (!detailCache[key]) {
-    const res = await fetch(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}`,
-                            {headers: hdrs()});
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    detailCache[key] = await res.json();
+    detailCache[key] = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}`, {headers: hdrs()});
   }
   return detailCache[key];
 }
@@ -457,9 +474,7 @@ async function fetchDetail(leagueId, owner) {
 // twelve parallel fetches looked like request spam).
 async function prefetchDetails(leagueId) {
   try {
-    const res = await fetch(`/api/league/${encodeURIComponent(leagueId)}/teams`, {headers: hdrs()});
-    if (!res.ok) return;
-    const all = await res.json();
+    const all = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/teams`, {headers: hdrs()});
     Object.entries(all).forEach(([owner, d]) => { detailCache[leagueId + "/" + owner] = d; });
   } catch (_) { /* clicks fall back to per-team fetches */ }
 }
@@ -479,8 +494,7 @@ async function fetchMovable(leagueId, owner, stance) {
   const key = `${leagueId}/${owner}/${stance}`;
   if (!movableCache[key]) {
     const q = stance ? `?stance=${encodeURIComponent(stance)}` : "";
-    const res = await fetch(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/movable${q}`, {headers: hdrs()});
-    const d = await res.json();
+    const d = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/movable${q}`, {headers: hdrs()});
     movableCache[key] = {players: new Set(d.players || []), priced: new Set(d.priced || []), picks: new Set((d.picks || []).map(p => `${p.season}-${p.round}`)), mode: d.mode};
   }
   return movableCache[key];
@@ -491,8 +505,7 @@ async function fetchFits(leagueId, owner, stance, seller, sellerStance) {
   if (!fitsCache[key]) {
     const q = `?seller=${encodeURIComponent(seller)}` + (stance ? `&stance=${encodeURIComponent(stance)}` : "")
             + (sellerStance ? `&seller_stance=${encodeURIComponent(sellerStance)}` : "");
-    const res = await fetch(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/fits${q}`, {headers: hdrs()});
-    fitsCache[key] = await res.json();
+    fitsCache[key] = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/fits${q}`, {headers: hdrs()});
   }
   return fitsCache[key];
 }
@@ -663,7 +676,7 @@ async function showSuggestions(leagueId, a, b) {
   if (!suggCache[key]) {
     try {
       const q = `?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}` + (trade.a.stance ? `&stance_a=${trade.a.stance}` : "") + (trade.b.stance ? `&stance_b=${trade.b.stance}` : "");
-      suggCache[key] = await (await fetch(`/api/league/${encodeURIComponent(leagueId)}/suggest${q}`, {headers: hdrs()})).json();
+      suggCache[key] = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/suggest${q}`, {headers: hdrs()});
     } catch (_) { suggCache[key] = []; }
   }
   const list = suggCache[key];
@@ -692,10 +705,9 @@ async function showImpact(leagueId, a, pa, b, pb) {
   const box = $("cimpact"); if (!box) return;
   box.innerHTML = `<div class="cs"><span class="spin"></span>working out the impact</div>`;
   try {
-    const res = await fetch(`/api/league/${encodeURIComponent(leagueId)}/evaluate`, {
+    const d = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/evaluate`, {
       method: "POST", headers: hdrs({"Content-Type": "application/json"}),
       body: JSON.stringify({owner_a: a, sends_a: pa, owner_b: b, sends_b: pb, stance_a: trade.a.stance || null, stance_b: trade.b.stance || null})});
-    const d = await res.json();
     if (!d.ok) { box.innerHTML = `<div class="cs warn">${d.problem}</div>`; return; }
     box.innerHTML = d.sides.map(s => {
       const goal = (s.goal || "").replace(/^GOAL for a (buying|selling|middle) path is [^:]+: /, "");
@@ -714,7 +726,7 @@ async function fillIdeas(leagueId, owner) {
   if (!el) return;
   const key = `${leagueId}/${owner}`;
   try {
-    if (!ideasCache[key]) ideasCache[key] = await (await fetch(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/ideas`, {headers: hdrs()})).json();
+    if (!ideasCache[key]) ideasCache[key] = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/ideas`, {headers: hdrs()});
   } catch (_) { el.textContent = "couldn't look"; return; }
   const list = ideasCache[key];
   if (!list.length) { el.textContent = "nothing obvious — build one in the trade helper below"; return; }
@@ -849,12 +861,7 @@ async function loadLeague(id) {
   if (!id) return;
   $("overview").innerHTML = '<div class="empty">Loading… (first load ~7s, cached after)</div>';
   try {
-    const res = await fetch(`/api/league/${encodeURIComponent(id)}`, {headers: hdrs()});
-    const d = await res.json();
-    if (res.status === 401) {
-      $("overview").innerHTML = `<div class="empty warn">${d.detail}</div>`;
-      return;
-    }
+    const d = await getJSON(`/api/league/${encodeURIComponent(id)}`, {headers: hdrs()});
     if (!d.supported) {
       $("overview").innerHTML = `<div class="empty warn">Not supported: ${d.reason}</div>`;
       return;
@@ -1126,11 +1133,18 @@ async function askCounterparty(owner, proposal) {
       if (t && p.text) t.innerHTML = md(p.text);
     } catch (_) {}
   }, 2000);
+  const started = Date.now();
   try {
-    const res = await fetch("/ask", {method: "POST", headers: hdrs({"Content-Type": "application/json"}),
-      body: JSON.stringify({question: withContext(`Trade proposal: ${proposal}. You are ${owner} - decide it as ${owner} would.`),
-                            session_id: cpId, counterparty: owner})});
-    const d = await res.json();
+    let d;
+    try {
+      const res = await fetch("/ask", {method: "POST", headers: hdrs({"Content-Type": "application/json"}),
+        body: JSON.stringify({question: withContext(`Trade proposal: ${proposal}. You are ${owner} - decide it as ${owner} would.`),
+                              session_id: cpId, counterparty: owner})});
+      d = await res.json();
+    } catch (netErr) {   // same as the main ask: the answer is still being written server-side
+      d = await reclaim(started, 210, cpId);
+      if (!d) throw netErr;
+    }
     card.innerHTML = `<p class="cs">how <strong>${owner}</strong> likely sees it — the other side of the table, judging from its own path with the same tools</p>` + md(d.text || "(no answer)");
   } catch (e) {
     card.innerHTML = `<p class="cs warn">couldn't get ${owner}'s side: ${e}</p>`;
@@ -1259,7 +1273,7 @@ $("f").onsubmit = async e => {
 
 // What the page opens on: staging lands the owner on his own team; the public demo
 // (no key) lands on a real league and says what the demo allows. Best effort.
-fetch("/api/defaults", {headers: hdrs()}).then(r => r.json()).then(d => {
+getJSON("/api/defaults", {headers: hdrs()}).then(d => {
   pageTier = d.tier || "friend";
   if (d.tier === "demo") {
     const n = $("demonote");
