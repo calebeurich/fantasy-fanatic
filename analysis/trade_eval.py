@@ -177,7 +177,18 @@ def _need_changes(before: dict, after: dict) -> list[dict]:
     return changes
 
 
-def _package_read(receives: list[dict], best: dict, receives_best: bool, pct: float) -> str | None:
+def _throw_in(piece: dict, trade_bars: dict, start_bars: dict) -> bool:
+    """A body below both the trade floor and the startable bar - the same test the offer
+    floor uses - is a throw-in, not a piece (owner: Quinn Ewers at 254 "is worth nothing
+    and shouldn't be mentioned as notable"). Picks are never throw-ins."""
+    if piece["position"] == "PICK":
+        return False
+    return (piece["value"] <= trade_bars.get(piece["position"], 0)
+            and (piece.get("redraft_value") or 0) < start_bars.get(piece["position"], 0))
+
+
+def _package_read(receives: list[dict], best: dict, receives_best: bool, pct: float,
+                  trade_bars: dict = None, start_bars: dict = None) -> str | None:
     """The shape ballpark for the side sending the deal's best piece: what pieces of his
     tier have actually fetched, held against what this return looks like. Sums appear
     here and nowhere else - the benchmark was measured that way. Silent when this side
@@ -186,22 +197,30 @@ def _package_read(receives: list[dict], best: dict, receives_best: bool, pct: fl
     if receives_best or best["position"] == "PICK":
         return None  # the shape table describes players; a pick-for-pick swap has no comp here
     label, pieces, (q1, med, q3), summed, has_first, no_picks = _shape_for(pct)
-    if len(receives) < 2 and label == "mid-tier":
+    throw_ins = [p for p in receives
+                 if trade_bars and start_bars and _throw_in(p, trade_bars, start_bars)]
+    real = [p for p in receives if p not in throw_ins]
+    if len(real) < 2 and label == "mid-tier":
         return None
-    n = len(receives)
-    picks = [p for p in receives if p["position"] == "PICK"]
+    n = len(real)
+    picks = [p for p in real if p["position"] == "PICK"]
     firsts = [p for p in picks if "1st" in p["name"]]
-    cp = max((p["value"] for p in receives), default=0) / best["value"] if best["value"] else 0
-    ratio = sum(p["value"] for p in receives) / best["value"] if best["value"] else 0
+    cp = max((p["value"] for p in real), default=0) / best["value"] if best["value"] else 0
+    ratio = sum(p["value"] for p in real) / best["value"] if best["value"] else 0
     band = ("below the usual band" if cp < q1 else "above the usual band" if cp > q3
             else "in the low half of the usual band" if cp < med
             else "in the high half of the usual band")
+    extra = (f" plus {len(throw_ins)} throw-in{'s' if len(throw_ins) != 1 else ''} "
+             f"({', '.join(p['name'] for p in throw_ins)} - below both the trade floor and "
+             f"the startable bar, not counted)" if throw_ins else "")
     this = (f"THIS RETURN: {n} piece{'s' if n != 1 else ''} ({len(picks)} pick{'s' if len(picks) != 1 else ''}"
-            f"{', ' + str(len(firsts)) + ' of them 1sts' if firsts else ''}), centerpiece "
+            f"{', ' + str(len(firsts)) + ' of them 1sts' if firsts else ''}){extra}, centerpiece "
             f"{cp:.2f}x of {best['name']} - {band} - summing to {ratio:.2f}x.")
+    wide = (" The band is wide at this tier - a thin sample, so where a return sits in it "
+            "means less than at the top." if q3 - q1 >= 0.4 else "")
     usual = (f"BALLPARK for a {label} piece, from real trades: {pieces} piece{'s' if pieces != 1 else ''} back, "
              f"centerpiece {q1:.2f}-{q3:.2f}x of him (median {med:.2f}), summing to ~{summed:.2f}x; "
-             f"{round(has_first * 100)}% of returns include a 1st, {round(no_picks * 100)}% include no pick at all.")
+             f"{round(has_first * 100)}% of returns include a 1st, {round(no_picks * 100)}% include no pick at all.{wide}")
     tail = ""
     if n >= 4:
         tail = (" Four-plus-piece returns are rare (12-24% only for top-5% pieces, and nearly always "
@@ -232,7 +251,8 @@ def _goal_line(lens: str, lineup_delta: int, changes: list[dict], value_in: int,
 
 
 def _side_read(state, receives, changes, lineup_delta, best, receives_best,
-               best_pct: float = 1.0, lens: str = "both", sends: list[dict] = ()) -> list[str]:
+               best_pct: float = 1.0, lens: str = "both", sends: list[dict] = (),
+               trade_bars: dict = None, start_bars: dict = None) -> list[str]:
     read = []
     if receives_best:
         read.append(f"gets the best single piece in the deal ({best['name']}, "
@@ -311,7 +331,7 @@ def _side_read(state, receives, changes, lineup_delta, best, receives_best,
                         + ("on the timeline this roster is accumulating for" if fits else
                            "NOT on this roster's timeline; he will be past his edge before "
                            "the next competitive season"))
-    package = _package_read(receives, best, receives_best, best_pct)
+    package = _package_read(receives, best, receives_best, best_pct, trade_bars, start_bars)
     if package:
         read.append(package)
     return read
@@ -386,7 +406,9 @@ def evaluate_from_board(board, owner_a: str, sends_a: list[str],
             **({"stance_note": stance_note} if stance_note else {}),
             "read": _side_read(state, receives, changes, delta, best,
                                receives_best=(state["owner"] == best_to),
-                               best_pct=best_pct, lens=lens, sends=sends),
+                               best_pct=best_pct, lens=lens, sends=sends,
+                               trade_bars=board.thresholds,
+                               start_bars=getattr(ctx, "start_thresholds", None) or {}),
         })
     return {"ok": True, "note": EVAL_NOTE,
             "best_piece": {**best, "to": best_to}, "sides": sides}
