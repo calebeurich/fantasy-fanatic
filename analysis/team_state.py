@@ -618,6 +618,12 @@ def path_edge(row: dict, contention_edges: dict) -> str | None:
     return PATH_EDGE.format(gap_pct=round(100 * gap / ref, 1) if ref else 0, alt_path=alt_path)
 
 
+def _season_ppg(settings: dict) -> float:
+    games = sum(settings.get(k, 0) for k in ("wins", "losses", "ties"))
+    points = settings.get("fpts", 0) + settings.get("fpts_decimal", 0) / 100
+    return round(points / games, 1) if games else 0.0
+
+
 def classify_league(league_id: str) -> list[dict]:
     """Full team-window report for every roster in the league, ranked by starter value.
     Reused by anything downstream that needs to know each team's strategic posture
@@ -683,8 +689,11 @@ def classify_league(league_id: str) -> list[dict]:
                              picks_by_roster.get(roster["roster_id"], [])
                              if p["round"] == 1),
             "no_trade_history": no_trade_history,
-            # This season's standing, straight from Sleeper - 0-0 until games are played.
+            # This season's standing and scoring, straight from Sleeper - zeros until
+            # games are played. `ppg` is REAL points per game played; `starting_production`
+            # is the projection (ePPG in the UI).
             "record": {k: (roster.get("settings") or {}).get(k, 0) for k in ("wins", "losses", "ties")},
+            "ppg": _season_ppg(roster.get("settings") or {}),
             **result,
         })
 

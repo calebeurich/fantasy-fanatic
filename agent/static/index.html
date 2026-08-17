@@ -544,8 +544,6 @@ async function loadLeague(id) {
       startNewConversation(`Switched leagues — started a new conversation for ${currentLeagueName || "this league"}.`);
     }
     currentLeague = id;
-    // The record column exists once any game has been played; preseason it is 0-0 noise.
-    const season = d.teams.some(t => t.record && (t.record.wins || t.record.losses || t.record.ties));
     const rows = d.teams.map(t => {
       const needs = Object.entries(t.needs)
         .map(([pos, n]) => `<span class="need ${n.level}" title="${n.note}">${pos} ${n.level}</span>`).join("") || "—";
@@ -572,8 +570,9 @@ async function loadLeague(id) {
       // Record sorts by wins, then ties, then ePPG - a "sort" value the header can compare.
       const rec = t.record || {wins: 0, losses: 0, ties: 0};
       const recKey = rec.wins * 1e6 + rec.ties * 1e3 + t.starting_production;
-      const recCell = season ? `<td class="cs" style="white-space:nowrap">${rec.wins}-${rec.losses}${rec.ties ? "-" + rec.ties : ""}</td>` : "";
-      return `<tr class="team" data-owner="${t.owner}" data-sv="${t.starting_production}" data-dv="${t.starter_value}" data-rec="${recKey}">
+      const recCell = `<td class="cs" style="white-space:nowrap">${rec.wins}-${rec.losses}${rec.ties ? "-" + rec.ties : ""}</td>` +
+                      `<td class="cs">${(t.ppg || 0).toFixed(1)}</td>`;
+      return `<tr class="team" data-owner="${t.owner}" data-sv="${t.starting_production}" data-dv="${t.starter_value}" data-rec="${recKey}" data-ppg="${t.ppg || 0}">
         <td class="rk">${t.rank}</td>
         <td class="who" style="white-space:nowrap">${t.owner}${tn}<div class="cs">${flags}</div></td>
         <td><span class="tag ${chip[0]} ${heat}" title="${t.path_reason.replace(/"/g, "&quot;")}">${chip[1]}</span></td>
@@ -591,7 +590,8 @@ async function loadLeague(id) {
     }).join("");
     $("overview").innerHTML = `
       <table><thead><tr><th></th><th>Owner</th><th>Suggested move</th>
-        ${season ? '<th class="sortable" data-sort="rec" title="click to sort — wins, then ePPG">Record <span class="arrow"></span></th>' : ""}
+        <th class="sortable" data-sort="rec" title="click to sort — wins, then ePPG">Record <span class="arrow"></span></th>
+        <th class="sortable" data-sort="ppg" title="click to sort — real points per game this season">PPG <span class="arrow"></span></th>
         <th class="sortable" data-sort="sv" title="click to sort — expected points per game: Sleeper's season projections under this league's scoring">ePPG <span class="arrow">↓</span></th>
         <th class="sortable" data-sort="dv" title="click to sort">Dynasty value <span class="arrow"></span></th>
         <th>Needs</th><th>Core</th></tr></thead>
@@ -606,7 +606,7 @@ async function loadLeague(id) {
         <span><span class="tag p-decide hot">decide</span> press or sell — season can pick</span>
         <span><span class="tag p-sell hot">sell</span> trade aging value for future</span>
       </div>
-      <div class="note">The chip = the move each roster's <em>position</em> calls for, not what its manager is doing. Bright = decision pending; hover for why. Core: <strong>bold</strong> = build-around, <span class="pp">orange</span> = priced on this season. asc / dec = how much of the starting lineup's production comes from players still <span style="color:hsl(120,65%,58%)">gaining</span> value vs already <span style="color:hsl(25,65%,55%)">losing</span> it — the rest are in their prime, holding, so the two rarely add to 100. ePPG = expected points per game (Sleeper's season projections, this league's scoring). Rows rank by ePPG; click a header to re-sort. Click a team to ask about them.</div>`;
+      <div class="note">The chip = the move each roster's <em>position</em> calls for, not what its manager is doing. Bright = decision pending; hover for why. Core: <strong>bold</strong> = build-around, <span class="pp">orange</span> = priced on this season. asc / dec = how much of the starting lineup's production comes from players still <span style="color:hsl(120,65%,58%)">gaining</span> value vs already <span style="color:hsl(25,65%,55%)">losing</span> it — the rest are in their prime, holding, so the two rarely add to 100. PPG = real points per game this season; ePPG = expected points per game (Sleeper's season projections, this league's scoring). Rows rank by ePPG; click a header to re-sort. Click a team to ask about them.</div>`;
     const pick = tr => {
       myTeam = tr.dataset.owner;
       document.querySelectorAll("tr.team").forEach(x => x.classList.remove("mine"));
