@@ -216,7 +216,7 @@ thumbs-down comments from league mates have been the richest source of real bugs
 ## License and data
 
 Source is available under the **PolyForm Noncommercial License 1.0.0** (see
-[`LICENSE`](LICENSE)): read it, run it, modify it, use it for anything noncommercial;
+[`LICENSE.md`](LICENSE.md)): read it, run it, modify it, use it for anything noncommercial;
 commercial use needs permission. The live demo is free to use by anyone at the link
 above — using the hosted service needs no license at all.
 
