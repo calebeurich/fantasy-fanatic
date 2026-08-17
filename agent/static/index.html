@@ -559,7 +559,8 @@ async function fillSide(leagueId, k) {
     .map(([pos, n]) => `<span class="need ${n.level}" style="display:inline-block;margin:0 3px 0 0">${pos} ${n.level}</span>`).join("");
   $("cmeta" + k).innerHTML = row.path
     ? `<span class="tag p-${row.path.split(" - ")[0]} ${row.alignment === "unaligned" ? "hot" : "cool"}">${row.path.split(" - ")[0]}</span> ` +
-      `${row.starting_production ? row.starting_production.toFixed(1) + " ePPG · " + row.pct_of_best + "% of best" : ""} ${needs}` : "";
+      `${row.starting_production ? row.starting_production.toFixed(1) + " ePPG · " + row.pct_of_best + "% of best" : ""}` +
+      `${row.never_trades ? ' <span class="need critical" style="display:inline-block;margin:0">never trades</span>' : row.trades ? ` · ${row.trades} trade${row.trades === 1 ? "" : "s"}` : ""} ${needs}` : "";
   const box = $("croster" + k);
   const other = trade[k === "a" ? "b" : "a"];
   let d, mv, fits = [];
@@ -878,8 +879,12 @@ async function loadLeague(id) {
         .map(([pos, n]) => `<span class="need ${n.level}" title="${n.note}">${pos} ${n.level}</span>`).join("") || "—";
       // The shade word ("steady", "falling") used to live here; the path chip now
       // carries that judgment, and two vocabularies on one row read as clutter.
+      // Manager attributes start here: how much he actually trades. Sits under the name
+      // rather than in a column of its own so the table's widths hold (owner).
+      const trades = t.never_trades ? `<span class="need critical" style="display:inline-block;margin:0">never trades</span>`
+                   : t.trades ? `${t.trades} trade${t.trades === 1 ? "" : "s"}` : null;
       const flags = [t.pick_share > 0 ? `${t.pick_share}% in picks` : null,
-                     !t.owns_next_first ? "sold own next 1st" : null].filter(Boolean).join(" · ");
+                     !t.owns_next_first ? "sold own next 1st" : null, trades].filter(Boolean).join(" · ");
       // "1sts: '26, '27×2" - the detail behind pick_share's percentage.
       const fc = {};
       (t.firsts || []).forEach(s => fc[s] = (fc[s] || 0) + 1);

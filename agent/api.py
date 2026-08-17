@@ -36,7 +36,7 @@ from pydantic import BaseModel
 # loop before importing this module, so the policy applies too late (tried it).
 # Unaffected on Linux, which is why the container never hit this.
 
-from analysis import format_support, roster_needs, team_state, warm
+from analysis import format_support, roster_needs, team_state, trade_activity, warm
 
 from . import budget, observability
 from .agent import run_query, MCP_SERVER_PATH, ToolsUnavailable, _options
@@ -171,6 +171,11 @@ def league_overview(league_id: str) -> dict:
 
     teams = team_state.classify_league(league_id)
     needs = roster_needs.league_needs(league_id)
+    # Realized trades per manager - the first manager attribute the table shows. A zero
+    # only means "never trades" when someone else in the league has (LOGIC.md "Trade
+    # activity"); the page gets both the count and the flag.
+    trade_counts = trade_activity.get_trade_counts(league_id)
+    anyone_traded = any(trade_counts.values())
 
     return {
         "league_id": league_id,
@@ -198,6 +203,8 @@ def league_overview(league_id: str) -> dict:
                 "owns_next_first": t["owns_next_first"],
                 "pick_share": t["pick_share"],
                 "firsts": t["firsts"],
+                "trades": trade_counts.get(t["owner_id"], 0),
+                "never_trades": anyone_traded and not trade_counts.get(t["owner_id"]),
                 # Cornerstones alone made the column lie by omission: a roster showed
                 # "Lamar" while holding CeeDee Lamb, because Lamb misses the tag on the
                 # CLOCK, not on value (he lives in win_now_core). The reader of this
