@@ -89,12 +89,25 @@ class SessionManager:
             while len(self._sessions) >= MAX_SESSIONS:
                 oldest = min(self._sessions.values(), key=lambda s: s.last_used)
                 await self._close(oldest)
+            return await self._open(session_id), True
 
-            client = ClaudeSDKClient(options=self._options_factory())
-            await client.connect()
-            session = Session(session_id, client)
-            self._sessions[session_id] = session
-            return session, True
+    async def prewarm(self, session_id: str) -> bool:
+        """Open a session ahead of its first question (the CLI + MCP subprocess take
+        ~8s to come up) - but only into a free slot: a page load must never evict
+        someone's live conversation the way a real question is allowed to."""
+        async with self._guard:
+            await self._evict_idle()
+            if session_id in self._sessions or len(self._sessions) >= MAX_SESSIONS:
+                return False
+            await self._open(session_id)
+            return True
+
+    async def _open(self, session_id: str) -> Session:
+        client = ClaudeSDKClient(options=self._options_factory())
+        await client.connect()
+        session = Session(session_id, client)
+        self._sessions[session_id] = session
+        return session
 
     async def _evict_idle(self) -> None:
         now = time.monotonic()

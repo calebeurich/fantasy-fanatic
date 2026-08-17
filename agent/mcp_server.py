@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from mcp.server.fastmcp import FastMCP
 
-from analysis import format_support, team_state, roster_needs, trade_targets, waiver_wire, roster_detail
+from analysis import format_support, team_state, roster_needs, trade_targets, waiver_wire, roster_detail, warm
 from sources import sleeper, degraded
 
 
@@ -400,4 +400,5 @@ def get_roster_detail(league_id: str, owner_name: str) -> dict:
 
 
 if __name__ == "__main__":
+    warm.start_from_env()
     mcp.run()

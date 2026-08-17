@@ -35,6 +35,7 @@ from claude_agent_sdk import (
     ToolResultBlock,
     UserMessage,
     ResultMessage,
+    StreamEvent,
 )
 
 from analysis import trade_targets, roster_detail
@@ -215,6 +216,9 @@ def _options() -> ClaudeAgentOptions:
         # input-token reduction (3332 -> 2051 for the same trivial call) from this
         # one line - real, paid-for waste, not a rounding error.
         setting_sources=[],
+        # Text deltas as they are generated, so the UI can show the answer arriving
+        # instead of a spinner for the ~30s the model spends writing it.
+        include_partial_messages=True,
     )
 
 
@@ -238,7 +242,7 @@ def _progress_label(tool_name: str) -> str:
 
 
 async def _run_turn(client: ClaudeSDKClient, message: str, verbose: bool,
-                    on_progress=None) -> dict:
+                    on_progress=None, on_text=None) -> dict:
     """Sends one message on an already-open client session and collects the reply,
     including tool *results* (not just calls) - needed to know whether a tool
     errored (e.g. a nonexistent league_id) and what check_league_format actually
@@ -247,9 +251,19 @@ async def _run_turn(client: ClaudeSDKClient, message: str, verbose: bool,
     repeating this collection logic."""
     text_parts, tool_calls, tool_results, result = [], [], [], None
     tool_name_by_id = {}
+    streamed = ""
     await client.query(message)
     async for msg in client.receive_response():
-        if isinstance(msg, AssistantMessage):
+        if isinstance(msg, StreamEvent):
+            if not on_text:
+                continue
+            delta = msg.event.get("delta") or {}
+            if delta.get("type") == "text_delta":
+                streamed += delta["text"]
+                on_text(streamed)
+            elif msg.event.get("type") == "content_block_stop" and streamed:
+                streamed += "\n"  # mirrors the "\n".join over finished text blocks below
+        elif isinstance(msg, AssistantMessage):
             for block in msg.content:
                 if isinstance(block, TextBlock):
                     text_parts.append(block.text)
@@ -472,7 +486,7 @@ def _observability_fields(tool_calls: list[dict], tool_results: list[dict]) -> d
 
 
 async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient | None = None,
-                    on_progress=None) -> dict:
+                    on_progress=None, on_text=None) -> dict:
     """Runs one question through the agent, then deterministically checks the answer
     against ground truth before returning it: if it named a player its own trade-tool
     calls say isn't offerable, send one corrective follow-up on the same session
@@ -496,7 +510,7 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
         async with AsyncExitStack() as stack:
             if client is None:
                 client = await stack.enter_async_context(ClaudeSDKClient(options=_options()))
-            turn = await _run_turn(client, question, verbose, on_progress)
+            turn = await _run_turn(client, question, verbose, on_progress, on_text)
             all_tool_calls = list(turn["tool_calls"])
             all_tool_results = list(turn["tool_results"])
             # num_turns resets per client.query() call (verified live: 4, then 1 on
@@ -552,7 +566,7 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
                     "about tool output size or mechanics, and never ask the user to supply "
                     "data - everything you need is in the tool results you have."
                 )
-                turn = await _run_turn(client, correction, verbose, on_progress)
+                turn = await _run_turn(client, correction, verbose, on_progress, on_text)
                 all_tool_calls += turn["tool_calls"]
                 all_tool_results += turn["tool_results"]
                 total_turns += turn["result"].num_turns if turn["result"] else 0
