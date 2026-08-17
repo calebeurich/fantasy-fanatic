@@ -478,8 +478,12 @@ async function fillSide(leagueId, k) {
                                           other.owner ? fetchFits(leagueId, other.owner, other.stance) : []]); }
   catch (e) { box.innerHTML = `<div class="cs warn">couldn't load</div>`; return; }
   // Tags: why the OTHER team would want this piece (its own targets / swaps / adds).
+  // Swap tags ("beats their X") describe the other team's efficiency; they only mean
+  // anything to me if I'm selling - a contender reading "swap Brown for Egbuka" on his
+  // own Brown is noise (owner). Shown when this side's path or declared stance is a sell.
+  const selling = trade[k].stance === "sell" || ["sell", "build"].includes((row.path || "").split(" - ")[0]);
   const tagOf = {};
-  (fits || []).filter(f => f.owner === owner).forEach(f => { if (!tagOf[f.name]) tagOf[f.name] = f; });
+  (fits || []).filter(f => f.owner === owner && (selling || !f.tag.startsWith("beats"))).forEach(f => { if (!tagOf[f.name]) tagOf[f.name] = f; });
   const tag = name => { const f = tagOf[name]; if (!f) return "";
     const cls = f.tag.startsWith("beats") ? "swap" : f.tag.startsWith("depth") ? "depth" : "";
     const glyph = f.tag.startsWith("beats") ? "⇄ " : f.tag.startsWith("depth") ? "" : "✚ ";

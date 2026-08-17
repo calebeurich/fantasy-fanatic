@@ -266,9 +266,10 @@ def fits(league_id: str, owner: str, stance: str | None = None) -> list[dict]:
         return "starts for them today" if (p.get("over_weakest_starter") or 0) > 0 else "depth for them"
 
     for r in branches:
-        for t in r.get("targets") or []:
+        for t in (r.get("targets") or []) + (r.get("long_shots") or []):
+            friction = "; ".join(f.get("why", "") for f in (t.get("friction") or []) if isinstance(f, dict))
             add(t.get("name"), t.get("owner") or t.get("from_owner"), production_tag(t),
-                t.get("why_it_fits") or t.get("why") or t.get("note"))
+                (f"long shot - {friction}. " if friction else "") + (t.get("why_it_fits") or t.get("why") or t.get("note") or ""))
         for t in r.get("acquire_targets") or []:
             add(t.get("name"), t.get("owner") or t.get("from_owner"), "on their rebuild wish list",
                 t.get("why_it_fits") or t.get("why") or t.get("note"))
