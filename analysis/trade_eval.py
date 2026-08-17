@@ -72,6 +72,11 @@ def _value_percentile(value: int, players: dict) -> float:
     return sum(1 for v in vals if v > value) / len(vals)
 
 
+# How far past his breakpoint a piece has to be before a buyer's note calls him a
+# rental rather than declining (owner: "JT isn't a rental, he's in the decline window,
+# not past the cliff" at -0.6; Barkley at -2.5 and Henry at -5.6 are).
+RENTAL_DEPTH_YEARS = 2.0
+
 BUY_PATHS = ("contend", "press")
 SELL_PATHS = ("sell", "build")
 
@@ -245,25 +250,35 @@ def _side_read(state, receives, changes, lineup_delta, best, receives_best,
     if lens == "value":
         bar, horizon = MIN_MEANINGFUL_RUNWAY, ("a rebuild's next competitive season is "
                                                "past that runway, so he won't be part of it")
-    elif lens == "both" and state.get("ascending_pct", 0) > state.get("declining_pct", 0):
-        bar, horizon = INSIDE_FINAL_YEAR, ("a roster tilting young is accumulating the "
-                                           "seasons he won't be there for - the piece it "
-                                           "should be selling, not buying")
+    elif lens == "both":
+        # Both doors open: aging production fits the push door and not the wait door -
+        # said as which door it belongs to, never as a scolding.
+        bar, horizon = INSIDE_FINAL_YEAR, ("a push-door piece: this season's production, "
+                                           "not next season's - buying him is choosing the "
+                                           "push door")
     elif lens == "lineup":
-        # A buyer taking a rental is the direction gate working, not a mistake - said
-        # as a fact about the piece (this season only), never as a scolding (owner: a
-        # contender being told a rental is "the piece it should be selling" was wrong).
-        bar, horizon = INSIDE_FINAL_YEAR, ("a rental - this season's production is the "
-                                           "whole purchase, and he holds no resale value "
-                                           "after it")
+        # A buyer taking aging production is the direction gate working, not a mistake -
+        # said as a fact about the piece, never as a scolding (owner: a contender being
+        # told a rental is "the piece it should be selling" was wrong). Two depths, per
+        # the owner: just past the breakpoint is DECLINING (still producing, resale
+        # shrinking - JT), deep past it is a RENTAL (this season is the whole purchase -
+        # Barkley, Henry).
+        bar, horizon = INSIDE_FINAL_YEAR, None
     else:
         bar = None
     # `is not None` matters: a pick has no runway at all - it is the longest-dated
     # asset there is, the opposite of a piece at his edge - and `or 0` would flag it.
     for p in receives:
-        if bar and p.get("years_to_decline") is not None and p["years_to_decline"] < bar:
-            read.append(f"takes on {p['name']} with {p['years_to_decline']} yrs of "
-                        f"runway - {horizon}")
+        y = p.get("years_to_decline")
+        if bar and y is not None and y < bar:
+            if horizon is None:
+                depth = ("a rental - this season's production is the whole purchase"
+                         if y <= -RENTAL_DEPTH_YEARS else
+                         "declining, not done - priced on production, resale value "
+                         "shrinking from here")
+                read.append(f"takes on {p['name']} with {y} yrs of runway - {depth}")
+            else:
+                read.append(f"takes on {p['name']} with {y} yrs of runway - {horizon}")
     # Only an ALIGNED contender is scolded for taking back futures: for a press team,
     # converting the aging half into future value IS its path (redline from the first
     # spot check - it read the window and told a press team off for its own move).
@@ -274,6 +289,21 @@ def _side_read(state, receives, changes, lineup_delta, best, receives_best,
             read.append(f"takes back futures ({', '.join(futures)}) while built to win "
                         f"now - value that pays after the window, so the rest of the "
                         f"return has to carry this season")
+    # A seller judges the return by whether its centerpiece is on the timeline he is
+    # accumulating for - not whether it starts (owner: "Egbuka is about jq's timeline,
+    # not his starting roster").
+    if lens == "value" and receives:
+        cp = max(receives, key=lambda p: p["value"])
+        y = cp.get("years_to_decline")
+        if cp["position"] == "PICK":
+            read.append(f"the centerpiece of the return is a pick ({cp['name']}) - the "
+                        f"longest-dated asset there is, squarely on a rebuild's timeline")
+        elif y is not None:
+            fits = y >= MIN_MEANINGFUL_RUNWAY
+            read.append(f"the centerpiece of the return is {cp['name']} ({y} yrs of runway) - "
+                        + ("on the timeline this roster is accumulating for" if fits else
+                           "NOT on this roster's timeline; he will be past his edge before "
+                           "the next competitive season"))
     package = _package_read(receives, best, receives_best, best_pct)
     if package:
         read.append(package)

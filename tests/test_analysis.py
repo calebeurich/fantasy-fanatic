@@ -2493,8 +2493,12 @@ def test_a_rebuilder_taking_short_runway_production_is_flagged():
     # selling, not buying" was wrong).
     out = trade_eval.evaluate_from_board(_eval_fixture(), "b", ["oldback"], "a", ["spareqb"])
     a_side = next(s for s in out["sides"] if s["owner"] == "a")
-    rental = [r for r in a_side["read"] if "runway" in r]
-    assert rental and "a rental" in rental[0] and "should be selling" not in rental[0], rental
+    note = [r for r in a_side["read"] if "runway" in r]
+    assert note and "should be selling" not in note[0], note
+    # Owner: "JT isn't a rental, he's in the decline window, not past the cliff" - a
+    # piece just past his breakpoint (OldBack, -1 yr) reads DECLINING; only deep past it
+    # (RENTAL_DEPTH_YEARS) does the note say rental.
+    assert "declining, not done" in note[0], note
 
     # The real case: b (Rebuild) receives OldBack.
     board = _eval_fixture()
