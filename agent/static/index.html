@@ -117,7 +117,7 @@
   .prow span:first-child{color:var(--dim);flex:1;white-space:nowrap;overflow:hidden;
                          text-overflow:ellipsis;min-width:0}
   .prow.st span:first-child{font-weight:600;color:#fff}
-  .prow.st span:first-child::before{content:"▸ ";color:var(--ok)}
+  .prow.st span:first-child::before{content:"▸ ";color:var(--rebuild)}
   .prow.phead{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
   .prow.phead span{color:var(--dim)}
   .pv{font-variant-numeric:tabular-nums;color:var(--muted);width:40px;text-align:right;
@@ -182,7 +182,7 @@
   .crow.chead2 .v,.crow.chead2 .a{color:var(--dim)}
   /* The line under the lineup: starters sort first, bench below the rule. Starters under
      the position's start bar carry a colored left edge - how bad the hole is. */
-  .stmark{color:var(--ok);font-size:11px}   /* the roster view's starter mark, same meaning */
+  .stmark{color:var(--rebuild);font-size:11px}   /* the roster view's starter mark, same meaning */
   .crow.st.under{box-shadow:inset 3px 0 var(--thin)}
   .crow.st.deep{box-shadow:inset 3px 0 var(--crit)}
   .csugg{margin:0 0 8px}
@@ -821,7 +821,7 @@ async function toggleDetail(tr, leagueId) {
     row.innerHTML = `<td colspan="9"><div class="pcont">` +
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}<div class="plast">${picksHtml}${ideasHtml}</div></div>` +
-      `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--ok)">▸</span>` +
+      `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--rebuild)">▸</span>` +
       `<strong> starter</strong> · ePPG = expected points/game, now = this-season value, dyn = dynasty · age color = what his ` +
       `value is doing: <span style="color:hsl(120,65%,58%)">gaining</span> · ` +
       `<span style="color:hsl(68,65%,58%)">holding (prime)</span> · ` +
