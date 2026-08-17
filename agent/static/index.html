@@ -140,7 +140,12 @@
   .cpos{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;margin:6px 0 2px}
   .crow{display:flex;gap:6px;align-items:baseline;font-size:12.5px;padding:2px 4px;border-radius:5px;cursor:pointer}
   .crow:hover{background:var(--panel2)}
-  .crow.off{opacity:.38}
+  /* Movable = a green dot; not movable = dimmer AND italic, so a bold starter that is
+     greyed cannot be mistaken for a lit bench name. */
+  .crow .n::before{content:"●";color:var(--ok);font-size:8px;margin-right:6px;vertical-align:middle}
+  .crow.off{opacity:.3}
+  .crow.off .n{font-style:italic}
+  .crow.off .n::before{content:"○";color:var(--dim)}
   .crow.on{background:rgba(74,222,128,.13);outline:1px solid var(--ok)}
   .crow .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
   .crow.st .n{color:#fff;font-weight:600}
@@ -148,7 +153,7 @@
   .crow .a{width:30px;text-align:right;font-variant-numeric:tabular-nums;color:var(--dim);flex:none;font-size:12px}
   .cpicks{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
   .cpick{border:1px solid var(--line);border-radius:999px;padding:2px 8px;font-size:11.5px;color:var(--muted);cursor:pointer}
-  .cpick.off{opacity:.38}
+  .cpick.off{opacity:.3;font-style:italic;border-style:dashed}
   .cpick.on{border-color:var(--ok);color:var(--ok);background:rgba(74,222,128,.13)}
   .ctray{margin-top:10px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
   .ctray .side{font-size:13px;margin:2px 0}
@@ -422,7 +427,7 @@ function renderBuilder(leagueId, owners) {
         <div class="cstance" id="cstance${k}"></div></div>
       <div class="cmeta" id="cmeta${k}"></div>
       <div id="croster${k}"><div class="cs">loading…</div></div></div>`;
-  box.innerHTML = `<details class="builder" id="bdetails" open><summary>Propose a trade — tap pieces on both rosters; greyed = that team wouldn't move him on its path; ▲ / ⇄ = the other team has a reason to want him</summary>` +
+  box.innerHTML = `<details class="builder" id="bdetails" open><summary>Propose a trade — tap pieces on both rosters. ● = something that team would move on its path, ○ (dim, italic) = it wouldn't; ▲ / ⇄ = the other team has a reason to want him</summary>` +
     `<div class="csides">${side("a")}${side("b")}</div>` +
     `<div class="ctray" id="ctray"></div></details>`;
   box.style.display = "block";
