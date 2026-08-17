@@ -332,14 +332,18 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
     return out
 
 
-@app.get("/api/league/{league_id}/suggest", dependencies=[Depends(tier)])
-def suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance_b: str | None = None) -> list[dict]:
-    """Up to three concrete starting points between two teams, from what trade_targets
+def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance_b: str | None = None,
+             limit: int = 3) -> list[dict]:
+    """Up to `limit` concrete starting points between two teams, from what trade_targets
     already computes for each: a buyer's targets on the other roster paired with the
     piece the tool says that owner would take (`offer_any_one_of`), and a rebuild's
-    wish-list pieces on the other roster paired with its best sellable production. Facts
-    to react to - the framer's impact and the assistant's read follow. No pricing."""
+    wish-list pieces on the other roster paired with its best sellable production;
+    mirrored both ways. Single pieces within 1.5x in dynasty value pass; between 1.5x
+    and 3x the light side tops up with its best spendable pick (a 1st if it has one -
+    how those trades actually clear); beyond that, nothing. A starting point, never a
+    price verdict - the framer's impact and the assistant's read follow."""
     from analysis import trade_targets
+    from analysis.league import context
 
     def branches(result):
         return [result] + [x for x in (result.get("push"), result.get("pivot")) if isinstance(x, dict)]
@@ -363,22 +367,16 @@ def suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance_
                                 "why": f"{me} converts {sells[0]} into {t['name']} - young value for aging production"})
         return out
 
-    from analysis.league import context
     ctx = context(league_id)
     value = {p["name"]: p["value"] for p in ctx.players.values()}
 
     def spendable_picks(who, stance):
         r = trade_targets.find_targets(league_id, who, stance=stance or None)
         picks = r.get("picks_to_trade_away") or (r.get("push") or {}).get("picks_to_trade_away") or []
-        # Names as the composer's chips carry them ("2027 1st", not "2027 1st (Late)").
         return [(pk["pick"].split(" (")[0], pk["value"]) for pk in sorted(picks, key=lambda x: x["round"])]
     picks_a, picks_b = spendable_picks(a, stance_a), spendable_picks(b, stance_b)
 
     def balance(prop):
-        """Not a price verdict. Single pieces within 1.5x in dynasty value are a fair
-        starting point; between 1.5x and 3x the light side adds its best spendable pick
-        (a 1st if it has one) - that is how those trades actually clear (56% of stud
-        returns carry a 1st); beyond that it wastes a tap."""
         va = sum(value.get(n, 0) for n in prop["a_sends"]); vb = sum(value.get(n, 0) for n in prop["b_sends"])
         if not (va and vb):
             return prop
@@ -401,12 +399,40 @@ def suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance_
     seen, used_a, used_b, out = set(), set(), set(), []
     for prop in filter(None, (balance(c) for c in cands)):
         key = (tuple(prop["a_sends"]), tuple(prop["b_sends"]))
-        if key in seen:
+        if key in seen or (set(prop["a_sends"]) & used_a) or (set(prop["b_sends"]) & used_b):
             continue
-        # Diversify: three different pieces going each way beats "Shough for everything".
-        if (set(prop["a_sends"]) & used_a) or (set(prop["b_sends"]) & used_b):
+        seen.add(key); used_a |= set(prop["a_sends"]); used_b |= set(prop["b_sends"])
+        out.append({**prop, "partner": b})
+        if len(out) == limit:
+            break
+    return out
+
+
+@app.get("/api/league/{league_id}/suggest", dependencies=[Depends(tier)])
+def suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance_b: str | None = None) -> list[dict]:
+    return _suggest(league_id, a, b, stance_a, stance_b)
+
+
+@app.get("/api/league/{league_id}/team/{owner}/ideas", dependencies=[Depends(tier)])
+def trade_ideas(league_id: str, owner: str) -> list[dict]:
+    """Up to three starting points for one team across the whole league - one per
+    partner - shown in the team's expanded row, click-to-load into the composer.
+    Deterministic and cheap once the board is warm; cached client-side per team."""
+    from analysis.league import context
+    ctx = context(league_id)
+    value = {p["name"]: p["value"] for p in ctx.players.values()}
+    cands = []
+    for other in ctx.owner_names.values():
+        if other != owner:
+            cands += _suggest(league_id, owner, other, limit=2)
+    # Bigger deals first (what comes back, in dynasty value), one per partner, and no
+    # repeating the outgoing piece - three ideas should be three different conversations.
+    cands.sort(key=lambda c: -sum(value.get(n, 0) for n in c["b_sends"]))
+    out, partners, sent = [], set(), set()
+    for c in cands:
+        if c["partner"] in partners or set(c["a_sends"]) & sent:
             continue
-        seen.add(key); used_a |= set(prop["a_sends"]); used_b |= set(prop["b_sends"]); out.append(prop)
+        partners.add(c["partner"]); sent |= set(c["a_sends"]); out.append(c)
         if len(out) == 3:
             break
     return out

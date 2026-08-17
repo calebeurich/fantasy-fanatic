@@ -84,7 +84,19 @@
           margin-bottom:4px;border-bottom:1px solid var(--line);padding-bottom:3px}
   /* Picks take their own row under the positions; capped so the value doesn't land a
      screen-width from its label. */
-  .pgroup.picks{grid-column:1/-1;max-width:300px}
+  .pgroup.picks{max-width:300px}
+  /* Picks and trade ideas share the last row: picks left, ideas beside them. */
+  .plast{grid-column:1/-1;display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+  .pgroup.ideas{flex:1;min-width:280px}
+  .idea{display:block;width:100%;text-align:left;margin:3px 0;padding:6px 9px;border-radius:8px;
+        border:1px solid var(--line);background:var(--panel2);font-size:12.5px;color:var(--ink)}
+  .idea:hover{border-color:var(--ok)}
+  .idea b{color:#fff}
+  .idea .cs{display:block;margin-top:2px}
+  .builder>summary{list-style:none;padding:10px 12px;border:1px solid var(--ok);border-radius:10px;
+        background:rgba(74,222,128,.08);color:var(--ink);font-weight:600;font-size:14px}
+  .builder>summary::before{content:"▸ ";color:var(--ok)}
+  .builder[open]>summary::before{content:"▾ "}
   .prow{display:flex;gap:7px;font-size:13px;padding:1.5px 0;align-items:baseline}
   .prow span:first-child{color:var(--dim);flex:1;white-space:nowrap;overflow:hidden;
                          text-overflow:ellipsis;min-width:0}
@@ -444,7 +456,7 @@ function renderBuilder(leagueId, owners) {
         <div class="cstance" id="cstance${k}"></div></div>
       <div class="cmeta" id="cmeta${k}"></div>
       <div id="croster${k}"><div class="cs">loading…</div></div></div>`;
-  box.innerHTML = `<details class="builder" id="bdetails" open><summary>Propose a trade — tap pieces on both rosters</summary>` +
+  box.innerHTML = `<details class="builder" id="bdetails"><summary>Trade helper — pick two teams, tap pieces, see the impact instantly, then ask (or click a trade idea on any team above)</summary>` +
     `<div class="cs" style="margin-top:6px">● = a piece that team would move on its path (or the stance you picked) · ◐ = a cornerstone, askable only at a cornerstone's price · ○ dim italic = it wouldn't move, tap anyway if you insist. ` +
     `Tags say why the <em>other</em> team wants a piece, from its own lists: ` +
     `<span class="ftag">✚ starts for them (+2.1)</span> would start for the other team, lifting their lineup that many points a game · <span class="ftag swap">⇄ beats their X</span> more production for less dynasty cost than their starter X (shown when you're selling) · <span class="ftag">✚ on their rebuild wish list</span> young value above the trade bar that a rebuild collects · ` +
@@ -635,6 +647,35 @@ async function showImpact(leagueId, a, pa, b, pb) {
   } catch (e) { box.innerHTML = `<div class="cs warn">couldn't evaluate</div>`; }
 }
 
+// Up to three starting points for this team across the league (deterministic, cached
+// per team) - the door into the trade helper: click one and it opens loaded.
+const ideasCache = {};
+async function fillIdeas(leagueId, owner) {
+  const el = document.getElementById(`ideas-${owner.replace(/[^a-z0-9]/gi, "_")}`);
+  if (!el) return;
+  const key = `${leagueId}/${owner}`;
+  try {
+    if (!ideasCache[key]) ideasCache[key] = await (await fetch(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/ideas`, {headers: hdrs()})).json();
+  } catch (_) { el.textContent = "couldn't look"; return; }
+  const list = ideasCache[key];
+  if (!list.length) { el.textContent = "nothing obvious on the current reads — build one in the trade helper below"; return; }
+  el.innerHTML = list.map((s, i) => `<button type="button" class="idea" data-i="${i}" title="${(s.why || "").replace(/"/g, "&quot;")}">` +
+    `send <b>${s.a_sends.join(" + ")}</b> to <b>${s.partner}</b> for <b>${s.b_sends.join(" + ")}</b>` +
+    `<span class="cs">${(s.why || "").split(";")[0]}</span></button>`).join("") +
+    `<div class="cs" style="margin-top:4px">starting points from each team's read — click one to load it in the trade helper</div>`;
+  el.querySelectorAll(".idea").forEach(btn => btn.onclick = () => openComposerWith(leagueId, owner, list[+btn.dataset.i]));
+}
+async function openComposerWith(leagueId, owner, s) {
+  const det = $("bdetails"); if (!det) return;
+  trade.a.owner = owner; trade.b.owner = s.partner; trade.a.stance = ""; trade.b.stance = "";
+  trade.a.picks = new Set(); trade.b.picks = new Set();
+  $("csela").value = owner; $("cselb").value = s.partner;
+  det.open = true;
+  await Promise.all([fillSide(leagueId, "a"), fillSide(leagueId, "b")]);
+  loadProposal(leagueId, s);
+  det.scrollIntoView({behavior: "smooth", block: "start"});
+}
+
 async function toggleDetail(tr, leagueId) {
   const open = tr.nextElementSibling;
   if (open && open.classList.contains("detail")) { open.remove(); return; }
@@ -711,9 +752,10 @@ async function toggleDetail(tr, leagueId) {
     // No prose in the panel: the table is the clean part, the chip tooltip carries the
     // why, and nuance is the agent's job. The data speaks - an aging Etienne sticks
     // out by his orange age without a sentence saying so.
+    const ideasHtml = `<div class="pgroup ideas"><div class="ptitle">Trade ideas</div><div id="ideas-${owner.replace(/[^a-z0-9]/gi, "_")}" class="cs">looking across the league…</div></div>`;
     row.innerHTML = `<td colspan="9"><div class="pcont">` +
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
-        d.players[pos] ? group(pos, d.players[pos]) : "").join("")}${picksHtml}</div>` +
+        d.players[pos] ? group(pos, d.players[pos]) : "").join("")}<div class="plast">${picksHtml}${ideasHtml}</div></div>` +
       `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--ok)">▸</span>` +
       `<strong> starter</strong> · ePPG = expected points/game, now = this-season value, dyn = dynasty · age color = what his ` +
       `value is doing: <span style="color:hsl(120,65%,58%)">gaining</span> · ` +
@@ -721,6 +763,7 @@ async function toggleDetail(tr, leagueId) {
       `<span style="color:hsl(25,65%,55%)">losing</span> · ` +
       `<span style="color:hsl(0,60%,38%)">short-term loaner</span> ` +
       `(shade = how deep; each position falls at its own speed)</div></div></td>`;
+    fillIdeas(leagueId, owner);
   } catch (e) {
     row.innerHTML = `<td colspan="9" class="cs warn">Couldn't load roster: ${e}</td>`;
   }

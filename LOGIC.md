@@ -1660,6 +1660,22 @@ bold. Cornerstones alone made the column lie by omission: a roster showed only
 value. The reader wants the roster's headline pieces; which of them are young enough
 to build around is a flag on the name, not a filter on the list.
 
+### Trade ideas: the door into the composer (2026-08-17)
+
+Owner: "a lot of info burying the agent to auto open the league table and the trade
+thing at once ... populate 1-3 trade suggestions to the right of picks for the team you
+click on, click to open the trade helper with that loaded." So the composer is collapsed
+behind one obvious bar, and each expanded team row carries up to three STARTING POINTS
+across the league (`/team/{owner}/ideas`, cached per team): from what trade_targets
+already computes for the team and for every partner - a buyer's targets paired with the
+piece that owner would take (`offer_any_one_of`), a rebuild's wish-list pieces paired
+with its best sellable production, mirrored - single pieces within 1.5x in dynasty
+value, between 1.5x and 3x the light side tops up with its best spendable pick (a 1st
+first; how those trades actually clear), beyond that nothing; ranked by what comes
+back, one per partner, no repeated outgoing piece. Never a price verdict: click one and
+the framer's impact appears, the assistant judges on Ask. Deterministic and ~0.3s once
+the board is warm.
+
 ### The trade composer (staging only, 2026-08-17 v2)
 
 Owner's verdict on v1 (two dropdowns + checkbox lists): "works but looks bad, doesn't
