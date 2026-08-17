@@ -193,25 +193,20 @@ on return), the page shows the agent's real tool steps and streams the answer as
 written, and an operator page shows what people asked and what they thought of it —
 thumbs-down comments from league mates have been the richest source of real bugs.
 
-## Not in this repo, on purpose
+## Scope choices
 
-- **No retrieval / vector store.** The agent's context is small, structured and
-  computed per question; there is no corpus to retrieve from. RAG here would be RAG
-  for the résumé.
+- **Two agents where the domain has two sides.** The composer's "Ask" runs your
+  advisor and the *other manager* in parallel — the same tools, opposing stances,
+  the framer as the deterministic referee. Everything else that could be an agent
+  (planning, verification) is plain Python, because exact beats another opinion.
+- **No retrieval layer.** The agent's context is small, structured, and computed per
+  question from live data; there is no corpus to search.
 - **No fine-tuning.** The reasoning lives in deterministic Python plus a prompt; the
-  thesis is that the model reasons over verified facts. The evals are the better story.
-- **No multi-agent choreography** — with one deliberate exception. A trade has two
-  sides, so the composer's "Ask" runs two agents in parallel: your advisor, and the
-  *other manager* judging the same proposal from their own path with the same tools
-  (accept / counter / no, and what it would take). Two opposing stances over one
-  deterministic referee (the framer); the coordination is a Python function, not a
-  third agent. Everything else people call multi-agent here (planner, critic) is done
-  deterministically, and the critic is exact instead of another opinion.
+  evals carry the quality story.
 - **One orchestrator, one model** — the Claude Agent SDK on Haiku, chosen after
-  measuring cost and quality. A small LangGraph client driving the same MCP tools with
-  an open-weight model exists as a portability proof (`agent/langgraph_client.py`;
-  verified with Qwen2.5-72B-Instruct via HuggingFace's router driving the identical
-  MCP tools), to show the tool layer is the asset and the orchestrator is swappable.
+  measuring cost and quality — with a small LangGraph client (`agent/langgraph_client.py`,
+  verified with Qwen2.5-72B via HuggingFace) driving the identical MCP tools, to show the
+  tool layer is the asset and the orchestrator is swappable.
 
 ## License and data
 
