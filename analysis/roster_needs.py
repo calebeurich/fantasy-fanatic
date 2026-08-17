@@ -561,8 +561,8 @@ def projected_starters(roster: dict, players: dict[str, dict], slots: dict[str, 
     Not Sleeper's snapshot, which is whatever the current week's lineup happens to be and
     once classed a superflex QB2 as spare parts. Ranked by redraft value (a lineup is "who
     scores most this week", in every window; missing prices sort last, safely below every
-    replacement level), with flex slots filled properly - dedicated first, then flex, most
-    restrictive first."""
+    replacement level), ties - mostly the unpriced tail - broken on projected points, with
+    flex slots filled properly - dedicated first, then flex, most restrictive first."""
     return {pid for _, pid in fill_lineup(roster, players, slots, flex)}
 
 
@@ -580,7 +580,7 @@ def fill_lineup(roster: dict, players: dict[str, dict], slots: dict[str, int],
     for pid in roster["players"] or []:
         info = players.get(pid)
         if info and info["position"] in by_pos:
-            by_pos[info["position"]].append((info.get("redraft_value") or 0, pid))
+            by_pos[info["position"]].append(((info.get("redraft_value") or 0, ppg(info)), pid))
 
     filled: list[tuple[str, str]] = []
     remaining: dict[str, list[tuple[float, str]]] = {}
