@@ -367,16 +367,39 @@ def suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance_
     ctx = context(league_id)
     value = {p["name"]: p["value"] for p in ctx.players.values()}
 
-    def plausible(prop):
-        # Not a price verdict - a starting point more than 2x apart in dynasty value on
-        # single pieces (Stroud for Jefferson) wastes a tap. Picks pass.
+    def spendable_picks(who, stance):
+        r = trade_targets.find_targets(league_id, who, stance=stance or None)
+        picks = r.get("picks_to_trade_away") or (r.get("push") or {}).get("picks_to_trade_away") or []
+        # Names as the composer's chips carry them ("2027 1st", not "2027 1st (Late)").
+        return [(pk["pick"].split(" (")[0], pk["value"]) for pk in sorted(picks, key=lambda x: x["round"])]
+    picks_a, picks_b = spendable_picks(a, stance_a), spendable_picks(b, stance_b)
+
+    def balance(prop):
+        """Not a price verdict. Single pieces within 1.5x in dynasty value are a fair
+        starting point; between 1.5x and 3x the light side adds its best spendable pick
+        (a 1st if it has one) - that is how those trades actually clear (56% of stud
+        returns carry a 1st); beyond that it wastes a tap."""
         va = sum(value.get(n, 0) for n in prop["a_sends"]); vb = sum(value.get(n, 0) for n in prop["b_sends"])
-        return not (va and vb) or 0.5 <= va / vb <= 2.0
+        if not (va and vb):
+            return prop
+        ratio = va / vb
+        if 1 / 1.5 <= ratio <= 1.5:
+            return prop
+        if not (1 / 3 <= ratio <= 3):
+            return None
+        light, picks, key = ("a", picks_a, "a_sends") if ratio < 1 else ("b", picks_b, "b_sends")
+        for name, pv in picks:
+            new = dict(prop); new[key] = prop[key] + [name]
+            va2, vb2 = va + (pv if light == "a" else 0), vb + (pv if light == "b" else 0)
+            if 1 / 1.5 <= va2 / vb2 <= 1.5:
+                new["why"] = prop["why"] + f"; {name} tops up the light side"
+                return new
+        return None
 
     cands = list(proposals(a, b, stance_a))
     cands += [{"a_sends": p["b_sends"], "b_sends": p["a_sends"], "why": p["why"]} for p in proposals(b, a, stance_b)]
     seen, used_a, used_b, out = set(), set(), set(), []
-    for prop in [c for c in cands if plausible(c)]:
+    for prop in filter(None, (balance(c) for c in cands)):
         key = (tuple(prop["a_sends"]), tuple(prop["b_sends"]))
         if key in seen:
             continue
