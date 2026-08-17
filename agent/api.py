@@ -405,8 +405,15 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
 
     cands = list(proposals(a, b, stance_a))
     cands += [{"a_sends": p["b_sends"], "b_sends": p["a_sends"], "why": p["why"]} for p in proposals(b, a, stance_b)]
+    # Every named player must be something ITS OWN team would move - a rebuild wanting
+    # kb's Brian Thomas doesn't make Thomas available (kb is WR-weak; he's a starter).
+    movable_a = trade_targets.offerable_names(trade_targets.find_targets(league_id, a, stance=stance_a or None))
+    movable_b = trade_targets.offerable_names(trade_targets.find_targets(league_id, b, stance=stance_b or None))
+    def available(prop):
+        return (all(n in movable_a or n not in position for n in prop["a_sends"])
+                and all(n in movable_b or n not in position for n in prop["b_sends"]))
     seen, used_a, used_b, out = set(), set(), set(), []
-    for prop in filter(None, (balance(c) for c in cands)):
+    for prop in filter(None, (balance(c) for c in cands if available(c))):
         key = (tuple(prop["a_sends"]), tuple(prop["b_sends"]))
         if key in seen or (set(prop["a_sends"]) & used_a) or (set(prop["b_sends"]) & used_b):
             continue

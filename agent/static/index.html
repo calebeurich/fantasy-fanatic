@@ -580,10 +580,13 @@ function renderTray(leagueId) {
   const a = trade.a.owner, b = trade.b.owner, pa = picked("a"), pb = picked("b");
   const tray = $("ctray");
   const line = (o, ps) => `<div class="side"><b>${o}</b> sends: ${ps.length ? ps.join(", ") : "<span class='cs'>nothing yet</span>"}</div>`;
-  tray.innerHTML = `<div class="csugg" id="csugg"></div>` + line(a, pa) + line(b, pb) +
-    `<div class="cimpact" id="cimpact"></div>` +
-    `<div class="row" style="margin-top:8px;gap:8px"><button type="button" class="ghost" id="cclear">clear</button>` +
-    `<button type="button" class="primary" id="cask" ${pa.length && pb.length && a !== b ? "" : "disabled"}>Ask the assistant about this trade</button></div>`;
+  const ready = pa.length && pb.length && a !== b;
+  tray.innerHTML = `<div class="csugg" id="csugg"></div>` +
+    `<div class="row" style="gap:8px;align-items:center;margin-bottom:6px">` +
+    `<button type="button" class="primary" id="cask" ${ready ? "" : "disabled"} style="font-size:14px;padding:10px 16px">Ask the assistant — both sides</button>` +
+    `<span class="cs">your read + how the other manager sees it</span><button type="button" class="ghost" id="cclear" style="margin-left:auto">clear</button></div>` +
+    line(a, pa) + line(b, pb) +
+    `<div class="cimpact" id="cimpact"></div>`;
   $("cclear").onclick = () => { document.querySelectorAll(".crow.on").forEach(r => r.classList.remove("on")); trade.a.picks.clear(); trade.b.picks.clear(); document.querySelectorAll(".cpick.on").forEach(c => c.classList.remove("on")); renderTray(leagueId); };
   $("cask").onclick = () => {
     const stance = k => trade[k].stance ? ` (${trade[k].owner} says they'd ${trade[k].stance === "sell" ? "sell" : "press"})` : "";
