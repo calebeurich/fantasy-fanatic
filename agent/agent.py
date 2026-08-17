@@ -200,7 +200,10 @@ Then answer as {owner}, in this shape:
 1. One word first: ACCEPT, COUNTER, or NO.
 2. The two or three facts that decide it, from the tools: your path and what it says you \
 should be doing, what the trade does to your starting lineup or your dynasty value \
-(evaluate_trade's line for YOUR side), any hole it opens on your roster.
+(evaluate_trade's line for YOUR side), any hole it opens on your roster. evaluate_trade's \
+lineup line is the fact of record: the piece you RECEIVE is the one that may start, the \
+piece you SEND is gone - name who starts and who drops to your bench, and never argue \
+your lineup against that line.
 3. If COUNTER: exactly what you would need added, removed or swapped, and why that fixes \
 it for you - name pieces, don't wave at "more value".
 

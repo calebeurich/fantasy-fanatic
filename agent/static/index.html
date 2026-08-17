@@ -19,13 +19,15 @@
          position:sticky;top:0;z-index:5}
   /* Three views, one on screen at a time - the page had become one long scroll of
      table + rosters + trade helper + chat ("overwhelmed ... unbearable on phone" - owner). */
-  nav.tabs{display:flex;gap:4px;margin-left:auto}
-  nav.tabs button{padding:6px 12px;border-radius:999px;font-size:13px;color:var(--muted);background:transparent}
+  nav.tabs{display:flex;gap:6px;margin:0 auto}
+  nav.tabs button{padding:8px 22px;border-radius:999px;font-size:15px;font-weight:600;color:var(--muted);background:transparent}
   nav.tabs button.on{background:var(--panel2);color:var(--ink);border-color:var(--muted)}
   nav.tabs button:disabled{opacity:.35}
   section.view{display:none}
   section.view.on{display:grid;gap:18px}
-  @media (max-width:600px){header{padding:8px 12px}h1{font-size:14px}.sub{display:none}nav.tabs{margin-left:0;width:100%;justify-content:space-between}nav.tabs button{flex:1}}
+  header{justify-content:space-between}
+  header .sub{margin-left:auto}
+  @media (max-width:600px){header{padding:8px 12px}h1{font-size:14px}.sub{display:none}nav.tabs{width:100%;justify-content:space-between}nav.tabs button{flex:1;padding:8px 0}}
   h1{font-size:15px;margin:0;letter-spacing:.3px}
   .sub{color:var(--dim);font-size:12.5px}
   main{max-width:1440px;margin:0 auto;padding:18px;display:grid;gap:18px}
@@ -98,10 +100,12 @@
   /* Picks and trade ideas share the last row: picks left, ideas beside them. */
   .plast{grid-column:1/-1;display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
   .pgroup.ideas{flex:1;min-width:280px}
-  .idea{display:block;width:100%;text-align:left;margin:3px 0;padding:6px 9px;border-radius:8px;
+  .idea{display:flex;gap:8px;align-items:center;margin:3px 0;padding:6px 9px;border-radius:8px;
         border:1px solid var(--line);background:var(--panel2);font-size:12.5px;color:var(--ink)}
-  .idea:hover{border-color:var(--muted)}
   .idea b{color:#fff}
+  .iacts{display:flex;gap:4px;flex:none}
+  .iacts button{padding:4px 10px;font-size:12px;border-radius:999px}
+  .iacts .ask{background:var(--ok);color:#06240f;border-color:transparent;font-weight:600}
   /* A tiny spinner INSIDE the placeholder - it disappears with the placeholder the
      moment content lands (a class left on the container pulsed forever). */
   @keyframes spin{to{transform:rotate(360deg)}}
@@ -227,12 +231,15 @@
 <main>
 <section class="view on" data-view="league">
   <p id="demonote" style="display:none;margin:0;color:var(--thin);font-size:13.5px"></p>
-  <details class="card">
+  <details class="card" open>
     <summary style="cursor:pointer;font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);padding:11px 14px;background:var(--panel2)">What this is (and isn't)</summary>
     <div class="pad tldr">
       <p><strong>A dynasty trade advisor for Sleeper leagues.</strong> It knows every roster,
       every team's competitive window, who's quietly aging out, and who around the league
       would actually pick up the phone. Ask it anything a sharp league-mate could answer.</p>
+      <p><strong>League</strong> is the table — click a team for its roster and a few trade
+      ideas. <strong>Trade</strong> is the helper — pick two teams, tap pieces, see the impact.
+      <strong>Ask</strong> is the conversation — the only part that costs anything.</p>
       <ul>
         <li><strong>Dynasty only.</strong> Redraft leagues get a polite no.</li>
         <li><strong>Not a trade calculator.</strong> It never adds player values into a package
@@ -544,6 +551,7 @@ async function fillSide(leagueId, k) {
   // anything to me if I'm selling - a contender reading "swap Brown for Egbuka" on his
   // own Brown is noise (owner). Shown when this side's path or declared stance is a sell.
   const selling = trade[k].stance === "sell" || ["sell", "build"].includes((row.path || "").split(" - ")[0]);
+  const competing = trade[k].stance === "press" || !["sell", "build"].includes((row.path || "").split(" - ")[0]);
   const tagOf = {};
   (fits || []).filter(f => f.owner === owner && (selling || !f.tag.startsWith("beats"))).forEach(f => { if (!tagOf[f.name]) tagOf[f.name] = f; });
   const tag = name => { const f = tagOf[name]; if (!f) return "";
@@ -558,7 +566,7 @@ async function fillSide(leagueId, k) {
     const rows = ordered.map((p, i) => {
       const off = !mv.players.has(p.name);
       const rv = p.redraft_value || 0;
-      const health = p.starter && bar ? (rv < 0.6 * bar ? "deep" : rv < bar ? "under" : "") : "";
+      const health = competing && p.starter && bar ? (rv < 0.6 * bar ? "deep" : rv < bar ? "under" : "") : "";
       const rule = (p.starter && i === nStart - 1 && nStart < ordered.length) ? `<div class="cline"></div>` : "";
       const on = chosen.has(p.name);
       const title = off ? "not something this team would move on its path — tap anyway if you insist"
@@ -700,26 +708,28 @@ async function fillIdeas(leagueId, owner) {
   const list = ideasCache[key];
   if (!list.length) { el.textContent = "nothing obvious — build one in the trade helper below"; return; }
   const framing = list[0] && list[0].framing ? `<div class="cs" style="margin-bottom:4px">${owner} is waiting — these are production moves <em>${list[0].framing}</em>:</div>` : "";
-  const card = (s, i) => `<button type="button" class="idea" data-i="${i}" title="${(s.why || "").replace(/"/g, "&quot;")}">` +
-    `send <b>${s.a_sends.join(" + ")}</b> to <b>${s.partner}</b> for <b>${s.b_sends.join(" + ")}</b>` +
-    `<span class="cs">${(s.why || "").split(";")[0]}</span></button>`;
+  const card = (s, i) => `<div class="idea" data-i="${i}" title="${(s.why || "").replace(/"/g, "&quot;")}">` +
+    `<div style="flex:1;min-width:0">send <b>${s.a_sends.join(" + ")}</b> to <b>${s.partner}</b> for <b>${s.b_sends.join(" + ")}</b>` +
+    `<span class="cs">${(s.why || "").split(";")[0]}</span></div>` +
+    `<span class="iacts"><button type="button" class="ask" data-i="${i}">ask</button><button type="button" class="tweak" data-i="${i}">tweak</button></span></div>`;
   const buys = list.map((s, i) => [s, i]).filter(([s]) => s.lens !== "sell");
   const sells = list.map((s, i) => [s, i]).filter(([s]) => s.lens === "sell");
   const col = (title, cls, items) => items.length
     ? `<div style="flex:1;min-width:260px"><div class="cs" style="margin-bottom:3px"><span class="tag ${cls} cool">${title}</span></div>${items.map(([s, i]) => card(s, i)).join("")}</div>` : "";
   el.innerHTML = framing + `<div style="display:flex;gap:14px;flex-wrap:wrap">${col("as buyer", "p-contend", buys)}${col("as seller", "p-sell", sells)}</div>` +
-    `<div class="cs" style="margin-top:4px">click one — the assistant reads it for both sides (tweak it first under Trade)</div>`;
-  el.querySelectorAll(".idea").forEach(btn => btn.onclick = () => openComposerWith(leagueId, owner, list[+btn.dataset.i]));
+    `<div class="cs" style="margin-top:4px">ask = the assistant reads it for both sides · tweak = open it in Trade first</div>`;
+  el.querySelectorAll(".idea .ask").forEach(btn => btn.onclick = () => openComposerWith(leagueId, owner, list[+btn.dataset.i], true));
+  el.querySelectorAll(".idea .tweak").forEach(btn => btn.onclick = () => openComposerWith(leagueId, owner, list[+btn.dataset.i], false));
 }
-async function openComposerWith(leagueId, owner, s) {
+async function openComposerWith(leagueId, owner, s, ask) {
   if (!$("csela")) return;
   trade.a.owner = owner; trade.b.owner = s.partner; trade.a.stance = ""; trade.b.stance = "";
   trade.a.picks = new Set(); trade.b.picks = new Set();
   $("csela").value = owner; $("cselb").value = s.partner;
   await Promise.all([fillSide(leagueId, "a"), fillSide(leagueId, "b")]);
   loadProposal(leagueId, s);
-  const ask = $("cask");
-  if (ask && !ask.disabled) ask.click(); else showView("trade");
+  const btn = $("cask");
+  if (ask && btn && !btn.disabled) btn.click(); else showView("trade");
 }
 
 async function toggleDetail(tr, leagueId) {

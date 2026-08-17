@@ -332,12 +332,12 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
              limit: int = 3) -> list[dict]:
     """Up to `limit` concrete starting points between two teams, from what trade_targets
     already computes for each: a buyer's targets on the other roster paired with the
-    piece the tool says that owner would take (`offer_any_one_of`), and a rebuild's
-    wish-list pieces on the other roster paired with its best sellable production;
-    mirrored both ways. Single pieces within 1.35x in dynasty value pass; between 1.35x
-    and 3x the light side tops up with its best spendable pick (a 1st if it has one -
-    how those trades actually clear); beyond that, nothing. A starting point, never a
-    price verdict - the framer's impact and the assistant's read follow."""
+    piece the tool says that owner would take (`offer_any_one_of`) or the starter the
+    target would replace, and a rebuild's wish-list pieces on the other roster paired
+    with what it is selling; mirrored both ways. Each is balanced into the band by the
+    light side's sweeteners (see `sweeteners`). A starting point, never a price verdict
+    - the framer's impact and the assistant's read follow. The rules and their owner
+    quotes: LOGIC.md "Trade ideas"."""
     from analysis import trade_targets
     from analysis.league import context
 
@@ -347,6 +347,7 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
     def proposals(me, them, stance):
         result = trade_targets.find_targets(league_id, me, stance=stance or None)
         offerable = trade_targets.offerable_names(result)
+        my_starters = [ctx.players[pid]["name"] for pid in ctx.starters_for(ctx.roster_for(me)) if pid in ctx.players]
         out = []
         for r in branches(result):
             for t in (r.get("targets") or []) + (r.get("long_shots") or []):
@@ -356,6 +357,15 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
                 for give in gives:
                     out.append({"a_sends": [give], "b_sends": [t["name"]], "lens": "buy",
                                 "why": f"{me} fills a {t.get('for_slot') or t.get('position')} hole with {t['name']}; {them} would take {give}"})
+                # The upgrade swap: the man he replaces goes back the other way ("Bryce Young
+                # + a pick for Goff" - owner). Not in the offerable set - he starts - but the
+                # target starting instead of him is the whole point, so the target has to
+                # out-produce him (Parker Washington for McLaurin at the same ePPG is a swap,
+                # not an upgrade).
+                for mine in my_starters:
+                    if position.get(mine) == position.get(t["name"]) and value.get(mine, 0) < value.get(t["name"], 0)                             and eppg.get(t["name"], 0) > 1.05 * eppg.get(mine, 0):
+                        out.append({"a_sends": [mine], "b_sends": [t["name"]], "lens": "buy",
+                                    "why": f"{me} upgrades {mine} to {t['name']} at {position.get(mine)}"})
                 if not gives:   # no named piece they'd take: pay in picks (balance() finds them)
                     out.append({"a_sends": [], "b_sends": [t["name"]], "lens": "buy",
                                 "why": f"{me} fills a {t.get('for_slot') or t.get('position')} hole with {t['name']}"})
@@ -366,6 +376,10 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
                     out.append({"a_sends": [], "b_sends": [t["name"]], "lens": "buy",
                                 "why": f"{t['name']} would start for {me} today; {them} is selling production for picks"})
             sells = [e["name"] for e in (r.get("sell_candidates") or []) if e["name"] in offerable][:3]
+            # A rebuild's biggest piece is a conversation whether or not he is aging (owner:
+            # "have to give jq something with Chase - such a notable player on his sell team").
+            if r.get("mode") == "rebuild":
+                sells += sorted((n for n in offerable if n in value and n not in sells), key=lambda n: -value[n])[:1]
             for t in r.get("acquire_targets") or []:
                 if t.get("from_owner") == them:
                     for sell in sells:
@@ -375,6 +389,7 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
 
     ctx = context(league_id)
     value = {p["name"]: p["value"] for p in ctx.players.values()}
+    eppg = {p["name"]: p.get("projected_ppg") or 0 for p in ctx.players.values()}
     position = {p["name"]: p["position"] for p in ctx.players.values()}
     bars = ctx.trade_thresholds
 
@@ -415,9 +430,10 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
     # The band is DIRECTIONAL, in the buyer's view (lens 'buy' -> a pays; 'sell' -> b
     # pays): he sends at least 0.9x of what he gets (Shough for a young Chase Brown at
     # 0.75x needs the 2nd on top; Cam Ward alone for Jonathan Taylor at 0.69x is a slap
-    # in the face - owner) and may overpay to 1.5x - contenders do. The aging discount is
-    # already in a production piece's dynasty price, so it gets no second discount here.
-    BAND_LO, BAND_HI = 0.9, 1.5
+    # in the face - owner) and may overpay to 1.2x - contenders do; past that the SELLER
+    # evens it up. The aging discount is already in a production piece's dynasty price,
+    # so it gets no second discount here.
+    BAND_LO, BAND_HI = 0.9, 1.2
 
     def in_band(prop, va, vb, tolerance=0.04):
         sent, got = (va, vb) if prop.get("lens") == "buy" else (vb, va)   # buyer's view
@@ -433,35 +449,47 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
             return prop if centerpiece_ok(prop) else None
         buyer_is_a = prop.get("lens") == "buy"
         # Which side is light? The buyer when he sends too little, the seller when the
-        # buyer overpays past the band (rare). Picks only flow to a side that wants them.
+        # buyer overpays past the band. The light side sweetens from what it would move.
         sent, got = (va, vb) if buyer_is_a else (vb, va)
         light = ("a" if buyer_is_a else "b") if (not va or sent < BAND_LO * got) else ("b" if buyer_is_a else "a")
-        picks, key = (picks_a, "a_sends") if light == "a" else (picks_b, "b_sends")
-        if not wants_picks["b" if light == "a" else "a"]:
-            return None
-        # One pick, then two 1sts: "young piece + two firsts for the stud" is the common
-        # real-life shape for a stud going to a rebuild (owner), and the summed band for a
-        # top-5% piece (~1.06x) is what two 1sts reach when one doesn't. Picks are the one
-        # thing that can bridge a light centerpiece to a seller whose lens is value.
-        # 3rds and 4ths aren't currency for a real chip ("at least a 2nd" - owner): singles
-        # then pairs from 1sts and 2nds, cheapest round that lands first ("at least a 2nd"
-        # - not a 1st when a 2nd does it), and within a round the NEAREST year first - a
-        # '27 1st is what people actually offer, not the '29 (owner).
-        def soonest(pk):
-            return (0 if " 2nd" in pk[0] else 1, int(pk[0][:4]))
-        premium = sorted((pk for pk in picks if " 1st" in pk[0] or " 2nd" in pk[0]), key=soonest)
-        attempts = [[pk] for pk in premium] + sorted(([x, y] for i, x in enumerate(premium) for y in premium[i + 1:]),
-                                                     key=lambda c: (soonest(c[0])[0] + soonest(c[1])[0], soonest(c[0])[1] + soonest(c[1])[1]))
-        for combo in attempts:
+        key = light + "_sends"
+        light_is_buyer = (light == "a") == buyer_is_a
+        for combo in sweeteners(light, prop[key], light_is_buyer):
             add_v = sum(pv for _, pv in combo)
             new = dict(prop); new[key] = prop[key] + [n for n, _ in combo]
             va2, vb2 = va + (add_v if light == "a" else 0), vb + (add_v if light == "b" else 0)
             if in_band(prop, va2, vb2):
-                new["why"] = prop["why"] + (f"; {' + '.join(n for n, _ in combo)} tops up the light side" if prop[key] else f" - {' + '.join(n for n, _ in combo)}")
+                new["why"] = prop["why"] + (f"; {' + '.join(n for n, _ in combo)} evens it up" if prop[key] else f" - {' + '.join(n for n, _ in combo)}")
                 two_firsts = len(combo) == 2 and all(" 1st" in n for n, _ in combo)
                 if two_firsts or not prop[key] or centerpiece_ok(new):
                     return new
         return None
+
+    def sweeteners(light, already, light_is_buyer):
+        """What the light side can add, cheapest that lands first, singles then pairs.
+        A buyer adds picks - its 1sts and 2nds, and only if the other side wants picks (a
+        contender wants production; 3rds and 4ths aren't currency for a real chip - "at
+        least a 2nd", owner). A seller adds picks the same way if it has any to spend, or
+        a smaller piece it is moving anyway - Evans on top of McLaurin for Shough, not a
+        pick it is keeping (owner) - never a piece bigger than the one it started with:
+        that would be a different trade. Same-round picks cost the same here so the
+        nearest year goes first ('27 1st, not '29 - owner); two 1sts is the stud shape
+        (RETURN_SHAPES) and skips the centerpiece test."""
+        picks = (picks_a if light == "a" else picks_b) if wants_picks["b" if light == "a" else "a"] else []
+        nearest = {}
+        for n, v in picks:
+            nearest.setdefault(n.split(" ", 1)[1], v)   # picks come sorted by round, then season
+        opts = [(n, v, nearest[n.split(" ", 1)[1]], int(n[:4])) for n, v in picks if " 1st" in n or " 2nd" in n]
+        if not light_is_buyer:
+            movable = movable_a if light == "a" else movable_b
+            cap = min((value[n] for n in already if n in value), default=0)
+            opts += [(n, value[n], value[n], 0) for n in movable
+                     if n in value and real_chip(n) and n not in already and value[n] < cap]
+        opts.sort(key=lambda o: (o[2], o[3]))
+        singles = [[(n, v)] for n, v, *_ in opts]
+        pairs = sorted(([(x[0], x[1]), (y[0], y[1])] for i, x in enumerate(opts) for y in opts[i + 1:]),
+                       key=lambda c: c[0][1] + c[1][1])
+        return singles + pairs
 
     cands = list(proposals(a, b, stance_a))
     cands += [{"a_sends": p["b_sends"], "b_sends": p["a_sends"], "why": p["why"],
@@ -516,9 +544,10 @@ def trade_ideas(league_id: str, owner: str) -> list[dict]:
     for lens in ("buy", "sell"):
         partners, sent, n = set(), set(), 0
         for c in (x for x in cands if x.get("lens") == lens):
-            if c["partner"] in partners:   # one per partner; shopping one piece to two teams is fine
+            mine = {n for n in c["a_sends"] if n in value}
+            if c["partner"] in partners or (mine & sent):   # three ideas = three conversations
                 continue
-            partners.add(c["partner"]); out.append(c); n += 1
+            partners.add(c["partner"]); sent |= mine; out.append(c); n += 1
             if n == 3:
                 break
     return out
