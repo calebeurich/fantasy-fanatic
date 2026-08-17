@@ -322,6 +322,63 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
     return out
 
 
+@app.get("/api/league/{league_id}/suggest", dependencies=[Depends(tier)])
+def suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance_b: str | None = None) -> list[dict]:
+    """Up to three concrete starting points between two teams, from what trade_targets
+    already computes for each: a buyer's targets on the other roster paired with the
+    piece the tool says that owner would take (`offer_any_one_of`), and a rebuild's
+    wish-list pieces on the other roster paired with its best sellable production. Facts
+    to react to - the framer's impact and the assistant's read follow. No pricing."""
+    from analysis import trade_targets
+
+    def branches(result):
+        return [result] + [x for x in (result.get("push"), result.get("pivot")) if isinstance(x, dict)]
+
+    def proposals(me, them, stance):
+        result = trade_targets.find_targets(league_id, me, stance=stance or None)
+        offerable = trade_targets.offerable_names(result)
+        out = []
+        for r in branches(result):
+            for t in (r.get("targets") or []) + (r.get("long_shots") or []):
+                if t.get("from_owner") != them:
+                    continue
+                give = [n for n in (t.get("offer_any_one_of") or []) if n in offerable][:1]
+                if give:
+                    out.append({"a_sends": give, "b_sends": [t["name"]],
+                                "why": f"{me} fills a {t.get('for_slot') or t.get('position')} hole with {t['name']}; {them} would take {give[0]}"})
+            sells = [e["name"] for e in (r.get("sell_candidates") or []) if e["name"] in offerable]
+            for t in r.get("acquire_targets") or []:
+                if t.get("from_owner") == them and sells:
+                    out.append({"a_sends": sells[:1], "b_sends": [t["name"]],
+                                "why": f"{me} converts {sells[0]} into {t['name']} - young value for aging production"})
+        return out
+
+    from analysis.league import context
+    ctx = context(league_id)
+    value = {p["name"]: p["value"] for p in ctx.players.values()}
+
+    def plausible(prop):
+        # Not a price verdict - a starting point more than 2x apart in dynasty value on
+        # single pieces (Stroud for Jefferson) wastes a tap. Picks pass.
+        va = sum(value.get(n, 0) for n in prop["a_sends"]); vb = sum(value.get(n, 0) for n in prop["b_sends"])
+        return not (va and vb) or 0.5 <= va / vb <= 2.0
+
+    cands = list(proposals(a, b, stance_a))
+    cands += [{"a_sends": p["b_sends"], "b_sends": p["a_sends"], "why": p["why"]} for p in proposals(b, a, stance_b)]
+    seen, used_a, used_b, out = set(), set(), set(), []
+    for prop in [c for c in cands if plausible(c)]:
+        key = (tuple(prop["a_sends"]), tuple(prop["b_sends"]))
+        if key in seen:
+            continue
+        # Diversify: three different pieces going each way beats "Shough for everything".
+        if (set(prop["a_sends"]) & used_a) or (set(prop["b_sends"]) & used_b):
+            continue
+        seen.add(key); used_a |= set(prop["a_sends"]); used_b |= set(prop["b_sends"]); out.append(prop)
+        if len(out) == 3:
+            break
+    return out
+
+
 class EvaluateRequest(BaseModel):
     owner_a: str
     sends_a: list[str]
@@ -409,6 +466,7 @@ def _team_detail(ctx, roster: dict) -> dict:
         "alignment": t["alignment"], "path": t["path"], "path_reason": t["path_reason"],
         "clock_mismatch_note": t.get("clock_mismatch_note"),
         "players": by_pos,
+        "start_bars": {pos: round(v) for pos, v in (getattr(ctx, "start_thresholds", None) or {}).items()},
         "picks": [{"pick": p["pick"], "value": p["value"], "season": p["season"], "round": p["round"]}
                   for p in picks.get(t["roster_id"], [])],
     }
