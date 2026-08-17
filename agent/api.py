@@ -377,11 +377,16 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
         for Charbonnet idea (owner)."""
         return position.get(name) is None or value.get(name, 0) >= bars.get(position[name], 0)
 
-    def spendable_picks(who, stance):
-        r = trade_targets.find_targets(league_id, who, stance=stance or None)
+    result_a = trade_targets.find_targets(league_id, a, stance=stance_a or None)
+    result_b = trade_targets.find_targets(league_id, b, stance=stance_b or None)
+
+    def spendable_picks(r):
         picks = r.get("picks_to_trade_away") or (r.get("push") or {}).get("picks_to_trade_away") or []
         return [(pk["pick"].split(" (")[0], pk["value"]) for pk in sorted(picks, key=lambda x: x["round"])]
-    picks_a, picks_b = spendable_picks(a, stance_a), spendable_picks(b, stance_b)
+    picks_a, picks_b = spendable_picks(result_a), spendable_picks(result_b)
+    # A pick only tops up a side when the RECEIVER wants picks - a rebuild or a middle
+    # team; a contender wants production, not your '28 1st (owner: kb).
+    wants_picks = {"a": result_a["mode"] != "buy", "b": result_b["mode"] != "buy"}
 
     def balance(prop):
         if not (any(real_chip(n) for n in prop["a_sends"]) and any(real_chip(n) for n in prop["b_sends"])):
@@ -395,6 +400,8 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
         if not (1 / 3 <= ratio <= 3):
             return None
         light, picks, key = ("a", picks_a, "a_sends") if ratio < 1 else ("b", picks_b, "b_sends")
+        if not wants_picks["b" if light == "a" else "a"]:
+            return None
         for name, pv in picks:
             new = dict(prop); new[key] = prop[key] + [name]
             va2, vb2 = va + (pv if light == "a" else 0), vb + (pv if light == "b" else 0)
@@ -408,8 +415,8 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
                "lens": {"buy": "sell", "sell": "buy"}[p["lens"]]} for p in proposals(b, a, stance_b)]
     # Every named player must be something ITS OWN team would move - a rebuild wanting
     # kb's Brian Thomas doesn't make Thomas available (kb is WR-weak; he's a starter).
-    movable_a = trade_targets.offerable_names(trade_targets.find_targets(league_id, a, stance=stance_a or None))
-    movable_b = trade_targets.offerable_names(trade_targets.find_targets(league_id, b, stance=stance_b or None))
+    movable_a = trade_targets.offerable_names(result_a)
+    movable_b = trade_targets.offerable_names(result_b)
     def available(prop):
         return (all(n in movable_a or n not in position for n in prop["a_sends"])
                 and all(n in movable_b or n not in position for n in prop["b_sends"]))
