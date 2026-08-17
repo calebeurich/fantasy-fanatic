@@ -261,6 +261,16 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
     seller_roster = ctx.roster_for(seller)
     movable = trade_targets.offerable_names(trade_targets.find_targets(league_id, seller, stance=seller_stance or None))
     starters = ctx.starters_for(buyer)
+    # The weakest starter at each slot a position can fill (its own slot, FLEX, SUPER_FLEX):
+    # "depth" = within reach of that starter, not only "starts if exactly one is out" (DJ
+    # Moore at 10.5 behind Metcalf 10.8 for dez's flex is one flex spot from play; owner).
+    filled = roster_needs.fill_lineup(buyer, ctx.players, ctx.lineup_dedicated, ctx.lineup_flex)
+    def reach_bar(position):
+        eligible = [ctx.players[q] for slot, q in filled if q in ctx.players and (
+            ctx.players[q]["position"] == position
+            or (slot == "FLEX" and position in ("RB", "WR", "TE"))
+            or slot == "SUPER_FLEX")]
+        return min((eppg(q) for q in eligible), default=0)
     result = trade_targets.find_targets(league_id, owner, stance=stance or None)
     # A seller/rebuild is not buying production - its interest is young value (the wish
     # list below), so lineup tags are for buying and middle paths only (owner: a sell
@@ -294,7 +304,7 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
                         "tag": f"starts for them (+{gain:.1f}{' · market says much more' if loud else ''})",
                         "why": f"projects {eppg(info):.1f} a game; {owner}'s lineup gains {gain:.1f} a game"
                                + (f", displacing {', '.join(d['name'] for d in dropped)}" if dropped else "") + market})
-        elif pid in new_starters or roster_needs.would_start_if_one_out(
+        elif pid in new_starters or eppg(info) >= 0.85 * reach_bar(info["position"]) or roster_needs.would_start_if_one_out(
                 buyer, ctx.players, pid, starters, ctx.lineup_dedicated, ctx.lineup_flex):
             # Within noise of the starter he'd sit behind is not "depth" (Purdy at 17.1 vs
             # Dak's 17.1 is a wash, not a backup) - say level with whom.
