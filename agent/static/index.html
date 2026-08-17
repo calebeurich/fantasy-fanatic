@@ -913,6 +913,14 @@ $("f").onsubmit = async e => {
                    + "was running. Ask again and it'll be quick.</p>";
   }
 })();
+
+// Staging opens on the owner's own team so testing starts at the table, not the picker
+// (/api/defaults is empty on prod). Best effort.
+fetch("/api/defaults", {headers: hdrs()}).then(r => r.json()).then(d => {
+  if (!d.league_id || currentLeague) return;
+  myName = d.owner || myName;
+  loadLeague(d.league_id);
+}).catch(() => {});
 </script>
 </body>
 </html>

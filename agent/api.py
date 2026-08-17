@@ -112,6 +112,13 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/api/defaults", dependencies=[Depends(require_key)])
+def defaults() -> dict:
+    """What the page opens on when nothing is selected - set on STAGING only (the owner
+    lands on his own team for testing); prod leaves both unset and shows the picker."""
+    return {"league_id": os.environ.get("FF_DEFAULT_LEAGUE"), "owner": os.environ.get("FF_DEFAULT_OWNER")}
+
+
 @app.get("/api/league/{league_id}", dependencies=[Depends(require_key)])
 def league_overview(league_id: str) -> dict:
     """Deterministic league snapshot, rendered by the UI as a table rather than

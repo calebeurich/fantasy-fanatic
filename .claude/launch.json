@@ -4,8 +4,30 @@
     {
       "name": "api",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "uvicorn", "agent.api:app", "--port", "8000"],
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "agent.api:app",
+        "--port",
+        "8000"
+      ],
       "port": 8000
+    },
+    {
+      "name": "api-staging-like",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "agent.api:app",
+        "--port",
+        "8001"
+      ],
+      "port": 8001,
+      "env": {
+        "FF_DEFAULT_LEAGUE": "1315386978904084480",
+        "FF_DEFAULT_OWNER": "dezdroppedit27"
+      }
     }
   ]
 }
