@@ -139,14 +139,14 @@ def health() -> dict:
 @app.get("/api/defaults")
 def defaults(request: Request) -> dict:
     """What the page opens on when nothing is selected. Friends: FF_DEFAULT_* (set on
-    staging so the owner lands on his own team; unset on prod -> the picker). Demo
-    visitors: DEMO_LEAGUE, a real league to look at without owning one, plus the tier
-    so the page can say what the demo allows."""
+    staging so the owner lands on his own team), else the same league the demo lands
+    on. Demo visitors: DEMO_LEAGUE, a real league to look at without owning one, plus
+    the tier so the page can say what the demo allows."""
     t = tier(request)
     if t == "demo":
         return {"tier": "demo", "league_id": DEMO_LEAGUE, "owner": None,
                 "asks_per_visitor": budget.DEMO_ASKS_PER_VISITOR}
-    return {"tier": "friend", "league_id": os.environ.get("FF_DEFAULT_LEAGUE"),
+    return {"tier": "friend", "league_id": os.environ.get("FF_DEFAULT_LEAGUE") or DEMO_LEAGUE,
             "owner": os.environ.get("FF_DEFAULT_OWNER")}
 
 
