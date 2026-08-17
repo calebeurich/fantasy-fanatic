@@ -118,6 +118,7 @@
                          text-overflow:ellipsis;min-width:0}
   .prow.st span:first-child{font-weight:600;color:#fff}
   .prow.st span:first-child::before{content:"▸ ";color:var(--rebuild)}
+  .prow.sq span:first-child::before{content:"▹ ";color:var(--rebuild)}   /* starter-quality by the league bar, on the bench */
   .prow.phead{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
   .prow.phead span{color:var(--dim)}
   .pv{font-variant-numeric:tabular-nums;color:var(--muted);width:40px;text-align:right;
@@ -781,7 +782,7 @@ async function toggleDetail(tr, leagueId) {
       `<div class="pgroup"><div class="ptitle">${title}</div>` +
       `<div class="prow phead"><span></span><span class="pv">${heads[0]}</span><span class="pv">${heads[1]}</span>` +
       `<span class="pv">${heads[2]}</span><span class="pa">${heads[3]}</span></div>` +
-      rows.map(p => `<div class="prow${p.starter ? " st" : ""}">` +
+      rows.map(p => `<div class="prow${p.starter ? " st" : (d.start_bars || {})[title] && (p.redraft_value || 0) >= d.start_bars[title] ? " sq" : ""}">` +
         `<span>${p.cornerstone ? "★ " : ""}${p.name}</span>` +
         `<span class="pv">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
         `<span class="pv">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
@@ -822,7 +823,7 @@ async function toggleDetail(tr, leagueId) {
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}<div class="plast">${picksHtml}${ideasHtml}</div></div>` +
       `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--rebuild)">▸</span>` +
-      `<strong> starter</strong> · ePPG = expected points/game, now = this-season value, dyn = dynasty · age color = what his ` +
+      `<strong> starter</strong> · <span style="color:var(--rebuild)">▹</span> starter-quality by the league bar, on the bench · ePPG = expected points/game, now = this-season value, dyn = dynasty · age color = what his ` +
       `value is doing: <span style="color:hsl(120,65%,58%)">gaining</span> · ` +
       `<span style="color:hsl(68,65%,58%)">holding (prime)</span> · ` +
       `<span style="color:hsl(25,65%,55%)">losing</span> · ` +
