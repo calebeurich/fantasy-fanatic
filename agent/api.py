@@ -356,15 +356,25 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
             for t in (r.get("targets") or []) + (r.get("long_shots") or []):
                 if t.get("from_owner") != them:
                     continue
-                give = [n for n in (t.get("offer_any_one_of") or []) if n in offerable][:1]
-                if give:
-                    out.append({"a_sends": give, "b_sends": [t["name"]], "lens": "buy",
-                                "why": f"{me} fills a {t.get('for_slot') or t.get('position')} hole with {t['name']}; {them} would take {give[0]}"})
-            sells = [e["name"] for e in (r.get("sell_candidates") or []) if e["name"] in offerable]
+                gives = [n for n in (t.get("offer_any_one_of") or []) if n in offerable][:3]
+                for give in gives:
+                    out.append({"a_sends": [give], "b_sends": [t["name"]], "lens": "buy",
+                                "why": f"{me} fills a {t.get('for_slot') or t.get('position')} hole with {t['name']}; {them} would take {give}"})
+                if not gives:   # no named piece they'd take: pay in picks (balance() finds them)
+                    out.append({"a_sends": [], "b_sends": [t["name"]], "lens": "buy",
+                                "why": f"{me} fills a {t.get('for_slot') or t.get('position')} hole with {t['name']}"})
+            # Production a seller is moving, paid for in picks - "a 2nd for Evans" (owner):
+            # the buyer's a_sends starts empty and balance() finds the pick(s).
+            for t in r.get("production_adds") or []:
+                if t.get("from_owner") == them:
+                    out.append({"a_sends": [], "b_sends": [t["name"]], "lens": "buy",
+                                "why": f"{t['name']} would start for {me} today; {them} is selling production for picks"})
+            sells = [e["name"] for e in (r.get("sell_candidates") or []) if e["name"] in offerable][:3]
             for t in r.get("acquire_targets") or []:
-                if t.get("from_owner") == them and sells:
-                    out.append({"a_sends": sells[:1], "b_sends": [t["name"]], "lens": "sell",
-                                "why": f"{me} converts {sells[0]} into {t['name']} - young value for aging production"})
+                if t.get("from_owner") == them:
+                    for sell in sells:
+                        out.append({"a_sends": [sell], "b_sends": [t["name"]], "lens": "sell",
+                                    "why": f"{me} converts {sell} into {t['name']} - young value for aging production"})
         return out
 
     ctx = context(league_id)
@@ -406,33 +416,68 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
         _label, _pieces, (cp_q1, _cp_med, _cp_q3), *_ = _shape_for(pct)
         return other / best >= cp_q1
 
+    info = {p["name"]: p for p in ctx.players.values()}
+    from analysis.team_values import INSIDE_FINAL_YEAR, years_to_decline
+
+    def production_priced(name):
+        q = info.get(name)
+        if not q:
+            return False
+        y = years_to_decline(q["position"], q["age"], q.get("usage_role"))
+        return q.get("bucket") == "declining" or (y is not None and y < INSIDE_FINAL_YEAR)
+
+    def band(prop):
+        """The band is DIRECTIONAL. The buyer (lens 'buy' -> a; 'sell' -> b) pays in
+        future value: for a piece with runway he sends at least 0.9x of it (Shough for a
+        young Chase Brown at 0.75x needs the 2nd on top - owner); for a production-priced
+        aging piece he can send as little as 0.7x (Etienne for Fannin is a normal
+        contender's overpay in dynasty terms, not a steal); overpaying up to 1.5x is
+        allowed either way - contenders do."""
+        buyer_gets = prop["b_sends"] if prop.get("lens") == "buy" else prop["a_sends"]
+        players_got = [n for n in buyer_gets if n in info]
+        lo = 0.7 if players_got and all(production_priced(n) for n in players_got) else 0.9
+        return lo, 1.5
+
+    def in_band(prop, va, vb, tolerance=0.04):
+        lo, hi = band(prop)
+        sent, got = (va, vb) if prop.get("lens") == "buy" else (vb, va)   # buyer's view
+        return got and lo - tolerance <= sent / got <= hi   # a hair under isn't worth stapling a 4th on
+
     def balance(prop):
-        if not (any(real_chip(n) for n in prop["a_sends"]) and any(real_chip(n) for n in prop["b_sends"])):
+        if not any(real_chip(n) for n in prop["b_sends"]) or (prop["a_sends"] and not any(real_chip(n) for n in prop["a_sends"])):
             return None
         va = sum(value.get(n, 0) for n in prop["a_sends"]); vb = sum(value.get(n, 0) for n in prop["b_sends"])
-        if not (va and vb):
-            return prop
-        ratio = va / vb
-        if 1 / 1.35 <= ratio <= 1.35:
-            return prop if centerpiece_ok(prop) else None
-        if not (1 / 3 <= ratio <= 3):
+        if not vb:
             return None
-        light, picks, key = ("a", picks_a, "a_sends") if ratio < 1 else ("b", picks_b, "b_sends")
+        if va and in_band(prop, va, vb):
+            return prop if centerpiece_ok(prop) else None
+        buyer_is_a = prop.get("lens") == "buy"
+        # Which side is light? The buyer when he sends too little, the seller when the
+        # buyer overpays past the band (rare). Picks only flow to a side that wants them.
+        sent, got = (va, vb) if buyer_is_a else (vb, va)
+        light = ("a" if buyer_is_a else "b") if (not va or sent < band(prop)[0] * got) else ("b" if buyer_is_a else "a")
+        picks, key = (picks_a, "a_sends") if light == "a" else (picks_b, "b_sends")
         if not wants_picks["b" if light == "a" else "a"]:
             return None
         # One pick, then two 1sts: "young piece + two firsts for the stud" is the common
         # real-life shape for a stud going to a rebuild (owner), and the summed band for a
         # top-5% piece (~1.06x) is what two 1sts reach when one doesn't. Picks are the one
         # thing that can bridge a light centerpiece to a seller whose lens is value.
-        firsts = [(n, pv) for n, pv in picks if " 1st" in n]
-        attempts = [[pk] for pk in picks] + ([firsts[:2]] if len(firsts) >= 2 else [])
+        # Cheapest pick that lands in band first ("at least a 2nd" - not a 1st when a 2nd
+        # does it; owner), then pairs, then two 1sts.
+        # 3rds and 4ths aren't currency for a real chip ("at least a 2nd" - owner): singles
+        # and pairs come from 1sts and 2nds, cheapest that lands first.
+        premium = sorted((pk for pk in picks if " 1st" in pk[0] or " 2nd" in pk[0]), key=lambda x: x[1])
+        attempts = [[pk] for pk in premium] + sorted(([x, y] for i, x in enumerate(premium) for y in premium[i + 1:]),
+                                                     key=lambda c: c[0][1] + c[1][1])
         for combo in attempts:
             add_v = sum(pv for _, pv in combo)
             new = dict(prop); new[key] = prop[key] + [n for n, _ in combo]
             va2, vb2 = va + (add_v if light == "a" else 0), vb + (add_v if light == "b" else 0)
-            if 1 / 1.35 <= va2 / vb2 <= 1.35:
-                new["why"] = prop["why"] + f"; {' + '.join(n for n, _ in combo)} tops up the light side"
-                if len(combo) == 2 or centerpiece_ok(new):
+            if in_band(prop, va2, vb2):
+                new["why"] = prop["why"] + (f"; {' + '.join(n for n, _ in combo)} tops up the light side" if prop[key] else f" - {' + '.join(n for n, _ in combo)}")
+                two_firsts = len(combo) == 2 and all(" 1st" in n for n, _ in combo)
+                if two_firsts or not prop[key] or centerpiece_ok(new):
                     return new
         return None
 
@@ -489,9 +534,9 @@ def trade_ideas(league_id: str, owner: str) -> list[dict]:
     for lens in ("buy", "sell"):
         partners, sent, n = set(), set(), 0
         for c in (x for x in cands if x.get("lens") == lens):
-            if c["partner"] in partners or set(c["a_sends"]) & sent:
+            if c["partner"] in partners:   # one per partner; shopping one piece to two teams is fine
                 continue
-            partners.add(c["partner"]); sent |= set(c["a_sends"]); out.append(c); n += 1
+            partners.add(c["partner"]); out.append(c); n += 1
             if n == 3:
                 break
     return out

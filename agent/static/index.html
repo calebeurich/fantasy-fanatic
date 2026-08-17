@@ -100,9 +100,9 @@
         vertical-align:-1px;margin-right:6px}
   @media (prefers-reduced-motion:reduce){.spin{animation:none;border-top-color:var(--line)}}
   .idea .cs{display:block;margin-top:2px}
-  .builder>summary{list-style:none;padding:10px 12px;border:1px solid var(--ok);border-radius:10px;
-        background:rgba(74,222,128,.08);color:var(--ink);font-weight:600;font-size:14px}
-  .builder>summary::before{content:"▸ ";color:var(--ok)}
+  .builder>summary{list-style:none;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
+        background:var(--panel2);color:var(--ink);font-weight:600;font-size:14px}
+  .builder>summary::before{content:"▸ ";color:var(--muted)}
   .builder[open]>summary::before{content:"▾ "}
   .prow{display:flex;gap:7px;font-size:13px;padding:1.5px 0;align-items:baseline}
   .prow span:first-child{color:var(--dim);flex:1;white-space:nowrap;overflow:hidden;
@@ -201,7 +201,7 @@
         white-space:nowrap;flex:none;margin-left:2px}
   .ftag.swap{color:var(--mid)}
   .ftag.depth{color:var(--dim)}
-  .chip{background:rgba(74,222,128,.08);border:1px solid var(--ok);color:var(--ink);font-weight:600;
+  .chip{background:var(--panel2);border:1px solid var(--line);color:var(--ink);font-weight:500;
         border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer}
   .chip:hover{color:var(--ink);border-color:var(--mid)}
 </style>
