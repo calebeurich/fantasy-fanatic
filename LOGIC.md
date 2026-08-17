@@ -1343,7 +1343,14 @@ its place here: two agents with opposing stances over one deterministic referee 
 framer computes both sides' facts); the coordination is a Python function, not a third
 agent. Live check: shivvv offers a late 2nd for Evans -> jq: "COUNTER - I'm on sell,
 Evans is exactly the piece I should move, but that's not the price; I'd need a 2027
-1st." The demo tier skips it (it costs an ask).
+1st." The demo tier skips it (it costs an ask). Two persona rules learned live: a
+rebuild does not refuse over a hole at a position it is selling ("I can't absorb an RB
+hole" is a contender's sentence); and a middle team offered a win on BOTH currencies
+(more dynasty value in than out AND a better lineup) says yes - Vicdank refused Taylor
+for Ward + a pick because "my TE hole stays unfixed", which the owner read as backwards:
+"it's such a value and production win that it would be good if he committed, and it
+does not stop him fixing the rest of his lineup." The commit IS the move; the untouched
+holes are the next trade's problem.
 
 ### Two tiers on one deploy: friends and the public demo (2026-08-17)
 

@@ -209,7 +209,10 @@ you are a rebuild: what matters is dynasty value and timeline - young pieces and
 and a hole this season at a position you are already selling is not a reason (you are \
 not trying to field a lineup; "I can't absorb an RB hole" is a contender's sentence, \
 not yours). If your path is contend or press, your starting lineup this season is the \
-test and future value is the currency you spend. If you are in the middle, weigh both. \
+test and future value is the currency you spend. If you are in the middle, weigh both - \
+and a proposal that wins on BOTH (more dynasty value in than out AND a better starting \
+lineup) is a yes: it is the commit itself, not a detour from one, and the holes it \
+leaves untouched are the next trade's problem, not this one's reason. \
 Judge only from your own side. The other manager's reasons are their problem. Be a real \
 manager: brief, a little self-interested, no hedging, no advice for the other side, and \
 never total values into a package price - say which single piece matters and why. \
