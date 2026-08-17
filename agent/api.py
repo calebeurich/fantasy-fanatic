@@ -207,6 +207,38 @@ def movable(league_id: str, owner: str, stance: str | None = None) -> dict:
             "stance_note": result.get("stance_note")}
 
 
+@app.get("/api/league/{league_id}/team/{owner}/fits", dependencies=[Depends(require_key)])
+def fits(league_id: str, owner: str, stance: str | None = None) -> list[dict]:
+    """Pieces on OTHER rosters that fit this team, flattened from trade_targets: buy-path
+    targets, efficiency swaps (value_upgrades: more production for less dynasty cost than
+    a current starter), production adds (would start today), depth adds. The composer
+    tags the counterparty's rows with these so "why would shivvv want Evans" is visible
+    without reading a list. Facts from the same tool the agent uses; no verdicts."""
+    from analysis import trade_targets
+    result = trade_targets.find_targets(league_id, owner, stance=stance or None)
+    branches = [result] + [b for b in (result.get("push"), result.get("pivot")) if isinstance(b, dict)]
+    out, seen = [], set()
+
+    def add(name, from_owner, tag, why):
+        if name and from_owner and (name, tag) not in seen:
+            seen.add((name, tag))
+            out.append({"name": name, "owner": from_owner, "tag": tag, "why": (why or "")[:200]})
+
+    for r in branches:
+        for t in (r.get("targets") or []) + (r.get("acquire_targets") or []):
+            add(t.get("name"), t.get("owner") or t.get("from_owner"), "target", t.get("why") or t.get("note"))
+        for u in r.get("value_upgrades") or []:
+            for ret in u.get("returns") or []:
+                if not ret.get("already_mine"):
+                    add(ret.get("name"), ret.get("owner") or ret.get("from_owner"),
+                        f"swap for {u['move_off']}", ret.get("note"))
+        for p in r.get("production_adds") or []:
+            add(p.get("name"), p.get("from_owner"), "would start", p.get("starter_caveat") or "production-priced; would start for you today")
+        for p in r.get("depth_adds") or []:
+            add(p.get("name"), p.get("from_owner"), "depth", p.get("note"))
+    return out
+
+
 class EvaluateRequest(BaseModel):
     owner_a: str
     sends_a: list[str]

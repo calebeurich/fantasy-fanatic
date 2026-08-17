@@ -158,6 +158,11 @@
   .cimpact .goal b{color:var(--ink)}
   .cimpact .goal.hole{border-left-color:var(--crit)}
   .cimpact .goal.gain{border-left-color:var(--ok)}
+  /* Why the OTHER team would want him - from its own trade-targets lists. */
+  .ftag{font-size:10px;padding:0 5px;border-radius:999px;border:1px solid var(--line);color:var(--ok);
+        white-space:nowrap;flex:none;margin-left:2px}
+  .ftag.swap{color:var(--mid)}
+  .ftag.depth{color:var(--dim)}
   .chip{background:transparent;border:1px dashed var(--line);color:var(--muted);
         border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer}
   .chip:hover{color:var(--ink);border-color:var(--mid)}
@@ -382,6 +387,7 @@ async function prefetchDetails(leagueId) {
 // so the roster IS the option list; a stance toggle (press / sell) re-greys it.
 let leagueTeams = {};        // owner -> overview row (path, ePPG, needs) for the headers
 const movableCache = {};     // league/owner/stance -> {players:Set, picks:Set}
+const fitsCache = {};        // league/owner/stance -> [{name, owner, tag, why}] pieces elsewhere that fit him
 const trade = {a: {owner: null, stance: "", picks: new Set()}, b: {owner: null, stance: "", picks: new Set()}};
 let evalTimer = null;
 
@@ -396,6 +402,16 @@ async function fetchMovable(leagueId, owner, stance) {
   return movableCache[key];
 }
 
+async function fetchFits(leagueId, owner, stance) {
+  const key = `${leagueId}/${owner}/${stance}`;
+  if (!fitsCache[key]) {
+    const q = stance ? `?stance=${encodeURIComponent(stance)}` : "";
+    const res = await fetch(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/fits${q}`, {headers: hdrs()});
+    fitsCache[key] = await res.json();
+  }
+  return fitsCache[key];
+}
+
 function renderBuilder(leagueId, owners) {
   const box = $("builder");
   trade.a.owner = trade.a.owner || myTeam || owners[0];
@@ -406,12 +422,13 @@ function renderBuilder(leagueId, owners) {
         <div class="cstance" id="cstance${k}"></div></div>
       <div class="cmeta" id="cmeta${k}"></div>
       <div id="croster${k}"><div class="cs">loading…</div></div></div>`;
-  box.innerHTML = `<details class="builder" id="bdetails" open><summary>Propose a trade — tap pieces on both rosters; greyed = that team wouldn't move him on its path</summary>` +
+  box.innerHTML = `<details class="builder" id="bdetails" open><summary>Propose a trade — tap pieces on both rosters; greyed = that team wouldn't move him on its path; ▲ / ⇄ = the other team has a reason to want him</summary>` +
     `<div class="csides">${side("a")}${side("b")}</div>` +
     `<div class="ctray" id="ctray"></div></details>`;
   box.style.display = "block";
   ["a", "b"].forEach(k => {
-    $("csel" + k).onchange = () => { trade[k].owner = $("csel" + k).value; trade[k].stance = ""; trade[k].picks = new Set(); fillSide(leagueId, k); };
+    // Either side changing re-fills BOTH: the tags on one roster depend on the other team.
+    $("csel" + k).onchange = () => { trade[k].owner = $("csel" + k).value; trade[k].stance = ""; trade[k].picks = new Set(); fillSide(leagueId, "a"); fillSide(leagueId, "b"); };
     fillSide(leagueId, k);
   });
   renderTray(leagueId);
@@ -433,23 +450,32 @@ async function fillSide(leagueId, k) {
   const st = $("cstance" + k);
   st.innerHTML = stanceOptions(row).map(([v, label]) =>
     `<button type="button" data-v="${v}" class="${trade[k].stance === v ? "on" : ""}">${label}</button>`).join("");
-  st.querySelectorAll("button").forEach(b => b.onclick = () => { trade[k].stance = b.dataset.v; fillSide(leagueId, k); });
+  st.querySelectorAll("button").forEach(b => b.onclick = () => { trade[k].stance = b.dataset.v; fillSide(leagueId, "a"); fillSide(leagueId, "b"); });
   const needs = Object.entries(row.needs || {}).filter(([, n]) => n && n.level && n.level !== "ok")
     .map(([pos, n]) => `<span class="need ${n.level}" style="display:inline-block;margin:0 3px 0 0">${pos} ${n.level}</span>`).join("");
   $("cmeta" + k).innerHTML = row.path
     ? `<span class="tag p-${row.path.split(" - ")[0]} ${row.alignment === "unaligned" ? "hot" : "cool"}">${row.path.split(" - ")[0]}</span> ` +
       `${row.starting_production ? row.starting_production.toFixed(1) + " ePPG · " + row.pct_of_best + "% of best" : ""} ${needs}` : "";
   const box = $("croster" + k);
-  let d, mv;
-  try { [d, mv] = await Promise.all([fetchDetail(leagueId, owner), fetchMovable(leagueId, owner, trade[k].stance)]); }
+  const other = trade[k === "a" ? "b" : "a"];
+  let d, mv, fits = [];
+  try { [d, mv, fits] = await Promise.all([fetchDetail(leagueId, owner), fetchMovable(leagueId, owner, trade[k].stance),
+                                          other.owner ? fetchFits(leagueId, other.owner, other.stance) : []]); }
   catch (e) { box.innerHTML = `<div class="cs warn">couldn't load</div>`; return; }
+  // Tags: why the OTHER team would want this piece (its own targets / swaps / adds).
+  const tagOf = {};
+  (fits || []).filter(f => f.owner === owner).forEach(f => { if (!tagOf[f.name]) tagOf[f.name] = f; });
+  const tag = name => { const f = tagOf[name]; if (!f) return "";
+    const cls = f.tag.startsWith("swap") ? "swap" : f.tag === "depth" ? "depth" : "";
+    const glyph = f.tag.startsWith("swap") ? "⇄ " : f.tag === "depth" ? "" : "▲ ";
+    return `<span class="ftag ${cls}" title="${(f.why || "").replace(/"/g, "&quot;")}">${glyph}${f.tag}</span>`; };
   const chosen = new Set(picked(k));
   const html = ["QB", "RB", "WR", "TE"].map(pos => {
     const rows = (d.players[pos] || []).map(p => {
       const off = !mv.players.has(p.name);
       const on = chosen.has(p.name);
       return `<div class="crow ${p.starter ? "st" : ""} ${off ? "off" : ""} ${on ? "on" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${off ? "not something this team would move on its path — tap anyway if you insist" : ""}">` +
-        `<span class="n">${p.cornerstone ? "★ " : ""}${p.name}</span>` +
+        `<span class="n">${p.cornerstone ? "★ " : ""}${p.name}</span>${tag(p.name)}` +
         `<span class="v">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
         `<span class="v">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
         `<span class="v">${(p.value || 0).toLocaleString()}</span>` +
