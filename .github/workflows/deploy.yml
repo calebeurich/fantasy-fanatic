@@ -82,7 +82,7 @@ jobs:
             --execution-environment gen2 \
             --service-account "fantasy-fanatic-run@fantasy-fanatic.iam.gserviceaccount.com" \
             --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest" \
-            --set-env-vars "^;^FF_LINK_KEY=${{ secrets.FF_LINK_KEY }};DAILY_BUDGET_USD=10.00;DAILY_MAX_REQUESTS=300;MAX_SESSIONS=4;WARM_LEAGUES=1315386978904084480,1319727865188593664,1313999558660857856,1354169522327670784"
+            --set-env-vars "^;^FF_LINK_KEY=${{ secrets.FF_LINK_KEY }};DAILY_BUDGET_USD=10.00;DAILY_MAX_REQUESTS=300;MAX_SESSIONS=4;WARM_LEAGUES=1315386978904084480,1319727865188593664,1313999558660857856,1354169522327670784;DEMO_BUDGET_USD=3.00;DEMO_ASKS_PER_VISITOR=3;DEMO_LEAGUE=1315386978904084480"
 
       # The settings above are load-bearing and easy to lose in a console edit, so they
       # are declared here rather than living only as click-state:

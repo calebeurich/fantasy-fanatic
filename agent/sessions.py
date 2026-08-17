@@ -39,10 +39,15 @@ MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "2"))
 IDLE_TTL_SECONDS = float(os.environ.get("SESSION_IDLE_TTL", "900"))
 
 
+class SessionBusy(Exception):
+    """No slot for a demo visitor without evicting a friend - the demo says so instead."""
+
+
 class Session:
-    def __init__(self, session_id: str, client: ClaudeSDKClient):
+    def __init__(self, session_id: str, client: ClaudeSDKClient, tier: str = "friend"):
         self.id = session_id
         self.client = client
+        self.tier = tier   # "friend" (the link key) or "demo" (the bare public URL)
         self.last_used = time.monotonic()
         # Serializes turns within one session: two concurrent requests sharing a client
         # would interleave on the same conversation and corrupt it.
@@ -71,12 +76,15 @@ class SessionManager:
         self._sessions: dict[str, Session] = {}
         self._guard = asyncio.Lock()  # protects the map itself, not individual turns
 
-    async def acquire(self, session_id: str) -> tuple[Session, bool]:
+    async def acquire(self, session_id: str, tier: str = "friend") -> tuple[Session, bool]:
         """Returns (session, created). `created` is how a silent reset becomes visible:
         when a client supplies an id it has used before and gets a fresh session back,
         the old conversation was evicted (idle TTL, LRU, or an instance recycle) and the
         model remembers none of it - the UI needs to say so rather than let the next
-        answer quietly pretend otherwise."""
+        answer quietly pretend otherwise. Tiers: a friend evicts the least-recently-used
+        session of any kind; a demo visitor may only evict other demo sessions, and if
+        the slots are all friends it is told the demo is busy - a stranger never kills a
+        friend's live conversation."""
         async with self._guard:
             await self._evict_idle()
             session = self._sessions.get(session_id)
@@ -84,14 +92,14 @@ class SessionManager:
                 session.last_used = time.monotonic()
                 return session, False
 
-            # Evict the least-recently-used session to stay under the cap, rather than
-            # refusing the request - a demo visitor shouldn't hit "too many sessions".
             while len(self._sessions) >= MAX_SESSIONS:
-                oldest = min(self._sessions.values(), key=lambda s: s.last_used)
-                await self._close(oldest)
-            return await self._open(session_id), True
+                evictable = [s for s in self._sessions.values() if tier == "friend" or s.tier == "demo"]
+                if not evictable:
+                    raise SessionBusy()
+                await self._close(min(evictable, key=lambda s: s.last_used))
+            return await self._open(session_id, tier), True
 
-    async def prewarm(self, session_id: str) -> bool:
+    async def prewarm(self, session_id: str, tier: str = "friend") -> bool:
         """Open a session ahead of its first question (the CLI + MCP subprocess take
         ~8s to come up) - but only into a free slot: a page load must never evict
         someone's live conversation the way a real question is allowed to."""
@@ -99,13 +107,13 @@ class SessionManager:
             await self._evict_idle()
             if session_id in self._sessions or len(self._sessions) >= MAX_SESSIONS:
                 return False
-            await self._open(session_id)
+            await self._open(session_id, tier)
             return True
 
-    async def _open(self, session_id: str) -> Session:
+    async def _open(self, session_id: str, tier: str) -> Session:
         client = ClaudeSDKClient(options=self._options_factory())
         await client.connect()
-        session = Session(session_id, client)
+        session = Session(session_id, client, tier)
         self._sessions[session_id] = session
         return session
 
@@ -133,7 +141,7 @@ class SessionManager:
             "max_sessions": MAX_SESSIONS,
             "idle_ttl_seconds": IDLE_TTL_SECONDS,
             "sessions": [
-                {"id": s.id[:8], "idle_seconds": round(now - s.last_used, 1)}
+                {"id": s.id[:8], "tier": s.tier, "idle_seconds": round(now - s.last_used, 1)}
                 for s in self._sessions.values()
             ],
         }

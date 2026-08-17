@@ -72,32 +72,35 @@ def test_cache_expires_after_its_ttl(monkeypatch):
 
 # --------------------------------------------------------------------- daily budget
 
-def _reset_budget(spend=0.0, requests=0):
-    budget._roll_day()
-    budget._spend_usd = spend
-    budget._requests = requests
-
-
 def test_budget_trips_on_the_dollar_ceiling():
-    _reset_budget()
-    assert not budget.is_exhausted()
-    budget.record(budget.DAILY_BUDGET_USD - 0.001)
-    assert not budget.is_exhausted()
-    budget.record(0.002)
-    assert budget.is_exhausted()
-    _reset_budget()
+    b = budget.DailyBudget("t", usd=1.0, max_requests=50, over_message="over")
+    assert not b.is_exhausted()
+    b.record(0.999)
+    assert not b.is_exhausted()
+    b.record(0.002)
+    assert b.is_exhausted()
 
 
 def test_unpriced_calls_still_count_against_the_request_backstop():
     """A failed call can report cost_usd=None. Without the request counter, unpriced
     calls would never move the dollar total and the ceiling would never trip - the
     exact hole the backstop exists to close."""
-    _reset_budget()
-    for _ in range(budget.DAILY_MAX_REQUESTS):
-        budget.record(None)
-    assert budget.status()["spend_usd"] == 0.0
-    assert budget.is_exhausted(), "request backstop should trip even with zero recorded spend"
-    _reset_budget()
+    b = budget.DailyBudget("t", usd=1.0, max_requests=5, over_message="over")
+    for _ in range(5):
+        b.record(None)
+    assert b.status()["spend_usd"] == 0.0
+    assert b.is_exhausted(), "request backstop should trip even with zero recorded spend"
+
+
+def test_demo_visitor_cap_counts_the_moment_it_allows():
+    """One stranger cannot spend the whole demo day: after the per-visitor cap the next
+    ask is refused, and a retry does not double-dip. Other visitors are unaffected."""
+    budget._visitor_day, budget._visitor_asks = None, {}
+    for _ in range(budget.DEMO_ASKS_PER_VISITOR):
+        assert budget.visitor_allowed("1.2.3.4")
+    assert not budget.visitor_allowed("1.2.3.4")
+    assert budget.visitor_allowed("5.6.7.8")
+
 
 
 # ------------------------------------------------------------- trade grounding check

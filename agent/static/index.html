@@ -196,6 +196,7 @@
         <li><strong>Answers take up to a minute</strong>, and there's a shared daily budget —
             if it's spent, come back tomorrow.</li>
       </ul>
+      <p id="demonote" style="display:none;margin-top:8px;color:var(--thin)"></p>
     </div>
   </div>
 
@@ -1047,9 +1048,18 @@ $("f").onsubmit = async e => {
   }
 })();
 
-// Staging opens on the owner's own team so testing starts at the table, not the picker
-// (/api/defaults is empty on prod). Best effort.
+// What the page opens on: staging lands the owner on his own team; the public demo
+// (no key) lands on a real league and says what the demo allows. Best effort.
 fetch("/api/defaults", {headers: hdrs()}).then(r => r.json()).then(d => {
+  if (d.tier === "demo") {
+    const n = $("demonote");
+    n.style.display = "block";
+    n.innerHTML = `<strong>Public demo.</strong> The league table, rosters and trade composer are free to use — ` +
+      `look up your own Sleeper username above, or explore the league below. The assistant answers ` +
+      `<strong>${d.asks_per_visitor} questions a day</strong> per visitor from a small shared budget; ` +
+      `the code, evals and the reasoning behind every read are on ` +
+      `<a href="https://github.com/calebeurich/fantasy-fanatic" style="color:var(--mid)">GitHub</a>.`;
+  }
   if (!d.league_id || currentLeague) return;
   myName = d.owner || myName;
   loadLeague(d.league_id);

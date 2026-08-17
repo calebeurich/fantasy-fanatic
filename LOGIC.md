@@ -1305,6 +1305,23 @@ prompt carries the doctrine no single tool result states (five principles: pick 
 two currencies, age is a distance, value is not additive, a trade needs a counterparty)
 plus numbered rules, each added for an observed failure.
 
+### Two tiers on one deploy: friends and the public demo (2026-08-17)
+
+The friends link carries one shared key (`FF_LINK_KEY`) - not real auth, a brake that
+keeps bots off the friends' budget and rotates by changing one secret. It cannot be the
+public link: anyone holding it can burn the friends' day. So the bare URL is a second
+tier, DEMO, that exists only when `DEMO_BUDGET_USD > 0`: the league table, rosters and
+composer are free (they cost nothing but Sleeper/FantasyCalc fetches); model questions
+are allowed but per-visitor capped (`DEMO_ASKS_PER_VISITOR`, by X-Forwarded-For) from
+a separate small `budget.demo` ledger with its own friendly over-message. Sessions
+carry a tier: a friend evicts the least-recently-used session of any kind, a demo
+visitor may only evict other demo sessions and is told "busy" if the slots are all
+friends - a stranger never kills a friend's live conversation. `/sessions`,
+`/diagnostics`, `/activity` stay friends-only. A key-less visitor lands on
+`DEMO_LEAGUE` (a real league to look at without owning one) with a banner saying what
+the demo allows. Everything is env vars on the service; the friends experience is
+unchanged. Owner: "rather live let people use it" than a demo video.
+
 ### The first friends-test feedback, and what each complaint actually was
 
 One tester (the league's sports-modeling guy) produced three complaints in one session,

@@ -40,7 +40,7 @@ from analysis import format_support, roster_needs, team_state, warm
 
 from . import budget, observability
 from .agent import run_query, MCP_SERVER_PATH, _options
-from .sessions import SessionManager
+from .sessions import SessionBusy, SessionManager
 
 
 @asynccontextmanager
@@ -56,21 +56,40 @@ sessions = SessionManager(_options)
 
 MAX_QUESTION_CHARS = 1000  # a real question is far shorter; this just bounds abuse
 
-# The friends gate: one shared key in the link, checked on everything that costs money
-# or exposes internals. Not real auth - it keeps bots and drive-by traffic off the daily
-# budget once the Cloud Run service goes public, and a leaked key rotates by changing
-# one GitHub secret. Unset (local dev) means no gate at all.
+# Two tiers, one deploy. FRIENDS: the shared key in the link (not real auth - it keeps
+# bots off the friends' budget and a leaked key rotates by changing one GitHub secret).
+# DEMO: the bare public URL with no key - table, rosters and composer free, model
+# questions per-visitor-capped from a separate small budget (budget.py). The demo tier
+# exists only when DEMO_BUDGET_USD > 0; otherwise a missing key is a 401 as before.
+# Unset LINK_KEY (local dev) means everyone is a friend.
 LINK_KEY = os.environ.get("FF_LINK_KEY")
+DEMO_LEAGUE = os.environ.get("DEMO_LEAGUE")   # what a key-less visitor lands on
+
+
+def tier(request: Request) -> str:
+    """'friend' or 'demo'; 401 when there is no demo tier and the key is missing."""
+    if not LINK_KEY:
+        return "friend"
+    supplied = request.headers.get("x-ff-key") or request.query_params.get("key")
+    if supplied == LINK_KEY:
+        return "friend"
+    if budget.demo.usd > 0:
+        return "demo"
+    raise HTTPException(status_code=401, detail=(
+        "This link needs its key. Open the exact link you were sent (it carries the "
+        "key) - or ask Caleb for the current one."))
 
 
 def require_key(request: Request) -> None:
-    if not LINK_KEY:
-        return
-    supplied = request.headers.get("x-ff-key") or request.query_params.get("key")
-    if supplied != LINK_KEY:
-        raise HTTPException(status_code=401, detail=(
-            "This link needs its key. Open the exact link you were sent (it carries the "
-            "key) - or ask Caleb for the current one."))
+    """Friends only - the endpoints that expose internals or spend real money freely."""
+    if tier(request) != "friend":
+        raise HTTPException(status_code=401, detail="Friends link only.")
+
+
+def _visitor(request: Request) -> str:
+    """Cloud Run puts the caller first in X-Forwarded-For."""
+    fwd = request.headers.get("x-forwarded-for", "")
+    return (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "?"))
 
 
 class AskRequest(BaseModel):
@@ -112,14 +131,21 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/api/defaults", dependencies=[Depends(require_key)])
-def defaults() -> dict:
-    """What the page opens on when nothing is selected - set on STAGING only (the owner
-    lands on his own team for testing); prod leaves both unset and shows the picker."""
-    return {"league_id": os.environ.get("FF_DEFAULT_LEAGUE"), "owner": os.environ.get("FF_DEFAULT_OWNER")}
+@app.get("/api/defaults")
+def defaults(request: Request) -> dict:
+    """What the page opens on when nothing is selected. Friends: FF_DEFAULT_* (set on
+    staging so the owner lands on his own team; unset on prod -> the picker). Demo
+    visitors: DEMO_LEAGUE, a real league to look at without owning one, plus the tier
+    so the page can say what the demo allows."""
+    t = tier(request)
+    if t == "demo":
+        return {"tier": "demo", "league_id": DEMO_LEAGUE, "owner": None,
+                "asks_per_visitor": budget.DEMO_ASKS_PER_VISITOR}
+    return {"tier": "friend", "league_id": os.environ.get("FF_DEFAULT_LEAGUE"),
+            "owner": os.environ.get("FF_DEFAULT_OWNER")}
 
 
-@app.get("/api/league/{league_id}", dependencies=[Depends(require_key)])
+@app.get("/api/league/{league_id}", dependencies=[Depends(tier)])
 def league_overview(league_id: str) -> dict:
     """Deterministic league snapshot, rendered by the UI as a table rather than
     described by the model.
@@ -182,7 +208,7 @@ def league_overview(league_id: str) -> dict:
     }
 
 
-@app.get("/api/league/{league_id}/team/{owner}", dependencies=[Depends(require_key)])
+@app.get("/api/league/{league_id}/team/{owner}", dependencies=[Depends(tier)])
 def team_detail(league_id: str, owner: str) -> dict:
     """One team expanded: full roster by position with values/ages/buckets, the picks
     with their market prices, and the team-level reads (window, clock mismatch).
@@ -193,7 +219,7 @@ def team_detail(league_id: str, owner: str) -> dict:
     return _team_detail(ctx, ctx.roster_for(owner))
 
 
-@app.get("/api/league/{league_id}/team/{owner}/movable", dependencies=[Depends(require_key)])
+@app.get("/api/league/{league_id}/team/{owner}/movable", dependencies=[Depends(tier)])
 def movable(league_id: str, owner: str, stance: str | None = None) -> dict:
     """What this team would plausibly move, given its path (or a declared stance: press /
     sell) - the composer greys out everything else. Straight from trade_targets'
@@ -207,7 +233,7 @@ def movable(league_id: str, owner: str, stance: str | None = None) -> dict:
             "stance_note": result.get("stance_note")}
 
 
-@app.get("/api/league/{league_id}/team/{owner}/fits", dependencies=[Depends(require_key)])
+@app.get("/api/league/{league_id}/team/{owner}/fits", dependencies=[Depends(tier)])
 def fits(league_id: str, owner: str, stance: str | None = None) -> list[dict]:
     """Pieces on OTHER rosters that fit this team, flattened from trade_targets: buy-path
     targets, efficiency swaps (value_upgrades: more production for less dynasty cost than
@@ -263,7 +289,7 @@ class EvaluateRequest(BaseModel):
     stance_b: str | None = None
 
 
-@app.post("/api/league/{league_id}/evaluate", dependencies=[Depends(require_key)])
+@app.post("/api/league/{league_id}/evaluate", dependencies=[Depends(tier)])
 def evaluate(league_id: str, req: EvaluateRequest) -> dict:
     """The framer's deterministic facts for a proposed trade, so the composer can show
     impact on every tap: per side the goal line (lineup delta / value in-out, holes
@@ -281,7 +307,7 @@ def evaluate(league_id: str, req: EvaluateRequest) -> dict:
                       for s in out["sides"]]}
 
 
-@app.get("/api/league/{league_id}/teams", dependencies=[Depends(require_key)])
+@app.get("/api/league/{league_id}/teams", dependencies=[Depends(tier)])
 def all_team_details(league_id: str) -> dict:
     """Every team's detail in one response, keyed by owner. The UI prefetches all of
     them right after the table renders so clicks are instant; as twelve parallel
@@ -353,11 +379,11 @@ def session_status() -> dict:
     return sessions.status()
 
 
-@app.post("/sessions/{session_id}/warm", dependencies=[Depends(require_key)])
-async def warm_session(session_id: str) -> dict:
+@app.post("/sessions/{session_id}/warm")
+async def warm_session(session_id: str, request: Request) -> dict:
     """The page calls this on load so the first question skips the ~8s subprocess
     start-up. Only takes a free slot - see SessionManager.prewarm."""
-    return {"opened": await sessions.prewarm(session_id)}
+    return {"opened": await sessions.prewarm(session_id, tier(request))}
 
 
 @app.get("/diagnostics", dependencies=[Depends(require_key)])
@@ -453,7 +479,7 @@ class FeedbackRequest(BaseModel):
     question: str | None = None
 
 
-@app.post("/feedback", dependencies=[Depends(require_key)])
+@app.post("/feedback", dependencies=[Depends(tier)])
 def feedback(fb: FeedbackRequest) -> dict:
     """One thumbs-click per answer, into the same JSONL the runs land in - the friends
     test exists to learn, and 'that doesn't make sense' has been the single richest
@@ -525,7 +551,7 @@ def budget_status() -> dict:
     """Exposed so the daily cap is externally verifiable, rather than something you
     have to trust is working - used to confirm the ceiling actually trips before this
     endpoint is ever made public."""
-    return budget.status()
+    return {"friends": budget.friends.status(), "demo": budget.demo.status()}
 
 
 # What each in-flight question is doing right now, keyed by the client's session id:
@@ -537,7 +563,7 @@ _progress: dict[str, str] = {}
 _partial: dict[str, str] = {}
 
 
-@app.get("/progress/{session_id}", dependencies=[Depends(require_key)])
+@app.get("/progress/{session_id}", dependencies=[Depends(tier)])
 def progress(session_id: str) -> dict:
     return {"step": _progress.get(session_id), "text": _partial.get(session_id)}
 
@@ -556,16 +582,20 @@ def progress(session_id: str) -> dict:
 _answers: dict[str, dict] = {}
 
 
-@app.get("/answer/{session_id}", dependencies=[Depends(require_key)])
+@app.get("/answer/{session_id}", dependencies=[Depends(tier)])
 def last_answer(session_id: str) -> dict:
     return _answers.get(session_id) or {}
 
 
-@app.post("/ask", response_model=AskResponse, dependencies=[Depends(require_key)])
-async def ask(request: AskRequest) -> AskResponse:
+@app.post("/ask", response_model=AskResponse)
+async def ask(request: AskRequest, http: Request) -> AskResponse:
+    t = tier(http)
+    ledger = budget.friends if t == "friend" else budget.demo
     # Checked before calling Claude, so an exhausted budget costs nothing to serve.
-    if budget.is_exhausted():
-        return AskResponse(text=budget.OVER_BUDGET_MESSAGE, budget_exhausted=True)
+    if ledger.is_exhausted():
+        return AskResponse(text=ledger.over_message, budget_exhausted=True)
+    if t == "demo" and not budget.visitor_allowed(_visitor(http)):
+        return AskResponse(text=budget.DEMO_VISITOR_MESSAGE, budget_exhausted=True)
 
     question = request.question.strip()
     if not question:
@@ -579,7 +609,7 @@ async def ask(request: AskRequest) -> AskResponse:
     created = False
     try:
         if request.session_id:
-            session, created = await sessions.acquire(request.session_id)
+            session, created = await sessions.acquire(request.session_id, t)
             # Held for the whole turn: two concurrent requests on one session would
             # interleave on the same client and corrupt the conversation.
             async with session.lock:
@@ -591,6 +621,10 @@ async def ask(request: AskRequest) -> AskResponse:
                 result["cost_usd"] = session.cost_delta(result["cost_usd"])
         else:
             result = await run_query(question, verbose=False, on_progress=track, on_text=stream)
+    except SessionBusy:
+        return AskResponse(text=("The public demo is busy right now - every conversation slot is in "
+                                 "use. The table, rosters and composer above still work; try the "
+                                 "question again in a few minutes."))
     except Exception as e:
         # Log before swallowing. The detail is still withheld from the caller (internals
         # shouldn't leak from a public endpoint), but it must go *somewhere*: failures in
@@ -607,14 +641,14 @@ async def ask(request: AskRequest) -> AskResponse:
         })
         # A failed call still consumed real capacity (it may have burned tokens before
         # failing), so it counts against the day rather than being free to retry in a loop.
-        budget.record(None)
+        ledger.record(None)
         _progress.pop(request.session_id, None)
         _partial.pop(request.session_id, None)
         return AskResponse(text="Something went wrong answering that. Try again, or try a different league.")
 
     _progress.pop(request.session_id, None)
     _partial.pop(request.session_id, None)
-    budget.record(result["cost_usd"])
+    ledger.record(result["cost_usd"])
     if request.session_id:
         # Written whether or not anyone is still listening - that is the entire point.
         _answers[request.session_id] = {

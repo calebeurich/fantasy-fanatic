@@ -28,6 +28,24 @@
         "FF_DEFAULT_LEAGUE": "1315386978904084480",
         "FF_DEFAULT_OWNER": "dezdroppedit27"
       }
+    },
+    {
+      "name": "api-demo-like",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "agent.api:app",
+        "--port",
+        "8002"
+      ],
+      "port": 8002,
+      "env": {
+        "FF_LINK_KEY": "friends",
+        "DEMO_BUDGET_USD": "1.00",
+        "DEMO_LEAGUE": "1315386978904084480",
+        "DEMO_ASKS_PER_VISITOR": "2"
+      }
     }
   ]
 }
