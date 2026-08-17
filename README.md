@@ -1,13 +1,18 @@
 # fantasy-fanatic
 
 A dynasty fantasy football analyst: a deterministic Python analysis layer over real
-league data, exposed to an LLM agent through MCP tools, with real evals, grounding
+league data, exposed to an LLM agent through MCP tools, with an eval suite, grounding
 checks that recompute the model's claims after it makes them, and hard cost guardrails.
 
-Live on Cloud Run behind a shared-link gate, currently being tested by the author's
-actual league mates — every heuristic in it was validated against real rosters and
-real trades, not synthetic fixtures, and the sharpest bugs in this repo were found by
-a friend asking a question the author didn't think to.
+**Live:** https://fantasy-fanatic-487070873858.us-central1.run.app — the public demo
+opens on a real 12-team superflex dynasty league. The league table, rosters and the
+trade composer are free to use; the assistant answers a few questions a day per
+visitor from a small shared budget. Or look up your own Sleeper username.
+
+It is used, every week, by the author's actual league mates. Every heuristic in it was
+validated against real rosters and real trades rather than synthetic fixtures, and the
+sharpest bugs in this repo were found by a friend asking a question the author didn't
+think to.
 
 ---
 
@@ -25,102 +30,110 @@ deterministic logic rather than trusted to reason correctly on its own.
 ## Architecture
 
 ```
-sources/     Raw data clients      Sleeper API, FantasyCalc, nflverse
+sources/     Raw data clients        Sleeper (rosters, transactions, projections), FantasyCalc, nflverse
     ↓
-analysis/    Deterministic logic   team windows, positional needs, trade matching
+analysis/    Deterministic logic     team reads, positional needs, trade targets, the trade framer
     ↓
-agent/       LLM layer             MCP server → Claude Agent SDK → FastAPI
+agent/       LLM layer               MCP server → Claude Agent SDK → FastAPI → static UI
+research/    Offline studies         intuitions tested against real trade data before they become constants
 ```
 
 **The load-bearing idea:** every fact the agent can state comes from `analysis/`, which
 is plain Python with no LLM involved. The model chooses *which* questions to ask and
 explains results in context — it never computes a value, ranks a team, or decides
-what's tradeable.
+what's tradeable. The web UI follows the same rule: everything deterministic renders
+as a table (team reads, rosters, the trade composer's facts); every "should" comes
+from the agent.
 
 | Layer | What's in it |
 |---|---|
-| `sources/` | Sleeper league/roster/transaction data, FantasyCalc dynasty values, nflverse contracts + usage stats |
-| `analysis/` | Age-curve bucketing, team-window classification, replacement-level positional needs, trade-target matching, single-player outlooks, mutual-swap detection, waiver upgrades |
-| `agent/` | MCP server (8 read-only tools), Claude Agent SDK agent, grounding checks, eval harness, session manager, budget + observability, HTTP API, static web UI |
+| `sources/` | Sleeper league/roster/transaction/projection data, FantasyCalc dynasty + redraft values, nflverse contracts, usage roles, availability |
+| `analysis/` | Age-curve runway, the three-tier team read (contention distance → composition → path), replacement-level positional needs, trade-target matching with a direction gate, the trade framer (per-side judgment, no package pricing), two-leg sequences, waivers |
+| `agent/` | MCP server (10 read-only tools), Claude Agent SDK agent, grounding checks, eval harness, tiered sessions + budgets, streaming HTTP API, static UI with a trade composer |
+| `research/` | Studies that turned gut feel into measured constants: consolidation premiums, what a stud actually fetches by value tier, boundary-noise calibration |
+
+Three currencies, kept apart on purpose: **dynasty value** (what a piece fetches),
+**redraft value** (what the market pays for his season), and **projected points a game**
+(what a lineup actually scores — Sleeper's season projections under the league's own
+scoring). Sums and shares of a lineup are always in points; prices are always market;
+who starts is projected points with the market breaking near-ties.
 
 ## Engineering decisions worth reading about
 
 Full reasoning for every heuristic and every non-obvious call lives in
-[`LOGIC.md`](LOGIC.md) — written as the project was built, including the things that
-didn't work.
+[`LOGIC.md`](LOGIC.md) (~1,700 lines, written as the project was built, including the
+things that didn't work). The short versions:
 
 **Generate-then-verify beats prompt engineering.** The agent occasionally asserted
 things its own tools contradicted — suggesting a player be traded away who wasn't on
-that team's real offer list, or telling a user to sell a QB to a team whose QB room
-was already elite. Strengthening the system prompt failed, verified by eval. The fix
-that holds: after the model answers, recompute the ground truth in Python — the same
-Python the tools call — and force one corrective retry on a mismatch. There are now
-two such checks (trade-away names, positional-need claims), built the same way, and
-the pattern is a ratchet: each claim class the model fabricates in the wild gets its
-own deterministic check. Generation is probabilistic; set membership isn't.
+that team's real offer list, or asserting a positional need the data didn't flag.
+Strengthening the system prompt failed, verified by eval. The fix that holds: after the
+model answers, recompute the ground truth in Python — the same Python the tools call —
+and force one corrective retry on a mismatch. Each claim class the model fabricates in
+the wild gets its own deterministic check. Generation is probabilistic; set membership
+isn't.
 
 **Python-layer fixes propagate; prompt-layer fixes don't.** A misclassification bug
-(the #1 roster in a league reading as a "Rebuilding" seller because it also held a lot
-of young talent) was fixed once in `team_state.py` and instantly corrected every
-downstream tool, the agent included, with zero prompt changes. This asymmetry drove
-most of the architecture.
+was fixed once in `team_state.py` and instantly corrected every downstream tool, the
+agent included, with zero prompt changes. This asymmetry drove most of the architecture.
+
+**Measure the intuition before it becomes a constant.** "Trading for a stud takes a
+good player and two firsts" was the owner's gut; `research/stud_returns.py` checked it
+against ~3,000 crawled real trades with point-in-time values and found the actual
+shape by tier (a top-2% piece's centerpiece return runs 0.50–0.71 of his value, 56%
+of returns carry a 1st). The framer's ballpark quotes those bands. Same treatment for
+the noise band that decides when a label is hedged (±2%, from 300 jittered refreshes)
+and for the production measure (summing market prices made one star read as a whole
+lineup — replaced with projected points after a 48-team before/after).
 
 **The most dangerous failures are silent, so make them loud.** The worst bug in the
-project's history: MCP tool results over a size limit were silently swapped for a tiny
+project's history: MCP tool results over a size limit were silently swapped for a
 preview and a file path the model couldn't open — so it answered confidently from a
-fraction of the data, with no error anywhere. The fix keeps every payload under a
-measured wire budget and *labels* any trimming inside the payload itself. Same
-principle elsewhere: a conversation silently evicted server-side now comes back with a
-`conversation_reset` flag, and the UI tells the user the model can't see their earlier
-messages instead of letting it improvise.
+fraction of the data. Every payload now stays under a measured wire budget and
+*labels* any trimming inside itself. A conversation silently evicted server-side comes
+back with a `conversation_reset` flag and the UI says so; a data feed that falls back
+attaches a `data_gap` note to every tool result computed while it was down.
 
-**Guardrails enforced by the SDK, not requested in the prompt.** The agent is given an
-explicit 8-tool allowlist — this is what actually excludes every built-in
-file/shell/web tool, rather than gating them behind a permission prompt — plus a hard
-turn cap and a per-call budget ceiling. Verified by evals that attempt explicit
-instruction overrides.
+**Guardrails enforced by the SDK, not requested in the prompt.** An explicit tool
+allowlist (what actually excludes every built-in file/shell/web tool), a hard turn cap,
+a per-call budget ceiling. Verified by evals that attempt explicit instruction
+overrides.
 
-**Cost was measured, then root-caused, then capped at two levels.** Found the SDK
-silently loading the repo's own `CLAUDE.md` as agent context on every single call —
-38% of input tokens, paid for, and irrelevant to answering a fantasy question. In
-production, a per-call ceiling caps any one question and an in-process daily budget
-(exact because the service is pinned to one instance) fails closed to a free static
-message — the whole exposure if the shared link ever leaks is one day's budget.
-
-**Format-aware values, with an honest gap.** League format (superflex, PPR, team
-count, dynasty vs. redraft) is detected from real league settings and passed to
-FantasyCalc so values reflect that specific league — QBs really are worth more in
-superflex. TE-premium leagues are a documented, unfixable-at-source gap:
-FantasyCalc's API has no parameter for it, and inventing a correction multiplier
-without data to calibrate against would be a guess dressed as a feature.
+**Cost and latency were measured, then root-caused.** The SDK was silently loading the
+repo's own `CLAUDE.md` as agent context on every call — 38% of input tokens. A
+"tell me about my team" answer was profiled event by event: ~8s of subprocess start-up
+per session, cold data fetches inside the MCP subprocess that the API's warm-up never
+reached, and ~27s of the model writing — so sessions pre-open on page load, both
+processes warm the friends' leagues at boot, and answers stream to the page as they're
+written. Two daily budgets (friends, public demo) fail closed to a free static message.
 
 ## Tests and evals
 
 Two layers, deliberately, because they catch opposite failures.
 
-**Unit tests — free, offline, instant.** 124 tests over the analysis heuristics and
-the agent infrastructure. Almost every rule in `analysis/` is a pure function taking
-plain data, so these need no fixtures and no network. They assert the *boundaries*
-the heuristics turn on — exact age cutoffs, relevance fractions, need-vs-surplus
-symmetry — plus regression guards for real bugs (never offer a starter, never offer a
-position you need), and the grounding checks are tested against recorded transcripts
-of real agent answers rather than invented strings.
+**Unit tests — free, offline, instant.** 141 tests over the analysis heuristics and
+the agent infrastructure. Almost every rule in `analysis/` is a pure function over
+plain data, so they need no fixtures and no network. They assert the *boundaries* the
+heuristics turn on — exact runway cutoffs, tier lines, the noise band — plus
+regression guards for real bugs (never offer a starter you'd miss, never offer a
+position you need, the market breaks a projection near-tie), and the grounding checks
+are tested against recorded transcripts of real agent answers.
 
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest tests/ -q
 ```
 
-Verified to actually bite: the suite was mutation-tested — deliberately breaking a
-threshold fails tests rather than passing quietly.
+Mutation-tested: deliberately breaking a threshold fails tests rather than passing
+quietly.
 
-**Evals — 12 cases, real API calls (~$0.35/run).** These test *agent behavior*:
-correct tool selection, non-dynasty refusal, resistance to instruction-override
-attempts, off-topic scope refusal, trade-suggestion grounding, lineup-format
-awareness, sell-on-runway-not-age reasoning, answering a named player rather than
-dismissing him for being absent from a ranked list, and graceful handling of a
-nonexistent league ID. Ground truth is recomputed at eval time from the same Python
-the tools call, so cases can't go stale as real rosters change.
+**Evals — 12 cases, real API calls (~$0.40/run).** These test *agent behavior*: tool
+selection, non-dynasty refusal, resistance to instruction overrides, off-topic scope
+refusal, trade-suggestion grounding, lineup-format awareness, sell-on-runway-not-age
+reasoning, path-vocabulary coherence (the read the tool returns is the read the answer
+gives), and graceful handling of a nonexistent league. Ground truth is recomputed at
+eval time from the same Python the tools call, so cases can't go stale as rosters
+change.
 
 ```bash
 python -m agent.evals
@@ -128,9 +141,8 @@ python -m agent.evals
 
 The split matters: the evals would happily pass while a threshold was silently wrong,
 and the unit tests would happily pass while the agent ignored its instructions. Each
-eval case is a real, paid API call, which is exactly why there are 12 and not 50 —
-the suite covers failure modes actually observed, most of them reported by real
-testers.
+eval is a real, paid call — which is why there are 12 and not 50; the suite covers
+failure modes actually observed, most reported by real testers.
 
 ## Running it
 
@@ -138,8 +150,8 @@ testers.
 pip install -r requirements.txt
 ```
 
-Needs `ANTHROPIC_API_KEY` in a `.env` file at the repo root. Sleeper, FantasyCalc,
-and nflverse are all free and keyless.
+Needs `ANTHROPIC_API_KEY` in a `.env` file at the repo root. Sleeper, FantasyCalc and
+nflverse are free and keyless.
 
 ```bash
 python -m agent.agent "For Sleeper league <league_id>, what should <owner> do and why?"
@@ -150,7 +162,7 @@ Any analysis module also runs standalone against a real league:
 ```bash
 python -m analysis.team_state <league_id>
 python -m analysis.trade_targets <league_id> <owner_name>
-python -m analysis.trade_targets <league_id> "player=<name>=<asker>"
+python -m analysis.trade_eval <league_id> "<owner_a>: <piece>, <piece>" "<owner_b>: <piece>"
 ```
 
 HTTP API + web UI:
@@ -161,33 +173,43 @@ python -m uvicorn agent.api:app
 
 ## Deployment
 
-Cloud Run, deployed by GitHub Actions on every push to `main` that passes CI — the
-deploy job triggers on `workflow_run` and checks `conclusion == 'success'`, since
-that event fires on failure too. Auth is Workload Identity Federation rather than a
-stored service account key: each run exchanges GitHub's OIDC token for a short-lived
-GCP token, and the identity pool is pinned to this repository. The runtime identity
-is a dedicated service account holding exactly one permission (read the API key
-secret), not the default Editor-carrying compute account.
+Cloud Run, two services from one repo: `main` deploys production, `dev` deploys a
+staging service, both by GitHub Actions on pushes that pass CI (`workflow_run`, gated on
+`conclusion == 'success'`, with concurrency groups so close-together pushes deploy
+once). Auth is Workload Identity Federation — no stored service-account key; the
+runtime identity holds exactly one permission (read the API-key secret).
 
-The Cloud Run settings that matter are declared in the workflow with their reasons,
-not left as console click-state: one instance (the daily budget counter is in-process
-and exact only there), concurrency 2 (two friends can ask at once without queueing
-behind a 60–90s answer), and a session manager that keeps a bounded number of live
-conversations, each holding a real subprocess pair.
+The settings that matter are declared in the workflows with their reasons, not left
+as console click-state: one instance (the daily budget counters are in-process and
+exact only there), concurrency 2, a bounded session pool where each live conversation
+holds a real subprocess pair, and two tiers on one deploy — a friends link with a
+shared key, and a key-less public demo with its own small budget, a per-visitor cap,
+and sessions that can never evict a friend's live conversation.
 
-The serving layer earned some scars from real use: answers survive the asker's tab
-closing (measured: Cloud Run finishes an abandoned request, so the answer is stashed
-server-side and reclaimed on return), the UI shows the agent's actual tool steps
-while it works rather than a fake progress bar, and an operator page shows what
-people asked and what they thought of the answers — thumbs-down comments from league
-mates have been the single richest source of real bugs.
+The serving layer earned its scars from real use: answers survive the asker's tab
+closing (Cloud Run finishes the abandoned request; the answer is stashed and reclaimed
+on return), the page shows the agent's real tool steps and streams the answer as it's
+written, and an operator page shows what people asked and what they thought of it —
+thumbs-down comments from league mates have been the richest source of real bugs.
+
+## Not in this repo, on purpose
+
+- **No retrieval / vector store.** The agent's context is small, structured and
+  computed per question; there is no corpus to retrieve from. RAG here would be RAG
+  for the résumé.
+- **No fine-tuning.** The reasoning lives in deterministic Python plus a prompt; the
+  thesis is that the model reasons over verified facts. The evals are the better story.
+- **No multi-agent choreography.** The one place a second agent would add something —
+  a counterparty arguing the other manager's side of a trade — is a possible future;
+  everything else people call multi-agent here (planner, critic) is done
+  deterministically, and the critic is exact instead of another opinion.
+- **One orchestrator, one model** — the Claude Agent SDK on Haiku, chosen after
+  measuring cost and quality. A small LangGraph client driving the same MCP tools with
+  an open-weight model exists as a portability proof (`agent/langgraph_client.py`), to
+  show the tool layer is the asset and the orchestrator is swappable.
 
 ## Status
 
-Live and in friends-testing. Known limitations and planned work are tracked at the
-end of `LOGIC.md` — the largest being that everything is preseason roster math until
-a projections source is added: the agent knows values, windows, and needs, but not
-schedules or per-week outcomes. The deployment write-up there also documents the five
-non-reproducible-locally failures it took to get the first container serving, and why
-the most instructive of them reached the user as a confident, fabricated answer
-instead of an error.
+Live for friends and as a public demo. Planned work is in [`ROADMAP.md`](ROADMAP.md);
+the largest open item is in-season: weekly projections (same endpoint as the season
+ones already used) for start/sit and rest-of-season questions once games are played.
