@@ -260,8 +260,13 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
     seller_roster = ctx.roster_for(seller)
     movable = trade_targets.offerable_names(trade_targets.find_targets(league_id, seller, stance=seller_stance or None))
     starters = ctx.starters_for(buyer)
+    result = trade_targets.find_targets(league_id, owner, stance=stance or None)
+    # A seller/rebuild is not buying production - its interest is young value (the wish
+    # list below), so lineup tags are for buying and middle paths only (owner: a sell
+    # team "not making a starting lineup" shouldn't tag my starters as upgrades).
+    buying = result["mode"] != "rebuild"
     out = []
-    for pid in seller_roster["players"] or []:
+    for pid in (seller_roster["players"] or []) if buying else []:
         info = ctx.players.get(pid)
         if not info or info["name"] not in movable:
             continue
@@ -271,16 +276,27 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
                 - sum(eppg(ctx.players[q]) for q in starters if q in ctx.players))
         # If he'd start, say so and let the gain speak ("Burrow ain't depth" - he starts
         # for dez by +0.3 over Dak); depth is for pieces that would NOT crack the lineup.
-        if pid in new_starters:
-            dropped = [ctx.players[q]["name"] for q in starters - new_starters if q in ctx.players]
-            out.append({"name": info["name"], "owner": seller, "tag": f"starts for them (+{gain:.1f})",
+        if pid in new_starters and gain >= 0.1:   # a wash (+0.0) is depth, not a start
+            dropped = [ctx.players[q] for q in starters - new_starters if q in ctx.players]
+            # The market's opinion rides along: projections flatten some gaps (Burrow 17.4
+            # vs Dak 17.1 a game, but 8,226 vs 4,403 in season price) and the reader
+            # should see both.
+            market = ""
+            if dropped:
+                d0 = max(dropped, key=lambda d: d.get("redraft_value") or 0)
+                mine, theirs = info.get("redraft_value") or 0, d0.get("redraft_value") or 0
+                market = f"; season price {mine:,} vs {d0['name']}'s {theirs:,}"
+                loud = theirs and mine >= 1.5 * theirs and gain < 1.0
+            else:
+                loud = False
+            out.append({"name": info["name"], "owner": seller,
+                        "tag": f"starts for them (+{gain:.1f}{' · market says much more' if loud else ''})",
                         "why": f"projects {eppg(info):.1f} a game; {owner}'s lineup gains {gain:.1f} a game"
-                               + (f", displacing {', '.join(dropped)}" if dropped else "")})
-        elif roster_needs.would_start_if_one_out(
+                               + (f", displacing {', '.join(d['name'] for d in dropped)}" if dropped else "") + market})
+        elif pid in new_starters or roster_needs.would_start_if_one_out(
                 buyer, ctx.players, pid, starters, ctx.lineup_dedicated, ctx.lineup_flex):
             out.append({"name": info["name"], "owner": seller, "tag": "depth for them",
                         "why": f"would start for {owner} if one {info['position']} were out"})
-    result = trade_targets.find_targets(league_id, owner, stance=stance or None)
     for r in [result] + [b for b in (result.get("push"), result.get("pivot")) if isinstance(b, dict)]:
         # A rebuild's wish list is young VALUE, not production - tagged only above the
         # position's trade bar (a 748-dynasty QB3 is a roster clogger, not a wish; owner).

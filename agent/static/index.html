@@ -147,6 +147,10 @@
   .crow.off .n{font-style:italic}
   .crow.off .n::before{content:"○";color:var(--dim)}
   .crow.half .n::before{content:"◐";color:var(--thin)}
+  .crow.chead2{cursor:default;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);padding:0 4px}
+  .crow.chead2:hover{background:transparent}
+  .crow.chead2 .n::before{content:""}
+  .crow.chead2 .v,.crow.chead2 .a{color:var(--dim)}
   .crow.on{background:rgba(74,222,128,.13);outline:1px solid var(--ok)}
   .crow .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
   .crow.st .n{color:#fff;font-weight:600}
@@ -504,7 +508,7 @@ async function fillSide(leagueId, k) {
         `<span class="v">${(p.value || 0).toLocaleString()}</span>` +
         `<span class="a" style="color:${ageColor(p, pos)}">${p.age != null ? p.age.toFixed(1) : ""}</span></div>`;
     }).join("");
-    return rows ? `<div class="cpos">${pos}<span style="float:right;letter-spacing:0">ePPG · now · dyn · age</span></div>${rows}` : "";
+    return rows ? `<div class="cpos">${pos}</div><div class="crow chead2"><span class="n"></span><span class="v">ePPG</span><span class="v">now</span><span class="v">dyn</span><span class="a">age</span></div>${rows}` : "";
   }).join("");
   // Picks: identical names collapse to one chip with a count.
   const seen = {};
