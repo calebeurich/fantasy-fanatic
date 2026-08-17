@@ -429,8 +429,9 @@ function renderBuilder(leagueId, owners) {
       <div id="croster${k}"><div class="cs">loading…</div></div></div>`;
   box.innerHTML = `<details class="builder" id="bdetails" open><summary>Propose a trade — tap pieces on both rosters</summary>` +
     `<div class="cs" style="margin-top:6px">● = a piece that team would move on its path (or the stance you picked) · ○ dim italic = it wouldn't, tap anyway if you insist. ` +
-    `Tags say why the <em>other</em> team wants a piece, from its own lists: <span class="ftag">✚ fills their RB hole</span> a position they're flagged short at · ` +
-    `<span class="ftag">✚ starts for them today</span> production they'd start right now · <span class="ftag swap">⇄ beats their X</span> more production for less dynasty cost than their current starter X · ` +
+    `Tags say why the <em>other</em> team wants a piece, from its own lists: ` +
+    `<span class="ftag">✚ starts for them today</span> out-produces what they start now · <span class="ftag swap">⇄ beats their X</span> more production for less dynasty cost than their starter X · ` +
+    `<span class="ftag">✚ on their rebuild wish list</span> young value a rebuild is collecting · ` +
     `<span class="ftag depth">depth for them</span> cover, below the trade bar. Hover a tag for the why. Nothing is judged here — the assistant does that.</div>` +
     `<div class="csides">${side("a")}${side("b")}</div>` +
     `<div class="ctray" id="ctray"></div></details>`;

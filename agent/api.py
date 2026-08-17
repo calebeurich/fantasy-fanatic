@@ -227,18 +227,28 @@ def fits(league_id: str, owner: str, stance: str | None = None) -> list[dict]:
     # Tags are written from the OTHER roster's point of view ("fills their RB hole") -
     # the row they sit on belongs to the counterparty, and "swap for Odunze" on your own
     # Higgins read as you converting Higgins into Odunze (owner, 2026-08-17).
+    # Owner's rule: unless a piece is a CLEAR upgrade - it would start over what they
+    # already start (positive margin over their weakest starter) or beats a starter on
+    # both axes - it is depth, whatever list it came from. A "target" that fills a hole
+    # without out-producing the incumbent is depth in that format.
+    def production_tag(p):
+        return "starts for them today" if (p.get("over_weakest_starter") or 0) > 0 else "depth for them"
+
     for r in branches:
-        for t in (r.get("targets") or []) + (r.get("acquire_targets") or []):
-            slot = t.get("for_slot") or t.get("position")
-            tag = f"fills their {slot} hole" if t.get("need_level") else "on their target list"
-            add(t.get("name"), t.get("owner") or t.get("from_owner"), tag, t.get("why_it_fits") or t.get("why") or t.get("note"))
+        for t in r.get("targets") or []:
+            add(t.get("name"), t.get("owner") or t.get("from_owner"), production_tag(t),
+                t.get("why_it_fits") or t.get("why") or t.get("note"))
+        for t in r.get("acquire_targets") or []:
+            add(t.get("name"), t.get("owner") or t.get("from_owner"), "on their rebuild wish list",
+                t.get("why_it_fits") or t.get("why") or t.get("note"))
         for u in r.get("value_upgrades") or []:
             for ret in u.get("returns") or []:
                 if not ret.get("already_mine"):
                     add(ret.get("name"), ret.get("owner") or ret.get("from_owner"),
                         f"beats their {u['move_off']}", ret.get("note"))
         for p in r.get("production_adds") or []:
-            add(p.get("name"), p.get("from_owner"), "starts for them today", p.get("starter_caveat") or "production-priced; would start for them today")
+            add(p.get("name"), p.get("from_owner"), production_tag(p),
+                p.get("starter_caveat") or "production-priced; would start for them today")
         for p in r.get("depth_adds") or []:
             add(p.get("name"), p.get("from_owner"), "depth for them", p.get("note"))
     return out
