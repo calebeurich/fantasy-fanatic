@@ -1020,6 +1020,23 @@ through the agent: both answers lead with the goal lines, quote the ballpark wit
 extending it, and reason from path (bigbuttboi's read even names the tension between
 his sell chip and a contention-shaped move).
 
+**Sequences (2026-08-16, `evaluate_trade_sequence`).** Owner's question: "what if
+shivvv and Ben did that trade, then shiv also traded some seconds to jq for Evans and
+McLaurin?" A plan is not a trade: leg 2 is judged on the rosters leg 1 produced (players
+AND picks chain - a pick sent in leg 1 cannot be sent again, one received can), and
+`cumulative` is each team's net against TODAY. The value is the join neither tool made
+alone: the Gibbs deal is +6,546 but opens WR critical; two 2nds to jq for Evans +
+McLaurin closes it for +1,484 more; net +8,030, no holes - "the consolidation move plus
+its backfill", which is how managers actually operate and which single-trade evaluation
+structurally cannot say. Capped at TWO legs (`MAX_SEQUENCE_LEGS` - owner: "we don't want
+it reasoning infinite or even long and difficult chains"); longer plans are judged two at
+a time. Owner's follow-up ruling: this does not FIND plans - the agent composes them and
+the tool checks; the "patch finder" (get_trade_targets on a post-trade roster) and
+three-way trades are backlogged. Related gap noted: for a no-need contender the finder's
+win-harder path is `value_upgrades`, ranked by dynasty value and capped at 4 per move,
+so the deepest-discount vets from sellers (Evans, McLaurin) can fall off - a
+production-ranked view for buying paths is the follow-up.
+
 ## Waiver wire (`analysis/waiver_wire.py`)
 
 Same relevance floor as everywhere else. Surfaces an available player who beats a

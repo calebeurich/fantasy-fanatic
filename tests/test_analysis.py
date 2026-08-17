@@ -2589,3 +2589,31 @@ def test_each_side_is_judged_by_the_lens_its_path_sets():
     out = trade_eval.evaluate_from_board(board, "a", ["tighta"], "b", ["smallwr"])
     a_side = next(s for s in out["sides"] if s["owner"] == "a")
     assert "OPENS A NEW HOLE at TE" in a_side["goal"], a_side["goal"]
+
+
+def test_a_sequence_judges_each_leg_on_the_rosters_the_last_one_produced():
+    """Owner's shivvv plan: buy the stud (opens WR), then patch WR from a rebuild for
+    picks. Leg 2 must see leg 1's roster (the WR hole it closes only exists after leg
+    1), picks must chain (a pick sent in leg 1 cannot be sent again; a pick received can
+    be), and `cumulative` is against TODAY."""
+    board = _eval_fixture()
+    board.ctx.rosters[0]["roster_id"] = 1
+    board.ctx.rosters[1]["roster_id"] = 2
+    board.picks_by_owner = {1: [{"pick": "2027 1st", "value": 3000, "round": 1, "season": 2027,
+                                 "originally": 1, "slot_basis": "x"}], 2: []}
+    from analysis.trade_eval import evaluate_from_board
+    # leg 1: a sends OkWR (his only WR) + the pick to b for BigWR -> a's WR slot is
+    # filled by BigWR; leg 2: a sends SpareQB to b for SmallWR: judged after leg 1.
+    r1 = evaluate_from_board(board, "a", ["okwr", "2027 1st"], "b", ["bigwr"])
+    after = r1["_after"]
+    assert "2027 1st" not in [p["pick"] for p in after["picks"]["a"]]
+    assert [p["pick"] for p in after["picks"]["b"]] == ["2027 1st"]
+    r2 = evaluate_from_board(board, "b", ["2027 1st"], "a", ["spareqb"],
+                             players_override=after["players"], picks_override=after["picks"])
+    assert r2["ok"], r2
+    b_side = next(s for s in r2["sides"] if s["owner"] == "b")
+    assert [p["name"] for p in b_side["sends"]] == ["2027 1st"], "b re-sends the pick he received"
+    # a cannot re-send the pick he gave away
+    r3 = evaluate_from_board(board, "a", ["2027 1st"], "b", ["smallwr"],
+                             players_override=after["players"], picks_override=after["picks"])
+    assert not r3["ok"] and "not on a's roster" in r3["problem"]

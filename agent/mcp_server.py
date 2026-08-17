@@ -334,6 +334,22 @@ def evaluate_trade(league_id: str, owner_a: str, sends_a: list[str],
 
 
 @mcp.tool()
+def evaluate_trade_sequence(league_id: str, legs: list[dict]) -> dict:
+    """Judge a PLAN of two or more trades in order - "I'd do X, and then Y". Each leg is
+    {owner_a, sends_a, owner_b, sends_b} (plus optional stance_a/stance_b, same rule as
+    evaluate_trade), and each is judged on the rosters the legs before it produced, so a
+    later leg can close the hole an earlier one opened - a consolidation move plus its
+    backfill is the common shape. `cumulative` is each team's net position against
+    TODAY (lineup after everything re-settles; needs from before the first leg to
+    after the last). Lead with the cumulative line for the team asking, then each
+    leg's own reads. Use this whenever a user chains trades ("and then", "also",
+    "after that"); use evaluate_trade for a single deal. Exactly two legs - a move
+    and its backfill; a longer plan is judged two legs at a time, never as one chain."""
+    from analysis import trade_eval
+    return trade_eval.evaluate_sequence(league_id, legs)
+
+
+@mcp.tool()
 def get_waiver_upgrades(league_id: str, owner_name: str = None) -> dict:
     """Unrostered players with real dynasty value that would upgrade a team, plus FAAB
     budget remaining per team. Pass owner_name to filter to one team; omit for the

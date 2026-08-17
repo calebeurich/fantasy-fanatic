@@ -98,8 +98,10 @@ def _lens(path: str) -> str:
 def evaluate_trade(league_id: str, owner_a: str, sends_a: list[str],
                    owner_b: str, sends_b: list[str],
                    stance_a: str | None = None, stance_b: str | None = None) -> dict:
-    return evaluate_from_board(build_board(league_id), owner_a, sends_a, owner_b, sends_b,
-                               stance_a, stance_b)
+    out = evaluate_from_board(build_board(league_id), owner_a, sends_a, owner_b, sends_b,
+                              stance_a, stance_b)
+    out.pop("_after", None)
+    return out
 
 
 # A manager who declares a branch ("kieran wants to pivot", "I'm pressing this year")
@@ -339,17 +341,25 @@ def _side_read(state, receives, changes, lineup_delta, best, receives_best,
 
 def evaluate_from_board(board, owner_a: str, sends_a: list[str],
                         owner_b: str, sends_b: list[str],
-                        stance_a: str | None = None, stance_b: str | None = None) -> dict:
+                        stance_a: str | None = None, stance_b: str | None = None,
+                        players_override: dict | None = None,
+                        picks_override: dict | None = None) -> dict:
+    """`players_override` / `picks_override` (owner_id -> list) are the rosters an
+    earlier leg of a sequence produced; absent, the live rosters."""
     ctx = board.ctx
     a = ctx.pick_owner(owner_a, board.states)
     b = ctx.pick_owner(owner_b, board.states)
     if a["owner_id"] == b["owner_id"]:
         return {"ok": False, "problem": "both sides resolve to the same team"}
-    rosters = {r["owner_id"]: r for r in ctx.rosters}
+    rosters = {r["owner_id"]: (dict(r, players=players_override[r["owner_id"]])
+                               if players_override and r["owner_id"] in players_override else r)
+               for r in ctx.rosters}
 
     # picks_by_owner is keyed by roster_id, not owner_id, despite the name.
-    picks_of = lambda state: board.picks_by_owner.get(
-        rosters[state["owner_id"]].get("roster_id"), [])
+    def picks_of(state):
+        if picks_override and state["owner_id"] in picks_override:
+            return picks_override[state["owner_id"]]
+        return board.picks_by_owner.get(rosters[state["owner_id"]].get("roster_id"), [])
     ids_a, picks_a, problems_a = _resolve(ctx, rosters[a["owner_id"]], picks_of(a),
                                           a["owner"], sends_a)
     ids_b, picks_b, problems_b = _resolve(ctx, rosters[b["owner_id"]], picks_of(b),
@@ -370,8 +380,13 @@ def evaluate_from_board(board, owner_a: str, sends_a: list[str],
                              if p not in ids_a] + ids_b,
              b["owner_id"]: [p for p in rosters[b["owner_id"]]["players"]
                              if p not in ids_b] + ids_a}
-    needs_before = _league_needs_with(ctx, {})
-    needs_after = _league_needs_with(ctx, after)
+    # Picks move too, so a later leg can send what this one brought in and cannot
+    # send what it gave away.
+    picks_after = {a["owner_id"]: [p for p in picks_of(a) if p not in picks_a] + picks_b,
+                   b["owner_id"]: [p for p in picks_of(b) if p not in picks_b] + picks_a}
+    base = players_override or {}
+    needs_before = _league_needs_with(ctx, base)
+    needs_after = _league_needs_with(ctx, {**base, **after})
 
     best = max(pieces_a + pieces_b, key=lambda p: p["value"])
     best_to = b["owner"] if best in pieces_a else a["owner"]
@@ -411,7 +426,55 @@ def evaluate_from_board(board, owner_a: str, sends_a: list[str],
                                start_bars=getattr(ctx, "start_thresholds", None) or {}),
         })
     return {"ok": True, "note": EVAL_NOTE,
-            "best_piece": {**best, "to": best_to}, "sides": sides}
+            "best_piece": {**best, "to": best_to}, "sides": sides,
+            "_after": {"players": {**base, **after},
+                       "picks": {**(picks_override or {}), **picks_after}}}
+
+
+SEQUENCE_NOTE = (
+    "A SEQUENCE: each leg is judged on the rosters the legs before it produced, so a "
+    "later leg can close a hole an earlier one opened (a consolidation move plus its "
+    "backfill), and `cumulative` is each team's net position against TODAY - lineup "
+    "after everything re-settles, needs from before the first leg to after the last. "
+    "Judge the plan by the cumulative line and each leg by its own reads.")
+
+
+# Two legs: a move and its backfill. Longer chains are where reasoning goes to die -
+# every leg compounds the guesses about who says yes (owner: "we don't want it
+# reasoning infinite or even long and difficult chains").
+MAX_SEQUENCE_LEGS = 2
+
+
+def evaluate_sequence(league_id: str, legs: list[dict]) -> dict:
+    """Legs in order, each {owner_a, sends_a, owner_b, sends_b, stance_a?, stance_b?}."""
+    if len(legs) > MAX_SEQUENCE_LEGS:
+        return {"ok": False, "problem": f"a sequence is at most {MAX_SEQUENCE_LEGS} legs - a move "
+                                        f"and its backfill; judge longer plans two legs at a time"}
+    if len(legs) < 2:
+        return {"ok": False, "problem": "a sequence needs two legs; use evaluate_trade for one"}
+    board = build_board(league_id)
+    ctx = board.ctx
+    players, picks, out_legs = None, None, []
+    for i, leg in enumerate(legs, 1):
+        res = evaluate_from_board(board, leg["owner_a"], leg["sends_a"], leg["owner_b"],
+                                  leg["sends_b"], leg.get("stance_a"), leg.get("stance_b"),
+                                  players_override=players, picks_override=picks)
+        if not res["ok"]:
+            return {"ok": False, "problem": f"leg {i}: {res['problem']}"}
+        after = res.pop("_after")
+        players, picks = after["players"], after["picks"]
+        out_legs.append({"leg": i, **res})
+    original = {r["owner_id"]: r["players"] for r in ctx.rosters}
+    needs_start = _league_needs_with(ctx, {})
+    needs_end = _league_needs_with(ctx, players)
+    cumulative = {
+        ctx.owner_names[oid]: {
+            "lineup_production_delta": (_lineup_production(ctx, players[oid])
+                                        - _lineup_production(ctx, original[oid])),
+            "need_changes": _need_changes(needs_start[oid], needs_end[oid]),
+        }
+        for oid in players}
+    return {"ok": True, "note": SEQUENCE_NOTE, "legs": out_legs, "cumulative": cumulative}
 
 
 def main():
