@@ -340,12 +340,11 @@ $("username").addEventListener("keydown", e => { if (e.key === "Enter") { e.prev
 
 // ---- example paths: the question shapes the agent answers best, one click away ----
 const CHIPS = owner => [
-  // First = the default door in: the full-team read is the answer the table
-  // deliberately doesn't give, and every other chip is a follow-up to it.
+  // Two doors, not four look-alikes (owner: "trim the default asks down"): the full
+  // read the table deliberately doesn't give, and the trade question. Everything else
+  // is a follow-up people ask in their own words - or a tap in the composer.
   `Tell me about ${owner} and what they should do.`,
-  `Who should ${owner} target in a trade?`,
-  `What is ${owner} holding that they can't actually use?`,
-  `Which of ${owner}'s players should they think about selling, and why?`,
+  `Who should ${owner} target in a trade, and with what?`,
 ];
 function showChips(owner) {
   const box = $("chips");
