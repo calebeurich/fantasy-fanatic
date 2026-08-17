@@ -292,6 +292,16 @@ not by preference:
   thirds. Do it after eye-testing the 13/48 path moves the ppg switch produced, and
   re-verify BARBELL_MIN_PCT / ARRIVING_MARGIN_PCT on ppg shares in the same pass
   (declining shares rose almost everywhere; the value-share calibration is stale).
+- **Who starts: market order vs projected order** (owner-backlogged 2026-08-16):
+  `fill_lineup` still ranks by redraft value and only tiebreaks on ppg. Neither
+  field is obviously the more accurate "who scores most" - the market prices
+  upside and injury news faster, projections price volume - so before switching,
+  run a DIAGNOSTIC: for all 48 teams, fill both ways, list every lineup that
+  differs (who's in, who's out, the ppg and value gap), and count how many
+  needs/paths would move. If the disagreements are all sub-noise, leave it; if
+  they cluster (rookies the market loves, vets projections love), that is the
+  finding that decides the order. Also the place to check whether an injured
+  starter with a stale market price is being started.
 - **Contend harder vs contend longer** (owner-backlogged 2026-08-15): the aligned
   contender's real question - convert future into a stronger NOW, or keep the
   young core and contend more consistently now AND later - is a durability
