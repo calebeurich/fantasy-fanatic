@@ -38,22 +38,27 @@ EVAL_NOTE = (
     "arithmetic. Nothing here says which side 'wins by' an amount; a trade can be right "
     "for both seats.")
 
-# What a piece of a given tier has ACTUALLY fetched, measured on 461 crawled trades
-# where the best piece stood alone on his side (research/stud_returns.py, 2026-08-16),
-# keyed by that piece's value percentile at the time. Each row: pieces that came back
-# (median), the centerpiece as a share of the stud (q1, median, q3), the summed
-# multiple (median), the share of returns containing a 1st, and the share with no
-# picks. The consolidation premium measured on fc_trades (2-for-1 at 1.36x etc.) does
-# NOT describe stud deals - at the top the constraint is centerpiece quality and returns
-# sum to ~parity - so the ballpark speaks SHAPE, tiered.
+# What a piece of a given tier has ACTUALLY fetched, measured on crawled trades where the
+# best piece stood alone on his side (research/stud_returns.py), keyed by that piece's
+# value percentile at the time. Basis (2026-08-16, after the owner's plain-text review
+# read the first table's "inside the band" as "close but not enough" on JT / Jefferson /
+# Cook): NON-best-ball leagues only (the VEGAS best-ball ecosystem trades lighter - no
+# lineup pressure), and 1sts priced at 4,500 / 2nds at 1,800 - the same scale as the
+# FantasyCalc slotted pick values the framer prices OUR picks with, where a flat 3,200
+# understated every early 1st and pulled the centerpiece band low. Each row: pieces
+# back (median), centerpiece as a share of the stud (q1, median, q3), summed multiple
+# (median), share of returns containing a 1st, share with no picks. Samples run 36-70
+# per tier - bands are wide and honest about it. The consolidation premium measured on
+# fc_trades (2-for-1 at 1.36x etc.) does NOT describe stud deals; the ballpark speaks
+# SHAPE, tiered.
 RETURN_SHAPES = [
     # (upper pct bound, label, pieces, (cp_q1, cp_med, cp_q3), summed, has_1st, no_picks)
-    (0.02, "top-2%",   3, (0.40, 0.50, 0.62), 0.98, 0.54, 0.35),
-    (0.05, "top-5%",   2, (0.43, 0.54, 0.66), 0.89, 0.53, 0.29),
-    (0.10, "top-10%",  2, (0.52, 0.65, 0.78), 0.88, 0.41, 0.27),
-    (0.20, "top-20%",  2, (0.53, 0.66, 0.80), 0.80, 0.03, 0.49),
-    (0.35, "top-35%",  1, (0.35, 0.46, 0.60), 0.53, 0.00, 0.89),
-    (1.01, "mid-tier", 1, (0.25, 0.33, 0.45), 0.33, 0.00, 1.00),
+    (0.02, "top-2%",   3, (0.50, 0.59, 0.71), 1.11, 0.56, 0.31),
+    (0.05, "top-5%",   2, (0.64, 0.71, 0.84), 1.06, 0.55, 0.25),
+    (0.10, "top-10%",  2, (0.44, 0.63, 0.90), 0.96, 0.25, 0.31),
+    (0.20, "top-20%",  2, (0.36, 0.68, 0.82), 0.81, 0.00, 0.55),
+    (0.35, "top-35%",  1, (0.21, 0.47, 0.78), 0.56, 0.00, 0.91),
+    (1.01, "mid-tier", 1, (0.22, 0.39, 0.92), 0.39, 0.00, 1.00),
 ]
 
 
@@ -188,10 +193,12 @@ def _package_read(receives: list[dict], best: dict, receives_best: bool, pct: fl
     firsts = [p for p in picks if "1st" in p["name"]]
     cp = max((p["value"] for p in receives), default=0) / best["value"] if best["value"] else 0
     ratio = sum(p["value"] for p in receives) / best["value"] if best["value"] else 0
-    band = ("inside" if q1 <= cp <= q3 else "below" if cp < q1 else "above")
+    band = ("below the usual band" if cp < q1 else "above the usual band" if cp > q3
+            else "in the low half of the usual band" if cp < med
+            else "in the high half of the usual band")
     this = (f"THIS RETURN: {n} piece{'s' if n != 1 else ''} ({len(picks)} pick{'s' if len(picks) != 1 else ''}"
             f"{', ' + str(len(firsts)) + ' of them 1sts' if firsts else ''}), centerpiece "
-            f"{cp:.2f}x of {best['name']} - {band} the usual band - summing to {ratio:.2f}x.")
+            f"{cp:.2f}x of {best['name']} - {band} - summing to {ratio:.2f}x.")
     usual = (f"BALLPARK for a {label} piece, from real trades: {pieces} piece{'s' if pieces != 1 else ''} back, "
              f"centerpiece {q1:.2f}-{q3:.2f}x of him (median {med:.2f}), summing to ~{summed:.2f}x; "
              f"{round(has_first * 100)}% of returns include a 1st, {round(no_picks * 100)}% include no pick at all.")

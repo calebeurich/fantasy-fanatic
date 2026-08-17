@@ -181,6 +181,24 @@ approximation - picks aren't in the player archive; fine for shape, not precisio
   meaningful benchmark in the top ~10% where packages exist; below that, the shape
   IS the finding.
 
+**Robustness and the adopted basis (same day, after the owner's plain-text review):**
+the first table (all leagues, 1st = 3,200 flat) read "inside the band" on returns the
+owner called "close but not enough" (JT for Skattebo + 2nd, Jefferson for Fannin +
+2nd). Two known biases push that table low: 28% of survivors are VEGAS best-ball
+leagues, which trade lighter (top-5% summed 0.77 vs 0.94 non-VEGAS; 44% no picks vs
+27%), and a flat 3,200 understates every early 1st while the framer prices OUR picks at
+FantasyCalc's slotted values (a 2027 1st Early is 4,532). Re-cut on non-best-ball
+leagues with 1sts at 4,500 / 2nds at 1,800: top-2% centerpiece 0.50-0.71 (median
+0.59), top-5% 0.64-0.84 (0.71), 5-10% 0.44-0.90 (0.63), 10-20% 0.36-0.82 (0.68);
+summed 1.11 / 1.06 / 0.96 / 0.81; a 1st in 56% / 55% / 25% / 0%. Samples 36-70 per
+tier - wide bands, stated. That table is what `RETURN_SHAPES` carries, and the
+framer says WHERE in the band a return sits (below / low half / high half / above),
+which is what turned "inside" into the owner's "close but not enough". Where the
+adopted table is stricter than the owner (Chase for Egbuka + Odunze + a 1st reads
+below the band), the seven real Chase trades in the corpus back the table: their
+centerpieces were JT / CMC / Nabers / Hampton / G. Wilson / Dart - 0.54-0.85 - with
+one pile at 0.37.
+
 Caveats: DP values are the retro source (coarser format conditioning than FC); the
 pick constant is 2026 FC and applied to all seasons; the VEGAS-LIFE ecosystem caveat
 applies (re-check outside any single ecosystem before promoting a threshold).
