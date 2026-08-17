@@ -117,7 +117,7 @@
   .prow span:first-child{color:var(--dim);flex:1;white-space:nowrap;overflow:hidden;
                          text-overflow:ellipsis;min-width:0}
   .prow.st span:first-child{font-weight:600;color:#fff}
-  .prow.st span:first-child::before{content:"▸ ";color:var(--rebuild)}
+  .prow.st span:first-child::before{content:"▸ ";color:var(--ok)}
   .prow.sq span:first-child::before{content:"▹ ";color:var(--rebuild)}   /* starter-quality by the league bar, on the bench */
   .prow.phead{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
   .prow.phead span{color:var(--dim)}
@@ -183,7 +183,8 @@
   .crow.chead2 .v,.crow.chead2 .a{color:var(--dim)}
   /* The line under the lineup: starters sort first, bench below the rule. Starters under
      the position's start bar carry a colored left edge - how bad the hole is. */
-  .stmark{color:var(--rebuild);font-size:11px}   /* the roster view's starter mark, same meaning */
+  .stmark{color:var(--ok);font-size:11px}   /* the roster view's starter mark, same meaning */
+  .stmark.sq{color:var(--rebuild)}          /* starter-quality on the bench: surplus */
   .crow.st.under{box-shadow:inset 3px 0 var(--thin)}
   .crow.st.deep{box-shadow:inset 3px 0 var(--crit)}
   .csugg{margin:0 0 8px}
@@ -506,7 +507,7 @@ function renderBuilder(leagueId, owners) {
       <div id="croster${k}"><div class="cs"><span class="spin"></span>loading roster</div></div></div>`;
   box.innerHTML = `<div class="cs">Pick two teams, tap pieces, ask. Bright = that team would move it <em>and</em> the other team has a use for it (the tag says what — hover for the why) · ` +
     `faded = would move it but nothing over there wants it, or only at a cornerstone's price · dim = wouldn't move it (tap anyway if you insist). ` +
-    `<span class="stmark">▸</span> starts today · <span class="stmark">▹</span> starter-quality by the league bar but on the bench (surplus) · a colored left edge = a starter under that bar.</div>` +
+    `<span class="stmark">▸</span> starts today · <span class="stmark sq">▹</span> starter-quality by the league bar but on the bench (surplus) · a colored left edge = a starter under that bar.</div>` +
     `<div class="csides">${side("a")}${side("b")}</div>` +
     `<div class="ctray" id="ctray"></div>`;
   document.querySelector('#tabs [data-view="trade"]').disabled = false;
@@ -582,7 +583,7 @@ async function fillSide(leagueId, k) {
                   : health ? "a starter under this league's start bar at " + pos : "";
       const spare = !off && !on && (priced || !tagOf[p.name]);
       return `<div class="crow ${p.starter ? "st" : ""} ${health} ${off ? "off" : ""} ${spare ? "spare" : ""} ${on ? "on" : ""} ${tagOf[p.name] && !priced ? "tagged" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${title}">` +
-        `<span class="n">${p.starter ? '<span class="stmark">▸</span> ' : surplus ? '<span class="stmark" title="starter-quality by the league bar, on the bench here">▹</span> ' : ""}${p.cornerstone ? "★ " : ""}${p.name}</span>${tag(p.name)}` +
+        `<span class="n">${p.starter ? '<span class="stmark">▸</span> ' : surplus ? '<span class="stmark sq" title="starter-quality by the league bar, on the bench here">▹</span> ' : ""}${p.cornerstone ? "★ " : ""}${p.name}</span>${tag(p.name)}` +
         `<span class="v">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
         `<span class="v">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
         `<span class="v">${(p.value || 0).toLocaleString()}</span>` +
@@ -822,7 +823,7 @@ async function toggleDetail(tr, leagueId) {
     row.innerHTML = `<td colspan="9"><div class="pcont">` +
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}<div class="plast">${picksHtml}${ideasHtml}</div></div>` +
-      `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--rebuild)">▸</span>` +
+      `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--ok)">▸</span>` +
       `<strong> starter</strong> · <span style="color:var(--rebuild)">▹</span> starter-quality by the league bar, on the bench · ePPG = expected points/game, now = this-season value, dyn = dynasty · age color = what his ` +
       `value is doing: <span style="color:hsl(120,65%,58%)">gaining</span> · ` +
       `<span style="color:hsl(68,65%,58%)">holding (prime)</span> · ` +
