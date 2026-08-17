@@ -54,8 +54,10 @@ async def run(question: str, verbose: bool = True) -> dict:
     graph = create_react_agent(model, tools, prompt=SYSTEM_PROMPT)
     result = await graph.ainvoke({"messages": [("user", question)]},
                                  config={"recursion_limit": 2 * MAX_TURNS + 1})
-    calls, text = [], ""
+    calls, text, tokens_in, tokens_out = [], "", 0, 0
     for m in result["messages"]:
+        u = getattr(m, "usage_metadata", None) or {}
+        tokens_in += u.get("input_tokens", 0); tokens_out += u.get("output_tokens", 0)
         for tc in getattr(m, "tool_calls", None) or []:
             calls.append({"name": tc["name"], "input": tc["args"]})
             if verbose:
@@ -65,8 +67,12 @@ async def run(question: str, verbose: bool = True) -> dict:
                 c.get("text", "") for c in m.content if isinstance(c, dict))
     if verbose:
         print(text)
-        print(f"\n[{len(calls)} tool call(s), model={MODEL}]")
-    return {"text": text, "tool_calls": calls, "model": MODEL}
+        print(f"\n[{len(calls)} tool call(s), model={MODEL}, tokens in/out {tokens_in}/{tokens_out}]")
+    # Same shape as agent.run_query so the evals can drive either orchestrator; cost is
+    # unknown here (the endpoint's price varies by provider) - tokens are reported instead.
+    return {"text": text, "tool_calls": calls, "model": MODEL, "cost_usd": None,
+            "num_turns": len(calls) + 1, "grounding_retries": 0,
+            "tokens_in": tokens_in, "tokens_out": tokens_out}
 
 
 if __name__ == "__main__":
