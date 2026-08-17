@@ -407,5 +407,5 @@ def get_roster_detail(league_id: str, owner_name: str) -> dict:
 
 
 if __name__ == "__main__":
-    warm.start_from_env()
+    warm.start_from_env(delay=5.0)  # after the handshake, never competing with it
     mcp.run()

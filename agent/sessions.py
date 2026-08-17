@@ -117,6 +117,14 @@ class SessionManager:
         self._sessions[session_id] = session
         return session
 
+    async def drop(self, session_id: str) -> None:
+        """Throw a session away (its client is broken - no tools registered); the next
+        acquire for this id builds a fresh one and reports `created`."""
+        async with self._guard:
+            session = self._sessions.get(session_id)
+            if session is not None:
+                await self._close(session)
+
     async def _evict_idle(self) -> None:
         now = time.monotonic()
         for session in [s for s in self._sessions.values() if now - s.last_used > IDLE_TTL_SECONDS]:

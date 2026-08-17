@@ -1305,6 +1305,23 @@ prompt carries the doctrine no single tool result states (five principles: pick 
 two currencies, age is a distance, value is not additive, a trade needs a counterparty)
 plus numbered rules, each added for an observed failure.
 
+### Zero tools, again - and the guard for it (2026-08-17)
+
+The first Cloud Run deploy's worst failure came back on staging for one session: the
+MCP server never registered, the model had NO tool definitions (the log shows it -
+1 turn, 2,381 input tokens, cache_read 0, format_tier null), so Haiku wrote
+`<function_calls>` XML as text with parameters that don't exist and confabulated a
+"mild win" verdict. Cause this time: the day-old warm-up thread inside the MCP server
+started BEFORE serving, and cold nflverse parsing on a fresh container starved the
+stdio handshake past the SDK's patience. Two fixes, both deterministic: the MCP
+server's warm-up now waits 5s (after the handshake, never competing with it), and
+`run_query` raises `ToolsUnavailable` when an answer contains tool-call XML and no
+tool was actually called - real tool calls never appear in answer text - on which
+the API drops that session (its client is the broken part) and answers once more on
+a fresh one, and if that also has no tools says "the tools didn't load, nothing was
+answered, no verdict was invented" instead of showing the fake. Logged as
+outcome=no_tools so it can be counted.
+
 ### The counterparty: the other side of the table (2026-08-17)
 
 The advisor speaks for one side of a trade; the composer's "Ask" now also runs the

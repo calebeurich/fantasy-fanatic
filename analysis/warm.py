@@ -20,8 +20,14 @@ def warm(league_ids: list[str]) -> None:
             print(f"warm-up failed for {league_id}: {type(e).__name__}: {e}", file=sys.stderr)
 
 
-def start_from_env() -> None:
-    """Off the main thread: a failure here costs nothing but the warm-up."""
+def start_from_env(delay: float = 0.0) -> None:
+    """Off the main thread: a failure here costs nothing but the warm-up. `delay` lets a
+    process finish coming up first - the MCP server's stdio handshake was starved by
+    cold nflverse parsing on a fresh container and the agent was left with zero tools
+    (it then wrote tool-call XML from memory and confabulated a verdict; staging,
+    2026-08-17)."""
     league_ids = [l for l in os.environ.get("WARM_LEAGUES", "").split(",") if l]
     if league_ids:
-        threading.Thread(target=warm, args=(league_ids,), daemon=True).start()
+        t = threading.Timer(delay, warm, args=(league_ids,))
+        t.daemon = True  # never keep a process alive for a warm-up
+        t.start()

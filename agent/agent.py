@@ -12,6 +12,7 @@ this is separate from any Claude.ai subscription, see LOGIC.md.
 
 import asyncio
 import json
+import re
 import sys
 import time
 from contextlib import AsyncExitStack
@@ -207,6 +208,15 @@ Judge only from your own side. The other manager's reasons are their problem. Be
 manager: brief, a little self-interested, no hedging, no advice for the other side, and \
 never total values into a package price - say which single piece matters and why. \
 Speak in the first person as {owner}. Under 180 words."""
+
+class ToolsUnavailable(Exception):
+    """The session had no tools: the model wrote tool-call XML as TEXT and confabulated
+    from memory (Cloud Run's first deploy did this when the MCP server never registered;
+    staging did it again on a cold container, 2026-08-17). Deterministic to detect - real
+    tool calls never appear in the answer text - and the caller recycles the session."""
+
+
+FAKE_TOOL_CALL = re.compile(r"<function_calls>|<invoke name=", re.I)
 
 # Hard guardrails enforced by the SDK itself, not just requested in the prompt.
 MAX_TURNS = 8
@@ -611,6 +621,9 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
                                                          league_owner_names)
 
         answer_text = turn["text"]
+        if FAKE_TOOL_CALL.search(answer_text or "") and not all_tool_calls:
+            outcome = "no_tools"
+            raise ToolsUnavailable("answer contains tool-call XML and no tool was called")
         return {
             "text": answer_text,
             "tool_calls": all_tool_calls,

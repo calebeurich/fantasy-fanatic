@@ -39,7 +39,7 @@ from pydantic import BaseModel
 from analysis import format_support, roster_needs, team_state, warm
 
 from . import budget, observability
-from .agent import run_query, MCP_SERVER_PATH, _options
+from .agent import run_query, MCP_SERVER_PATH, ToolsUnavailable, _options
 from .sessions import SessionBusy, SessionManager
 
 
@@ -629,6 +629,23 @@ async def ask(request: AskRequest, http: Request) -> AskResponse:
                 result["cost_usd"] = session.cost_delta(result["cost_usd"])
         else:
             result = await run_query(question, verbose=False, on_progress=track, on_text=stream)
+    except ToolsUnavailable:
+        # The session's MCP server never registered. Throw the session away (its client
+        # is the broken part) and answer once more on a fresh one; if that also has no
+        # tools, say so plainly rather than show a confabulated verdict.
+        if request.session_id:
+            await sessions.drop(request.session_id)
+        try:
+            result = await run_query(question, verbose=False, on_progress=track, on_text=stream,
+                                     persona=request.counterparty)
+            created = True
+        except Exception as e2:  # a second no-tools run, or anything else on the retry
+            observability.log_run({"question": question[:300], "outcome": "error",
+                                   "error": f"retry after no_tools: {type(e2).__name__}: {e2}"})
+            ledger.record(None)
+            _progress.pop(request.session_id, None); _partial.pop(request.session_id, None)
+            return AskResponse(text=("The analysis tools didn't load for that one - nothing was answered, "
+                                     "and no verdict was invented. Ask again in a moment."))
     except SessionBusy:
         return AskResponse(text=("The public demo is busy right now - every conversation slot is in "
                                  "use. The table, rosters and composer above still work; try the "

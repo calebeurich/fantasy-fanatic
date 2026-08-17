@@ -191,3 +191,15 @@ def test_season_chain_treats_string_zero_as_the_end(monkeypatch):
     leagues = {"a": {"previous_league_id": "b"}, "b": {"previous_league_id": "0"}}
     monkeypatch.setattr(sleeper, "get_league", lambda lid: leagues[lid])
     assert sleeper.get_season_chain("a") == ["a", "b"]
+
+
+def test_fake_tool_call_xml_in_an_answer_is_detected():
+    """A session with no tools makes the model write tool-call XML as text and invent a
+    verdict (staging, 2026-08-17: 1 turn, no tool calls, an evaluate_trade invoke with
+    parameters that don't exist). Deterministic to spot: real tool calls never appear
+    in answer text."""
+    from agent.agent import FAKE_TOOL_CALL
+    fake = ("I'll evaluate this trade. <function_calls> <invoke name=\"check_league_format\">"
+            "<parameter name=\"league_id\">1</parameter></invoke></function_calls> Mild win for you.")
+    assert FAKE_TOOL_CALL.search(fake)
+    assert not FAKE_TOOL_CALL.search("For dezdroppedit27 (contend - on a clock): starting lineup +1.3 points a game.")
