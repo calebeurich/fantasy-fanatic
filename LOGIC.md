@@ -1305,6 +1305,20 @@ prompt carries the doctrine no single tool result states (five principles: pick 
 two currencies, age is a distance, value is not additive, a trade needs a counterparty)
 plus numbered rules, each added for an observed failure.
 
+### The counterparty: the other side of the table (2026-08-17)
+
+The advisor speaks for one side of a trade; the composer's "Ask" now also runs the
+OTHER manager - `agent.COUNTERPARTY_PROMPT`, a persona over the same tools and caps:
+"you are {owner}, a trade has been proposed to you, decide it as {owner} would - ACCEPT
+/ COUNTER / NO, the two or three tool facts that decide it, and if COUNTER exactly what
+you'd need." One-shot on its own client (never the asker's conversation), streamed as
+its own card ("how jq likely sees it"). This is the one multi-agent shape that earns
+its place here: two agents with opposing stances over one deterministic referee (the
+framer computes both sides' facts); the coordination is a Python function, not a third
+agent. Live check: shivvv offers a late 2nd for Evans -> jq: "COUNTER - I'm on sell,
+Evans is exactly the piece I should move, but that's not the price; I'd need a 2027
+1st." The demo tier skips it (it costs an ask).
+
 ### Two tiers on one deploy: friends and the public demo (2026-08-17)
 
 The friends link carries one shared key (`FF_LINK_KEY`) - not real auth, a brake that

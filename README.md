@@ -199,9 +199,12 @@ thumbs-down comments from league mates have been the richest source of real bugs
   for the résumé.
 - **No fine-tuning.** The reasoning lives in deterministic Python plus a prompt; the
   thesis is that the model reasons over verified facts. The evals are the better story.
-- **No multi-agent choreography.** The one place a second agent would add something —
-  a counterparty arguing the other manager's side of a trade — is a possible future;
-  everything else people call multi-agent here (planner, critic) is done
+- **No multi-agent choreography** — with one deliberate exception. A trade has two
+  sides, so the composer's "Ask" runs two agents in parallel: your advisor, and the
+  *other manager* judging the same proposal from their own path with the same tools
+  (accept / counter / no, and what it would take). Two opposing stances over one
+  deterministic referee (the framer); the coordination is a Python function, not a
+  third agent. Everything else people call multi-agent here (planner, critic) is done
   deterministically, and the critic is exact instead of another opinion.
 - **One orchestrator, one model** — the Claude Agent SDK on Haiku, chosen after
   measuring cost and quality. A small LangGraph client driving the same MCP tools with

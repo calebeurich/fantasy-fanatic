@@ -391,6 +391,7 @@ async function prefetchDetails(leagueId) {
 // Greying is trade_targets' own offerable set - the same one the grounding check uses -
 // so the roster IS the option list; a stance toggle (press / sell) re-greys it.
 let leagueTeams = {};        // owner -> overview row (path, ePPG, needs) for the headers
+let pageTier = "friend";     // from /api/defaults; the demo skips the counterparty (it costs an ask)
 const movableCache = {};     // league/owner/stance -> {players:Set, picks:Set}
 const fitsCache = {};        // league/owner/stance -> [{name, owner, tag, why}] pieces elsewhere that fit him
 const trade = {a: {owner: null, stance: "", picks: new Set()}, b: {owner: null, stance: "", picks: new Set()}};
@@ -537,8 +538,12 @@ function renderTray(leagueId) {
   $("cclear").onclick = () => { document.querySelectorAll(".crow.on").forEach(r => r.classList.remove("on")); trade.a.picks.clear(); trade.b.picks.clear(); document.querySelectorAll(".cpick.on").forEach(c => c.classList.remove("on")); renderTray(leagueId); };
   $("cask").onclick = () => {
     const stance = k => trade[k].stance ? ` (${trade[k].owner} says they'd ${trade[k].stance === "sell" ? "sell" : "press"})` : "";
-    $("q").value = `Evaluate this trade for both sides: ${a} sends ${pa.join(", ")}; ${b} sends ${pb.join(", ")}.${stance("a")}${stance("b")}`;
+    const proposal = `${a} sends ${pa.join(", ")}; ${b} sends ${pb.join(", ")}`;
+    $("q").value = `Evaluate this trade for both sides: ${proposal}.${stance("a")}${stance("b")}`;
     $("f").requestSubmit();
+    // The other side of the table: whichever team isn't mine reacts as its own manager,
+    // in parallel, on its own card. Two agents, opposing stances, one referee (the framer).
+    if (pageTier === "friend") askCounterparty(myTeam === b ? a : b, proposal);
     $("log").scrollIntoView({behavior: "smooth", block: "end"});
   };
   clearTimeout(evalTimer);
@@ -924,6 +929,31 @@ function renderAnswer(el, d, question) {
 
 // Poll for an answer this session finished after `since`. Used both when a connection
 // drops mid-question and when the page is reopened while one was in flight.
+// One-shot answer AS the other manager (agent.COUNTERPARTY_PROMPT): its own /ask with a
+// derived session id so progress and partial text stream like any other answer, but it
+// never touches the asker's conversation.
+async function askCounterparty(owner, proposal) {
+  const cpId = `${sessionId}:cp:${Date.now()}`;
+  const card = add(`<p class="cs">how <strong>${owner}</strong> likely sees it — <span id='cpstep'>thinking as ${owner}…</span></p><div id='cppartial'></div>`);
+  const poll = setInterval(async () => {
+    try {
+      const p = await (await fetch(`/progress/${cpId}`, {headers: hdrs()})).json();
+      const st = document.getElementById("cpstep"), t = document.getElementById("cppartial");
+      if (st && p.text) st.textContent = "writing…"; else if (st && p.step) st.textContent = p.step + "…";
+      if (t && p.text) t.innerHTML = md(p.text);
+    } catch (_) {}
+  }, 2000);
+  try {
+    const res = await fetch("/ask", {method: "POST", headers: hdrs({"Content-Type": "application/json"}),
+      body: JSON.stringify({question: withContext(`Trade proposal: ${proposal}. You are ${owner} - decide it as ${owner} would.`),
+                            session_id: cpId, counterparty: owner})});
+    const d = await res.json();
+    card.innerHTML = `<p class="cs">how <strong>${owner}</strong> likely sees it — the other side of the table, judging from its own path with the same tools</p>` + md(d.text || "(no answer)");
+  } catch (e) {
+    card.innerHTML = `<p class="cs warn">couldn't get ${owner}'s side: ${e}</p>`;
+  } finally { clearInterval(poll); }
+}
+
 async function reclaim(since, seconds) {
   const deadline = Date.now() + seconds * 1000;
   while (Date.now() < deadline) {
@@ -1051,6 +1081,7 @@ $("f").onsubmit = async e => {
 // What the page opens on: staging lands the owner on his own team; the public demo
 // (no key) lands on a real league and says what the demo allows. Best effort.
 fetch("/api/defaults", {headers: hdrs()}).then(r => r.json()).then(d => {
+  pageTier = d.tier || "friend";
   if (d.tier === "demo") {
     const n = $("demonote");
     n.style.display = "block";

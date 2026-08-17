@@ -183,6 +183,31 @@ not attach specific week numbers or dates to advice. The only timing anchor you 
 use is the trade deadline (principle G); "by Week 5" is your invention.
 """
 
+# The other side of the table. A trade has two sides and the advisor speaks for one;
+# this persona is the OTHER manager, judging the same proposal from their own path with
+# the same tools - two agents with opposing stances over one deterministic referee (the
+# framer). Not a planner, not a critic: the coordination is a Python function.
+COUNTERPARTY_PROMPT = """You are the manager of the team "{owner}" in this Sleeper dynasty \
+league - not an advisor, the other side of the table. A trade has just been proposed to \
+you. Decide it the way {owner} would.
+
+Do this, in order: call check_league_format for the league; call get_team_state for \
+{owner} (your team) - your path and posture are how you think; call get_roster_needs; \
+call evaluate_trade for exactly the proposal as stated (you are one of the two sides). \
+Then answer as {owner}, in this shape:
+
+1. One word first: ACCEPT, COUNTER, or NO.
+2. The two or three facts that decide it, from the tools: your path and what it says you \
+should be doing, what the trade does to your starting lineup or your dynasty value \
+(evaluate_trade's line for YOUR side), any hole it opens on your roster.
+3. If COUNTER: exactly what you would need added, removed or swapped, and why that fixes \
+it for you - name pieces, don't wave at "more value".
+
+Judge only from your own side. The other manager's reasons are their problem. Be a real \
+manager: brief, a little self-interested, no hedging, no advice for the other side, and \
+never total values into a package price - say which single piece matters and why. \
+Speak in the first person as {owner}. Under 180 words."""
+
 # Hard guardrails enforced by the SDK itself, not just requested in the prompt.
 MAX_TURNS = 8
 MAX_BUDGET_USD = 0.50  # per question - a single answer should never cost more than this
@@ -197,10 +222,12 @@ MAX_BUDGET_USD = 0.50  # per question - a single answer should never cost more t
 MAX_GROUNDING_RETRIES = 1
 
 
-def _options() -> ClaudeAgentOptions:
+def _options(persona: str | None = None) -> ClaudeAgentOptions:
+    """`persona` = an owner name: the agent speaks as that manager (COUNTERPARTY_PROMPT)
+    instead of as the advisor. Same tools, same caps."""
     return ClaudeAgentOptions(
         model=MODEL,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=COUNTERPARTY_PROMPT.format(owner=persona) if persona else SYSTEM_PROMPT,
         mcp_servers={
             # sys.executable + an absolute script path, not "python -m agent.mcp_server":
             # the subprocess would otherwise need `python` on PATH *and* the repo root as
@@ -489,7 +516,7 @@ def _observability_fields(tool_calls: list[dict], tool_results: list[dict]) -> d
 
 
 async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient | None = None,
-                    on_progress=None, on_text=None) -> dict:
+                    on_progress=None, on_text=None, persona: str | None = None) -> dict:
     """Runs one question through the agent, then deterministically checks the answer
     against ground truth before returning it: if it named a player its own trade-tool
     calls say isn't offerable, send one corrective follow-up on the same session
@@ -512,7 +539,7 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
         # outlives the request, so the exit stack must not tear it down.
         async with AsyncExitStack() as stack:
             if client is None:
-                client = await stack.enter_async_context(ClaudeSDKClient(options=_options()))
+                client = await stack.enter_async_context(ClaudeSDKClient(options=_options(persona)))
             turn = await _run_turn(client, question, verbose, on_progress, on_text)
             all_tool_calls = list(turn["tool_calls"])
             all_tool_results = list(turn["tool_results"])

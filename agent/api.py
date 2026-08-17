@@ -99,6 +99,11 @@ class AskRequest(BaseModel):
     # by the server, which keeps this stateless to look at and means a lost session
     # just starts a new one instead of erroring.
     session_id: str | None = None
+    # The other side of the table: an owner name makes this a one-shot answer AS that
+    # manager reacting to the proposal in `question` (COUNTERPARTY_PROMPT). Runs on its
+    # own client, never on the asker's conversation; progress/partial text are keyed by
+    # session_id like any other ask so the page can stream it beside the advisor's read.
+    counterparty: str | None = None
 
 
 class AskResponse(BaseModel):
@@ -608,7 +613,10 @@ async def ask(request: AskRequest, http: Request) -> AskResponse:
         if request.session_id else None
     created = False
     try:
-        if request.session_id:
+        if request.counterparty:
+            result = await run_query(question, verbose=False, on_progress=track, on_text=stream,
+                                     persona=request.counterparty)
+        elif request.session_id:
             session, created = await sessions.acquire(request.session_id, t)
             # Held for the whole turn: two concurrent requests on one session would
             # interleave on the same client and corrupt the conversation.
