@@ -683,6 +683,8 @@ def classify_league(league_id: str) -> list[dict]:
                              picks_by_roster.get(roster["roster_id"], [])
                              if p["round"] == 1),
             "no_trade_history": no_trade_history,
+            # This season's standing, straight from Sleeper - 0-0 until games are played.
+            "record": {k: (roster.get("settings") or {}).get(k, 0) for k in ("wins", "losses", "ties")},
             **result,
         })
 

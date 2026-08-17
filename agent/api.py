@@ -148,6 +148,7 @@ def league_overview(league_id: str) -> dict:
                 "starting_production": t["starting_production"],
                 "pct_of_best": t["pct_of_best"],
                 "starter_value": t["starter_value"],
+                "record": t["record"],
                 "alignment": t["alignment"],
                 "path": t["path"],
                 "path_reason": t["path_reason"],

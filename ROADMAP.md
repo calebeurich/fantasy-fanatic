@@ -302,6 +302,16 @@ not by preference:
   they cluster (rookies the market loves, vets projections love), that is the
   finding that decides the order. Also the place to check whether an injured
   starter with a stale market price is being started.
+  **DIAGNOSTIC RUN 2026-08-17 (scratch_fill_diag.py)**: 27/48 lineups differ, 40
+  swaps, mean +1.3 ppg, nearly all the last slot. The shape is consistent: the
+  market starts youth (Corum, RJ Harvey, Travis Hunter, Tyson, Lemon, 22-25) where
+  projections start volume (Schultz, Hunter Henry, Hockenson, Waller, Geno Smith at
+  ZERO market value, 30-36); market picks WR/RB 33/40, ppg picks TE/QB 17/40. If
+  fill were ppg-first: 10 rank shifts, 3 path changes (Brad 7->4 wait->contend, +5.9
+  ppg from Willis over Ward + Hockenson over Dobbins; Paulyt 4->5 crosses the
+  tertile line; HiThirsty sell->build). Injury doesn't tip it - both numbers dip
+  for a hurt starter; "back for the playoffs" is a rest-of-season projection
+  question (Track 4). Recommendation: ppg-first, market tiebreak. OWNER DECIDES.
 - **Contend harder vs contend longer** (owner-backlogged 2026-08-15): the aligned
   contender's real question - convert future into a stronger NOW, or keep the
   young core and contend more consistently now AND later - is a durability
