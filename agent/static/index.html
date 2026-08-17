@@ -118,8 +118,9 @@
                          text-overflow:ellipsis;min-width:0}
   .prow.st span:first-child{font-weight:600;color:#fff}
   .prow.st span:first-child::before{content:"▸ ";color:var(--ok)}
-  .prow.st.under span:first-child::before{content:"▹ "}   /* starts, but under the league bar */
-  .prow.sq span:first-child::before{content:"▹ ";color:var(--rebuild)}   /* starter-quality by the league bar, on the bench */
+  .prow.st.under span:first-child::before{content:"▹ ";color:var(--thin)}
+  .prow.st.deep span:first-child::before{content:"▹ ";color:var(--crit)}
+  .prow.sq span:first-child::before{content:"▹ ";color:var(--rebuild)}
   .prow.phead{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
   .prow.phead span{color:var(--dim)}
   .pv{font-variant-numeric:tabular-nums;color:var(--muted);width:40px;text-align:right;
@@ -184,10 +185,10 @@
   .crow.chead2 .v,.crow.chead2 .a{color:var(--dim)}
   /* The line under the lineup: starters sort first, bench below the rule. Starters under
      the position's start bar carry a colored left edge - how bad the hole is. */
-  .stmark{color:var(--ok);font-size:11px}   /* the roster view's starter mark, same meaning */
-  .stmark.sq{color:var(--rebuild)}          /* starter-quality on the bench: surplus */
-  .crow.st.under{box-shadow:inset 3px 0 var(--thin)}
-  .crow.st.deep{box-shadow:inset 3px 0 var(--crit)}
+  .stmark{color:var(--ok);font-size:11px}   /* the roster view's marks, same colors, same meaning */
+  .stmark.under{color:var(--thin)}
+  .stmark.deep{color:var(--crit)}
+  .stmark.sq{color:var(--rebuild)}
   .csugg{margin:0 0 8px}
   .csugg summary{cursor:pointer;color:var(--muted);font-size:12.5px;list-style:none}
   .csugg summary::before{content:"▸ ";color:var(--dim)}
@@ -508,7 +509,7 @@ function renderBuilder(leagueId, owners) {
       <div id="croster${k}"><div class="cs"><span class="spin"></span>loading roster</div></div></div>`;
   box.innerHTML = `<div class="cs">Pick two teams, tap pieces, ask. Bright = that team would move it <em>and</em> the other team has a use for it (the tag says what — hover for the why) · ` +
     `faded = would move it but nothing over there wants it, or only at a cornerstone's price · dim = wouldn't move it (tap anyway if you insist). ` +
-    `<span class="stmark">▸</span> starts, clears the league bar · <span class="stmark">▹</span> starts, under it · <span class="stmark sq">▹</span> clears it, on the bench (surplus).</div>` +
+    `<span class="stmark">▸</span> starter · <span class="stmark under">▹</span> starter under the league bar · <span class="stmark deep">▹</span> well under it · <span class="stmark sq">▹</span> starter-quality on the bench.</div>` +
     `<div class="csides">${side("a")}${side("b")}</div>` +
     `<div class="ctray" id="ctray"></div>`;
   document.querySelector('#tabs [data-view="trade"]').disabled = false;
@@ -575,16 +576,14 @@ async function fillSide(leagueId, k) {
       const priced = mv.priced.has(p.name);
       const off = !mv.players.has(p.name) && !priced;
       const rv = p.redraft_value || 0;
-      const health = competing && p.starter && bar ? (rv < 0.6 * bar ? "deep" : rv < bar ? "under" : "") : "";
-      const surplus = !p.starter && bar && rv >= bar;   // starter-quality by the league bar, on the bench here
+      const mk = !p.starter ? (bar && rv >= bar ? "sq" : "") : (!competing || !bar || rv >= bar) ? "st" : rv < 0.6 * bar ? "st deep" : "st under";
       const rule = "";
       const on = chosen.has(p.name);
       const title = off ? "not something this team would move on its path — tap anyway if you insist"
-                  : priced ? "years still on him — only moves at a cornerstone's price"
-                  : health ? "a starter under this league's start bar at " + pos : "";
+                  : priced ? "years still on him — only moves at a cornerstone's price" : "";
       const spare = !off && !on && (priced || !tagOf[p.name]);
-      return `<div class="crow ${p.starter ? "st" : ""} ${health} ${off ? "off" : ""} ${spare ? "spare" : ""} ${on ? "on" : ""} ${tagOf[p.name] && !priced ? "tagged" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${title}">` +
-        `<span class="n">${p.starter ? (bar && rv < bar ? '<span class="stmark" title="starts, but under the league bar">▹</span> ' : '<span class="stmark">▸</span> ') : surplus ? '<span class="stmark sq" title="starter-quality by the league bar, on the bench here">▹</span> ' : ""}${p.cornerstone ? "★ " : ""}${p.name}</span>${tag(p.name)}` +
+      return `<div class="crow ${p.starter ? "st" : ""} ${off ? "off" : ""} ${spare ? "spare" : ""} ${on ? "on" : ""} ${tagOf[p.name] && !priced ? "tagged" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${title}">` +
+        `<span class="n">${mk ? `<span class="stmark ${mk}">${mk === "st" ? "▸" : "▹"}</span> ` : ""}${p.cornerstone ? "★ " : ""}${p.name}</span>${tag(p.name)}` +
         `<span class="v">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
         `<span class="v">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
         `<span class="v">${(p.value || 0).toLocaleString()}</span>` +
@@ -780,11 +779,18 @@ async function toggleDetail(tr, leagueId) {
       }
       return `hsl(${Math.round(10 + 30 * (1 + y / tail))}, 65%, 55%)`;
     };
+    // One triangle, the need chips' colors: green starts and clears the league bar,
+    // yellow starts under it, red starts well under it, purple clears it from the bench.
+    const mark = (p, bar) => {
+      const rv = p.redraft_value || 0;
+      if (p.starter) return !bar || rv >= bar ? "st" : rv < 0.6 * bar ? "st deep" : "st under";
+      return bar && rv >= bar ? "sq" : "";
+    };
     const group = (title, rows, heads = ["ePPG", "now", "dyn", "age"]) =>
       `<div class="pgroup"><div class="ptitle">${title}</div>` +
       `<div class="prow phead"><span></span><span class="pv">${heads[0]}</span><span class="pv">${heads[1]}</span>` +
       `<span class="pv">${heads[2]}</span><span class="pa">${heads[3]}</span></div>` +
-      rows.map(p => `<div class="prow${p.starter ? ((d.start_bars || {})[title] && (p.redraft_value || 0) < d.start_bars[title] ? " st under" : " st") : (d.start_bars || {})[title] && (p.redraft_value || 0) >= d.start_bars[title] ? " sq" : ""}">` +
+      rows.map(p => `<div class="prow ${mark(p, (d.start_bars || {})[title])}">` +
         `<span>${p.cornerstone ? "★ " : ""}${p.name}</span>` +
         `<span class="pv">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
         `<span class="pv">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
@@ -824,8 +830,8 @@ async function toggleDetail(tr, leagueId) {
     row.innerHTML = `<td colspan="9"><div class="pcont">` +
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}<div class="plast">${picksHtml}${ideasHtml}</div></div>` +
-      `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--ok)">▸</span>` +
-      `<strong> starter</strong> (<span style="color:var(--ok)">▹</span> under the league bar) · <span style="color:var(--rebuild)">▹</span> starter-quality, on the bench · ePPG = expected points/game, now = this-season value, dyn = dynasty · age color = what his ` +
+      `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--ok)">▸</span> starter · ` +
+      `<span style="color:var(--thin)">▹</span> starter under the league bar · <span style="color:var(--crit)">▹</span> well under it · <span style="color:var(--rebuild)">▹</span> starter-quality on the bench · ePPG = expected points/game, now = this-season value, dyn = dynasty · age color = what his ` +
       `value is doing: <span style="color:hsl(120,65%,58%)">gaining</span> · ` +
       `<span style="color:hsl(68,65%,58%)">holding (prime)</span> · ` +
       `<span style="color:hsl(25,65%,55%)">losing</span> · ` +
