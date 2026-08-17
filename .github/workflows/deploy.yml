@@ -21,6 +21,12 @@ env:
   REGION: us-central1
   SERVICE: fantasy-fanatic
 
+# Two pushes close together deploy once, not twice: the later run cancels the earlier
+# build rather than both shipping in sequence.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: true
+
 jobs:
   deploy:
     # The gate: workflow_run fires on failure too, so this must be checked explicitly.
