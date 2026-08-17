@@ -122,6 +122,17 @@
   th.sortable:hover{color:var(--ink)}
   th.sortable .arrow{color:var(--ok)}
   .chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 12px}
+  /* The trade composer: picks pieces, writes the question. Nothing judged here. */
+  .builder{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+  .builder summary{cursor:pointer;color:var(--muted);font-size:13px}
+  .bsides{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px}
+  .bside{flex:1;min-width:260px}
+  .bside select{width:100%;margin-bottom:6px}
+  .blist{max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+  .blist label{display:flex;gap:6px;align-items:center;font-size:12.5px;padding:1px 0;cursor:pointer}
+  .blist label .bv{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
+  .blist .bpos{color:var(--muted);font-size:11px;min-width:24px}
+  .bsum{font-size:12.5px;color:var(--muted);margin-top:6px;min-height:1.2em}
   .chip{background:transparent;border:1px dashed var(--line);color:var(--muted);
         border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer}
   .chip:hover{color:var(--ink);border-color:var(--mid)}
@@ -170,6 +181,7 @@
       </details>
     </div>
     <div id="overview"><div class="empty">Enter your Sleeper username to get started.</div></div>
+    <div id="builder" style="display:none"></div>
   </div>
 
   <div class="card">
@@ -338,6 +350,88 @@ async function prefetchDetails(leagueId) {
     Object.entries(all).forEach(([owner, d]) => { detailCache[leagueId + "/" + owner] = d; });
   } catch (_) { /* clicks fall back to per-team fetches */ }
 }
+// ---- the trade composer: pick pieces on two teams, it writes the question ----
+// A composer, not a calculator: nothing is judged here. The framer's facts and the
+// agent's judgment both come back in the chat, which keeps the deciding rule (facts in
+// the table, every "should" in the agent) and keeps the page from growing a second
+// brain. It removes the one friction that stopped friends asking about trades at all:
+// typing names and hoping they resolve.
+let builderOwners = [];
+function renderBuilder(leagueId, owners) {
+  builderOwners = owners;
+  const box = $("builder");
+  const opts = sel => owners.map(o => `<option${o === sel ? " selected" : ""}>${o}</option>`).join("");
+  const side = (k, sel) => `<div class="bside"><select id="bsel${k}">${opts(sel)}</select>` +
+    `<div class="blist" id="blist${k}"></div><div class="bsum" id="bsum${k}"></div></div>`;
+  const leg = n => `<div class="bsides" id="leg${n}">${side(n + "a", n === 1 ? (myTeam || owners[0]) : "")}${side(n + "b", "")}</div>`;
+  box.innerHTML = `<details class="builder" id="bdetails"><summary>Propose a trade — pick pieces on both sides, then ask the assistant</summary>` +
+    `<div class="cs" style="margin-top:6px">▸ starter · ★ cornerstone · numbers are this-season · dynasty value. ` +
+    `Nothing is judged here — the assistant evaluates it in the chat.</div>` +
+    leg(1) +
+    `<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">` +
+    `<button type="button" class="ghost" id="bleg2">+ and then a second trade</button>` +
+    `<button type="button" class="primary" id="bask">Ask about this trade</button></div>` +
+    `<div id="leg2wrap" style="display:none"><div class="cs" style="margin-top:10px">and then…</div>${leg(2)}</div>` +
+    `</details>`;
+  box.style.display = "block";
+  ["1a", "1b", "2a", "2b"].forEach(k => {
+    const sel = $("bsel" + k);
+    sel.onchange = () => fillSide(leagueId, k);
+    fillSide(leagueId, k);
+  });
+  $("bleg2").onclick = () => {
+    const w = $("leg2wrap"); const on = w.style.display === "none";
+    w.style.display = on ? "block" : "none";
+    $("bleg2").textContent = on ? "− drop the second trade" : "+ and then a second trade";
+  };
+  $("bask").onclick = () => {
+    const legs = [composeLeg("1")].concat($("leg2wrap").style.display === "none" ? [] : [composeLeg("2")]);
+    if (legs.some(l => !l)) return;
+    $("q").value = legs.length === 1
+      ? `Evaluate this trade for both sides: ${legs[0]}`
+      : `Evaluate this two-trade plan for me: first, ${legs[0]}; and then, ${legs[1]}. Judge each trade and the plan as a whole.`;
+    $("q").focus();
+    $("q").scrollIntoView({behavior: "smooth", block: "center"});
+  };
+}
+async function fillSide(leagueId, k) {
+  const owner = $("bsel" + k).value;
+  const list = $("blist" + k);
+  if (!owner) { list.innerHTML = ""; return; }
+  list.innerHTML = `<div class="cs">loading…</div>`;
+  let d;
+  try { d = await fetchDetail(leagueId, owner); } catch (e) { list.innerHTML = `<div class="cs warn">couldn't load</div>`; return; }
+  const rows = [];
+  ["QB", "RB", "WR", "TE"].forEach(pos => (d.players[pos] || []).forEach(p => rows.push(
+    `<label><input type="checkbox" data-name="${p.name.replace(/"/g, "&quot;")}"><span class="bpos">${pos}</span>` +
+    `${p.starter ? "▸ " : ""}${p.cornerstone ? "★ " : ""}${p.name}` +
+    `<span class="bv">${p.redraft_value != null ? p.redraft_value.toLocaleString() : "–"} · ${(p.value || 0).toLocaleString()}</span></label>`)));
+  // Picks: identical names collapse to one line with a count (two "2028 1st"s are the
+  // same piece twice); the composed question names one, which is all the framer needs.
+  const seen = {};
+  (d.picks || []).forEach(p => { seen[p.pick] = seen[p.pick] || {n: 0, v: p.value}; seen[p.pick].n++; });
+  Object.entries(seen).forEach(([pk, o]) => rows.push(
+    `<label><input type="checkbox" data-name="${pk}"><span class="bpos">PICK</span>${pk}${o.n > 1 ? ` ×${o.n}` : ""}` +
+    `<span class="bv">${(o.v || 0).toLocaleString()}</span></label>`));
+  list.innerHTML = rows.join("") || `<div class="cs">nothing to pick</div>`;
+  list.querySelectorAll("input").forEach(cb => cb.onchange = () => summarize(k));
+  summarize(k);
+}
+function picked(k) {
+  return [...document.querySelectorAll(`#blist${k} input:checked`)].map(cb => cb.dataset.name);
+}
+function summarize(k) {
+  const names = picked(k);
+  $("bsum" + k).textContent = names.length ? `${$("bsel" + k).value} sends: ${names.join(", ")}` : "";
+}
+function composeLeg(n) {
+  const a = $("bsel" + n + "a").value, b = $("bsel" + n + "b").value;
+  const pa = picked(n + "a"), pb = picked(n + "b");
+  if (!a || !b || a === b) { alert("pick two different teams"); return null; }
+  if (!pa.length || !pb.length) { alert("pick at least one piece on each side"); return null; }
+  return `${a} sends ${pa.join(", ")}; ${b} sends ${pb.join(", ")}`;
+}
+
 async function toggleDetail(tr, leagueId) {
   const open = tr.nextElementSibling;
   if (open && open.classList.contains("detail")) { open.remove(); return; }
@@ -536,7 +630,7 @@ async function loadLeague(id) {
           .forEach(tr => body.appendChild(tr));
       };
     });
-    prefetchDetails(id);
+    prefetchDetails(id).then(() => renderBuilder(id, d.teams.map(t => t.owner)));
     document.querySelectorAll("tr.team").forEach(tr => {
       // Click = select for asking AND toggle the expanded roster. Deterministic data
       // rendered directly, same doctrine as the table itself.
