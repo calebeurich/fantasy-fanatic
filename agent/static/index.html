@@ -582,7 +582,7 @@ async function fillSide(leagueId, k) {
                   : health ? "a starter under this league's start bar at " + pos : "";
       const spare = !off && !on && (priced || !tagOf[p.name]);
       return `<div class="crow ${p.starter ? "st" : ""} ${health} ${off ? "off" : ""} ${spare ? "spare" : ""} ${on ? "on" : ""} ${tagOf[p.name] && !priced ? "tagged" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${title}">` +
-        `<span class="n">${p.starter ? '<span class="stmark">▸</span> ' : surplus ? '<span class="stmark" title="starter-quality by this league's bar, on the bench here">▹</span> ' : ""}${p.cornerstone ? "★ " : ""}${p.name}</span>${tag(p.name)}` +
+        `<span class="n">${p.starter ? '<span class="stmark">▸</span> ' : surplus ? '<span class="stmark" title="starter-quality by the league bar, on the bench here">▹</span> ' : ""}${p.cornerstone ? "★ " : ""}${p.name}</span>${tag(p.name)}` +
         `<span class="v">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
         `<span class="v">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
         `<span class="v">${(p.value || 0).toLocaleString()}</span>` +
