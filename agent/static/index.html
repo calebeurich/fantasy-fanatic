@@ -962,12 +962,12 @@ async function askCounterparty(owner, proposal) {
   } finally { clearInterval(poll); }
 }
 
-async function reclaim(since, seconds) {
+async function reclaim(since, seconds, id = sessionId) {
   const deadline = Date.now() + seconds * 1000;
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 3000));
     try {
-      const a = await (await fetch(`/answer/${sessionId}`, {headers: hdrs()})).json();
+      const a = await (await fetch(`/answer/${id}`, {headers: hdrs()})).json();
       if (a && a.finished_at && a.finished_at * 1000 > since) return a;
     } catch (_) { /* keep waiting - the network may still be coming back */ }
   }
@@ -1006,7 +1006,7 @@ $("f").onsubmit = async e => {
   }, 1000);
   // Note the question as in-flight BEFORE sending, so a reload mid-answer knows to go
   // looking for it rather than showing an empty page.
-  localStorage.setItem("ff_pending", JSON.stringify({typed, question, started}));
+  localStorage.setItem("ff_pending", JSON.stringify({typed, question, started, session: sessionId}));
   try {
     let d;
     try {
@@ -1053,19 +1053,16 @@ $("f").onsubmit = async e => {
 // go and collect the answer: the server finished it regardless (measured), so the only
 // thing that was ever lost is the delivery.
 (async () => {
-  const past = pruneHistory();
-  if (past.length) {
-    // Restored messages must announce themselves - an unlabelled old answer looks
-    // like the page never finished with it.
-    add(`<p class="cs">↺ picking up your conversation from earlier — the assistant still ` +
-        `remembers it (unless an answer below says otherwise). ` +
-        `"new conversation" starts clean.</p>`);
-  }
-  for (const h of past) {
-    add(`<p>${h.typed.replace(/</g, "&lt;")}</p>`, "me");
-    renderAnswer(add(""), h.answer, h.question);
-  }
+  // A reload is a fresh conversation on purpose (owner): new session id, history gone -
+  // so what the reader sees and what the model remembers stay the same thing. The ONE
+  // thing carried across is an answer that was still being written when the tab went
+  // away: the server finished it regardless (measured), so it is reclaimed once, from
+  // the OLD session id, and shown - then the page is clean.
   const raw = localStorage.getItem("ff_pending");
+  const previous = sessionId;
+  sessionId = crypto.randomUUID();
+  localStorage.setItem("ff_session", sessionId);
+  localStorage.removeItem("ff_history");
   if (!raw) return;
   const p = JSON.parse(raw);
   // Anything older than a few minutes is not still running - the request would have
@@ -1074,12 +1071,11 @@ $("f").onsubmit = async e => {
   add(`<p>${p.typed.replace(/</g, "&lt;")}</p>`, "me");
   const slot = add("<p>picking up where you left off — this answer was still being "
                    + "written when you left…</p>");
-  const d = await reclaim(p.started, 210);
+  const d = await reclaim(p.started, 210, p.session || previous);
   localStorage.removeItem("ff_pending");
   if (d) {
-    markReset(d);
     renderAnswer(slot, d, p.question);
-    remember({typed: p.typed, question: p.question, answer: d});
+    add(`<p class="cs">That answer was reclaimed from before the reload; this is otherwise a fresh conversation.</p>`);
   } else {
     slot.innerHTML = "<p>That one didn't survive — the app was probably updated while it "
                    + "was running. Ask again and it'll be quick.</p>";

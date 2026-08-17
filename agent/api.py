@@ -269,14 +269,14 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
         new_starters = roster_needs.projected_starters(with_him, ctx.players, ctx.lineup_dedicated, ctx.lineup_flex)
         gain = (sum(eppg(ctx.players[q]) for q in new_starters if q in ctx.players)
                 - sum(eppg(ctx.players[q]) for q in starters if q in ctx.players))
-        # A CLEAR upgrade lifts the whole lineup by at least a point a game (owner: "unless
-        # it's a clear-ish upgrade they should all be depth"); a 0.5 edge is depth.
-        if pid in new_starters and gain >= 1.0:
+        # If he'd start, say so and let the gain speak ("Burrow ain't depth" - he starts
+        # for dez by +0.3 over Dak); depth is for pieces that would NOT crack the lineup.
+        if pid in new_starters:
             dropped = [ctx.players[q]["name"] for q in starters - new_starters if q in ctx.players]
             out.append({"name": info["name"], "owner": seller, "tag": f"starts for them (+{gain:.1f})",
                         "why": f"projects {eppg(info):.1f} a game; {owner}'s lineup gains {gain:.1f} a game"
                                + (f", displacing {', '.join(dropped)}" if dropped else "")})
-        elif pid in new_starters or roster_needs.would_start_if_one_out(
+        elif roster_needs.would_start_if_one_out(
                 buyer, ctx.players, pid, starters, ctx.lineup_dedicated, ctx.lineup_flex):
             out.append({"name": info["name"], "owner": seller, "tag": "depth for them",
                         "why": f"would start for {owner} if one {info['position']} were out"})
