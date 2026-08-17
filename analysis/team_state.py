@@ -231,8 +231,16 @@ def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: f
                     "next season's production is already on the roster - patience is free"
                     + _aging_clause(aging_pct))
         # Waiting is earned by ascending, the way contending is earned by rank (owner,
-        # 2026-08-17: "wait and build were supposed to mean you are ascending"). A flat
-        # middle roster is not waiting on anything - both directions are live.
+        # 2026-08-17: "wait and build were supposed to mean you are ascending") - OR by
+        # having nothing aging out at all: a young-to-prime middle roster with no clock
+        # running has nothing forcing a move (owner: "Bergen is textbook wait, driven by
+        # the fact that he is 0% descending"). Gated on the runway clock, so a flat roster
+        # quietly expiring (qkiernat: 0/22, 42% expiring) still reads decide.
+        if aging_pct < AGING_WORTH_NOTING_PCT:
+            return ("aligned", "wait",
+                    "nothing aging out - a young-to-prime roster at a middle rank with no "
+                    "clock running, so waiting costs nothing; the season can show which "
+                    "way it leans")
         return ("unaligned", "decide",
                 "nothing arriving at a middle rank - there is no wave to wait for, so "
                 "waiting is just holding; both paths are live and the middle rank gives "
@@ -500,6 +508,12 @@ POSTURE = {
               "directions - the aging half is a clock of its own, and path_reason names its "
               "pieces. Premiums are still not required - this rank buys at fair prices - "
               "but 'nothing needs doing' is not true here."),
+    "wait": ("In the middle of the league with nothing aging out - a young-to-prime roster "
+             "with no clock running, which is a position, not an unmade decision. Both "
+             "paths are shown because either is defensible from here, and waiting on the "
+             "season is a legitimate choice - the decision has until the trade deadline. "
+             "What this roster does not have is the free option an arriving one gets: it is "
+             "not supplying next season's production by itself."),
     "wait - production is arriving": (
         "Not top-third yet, but the roster rises on its own - your own ascending players "
         "supply next season's production for free. Pushing now means paying a market "

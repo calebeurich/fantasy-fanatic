@@ -868,8 +868,14 @@ def test_middling_note_promises_free_patience_only_when_actually_rising():
     path - the alignment call is where the rule lives."""
     rising = team_state.posture_note("wait - production is arriving", 6, 12, 74, 39, 0)
     assert "for free" in rising
-    flat = team_state.alignment_for("fringe", asc_pct=8, dec_pct=14, pick_share=10, assets_bottom=False)
+    flat = team_state.alignment_for("fringe", asc_pct=8, dec_pct=14, pick_share=10,
+                                    assets_bottom=False, aging_pct=40)
     assert flat[:2] == ("unaligned", "decide") and "nothing arriving" in flat[2]
+    # ...unless NOTHING is aging out: a young-to-prime middle roster with no clock running
+    # is textbook waiting (owner: "Bergen is textbook wait - 0% descending").
+    calm = team_state.alignment_for("fringe", asc_pct=15, dec_pct=0, pick_share=10,
+                                    assets_bottom=False, aging_pct=0)
+    assert calm[:2] == ("aligned", "wait")
     assert team_state.alignment_for("fringe", asc_pct=40, dec_pct=5, pick_share=10,
                                     assets_bottom=False)[1] == "wait - production is arriving"
 

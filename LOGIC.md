@@ -351,10 +351,13 @@ because you're at the top. If you were aligned descending and bad you should not
 build, you still need sell." The bottom already worked that way (flat/leaving ->
 sell); the middle did not - a flat fringe roster read aligned "wait" ("nothing arriving
 and nothing aging out - waiting costs nothing"), which is holding, not waiting
-(Insert-qkiernat 0/22, 42% expiring). Now the only aligned middle read is
-"wait - production is arriving"; a flat or leaving middle roster is `decide`. Plain
-"wait" no longer exists as a path. Effect: 10 of 11 fringe teams read decide (g0ldyb3rg
-30/8 keeps wait) - the middle as a place to pass through, which was the doctrine.
+(Insert-qkiernat 0/22, 42% expiring). Now the aligned middle reads are
+"wait - production is arriving" and plain "wait" ONLY when nothing is aging out at all
+(expiring share below AGING_WORTH_NOTING_PCT - the runway clock, so a flat roster
+quietly expiring still reads decide; owner: "Bergen is textbook wait, driven by the
+fact that he is 0% descending"); every other middle roster is `decide`. Effect: 9 of 11
+fringe teams read decide, bergenjay waits (15/0, 0% expiring), g0ldyb3rg waits on an
+arriving wave - the middle as a place to pass through, which was the doctrine.
 **Arrived youth is prime, not ascending (owner, 2026-08-17).** "Cornerstones should
 not count truly as ascending - they are ascending but just prime. Fannin is the
 ascending archetype, Pickens is fine for a contender to have." An ascending starter
