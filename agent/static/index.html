@@ -173,7 +173,7 @@
   .crow.off{opacity:.3}
   /* Movable but nothing on the other roster wants him (Metcalf on dez when Ben is a
      rebuild): faded, so bright means "a real chip in THIS pairing" (owner). */
-  .crow.spare{opacity:.55}
+  .crow.spare{opacity:.7}
   .crow.off .n{font-style:italic}
   .crow.off .n::before{content:"○";color:var(--dim)}
   .crow.chead2{cursor:default;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);padding:0 4px}
@@ -182,7 +182,7 @@
   .crow.chead2 .v,.crow.chead2 .a{color:var(--dim)}
   /* The line under the lineup: starters sort first, bench below the rule. Starters under
      the position's start bar carry a colored left edge - how bad the hole is. */
-  .cline{border-top:1px solid var(--dim);margin:3px 4px 4px}
+  .stmark{color:var(--ok);font-size:11px}   /* the roster view's starter mark, same meaning */
   .crow.st.under{box-shadow:inset 3px 0 var(--thin)}
   .crow.st.deep{box-shadow:inset 3px 0 var(--crit)}
   .csugg{margin:0 0 8px}
@@ -210,9 +210,10 @@
   .cimpact .goal.hole{border-left-color:var(--crit)}
   .cimpact .goal.gain{border-left-color:var(--ok)}
   /* Why the OTHER team would want him - from its own trade-targets lists. */
-  .ftag{font-size:10px;padding:0 5px;border-radius:999px;border:1px solid var(--line);color:var(--muted);
+  .ftag{font-size:10px;padding:0 5px;border-radius:999px;border:1px solid var(--line);color:#6ee7a0;
         white-space:nowrap;flex:none;margin-left:2px}
   .ftag.swap{color:var(--mid)}
+  .ftag.wish{color:var(--rebuild)}
   .ftag.depth{color:var(--dim)}
   .chip{background:var(--panel2);border:1px solid var(--line);color:var(--ink);font-weight:500;
         border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer}
@@ -476,7 +477,7 @@ async function fetchMovable(leagueId, owner, stance) {
     const q = stance ? `?stance=${encodeURIComponent(stance)}` : "";
     const res = await fetch(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/movable${q}`, {headers: hdrs()});
     const d = await res.json();
-    movableCache[key] = {players: new Set(d.players || []), picks: new Set((d.picks || []).map(p => `${p.season}-${p.round}`)), mode: d.mode};
+    movableCache[key] = {players: new Set(d.players || []), priced: new Set(d.priced || []), picks: new Set((d.picks || []).map(p => `${p.season}-${p.round}`)), mode: d.mode};
   }
   return movableCache[key];
 }
@@ -503,7 +504,8 @@ function renderBuilder(leagueId, owners) {
       <div class="cmeta" id="cmeta${k}"></div>
       <div id="croster${k}"><div class="cs"><span class="spin"></span>loading roster</div></div></div>`;
   box.innerHTML = `<div class="cs">Pick two teams, tap pieces, ask. Bright = that team would move it <em>and</em> the other team has a use for it (the tag says what — hover for the why) · ` +
-    `faded = would move it, nothing over there wants it · dim = wouldn't move it on its path (tap anyway if you insist).</div>` +
+    `faded = would move it but nothing over there wants it, or only at a cornerstone's price · dim = wouldn't move it (tap anyway if you insist). ` +
+    `<span class="stmark">▸</span> starts today; a colored left edge = under the league's start bar.</div>` +
     `<div class="csides">${side("a")}${side("b")}</div>` +
     `<div class="ctray" id="ctray"></div>`;
   document.querySelector('#tabs [data-view="trade"]').disabled = false;
@@ -524,8 +526,8 @@ function renderBuilder(leagueId, owners) {
 // toggles narrow rather than widen.
 function stanceOptions(row) {
   const word = (row?.path || "").split(" - ")[0];
-  if (["contend", "press"].includes(word)) return [["", "as read"], ["sell", "if selling"]];
-  if (["build", "sell"].includes(word)) return [["", "as read"], ["press", "if pressing"]];
+  if (["contend", "press"].includes(word)) return [["", "as read · buying"], ["sell", "if selling"]];
+  if (["build", "sell"].includes(word)) return [["", "as read · selling"], ["press", "if pressing"]];
   return [["", "either way"], ["press", "as buyer"], ["sell", "as seller"]];
 }
 
@@ -554,9 +556,11 @@ async function fillSide(leagueId, k) {
   const selling = trade[k].stance === "sell" || ["sell", "build"].includes((row.path || "").split(" - ")[0]);
   const competing = trade[k].stance === "press" || !["sell", "build"].includes((row.path || "").split(" - ")[0]);
   const tagOf = {};
-  (fits || []).filter(f => f.owner === owner && (selling || !f.tag.startsWith("beats"))).forEach(f => { if (!tagOf[f.name]) tagOf[f.name] = f; });
+  (fits || []).filter(f => f.owner === owner && (selling || !f.tag.startsWith("beats")))
+    .sort((x, y) => (y.tag.startsWith("beats") ? 1 : 0) - (x.tag.startsWith("beats") ? 1 : 0))
+    .forEach(f => { if (!tagOf[f.name]) tagOf[f.name] = f; });
   const tag = name => { const f = tagOf[name]; if (!f) return "";
-    const cls = f.tag.startsWith("beats") ? "swap" : f.tag.startsWith("depth") ? "depth" : "";
+    const cls = f.tag.startsWith("beats") ? "swap" : f.tag.startsWith("depth") ? "depth" : f.tag.startsWith("on their") ? "wish" : "";
     const glyph = f.tag.startsWith("beats") ? "⇄ " : f.tag.startsWith("depth") ? "" : "✚ ";
     return `<span class="ftag ${cls}" title="${(f.why || "").replace(/"/g, "&quot;")}">${glyph}${f.tag}</span>`; };
   const chosen = new Set(picked(k));
@@ -565,16 +569,18 @@ async function fillSide(leagueId, k) {
     const ordered = [...(d.players[pos] || [])].sort((x, y) => (y.starter ? 1 : 0) - (x.starter ? 1 : 0));
     const nStart = ordered.filter(p => p.starter).length;
     const rows = ordered.map((p, i) => {
-      const off = !mv.players.has(p.name);
+      const priced = mv.priced.has(p.name);
+      const off = !mv.players.has(p.name) && !priced;
       const rv = p.redraft_value || 0;
       const health = competing && p.starter && bar ? (rv < 0.6 * bar ? "deep" : rv < bar ? "under" : "") : "";
-      const rule = (p.starter && i === nStart - 1 && nStart < ordered.length) ? `<div class="cline"></div>` : "";
+      const rule = "";
       const on = chosen.has(p.name);
       const title = off ? "not something this team would move on its path — tap anyway if you insist"
+                  : priced ? "years still on him — only moves at a cornerstone's price"
                   : health ? "a starter under this league's start bar at " + pos : "";
-      const spare = !off && !tagOf[p.name] && !on;
-      return `<div class="crow ${p.starter ? "st" : ""} ${health} ${off ? "off" : ""} ${spare ? "spare" : ""} ${on ? "on" : ""} ${tagOf[p.name] ? "tagged" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${title}">` +
-        `<span class="n">${p.cornerstone ? "★ " : ""}${p.name}</span>${tag(p.name)}` +
+      const spare = !off && !on && (priced || !tagOf[p.name]);
+      return `<div class="crow ${p.starter ? "st" : ""} ${health} ${off ? "off" : ""} ${spare ? "spare" : ""} ${on ? "on" : ""} ${tagOf[p.name] && !priced ? "tagged" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${title}">` +
+        `<span class="n">${p.starter ? '<span class="stmark">▸</span> ' : ""}${p.cornerstone ? "★ " : ""}${p.name}</span>${tag(p.name)}` +
         `<span class="v">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
         `<span class="v">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
         `<span class="v">${(p.value || 0).toLocaleString()}</span>` +

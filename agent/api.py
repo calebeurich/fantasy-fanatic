@@ -233,8 +233,15 @@ def movable(league_id: str, owner: str, stance: str | None = None) -> dict:
     from analysis import trade_targets
     result = trade_targets.find_targets(league_id, owner, stance=stance or None)
     picks = result.get("picks_to_trade_away") or (result.get("push") or {}).get("picks_to_trade_away") or []
+    # A rebuild's "situational" pieces (young cornerstones with years on them) are in
+    # the offerable set by doctrine - the hardest ask is a price, never a veto - but the
+    # page must not paint Loveland as if Ben were shopping him (owner: "I don't want him
+    # and can't afford him"). They come back separately as "priced".
+    situational = result.get("situational") or (result.get("pivot") or {}).get("situational") or []
+    priced = {e["name"] for e in situational}
     return {"owner": owner, "mode": result["mode"], "stance": stance or None,
-            "players": sorted(trade_targets.offerable_names(result)),
+            "players": sorted(trade_targets.offerable_names(result) - priced),
+            "priced": sorted(priced),
             "picks": [{"season": p["season"], "round": p["round"]} for p in picks],
             "stance_note": result.get("stance_note")}
 
