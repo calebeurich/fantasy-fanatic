@@ -232,8 +232,12 @@ def movable(league_id: str, owner: str, stance: str | None = None) -> dict:
     check already uses. Facts, no verdicts."""
     from analysis import trade_targets
     result = trade_targets.find_targets(league_id, owner, stance=stance or None)
+    # Cornerstones are offerable by doctrine (the hardest ask is a price, not a veto) but
+    # would not actually move on this path - the page shows them as a half state.
+    corner = {e["name"] for e in result["me"].get("cornerstones", [])}
     return {"owner": owner, "mode": result["mode"], "stance": stance or None,
             "players": sorted(trade_targets.offerable_names(result)),
+            "cornerstones": sorted(corner),
             "picks": [{"season": p["season"], "round": p["round"]} for p in result.get("picks_to_trade_away", [])],
             "stance_note": result.get("stance_note")}
 
