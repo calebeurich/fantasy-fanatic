@@ -324,6 +324,17 @@ not by preference:
   find ITS bar from the crawl-corpus distribution, then re-verify all 48 by eye
   against the current chips as the reference read. Belongs with the window-label
   retirement (same measurement layer).
+- **Framer follow-ups** (2026-08-16, from the 44-trade review + the sequence build):
+  (a) **three-way trades** - pieces need routing (A->B, B->C, C->A); per-side judgment
+  generalizes, best-piece/ballpark logic assumes two sides; build only if a friend
+  asks; (b) **the patch finder** - "this trade opens X; who sells X in your direction"
+  = get_trade_targets run on a post-trade roster; sequences let the agent CHECK a plan,
+  this would let it compose one; (c) **production-ranked upgrades for buying paths** -
+  `value_upgrades` ranks by dynasty value and caps at 4 per move, so the deepest-
+  discount vets from sellers (Evans, McLaurin for shivvv's Odunze slot) fall off; a
+  contender's rental-market view; (d) the `wanted_by` string on each value_upgrades
+  move lists all eleven teams - payload bloat to trim; (e) known nit: the model once
+  called the ballpark "top-20% QB trades" - it is not position-specific.
 - **Flex-need follow-ups** (2026-08-15, from the FLEX label build - see LOGIC.md
   "The flex is an open upgrade slot"): the FLEX need currently drives only the
   asking team's buy path. Two consumers don't read it yet: `_counterparty_fit`
