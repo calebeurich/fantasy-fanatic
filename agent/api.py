@@ -307,7 +307,9 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
             same = [ctx.players[q] for q in starters if q in ctx.players and ctx.players[q]["position"] == info["position"]]
             weakest = min(same, key=lambda q: eppg(q)) if same else None
             if weakest and eppg(info) >= 0.95 * eppg(weakest):
-                out.append({"name": info["name"], "owner": seller, "tag": f"level with their {weakest['name']}",
+                mine, theirs = info.get("redraft_value") or 0, weakest.get("redraft_value") or 0
+                gap = " · market says much more" if theirs and mine >= 1.5 * theirs else (" · market says much less" if mine and theirs >= 1.5 * mine else "")
+                out.append({"name": info["name"], "owner": seller, "tag": f"level with their {weakest['name']}{gap}",
                             "why": f"{eppg(info):.1f} vs {eppg(weakest):.1f} a game; season price "
                                    f"{info.get('redraft_value') or 0:,} vs {weakest.get('redraft_value') or 0:,}"})
             else:
@@ -441,7 +443,7 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
         return got and BAND_LO - tolerance <= sent / got <= BAND_HI + tolerance   # a hair either way isn't worth another piece
 
     def balance(prop):
-        chip = lambda n: real_chip(n) or n == prop.get("upgrade")   # the man being replaced needn't clear the bar
+        chip = lambda n: real_chip(n) or (n == prop.get("upgrade") and value.get(n, 0) >= 0.9 * bars.get(position.get(n), 0))
         if not any(chip(n) for n in prop["b_sends"]) or (prop["a_sends"] and not any(chip(n) for n in prop["a_sends"])):
             return None
         va = sum(value.get(n, 0) for n in prop["a_sends"]); vb = sum(value.get(n, 0) for n in prop["b_sends"])
@@ -502,9 +504,15 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
     # arrives.
     movable_a = trade_targets.offerable_names(result_a)
     movable_b = trade_targets.offerable_names(result_b)
+    wish_a = {t["name"] for t in result_a.get("acquire_targets") or []}
+    wish_b = {t["name"] for t in result_b.get("acquire_targets") or []}
     def available(prop):
-        ok = lambda n, movable: n in movable or n == prop.get("upgrade") or n not in position
-        return all(ok(n, movable_a) for n in prop["a_sends"]) and all(ok(n, movable_b) for n in prop["b_sends"])
+        # The replaced starter is fine to send - unless the receiver is a rebuild that
+        # didn't ask for him (spugz doesn't want DJ Moore for Jefferson; owner).
+        swap_ok = lambda n, receiver_wish, receiver: n == prop.get("upgrade") and (receiver["mode"] != "rebuild" or n in receiver_wish)
+        ok_a = lambda n: n in movable_a or swap_ok(n, wish_b, result_b) or n not in position
+        ok_b = lambda n: n in movable_b or swap_ok(n, wish_a, result_a) or n not in position
+        return all(ok_a(n) for n in prop["a_sends"]) and all(ok_b(n) for n in prop["b_sends"])
     seen, used_a, used_b, out = set(), set(), set(), []
     for prop in filter(None, (balance(c) for c in cands if available(c))):
         key = (tuple(prop["a_sends"]), tuple(prop["b_sends"]))
@@ -547,11 +555,15 @@ def trade_ideas(league_id: str, owner: str) -> list[dict]:
     out = []
     for lens in ("buy", "sell"):
         partners, sent, n = set(), set(), 0
+        shapes = set()
         for c in (x for x in cands if x.get("lens") == lens):
             mine = {n for n in c["a_sends"] if n in value}
-            if c["partner"] in partners or (mine & sent):   # three ideas = three conversations
+            # The pick pattern is the "shape" - "starter + two 1sts for a stud" is real but
+            # once is enough (owner); plain player-for-player ideas differ by the players.
+            shape = tuple(sorted(n.split(" ", 1)[1] for n in c["a_sends"] + c["b_sends"] if n not in value))
+            if c["partner"] in partners or (mine & sent) or (shape and shape in shapes):
                 continue
-            partners.add(c["partner"]); sent |= mine; out.append(c); n += 1
+            partners.add(c["partner"]); sent |= mine; shapes.add(shape); out.append(c); n += 1
             if n == 3:
                 break
     return out

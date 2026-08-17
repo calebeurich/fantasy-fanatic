@@ -193,6 +193,7 @@
   .crow.on{background:rgba(231,234,240,.08);outline:1px solid var(--muted)}
   .crow .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
   .crow.st .n{color:#fff;font-weight:600}
+  .crow.tagged:not(.off) .n{color:#fff}
   .crow .v{width:40px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);flex:none;font-size:12px}
   .crow .a{width:30px;text-align:right;font-variant-numeric:tabular-nums;color:var(--dim);flex:none;font-size:12px}
   .cpicks{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
@@ -571,7 +572,7 @@ async function fillSide(leagueId, k) {
       const on = chosen.has(p.name);
       const title = off ? "not something this team would move on its path — tap anyway if you insist"
                   : health ? "a starter under this league's start bar at " + pos : "";
-      return `<div class="crow ${p.starter ? "st" : ""} ${health} ${off ? "off" : ""} ${on ? "on" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${title}">` +
+      return `<div class="crow ${p.starter ? "st" : ""} ${health} ${off ? "off" : ""} ${on ? "on" : ""} ${tagOf[p.name] ? "tagged" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${title}">` +
         `<span class="n">${p.cornerstone ? "★ " : ""}${p.name}</span>${tag(p.name)}` +
         `<span class="v">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
         `<span class="v">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
