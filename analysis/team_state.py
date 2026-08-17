@@ -170,11 +170,17 @@ def _aging_clause(aging_pct: float) -> str:
 
 def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: float,
                   assets_bottom: bool, aging_pct: float = 0,
-                  convertible: bool = False) -> tuple[str, str, str]:
+                  convertible: bool = False, clear_sells: list[str] = (),
+                  idle_youth: list[str] = ()) -> tuple[str, str, str]:
     """(alignment, path, reason) for one team. Production tilt for the players, pick
     share as its own signal - measuring the sides in dynasty value instead washed out
     completely (44 of 46 teams read 'arriving', the market's youth premium reported
-    back as a roster fact)."""
+    back as a roster fact). Two PIECE-level facts override calm shares (owner,
+    2026-08-17: "we'd rather have people labeled unaligned than aligned for edge
+    cases"): `clear_sells` - aging-out pieces that are still real trade chips, which
+    make a rebuild unaligned however well its youth is arriving; `idle_youth` -
+    cornerstones priced on runway that aren't producing, which make a contender
+    unaligned however calm its shares."""
     barbell = min(asc_pct, dec_pct) >= BARBELL_MIN_PCT
     arriving = (not barbell and asc_pct >= BARBELL_MIN_PCT
                 and asc_pct - dec_pct >= ARRIVING_MARGIN_PCT)
@@ -186,6 +192,11 @@ def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: f
             return ("unaligned", "press",
                     "real aging production AND real arriving production cancelling out, "
                     "at a rank that already delivers - the delivering side is the one to keep")
+        if idle_youth:
+            return ("unaligned", "press",
+                    f"a lineup already winning is holding value priced on runway that is not "
+                    f"in it - {', '.join(idle_youth)} - and a contender converts that kind of "
+                    f"asset into production it can use now")
         if arriving:
             # NOT a conflict: an ascending starter is delivering now AND later - a young
             # contender is the best spot on the board, and "decide something" advice
@@ -228,6 +239,11 @@ def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: f
     # A real war chest counts as arriving even before the production shows - picks are
     # pure future - but the assets_bottom guard applies to both: neither an ascending
     # tilt nor a pick pile that isn't accumulating into actual value is a working rebuild.
+    if clear_sells:
+        return ("unaligned", "sell",
+                f"one clear sell on a rebuilding roster: {', '.join(clear_sells)} - aging out "
+                f"with real trade value, which a rebuild spends by holding. The rest of the "
+                f"roster may be building fine; this piece is the decision pending")
     if (arriving or picks_heavy) and not assets_bottom:
         return ("aligned", "build",
                 "the rebuild is working - young production arriving and value accumulating"
@@ -615,7 +631,8 @@ def path_edge(row: dict, contention_edges: dict) -> str | None:
     _, alt_path, _ = alignment_for(
         CONTENTION_TIER[alt_tier], row["ascending_pct"], row["declining_pct"],
         row.get("pick_share", 0), _assets_bottom(row["asset_rank"], row["of_teams"]),
-        row.get("expiring_pct", 0), convertible=(row.get("leverage") == "convertible"))
+        row.get("expiring_pct", 0), convertible=(row.get("leverage") == "convertible"),
+        clear_sells=row.get("aging_chips", ()), idle_youth=row.get("idle_youth", ()))
     if alt_path == row["path"]:
         return None
     return PATH_EDGE.format(gap_pct=round(100 * gap / ref, 1) if ref else 0, alt_path=alt_path)
@@ -754,10 +771,18 @@ def classify_league(league_id: str) -> list[dict]:
                                    row["ascending_pct"], row["declining_pct"],
                                    _assets_bottom(row["asset_rank"], num_teams))
         row["flavor_note"] = FLAVOR_NOTE[row["flavor"]]
+        # Aging-out pieces that are still real trade chips - a FACT on every row; only a
+        # rebuild's alignment reads it as "one clear sell" (a contender rides them).
+        row["aging_chips"] = [e["name"] for e in row["sellable"]
+                              if (e["years_to_decline"] or 0) < MIN_MEANINGFUL_RUNWAY
+                              and e["value"] >= ctx.trade_thresholds.get(e["position"], 0)]
+        row["idle_youth"] = [e["name"] for e in row["cornerstones"]
+                             if e["bucket"] == "ascending" and not e["is_starter"]]
         row["alignment"], row["path"], row["path_reason"] = alignment_for(
             contention, row["ascending_pct"], row["declining_pct"], row["pick_share"],
             _assets_bottom(row["asset_rank"], num_teams), row["expiring_pct"],
-            convertible=(row["leverage"] == "convertible"))
+            convertible=(row["leverage"] == "convertible"),
+            clear_sells=row["aging_chips"], idle_youth=row["idle_youth"])
         # The model reads path + posture_note + path_edge; window stays an internal
         # dispatch label (LOGIC.md, "The window-label retirement").
         row["posture_note"] = posture_note(row["path"], c_rank, num_teams, row["pct_of_best"],

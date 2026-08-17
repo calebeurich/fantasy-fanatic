@@ -329,6 +329,29 @@ misaligned flavor, which this supersedes conceptually) and spugz13 (rank 9, 8/11
 war chest → uncommitted, "the first trade is for a direction"). The old
 window/flavor fields remain computed and shipped alongside during the migration.
 
+**Two piece-level overrides (owner, 2026-08-17: "we'd rather have people labeled
+unaligned than aligned for edge cases").** Shares can be calm while ONE asset is in
+the wrong currency for the rank, and that asset is the decision pending:
+- A rebuild (also-ran) holding an **aging chip** - a piece inside `MIN_MEANINGFUL_RUNWAY`
+  that still clears its position's trade-relevance bar - reads unaligned `sell`, named
+  ("one clear sell on a rebuilding roster: Kenneth Walker"). Prime pieces with runway
+  (Gibbs, Burrow, Lamar on a rebuild) are NOT clear sells; the aging bar is the same
+  two-season horizon everything else uses. Fired on 4 of 10 aligned rebuilds in the
+  corpus (Walker/Waddle, DeVonta Smith, Kyren, Walker again).
+- A contender holding **idle youth** - a cornerstone in the ascending bucket who is not
+  in the lineup - reads unaligned `press`: value priced on runway that a winning lineup
+  isn't using should become production. Fires on nobody in the corpus today; kept
+  because it is the mirror and the owner asked for both.
+`aging_chips` and `idle_youth` ship on every row as facts; only the tier-1 branch that
+owns the lean interprets them (a contender rides its aging chips). The middle has no
+lean, so neither fact moves a fringe read.
+**Bars re-verified on ePPG shares (2026-08-17)**: 26 arriving / 15 leaving / 4 barbell /
+3 flat of 48; the four barbells (shivvv, kieran, freethepenguins, woozer) and the nine
+on-a-clock contenders all pass the smell test, so BARBELL_MIN_PCT 25 and
+ARRIVING_MARGIN_PCT 15 stand. The one defect visible in the table is Insert-qkiernat
+(0/22 by bucket, 42% expiring by runway -> `wait`) - that is the two-clocks item, not
+the bars.
+
 **The direction gate** (owner's rule, 2026-08-15, verbatim: "Good teams never trade
 for future weighted assets by default, bad teams never trade for production leaning
 assets by default, middling teams could choose either... cut out all this nonsense

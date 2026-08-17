@@ -477,6 +477,29 @@ def test_a_contention_edge_names_the_path_across_the_line():
     assert team_state.path_edge(_edge_row(), {}) is None
 
 
+def test_one_clear_sell_makes_a_working_rebuild_unaligned():
+    """Owner (2026-08-17): "we'd rather have people labeled unaligned than aligned for
+    edge cases - if you're rebuilding and have one big clear sell, you should really do
+    something about it." A rebuild whose youth is arriving reads 'build' - until it holds
+    an aging-out piece that is still a real trade chip; then the piece IS the decision."""
+    args = dict(contention="also-ran", asc_pct=60, dec_pct=8, pick_share=10, assets_bottom=False)
+    assert team_state.alignment_for(**args)[:2] == ("aligned", "build")
+    alignment, path, reason = team_state.alignment_for(**args, clear_sells=["Kenneth Walker"])
+    assert (alignment, path) == ("unaligned", "sell") and "Kenneth Walker" in reason
+
+
+def test_idle_youth_priced_value_makes_a_calm_contender_unaligned():
+    """The mirror: a contender with calm shares holding a cornerstone priced on runway who
+    is not in the lineup has future value it should convert to production - press."""
+    args = dict(contention="contender", asc_pct=30, dec_pct=10, pick_share=10, assets_bottom=False)
+    assert team_state.alignment_for(**args)[:2] == ("aligned", "contend")
+    alignment, path, reason = team_state.alignment_for(**args, idle_youth=["Prospect WR"])
+    assert (alignment, path) == ("unaligned", "press") and "Prospect WR" in reason
+    # The middle has no lean, so neither fact changes a fringe read.
+    assert team_state.alignment_for(contention="fringe", asc_pct=30, dec_pct=10, pick_share=10,
+                                    assets_bottom=False, clear_sells=["X"])[1].startswith("wait")
+
+
 def test_value_basis_uses_the_final_year_clock_not_the_buyer_horizon():
     """A shipped bug the suite used to let back in: with the 2.0 buyer horizon here
     instead of INSIDE_FINAL_YEAR, the RB curve calls any back over 25 production-priced.

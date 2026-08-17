@@ -108,10 +108,14 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
         wins, because no games have been played. Premium rules live here: "contend - on a clock" is the one
         path where buying production is worth a premium; plain "contend" and "press"
         buy at fair prices; "sell" converts aging value while it still has a price.
-      `path_edge`, when present - the read sits within refresh noise of a tertile
-        line and names the path across it: present that path's advice as live
-        alongside this one, and a different read on a re-ask is pricing noise, never
-        the team changing direction.
+      `path_edge`, when present - the read sits within refresh noise of a tier line
+        and names the path across it: present that path's advice as live alongside
+        this one, and a different read on a re-ask is pricing noise, never the team
+        changing direction.
+      `aging_chips` - aging-out pieces that are still real trade chips, a FACT on
+        every row: on a rebuild they are the "one clear sell" that made it unaligned;
+        on a contender they are pieces it rides, never a sell list. `idle_youth` - a
+        contender's cornerstones priced on runway who aren't in the lineup.
 
     Hard rules:
     - THE DIRECTION GATE: contenders acquire production and part with future pieces;
