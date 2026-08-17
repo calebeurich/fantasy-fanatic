@@ -345,6 +345,20 @@ the wrong currency for the rank, and that asset is the decision pending:
 `aging_chips` and `idle_youth` ship on every row as facts; only the tier-1 branch that
 owns the lean interprets them (a contender rides its aging chips). The middle has no
 lean, so neither fact moves a fringe read.
+**Two clocks, resolved (2026-08-17): the declining side of the tilt is the final-year
+clock, not the age bucket.** The bucket flips at the position breakpoint, so a starter
+0.1 years from it read prime and kb's lineup 0% declining while its RB1 was expiring
+(Paulyt101 was the original case: 47% aging out by runway, `wait` by bucket). Now a
+starter inside `INSIDE_FINAL_YEAR` of his breakpoint counts as declining whatever his
+birthday says (the same clock `value_basis` uses to call a piece production-priced).
+The buyer's two-season horizon was measured and rejected for the tilt: it calls a
+26-year-old WR declining, puts 16 of 18 contenders on a clock, and would need the
+25/15 bars retuned to reproduce today's reads (median declining share 31 vs the
+bucket's 18); the final-year clock lands at 23 and the bars keep their meaning. Effect:
+2 paths (MSpoto contend -> on a clock; g0ldyb3rg wait -> decide); kb reads 28/11
+contend - Cook (0.1) trips it, DeVonta Smith (1.2) does not, which the owner called
+right "for another .2 years". The two-season horizon stays the buyer's clock: aging
+chips, expiring shares, position clocks.
 **Wait is earned by ascending (owner, 2026-08-17).** "The wait and build tags were
 supposed to mean you are ascending, while the contend tag is fine if you are aligned
 because you're at the top. If you were aligned descending and bad you should not get

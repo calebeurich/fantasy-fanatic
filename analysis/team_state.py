@@ -311,12 +311,21 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
     # Counting him as ascending made a producing young core read as a barbell against
     # its vets (owner: "cornerstones should not count truly as ascending... Fannin is
     # the ascending archetype, Pickens is fine for a contender"). Price is untouched.
+    # The declining side is a CLOCK, not a bucket: a starter inside his final year before
+    # the slope (INSIDE_FINAL_YEAR - the same clock value_basis uses) is leaving whatever
+    # side of the breakpoint his birthday sits on. The bucket alone read Cook at 0.1
+    # years as prime and kb's lineup as 0% declining ("two clocks", 2026-08-17). The
+    # buyer's two-season horizon is deliberately NOT used here - it would call a 26-year-old
+    # WR declining and put 16 of 18 contenders on a clock.
     buckets = {"ascending": 0, "prime": 0, "declining": 0, "unknown": 0}
     for pid in starter_ids:
         info = players.get(pid)
         if info:
             bucket = age_bucket(info["position"], info["age"], info.get("usage_role"))
-            if bucket == "ascending" and (info.get("redraft_value") or 0) >= redraft_threshold:
+            runway = years_to_decline(info["position"], info["age"], info.get("usage_role"))
+            if runway is not None and runway < INSIDE_FINAL_YEAR:
+                bucket = "declining"
+            elif bucket == "ascending" and (info.get("redraft_value") or 0) >= redraft_threshold:
                 bucket = "prime"
             buckets[bucket] += eppg(info)
     production = sum(buckets.values())

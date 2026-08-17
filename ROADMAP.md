@@ -312,19 +312,7 @@ not by preference:
   on losing teams fetch a premium near the deadline vs the same profile in the
   offseason? The rental premium either shows up in real trades or it doesn't.
 
-- **Two clocks in tier 2** (owner-caught 2026-08-16, Paulyt101 in Insert: `wait`
-  at 24% asc / 17% dec by BUCKET, while his own path_reason says 47% of starting
-  production is aging out by RUNWAY - "real aging players and dec rate", and the
-  system disagreeing with itself across two measures). The barbell/leaving tests
-  read the declining bucket; the aging clause reads expiring share (runway under
-  MIN_MEANINGFUL_RUNWAY), which is a SUPERSET (declining + late prime) and so
-  systematically higher. Measured: swapping the tests to runway at the same 25 bar
-  flips 14 of 48 teams (some right - GordieRudd rank 1 at 43% expiring reads
-  contend-on-a-clock; Paulyt -> decide; some doubtful - shivvv 40/14/25 tips to
-  press). Not a one-liner: pick the clock (prior: runway, per age-is-a-proxy), then
-  find ITS bar from the crawl-corpus distribution, then re-verify all 48 by eye
-  against the current chips as the reference read. Belongs with the window-label
-  retirement (same measurement layer).
+- **Two clocks in tier 2 -> DONE 2026-08-17** (LOGIC.md "Two clocks, resolved": the tilt's declining side is the final-year clock).
 - **Framer follow-ups** (2026-08-16, from the 44-trade review + the sequence build):
   (a) **three-way trades** - pieces need routing (A->B, B->C, C->A); per-side judgment
   generalizes, best-piece/ballpark logic assumes two sides; build only if a friend
