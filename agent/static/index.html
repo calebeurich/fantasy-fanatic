@@ -219,6 +219,16 @@
   .ftag.swap{color:var(--mid)}
   .ftag.wish{color:var(--rebuild)}
   .ftag.depth{color:var(--dim)}
+  /* Phone: the tag took the name's width and names collapsed to ".." (owner's screenshot).
+     The tag drops to its own line under the name; numbers tighten. */
+  @media (max-width:600px){
+    .crow{flex-wrap:wrap;row-gap:0}
+    .crow .n{flex:1 1 0;min-width:0}
+    .crow .ftag{order:9;flex-basis:100%;width:max-content;max-width:100%;margin:0 0 2px 22px;white-space:normal}
+    .crow .v{width:36px;font-size:11px}
+    .crow .a{width:28px;font-size:11px}
+    .cside{padding:8px 6px}
+  }
   .chip{background:var(--panel2);border:1px solid var(--line);color:var(--ink);font-weight:500;
         border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer}
   .chip:hover{color:var(--ink);border-color:var(--mid)}
