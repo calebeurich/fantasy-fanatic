@@ -5,7 +5,8 @@ league data, exposed to an LLM agent through MCP tools, with an eval suite, grou
 checks that recompute the model's claims after it makes them, and hard cost guardrails.
 
 **Live:** https://fantasy-fanatic-487070873858.us-central1.run.app — the public demo
-opens on a real 12-team superflex dynasty league. The league table, rosters and the
+opens on a real 12-team superflex dynasty league (one of Flock Fantasy's public
+Sleeper leagues). The league table, rosters and the
 trade composer are free to use; the assistant answers a few questions a day per
 visitor from a small shared budget. Or look up your own Sleeper username.
 
