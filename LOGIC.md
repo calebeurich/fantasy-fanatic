@@ -774,6 +774,19 @@ codebase - waivers reuse it rather than inventing another.
 
 ### The counterparty (`counterparty.py`)
 
+**Offers cannot cost the buyer more than the target brings** (2026-08-16, the
+Pickens-for-Goff case). The buy list paired rjl's Goff target with Pickens - an
+ascending starter, offerable because a contend-on-a-clock team spends future - and the
+framer read that exact pairing as lineup -3,215 with a new WR hole. Owner's diagnosis:
+"it's just hard to move cornerstones, because they are both ascending/prime AND
+producing big time right now, so often not a clear reason to move them that helps
+both sides." Rule: `_counterparty_fit` drops any offer whose `lineup_cost` (production
+lost after the lineup refills) exceeds the target's redraft value - in both the
+fills-a-hole branch and the accumulating branch. A target may therefore ship with no
+paired offer, which is honest: he is still who to ring, and the price is a negotiation
+(picks, or a cornerstone-for-cornerstone conversation) rather than a pretended
+one-for-one.
+
 - **`_seller_case`** (team-level): the roster is falling (quoted with its
   league-relative trajectory rank - "falling" is a tertile, and it once asserted decline
   off a two-point gap), or this core missed the playoffs with >= 60% continuity

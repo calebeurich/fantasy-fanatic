@@ -244,11 +244,19 @@ def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict],
     # The direction gate on the offer side: never dangle a rental at a rebuild - their
     # positional hole is real, but this-season value is the one thing their default
     # direction does not buy.
+    # An offer that costs the buyer more production than the target brings back is
+    # not an offer for a buyer - it is a pivot in disguise. Cornerstones are both the
+    # future and the present, so shipping one for a single upgrade almost never leaves
+    # the shipper's lineup better (owner, the Pickens-for-Goff case: "hard to move
+    # cornerstones ... often not a clear reason to move them that helps both sides").
+    # `lineup_cost` is what losing him costs after the lineup refills itself.
+    target_brings = (target or {}).get("redraft_value") or 0
     fitting = [e for e in my_offers
                if e["position"] in their_needs
                and acquires_by_default(other.get("window", ""), e)
                and not (accumulating
-                        and (e.get("years_to_decline") or 0) < INSIDE_FINAL_YEAR)]
+                        and (e.get("years_to_decline") or 0) < INSIDE_FINAL_YEAR)
+               and not (target and (e.get("lineup_cost") or 0) > target_brings)]
     # The ceiling picks the SENTENCE, never whether a piece is mentioned: dropping
     # over-ceiling pieces silently made "why Goff instead of Hurts?" unanswerable - Hurts
     # sat 13 units (0.25%) over a hard 1.5x line he flaps across with every refresh.
@@ -293,7 +301,10 @@ def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict],
         both = sorted((e for e in my_offers
                        if e.get("value_over_replacement", 0) > 0
                        and (e.get("redraft_value") or 0) > 0
-                       and (e.get("years_to_decline") or 0) >= 0),
+                       and (e.get("years_to_decline") or 0) >= 0
+                       # the same lineup guard as `fitting`: never name a piece whose
+                       # loss costs the buyer more than the target brings
+                       and not (target and (e.get("lineup_cost") or 0) > target_brings)),
                       # Friction last, then the longest runway, then most current production.
                       # Runway leads because it is what this branch is selling.
                       key=lambda e: (bool(e.get("friction")),
