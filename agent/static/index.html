@@ -92,11 +92,13 @@
         border:1px solid var(--line);background:var(--panel2);font-size:12.5px;color:var(--ink)}
   .idea:hover{border-color:var(--ok)}
   .idea b{color:#fff}
-  /* Loading pulse for anything the page is fetching (ideas, rosters, impact). */
-  @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
-  .loading{color:var(--dim);animation:pulse 1.2s ease-in-out infinite}
-  .loading::after{content:" ···"}
-  @media (prefers-reduced-motion:reduce){.loading{animation:none}}
+  /* A tiny spinner INSIDE the placeholder - it disappears with the placeholder the
+     moment content lands (a class left on the container pulsed forever). */
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .spin{display:inline-block;width:10px;height:10px;border:1.5px solid var(--line);
+        border-top-color:var(--ok);border-radius:50%;animation:spin .8s linear infinite;
+        vertical-align:-1px;margin-right:6px}
+  @media (prefers-reduced-motion:reduce){.spin{animation:none;border-top-color:var(--line)}}
   .idea .cs{display:block;margin-top:2px}
   .builder>summary{list-style:none;padding:10px 12px;border:1px solid var(--ok);border-radius:10px;
         background:rgba(74,222,128,.08);color:var(--ink);font-weight:600;font-size:14px}
@@ -460,7 +462,7 @@ function renderBuilder(leagueId, owners) {
       <div class="chead"><select id="csel${k}">${opts(trade[k].owner)}</select>
         <div class="cstance" id="cstance${k}"></div></div>
       <div class="cmeta" id="cmeta${k}"></div>
-      <div id="croster${k}"><div class="cs loading">loading roster</div></div></div>`;
+      <div id="croster${k}"><div class="cs"><span class="spin"></span>loading roster</div></div></div>`;
   box.innerHTML = `<details class="builder" id="bdetails"><summary>Trade helper — pick two teams, tap pieces, see the impact instantly, then ask (or click a trade idea on any team above)</summary>` +
     `<div class="cs" style="margin-top:6px">● = a piece that team would move on its path (or the stance you picked) · ◐ = a cornerstone, askable only at a cornerstone's price · ○ dim italic = it wouldn't move, tap anyway if you insist. ` +
     `Tags say why the <em>other</em> team wants a piece, from its own lists: ` +
@@ -640,7 +642,7 @@ function loadProposal(leagueId, s) {
 // value in/out, holes opened or closed), best single piece. No verdict.
 async function showImpact(leagueId, a, pa, b, pb) {
   const box = $("cimpact"); if (!box) return;
-  box.innerHTML = `<div class="cs loading">working out the impact</div>`;
+  box.innerHTML = `<div class="cs"><span class="spin"></span>working out the impact</div>`;
   try {
     const res = await fetch(`/api/league/${encodeURIComponent(leagueId)}/evaluate`, {
       method: "POST", headers: hdrs({"Content-Type": "application/json"}),
@@ -766,7 +768,7 @@ async function toggleDetail(tr, leagueId) {
     // No prose in the panel: the table is the clean part, the chip tooltip carries the
     // why, and nuance is the agent's job. The data speaks - an aging Etienne sticks
     // out by his orange age without a sentence saying so.
-    const ideasHtml = `<div class="pgroup ideas"><div class="ptitle">Trade ideas</div><div id="ideas-${owner.replace(/[^a-z0-9]/gi, "_")}" class="cs loading">looking across the league for starting points</div></div>`;
+    const ideasHtml = `<div class="pgroup ideas"><div class="ptitle">Trade ideas</div><div id="ideas-${owner.replace(/[^a-z0-9]/gi, "_")}" class="cs"><span class="spin"></span>looking across the league for starting points</div></div>`;
     row.innerHTML = `<td colspan="9"><div class="pcont">` +
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}<div class="plast">${picksHtml}${ideasHtml}</div></div>` +
@@ -1056,7 +1058,7 @@ function renderAnswer(el, d, question) {
 // never touches the asker's conversation.
 async function askCounterparty(owner, proposal) {
   const cpId = `${sessionId}:cp:${Date.now()}`;
-  const card = add(`<p class="cs">how <strong>${owner}</strong> likely sees it — <span id='cpstep' class='loading'>thinking as ${owner}</span></p><div id='cppartial'></div>`);
+  const card = add(`<p class="cs">how <strong>${owner}</strong> likely sees it — <span id='cpstep'><span class="spin"></span>thinking as ${owner}…</span></p><div id='cppartial'></div>`);
   const poll = setInterval(async () => {
     try {
       const p = await (await fetch(`/progress/${cpId}`, {headers: hdrs()})).json();
