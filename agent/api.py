@@ -282,6 +282,12 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
                         "why": f"would start for {owner} if one {info['position']} were out"})
     result = trade_targets.find_targets(league_id, owner, stance=stance or None)
     for r in [result] + [b for b in (result.get("push"), result.get("pivot")) if isinstance(b, dict)]:
+        # A rebuild's wish list is young VALUE, not production - tagged only above the
+        # position's trade bar (a 748-dynasty QB3 is a roster clogger, not a wish; owner).
+        for t in r.get("acquire_targets") or []:
+            if (t.get("from_owner") or t.get("owner")) == seller and t.get("value", 0) >= ctx.trade_thresholds.get(t.get("position"), 0):
+                out.append({"name": t["name"], "owner": seller, "tag": "on their rebuild wish list",
+                            "why": (t.get("why_it_fits") or "young value a rebuild is collecting")[:200]})
         for u in r.get("value_upgrades") or []:
             for ret in u.get("returns") or []:
                 if (ret.get("owner") or ret.get("from_owner")) == seller and not ret.get("already_mine"):
