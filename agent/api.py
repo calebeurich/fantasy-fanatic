@@ -388,6 +388,24 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
     # team; a contender wants production, not your '28 1st (owner: kb).
     wants_picks = {"a": result_a["mode"] != "buy", "b": result_b["mode"] != "buy"}
 
+    from analysis.trade_eval import _shape_for, _value_percentile
+
+    def centerpiece_ok(prop):
+        """For a top-tier piece, sums lie: the framer's measured shape says what the
+        centerpiece coming back has to be (top-5%: 0.64-0.84 of him). Sadiq + a 1st for
+        Jefferson summed to 0.85x and still read "below the usual band" (owner: "feels
+        like Jefferson might be worth more"). Picks don't count as a centerpiece."""
+        best_a = max((value.get(n, 0) for n in prop["a_sends"] if n in position), default=0)
+        best_b = max((value.get(n, 0) for n in prop["b_sends"] if n in position), default=0)
+        best, other = (best_a, best_b) if best_a >= best_b else (best_b, best_a)
+        if not best:
+            return True
+        pct = _value_percentile(best, ctx.players)
+        if pct >= 0.35:
+            return True
+        _label, _pieces, (cp_q1, _cp_med, _cp_q3), *_ = _shape_for(pct)
+        return other / best >= cp_q1
+
     def balance(prop):
         if not (any(real_chip(n) for n in prop["a_sends"]) and any(real_chip(n) for n in prop["b_sends"])):
             return None
@@ -396,7 +414,7 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
             return prop
         ratio = va / vb
         if 1 / 1.35 <= ratio <= 1.35:
-            return prop
+            return prop if centerpiece_ok(prop) else None
         if not (1 / 3 <= ratio <= 3):
             return None
         light, picks, key = ("a", picks_a, "a_sends") if ratio < 1 else ("b", picks_b, "b_sends")
@@ -407,7 +425,7 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
             va2, vb2 = va + (pv if light == "a" else 0), vb + (pv if light == "b" else 0)
             if 1 / 1.35 <= va2 / vb2 <= 1.35:
                 new["why"] = prop["why"] + f"; {name} tops up the light side"
-                return new
+                return new if centerpiece_ok(new) else None
         return None
 
     cands = list(proposals(a, b, stance_a))

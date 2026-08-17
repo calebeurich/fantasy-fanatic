@@ -1672,7 +1672,12 @@ piece that owner would take (`offer_any_one_of`), a rebuild's wish-list pieces p
 with its best sellable production, mirrored - single pieces within 1.5x in dynasty
 value, between 1.5x and 3x the light side tops up with its best spendable pick (a 1st
 first; how those trades actually clear), beyond that nothing; ranked by what comes
-back, one per partner, no repeated outgoing piece. Never a price verdict: click one and
+back, one per partner, no repeated outgoing piece; a pick tops up a side only when the
+RECEIVER wants picks (rebuild/middle - a contender wants production); and for a
+top-tier piece the sum is not enough - the return's centerpiece must clear the framer's
+measured band (`RETURN_SHAPES` q1; Sadiq + a 1st for Jefferson summed to 0.85x and was
+still 0.43 on the centerpiece against 0.64-0.84 - the owner's gut said "Jefferson might
+be worth more" and the study agrees). Never a price verdict: click one and
 the framer's impact appears, the assistant judges on Ask. Deterministic and ~0.3s once
 the board is warm.
 
