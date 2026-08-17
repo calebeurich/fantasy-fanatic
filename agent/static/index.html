@@ -122,7 +122,8 @@
   th.sortable{cursor:pointer;white-space:nowrap}
   th.sortable:hover{color:var(--ink)}
   th.sortable .arrow{color:var(--ok)}
-  .chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 12px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;padding:4px 14px 12px;align-items:center}
+  .chips::before{content:"ask:";color:var(--dim);font-size:12px}
   /* The trade composer: two rosters overlaid, everything a team would NOT move greyed,
      tap to add to the trade, the framer's facts underneath. Nothing judged here. */
   .builder{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
@@ -181,7 +182,7 @@
         white-space:nowrap;flex:none;margin-left:2px}
   .ftag.swap{color:var(--mid)}
   .ftag.depth{color:var(--dim)}
-  .chip{background:transparent;border:1px dashed var(--line);color:var(--muted);
+  .chip{background:rgba(74,222,128,.08);border:1px solid var(--ok);color:var(--ink);font-weight:600;
         border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer}
   .chip:hover{color:var(--ink);border-color:var(--mid)}
 </style>
@@ -368,7 +369,8 @@ function showChips(owner) {
     c.type = "button"; c.className = "chip"; c.textContent = q;
     // Just the question: withContext pins the league id on send, invisibly. Putting
     // the raw id in the box read as a machine talking (tester feedback).
-    c.onclick = () => { $("q").value = q; $("q").focus(); };
+    // One tap asks (owner) - the chips are the front door, not a text template.
+    c.onclick = () => { $("q").value = q; $("f").requestSubmit(); $("log").scrollIntoView({behavior: "smooth", block: "end"}); };
     box.appendChild(c);
   });
   box.style.display = "flex";
