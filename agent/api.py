@@ -363,8 +363,9 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
                 # out-produce him (Parker Washington for McLaurin at the same ePPG is a swap,
                 # not an upgrade).
                 for mine in my_starters:
-                    if position.get(mine) == position.get(t["name"]) and value.get(mine, 0) < value.get(t["name"], 0)                             and eppg.get(t["name"], 0) > 1.05 * eppg.get(mine, 0):
-                        out.append({"a_sends": [mine], "b_sends": [t["name"]], "lens": "buy",
+                    same_slot = position.get(mine) == position.get(t["name"])
+                    if same_slot and value.get(mine, 0) < value.get(t["name"], 0) and eppg.get(t["name"], 0) > 1.05 * eppg.get(mine, 0):
+                        out.append({"a_sends": [mine], "b_sends": [t["name"]], "lens": "buy", "upgrade": mine,
                                     "why": f"{me} upgrades {mine} to {t['name']} at {position.get(mine)}"})
                 if not gives:   # no named piece they'd take: pay in picks (balance() finds them)
                     out.append({"a_sends": [], "b_sends": [t["name"]], "lens": "buy",
@@ -437,10 +438,11 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
 
     def in_band(prop, va, vb, tolerance=0.04):
         sent, got = (va, vb) if prop.get("lens") == "buy" else (vb, va)   # buyer's view
-        return got and BAND_LO - tolerance <= sent / got <= BAND_HI   # a hair under isn't worth stapling a 4th on
+        return got and BAND_LO - tolerance <= sent / got <= BAND_HI + tolerance   # a hair either way isn't worth another piece
 
     def balance(prop):
-        if not any(real_chip(n) for n in prop["b_sends"]) or (prop["a_sends"] and not any(real_chip(n) for n in prop["a_sends"])):
+        chip = lambda n: real_chip(n) or n == prop.get("upgrade")   # the man being replaced needn't clear the bar
+        if not any(chip(n) for n in prop["b_sends"]) or (prop["a_sends"] and not any(chip(n) for n in prop["a_sends"])):
             return None
         va = sum(value.get(n, 0) for n in prop["a_sends"]); vb = sum(value.get(n, 0) for n in prop["b_sends"])
         if not vb:
@@ -487,20 +489,22 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
                      if n in value and real_chip(n) and n not in already and value[n] < cap]
         opts.sort(key=lambda o: (o[2], o[3]))
         singles = [[(n, v)] for n, v, *_ in opts]
-        pairs = sorted(([(x[0], x[1]), (y[0], y[1])] for i, x in enumerate(opts) for y in opts[i + 1:]),
-                       key=lambda c: c[0][1] + c[1][1])
+        pairs = [[(x[0], x[1]), (y[0], y[1])] for x, y in
+                 sorted(((x, y) for i, x in enumerate(opts) for y in opts[i + 1:]), key=lambda c: (c[0][2] + c[1][2], c[0][3] + c[1][3]))]
         return singles + pairs
 
     cands = list(proposals(a, b, stance_a))
-    cands += [{"a_sends": p["b_sends"], "b_sends": p["a_sends"], "why": p["why"],
+    cands += [{**p, "a_sends": p["b_sends"], "b_sends": p["a_sends"],
                "lens": {"buy": "sell", "sell": "buy"}[p["lens"]]} for p in proposals(b, a, stance_b)]
     # Every named player must be something ITS OWN team would move - a rebuild wanting
-    # kb's Brian Thomas doesn't make Thomas available (kb is WR-weak; he's a starter).
+    # kb's Brian Thomas doesn't make Thomas available (kb is WR-weak; he's a starter). The
+    # one exception is the starter an upgrade swap replaces: he goes because a better one
+    # arrives.
     movable_a = trade_targets.offerable_names(result_a)
     movable_b = trade_targets.offerable_names(result_b)
     def available(prop):
-        return (all(n in movable_a or n not in position for n in prop["a_sends"])
-                and all(n in movable_b or n not in position for n in prop["b_sends"]))
+        ok = lambda n, movable: n in movable or n == prop.get("upgrade") or n not in position
+        return all(ok(n, movable_a) for n in prop["a_sends"]) and all(ok(n, movable_b) for n in prop["b_sends"])
     seen, used_a, used_b, out = set(), set(), set(), []
     for prop in filter(None, (balance(c) for c in cands if available(c))):
         key = (tuple(prop["a_sends"]), tuple(prop["b_sends"]))
