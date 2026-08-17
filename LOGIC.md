@@ -1669,11 +1669,19 @@ behind one obvious bar, and each expanded team row carries up to three STARTING 
 across the league (`/team/{owner}/ideas`, cached per team): from what trade_targets
 already computes for the team and for every partner - a buyer's targets paired with the
 piece that owner would take (`offer_any_one_of`), a rebuild's wish-list pieces paired
-with its best sellable production, mirrored - single pieces within 1.5x in dynasty
-value, between 1.5x and 3x the light side tops up with its best spendable pick (a 1st
-first; how those trades actually clear), beyond that nothing; ranked by what comes
-back, one per partner, no repeated outgoing piece; a pick tops up a side only when the
-RECEIVER wants picks (rebuild/middle - a contender wants production); and for a
+with its best sellable production, mirrored. The band is DIRECTIONAL, in the buyer's
+view: he sends 0.9x-1.5x of what he gets in dynasty value (a hair under, 0.04, is not
+worth stapling a 4th on; overpaying is what contenders do). One floor for every piece:
+the aging discount is already in a production piece's dynasty price, so a second
+discount there is double-counting - the earlier 0.7x floor for "production-priced"
+pieces produced Cam Ward alone for Jonathan Taylor (0.69x; owner: "a slap in the
+face") and Price + a 2nd for Taylor ("probably wants to be a first"). Below the floor
+the light side tops up from its 1sts and 2nds only (3rds and 4ths aren't currency for
+a real chip): singles then pairs, cheapest ROUND that lands first ("at least a 2nd" -
+not a 1st when a 2nd does it) and within a round the NEAREST year first (a '27 1st is
+what people actually offer, not the '29 - owner); beyond that nothing. Ranked by what
+comes back, one per partner, no repeated outgoing piece; a pick tops up a side only
+when the RECEIVER wants picks (rebuild/middle - a contender wants production); and for a
 top-tier piece the sum is not enough - the return's centerpiece must clear the framer's
 measured band (`RETURN_SHAPES` q1; Sadiq + a 1st for Jefferson summed to 0.85x and was
 still 0.43 on the centerpiece against 0.64-0.84 - the owner's gut said "Jefferson might

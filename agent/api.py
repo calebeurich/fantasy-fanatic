@@ -416,32 +416,16 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
         _label, _pieces, (cp_q1, _cp_med, _cp_q3), *_ = _shape_for(pct)
         return other / best >= cp_q1
 
-    info = {p["name"]: p for p in ctx.players.values()}
-    from analysis.team_values import INSIDE_FINAL_YEAR, years_to_decline
-
-    def production_priced(name):
-        q = info.get(name)
-        if not q:
-            return False
-        y = years_to_decline(q["position"], q["age"], q.get("usage_role"))
-        return q.get("bucket") == "declining" or (y is not None and y < INSIDE_FINAL_YEAR)
-
-    def band(prop):
-        """The band is DIRECTIONAL. The buyer (lens 'buy' -> a; 'sell' -> b) pays in
-        future value: for a piece with runway he sends at least 0.9x of it (Shough for a
-        young Chase Brown at 0.75x needs the 2nd on top - owner); for a production-priced
-        aging piece he can send as little as 0.7x (Etienne for Fannin is a normal
-        contender's overpay in dynasty terms, not a steal); overpaying up to 1.5x is
-        allowed either way - contenders do."""
-        buyer_gets = prop["b_sends"] if prop.get("lens") == "buy" else prop["a_sends"]
-        players_got = [n for n in buyer_gets if n in info]
-        lo = 0.7 if players_got and all(production_priced(n) for n in players_got) else 0.9
-        return lo, 1.5
+    # The band is DIRECTIONAL, in the buyer's view (lens 'buy' -> a pays; 'sell' -> b
+    # pays): he sends at least 0.9x of what he gets (Shough for a young Chase Brown at
+    # 0.75x needs the 2nd on top; Cam Ward alone for Jonathan Taylor at 0.69x is a slap
+    # in the face - owner) and may overpay to 1.5x - contenders do. The aging discount is
+    # already in a production piece's dynasty price, so it gets no second discount here.
+    BAND_LO, BAND_HI = 0.9, 1.5
 
     def in_band(prop, va, vb, tolerance=0.04):
-        lo, hi = band(prop)
         sent, got = (va, vb) if prop.get("lens") == "buy" else (vb, va)   # buyer's view
-        return got and lo - tolerance <= sent / got <= hi   # a hair under isn't worth stapling a 4th on
+        return got and BAND_LO - tolerance <= sent / got <= BAND_HI   # a hair under isn't worth stapling a 4th on
 
     def balance(prop):
         if not any(real_chip(n) for n in prop["b_sends"]) or (prop["a_sends"] and not any(real_chip(n) for n in prop["a_sends"])):
@@ -455,7 +439,7 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
         # Which side is light? The buyer when he sends too little, the seller when the
         # buyer overpays past the band (rare). Picks only flow to a side that wants them.
         sent, got = (va, vb) if buyer_is_a else (vb, va)
-        light = ("a" if buyer_is_a else "b") if (not va or sent < band(prop)[0] * got) else ("b" if buyer_is_a else "a")
+        light = ("a" if buyer_is_a else "b") if (not va or sent < BAND_LO * got) else ("b" if buyer_is_a else "a")
         picks, key = (picks_a, "a_sends") if light == "a" else (picks_b, "b_sends")
         if not wants_picks["b" if light == "a" else "a"]:
             return None
@@ -463,13 +447,15 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
         # real-life shape for a stud going to a rebuild (owner), and the summed band for a
         # top-5% piece (~1.06x) is what two 1sts reach when one doesn't. Picks are the one
         # thing that can bridge a light centerpiece to a seller whose lens is value.
-        # Cheapest pick that lands in band first ("at least a 2nd" - not a 1st when a 2nd
-        # does it; owner), then pairs, then two 1sts.
         # 3rds and 4ths aren't currency for a real chip ("at least a 2nd" - owner): singles
-        # and pairs come from 1sts and 2nds, cheapest that lands first.
-        premium = sorted((pk for pk in picks if " 1st" in pk[0] or " 2nd" in pk[0]), key=lambda x: x[1])
+        # then pairs from 1sts and 2nds, cheapest round that lands first ("at least a 2nd"
+        # - not a 1st when a 2nd does it), and within a round the NEAREST year first - a
+        # '27 1st is what people actually offer, not the '29 (owner).
+        def soonest(pk):
+            return (0 if " 2nd" in pk[0] else 1, int(pk[0][:4]))
+        premium = sorted((pk for pk in picks if " 1st" in pk[0] or " 2nd" in pk[0]), key=soonest)
         attempts = [[pk] for pk in premium] + sorted(([x, y] for i, x in enumerate(premium) for y in premium[i + 1:]),
-                                                     key=lambda c: c[0][1] + c[1][1])
+                                                     key=lambda c: (soonest(c[0])[0] + soonest(c[1])[0], soonest(c[0])[1] + soonest(c[1])[1]))
         for combo in attempts:
             add_v = sum(pv for _, pv in combo)
             new = dict(prop); new[key] = prop[key] + [n for n, _ in combo]
