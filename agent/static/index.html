@@ -505,7 +505,7 @@ function renderBuilder(leagueId, owners) {
       <div id="croster${k}"><div class="cs"><span class="spin"></span>loading roster</div></div></div>`;
   box.innerHTML = `<div class="cs">Pick two teams, tap pieces, ask. Bright = that team would move it <em>and</em> the other team has a use for it (the tag says what — hover for the why) · ` +
     `faded = would move it but nothing over there wants it, or only at a cornerstone's price · dim = wouldn't move it (tap anyway if you insist). ` +
-    `<span class="stmark">▸</span> starts today; a colored left edge = under the league's start bar.</div>` +
+    `<span class="stmark">▸</span> starts today · <span class="stmark">▹</span> starter-quality by the league bar but on the bench (surplus) · a colored left edge = a starter under that bar.</div>` +
     `<div class="csides">${side("a")}${side("b")}</div>` +
     `<div class="ctray" id="ctray"></div>`;
   document.querySelector('#tabs [data-view="trade"]').disabled = false;
@@ -573,6 +573,7 @@ async function fillSide(leagueId, k) {
       const off = !mv.players.has(p.name) && !priced;
       const rv = p.redraft_value || 0;
       const health = competing && p.starter && bar ? (rv < 0.6 * bar ? "deep" : rv < bar ? "under" : "") : "";
+      const surplus = !p.starter && bar && rv >= bar;   // starter-quality by the league bar, on the bench here
       const rule = "";
       const on = chosen.has(p.name);
       const title = off ? "not something this team would move on its path — tap anyway if you insist"
@@ -580,7 +581,7 @@ async function fillSide(leagueId, k) {
                   : health ? "a starter under this league's start bar at " + pos : "";
       const spare = !off && !on && (priced || !tagOf[p.name]);
       return `<div class="crow ${p.starter ? "st" : ""} ${health} ${off ? "off" : ""} ${spare ? "spare" : ""} ${on ? "on" : ""} ${tagOf[p.name] && !priced ? "tagged" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${title}">` +
-        `<span class="n">${p.starter ? '<span class="stmark">▸</span> ' : ""}${p.cornerstone ? "★ " : ""}${p.name}</span>${tag(p.name)}` +
+        `<span class="n">${p.starter ? '<span class="stmark">▸</span> ' : surplus ? '<span class="stmark" title="starter-quality by this league's bar, on the bench here">▹</span> ' : ""}${p.cornerstone ? "★ " : ""}${p.name}</span>${tag(p.name)}` +
         `<span class="v">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
         `<span class="v">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
         `<span class="v">${(p.value || 0).toLocaleString()}</span>` +
