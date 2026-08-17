@@ -667,9 +667,15 @@ async function fillIdeas(leagueId, owner) {
   } catch (_) { el.textContent = "couldn't look"; return; }
   const list = ideasCache[key];
   if (!list.length) { el.textContent = "nothing obvious on the current reads — build one in the trade helper below"; return; }
-  el.innerHTML = list.map((s, i) => `<button type="button" class="idea" data-i="${i}" title="${(s.why || "").replace(/"/g, "&quot;")}">` +
+  const framing = list[0] && list[0].framing ? `<div class="cs" style="margin-bottom:4px">${owner} is waiting — these are production moves <em>${list[0].framing}</em>:</div>` : "";
+  const card = (s, i) => `<button type="button" class="idea" data-i="${i}" title="${(s.why || "").replace(/"/g, "&quot;")}">` +
     `send <b>${s.a_sends.join(" + ")}</b> to <b>${s.partner}</b> for <b>${s.b_sends.join(" + ")}</b>` +
-    `<span class="cs">${(s.why || "").split(";")[0]}</span></button>`).join("") +
+    `<span class="cs">${(s.why || "").split(";")[0]}</span></button>`;
+  const buys = list.map((s, i) => [s, i]).filter(([s]) => s.lens !== "sell");
+  const sells = list.map((s, i) => [s, i]).filter(([s]) => s.lens === "sell");
+  const col = (title, cls, items) => items.length
+    ? `<div style="flex:1;min-width:260px"><div class="cs" style="margin-bottom:3px"><span class="tag ${cls} cool">${title}</span></div>${items.map(([s, i]) => card(s, i)).join("")}</div>` : "";
+  el.innerHTML = framing + `<div style="display:flex;gap:14px;flex-wrap:wrap">${col("as buyer", "p-contend", buys)}${col("as seller", "p-sell", sells)}</div>` +
     `<div class="cs" style="margin-top:4px">starting points from each team's read — click one to load it in the trade helper</div>`;
   el.querySelectorAll(".idea").forEach(btn => btn.onclick = () => openComposerWith(leagueId, owner, list[+btn.dataset.i]));
 }

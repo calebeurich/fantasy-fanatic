@@ -89,8 +89,13 @@ def _my_offer_pool(me: dict, board: Board, needs: dict[str, dict],
     def offerable(e):
         if not e["is_starter"] or e.get("is_cornerstone"):
             return True
+        # A contender's ascending, non-cornerstone starter is future-priced value - the
+        # currency a contender spends (owner: "KB would trade BTJ, a non-cornerstone
+        # ascending asset buttboi wants, and refill the spot with someone contending-priced
+        # like Evans"). Was Push-only; any contender qualifies. lineup_cost still says
+        # what the slot costs to refill.
         return covered.get(e["name"]) == 0 or (
-            me.get("window") == "Push" and e["bucket"] == "ascending")
+            me.get("window") in ("Push", "Contend") and e["bucket"] == "ascending")
 
     # The junk tier is cut (owner: "I don't think anyone cares about the sell list of
     # Nailor, Washington or Dulcich at all"): an offer must be market-relevant in at
@@ -107,7 +112,8 @@ def _my_offer_pool(me: dict, board: Board, needs: dict[str, dict],
 
     offers = [{**e, "lineup_cost": round(covered[e["name"]], 1)} if e["name"] in covered else e
               for e in me["sellable"] + me["tradeable_surplus"]
-              if offerable(e) and (e["position"] not in needs or not e["is_starter"])
+              if offerable(e) and (e["position"] not in needs or not e["is_starter"]
+                                   or (me.get("window") in ("Push", "Contend") and e["bucket"] == "ascending"))
               and team_state.clears_relevance_floor(e, thresholds)
               and worth_offering(e)]
 

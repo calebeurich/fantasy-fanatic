@@ -338,7 +338,7 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
     already computes for each: a buyer's targets on the other roster paired with the
     piece the tool says that owner would take (`offer_any_one_of`), and a rebuild's
     wish-list pieces on the other roster paired with its best sellable production;
-    mirrored both ways. Single pieces within 1.5x in dynasty value pass; between 1.5x
+    mirrored both ways. Single pieces within 1.35x in dynasty value pass; between 1.35x
     and 3x the light side tops up with its best spendable pick (a 1st if it has one -
     how those trades actually clear); beyond that, nothing. A starting point, never a
     price verdict - the framer's impact and the assistant's read follow."""
@@ -358,12 +358,12 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
                     continue
                 give = [n for n in (t.get("offer_any_one_of") or []) if n in offerable][:1]
                 if give:
-                    out.append({"a_sends": give, "b_sends": [t["name"]],
+                    out.append({"a_sends": give, "b_sends": [t["name"]], "lens": "buy",
                                 "why": f"{me} fills a {t.get('for_slot') or t.get('position')} hole with {t['name']}; {them} would take {give[0]}"})
             sells = [e["name"] for e in (r.get("sell_candidates") or []) if e["name"] in offerable]
             for t in r.get("acquire_targets") or []:
                 if t.get("from_owner") == them and sells:
-                    out.append({"a_sends": sells[:1], "b_sends": [t["name"]],
+                    out.append({"a_sends": sells[:1], "b_sends": [t["name"]], "lens": "sell",
                                 "why": f"{me} converts {sells[0]} into {t['name']} - young value for aging production"})
         return out
 
@@ -390,7 +390,7 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
         if not (va and vb):
             return prop
         ratio = va / vb
-        if 1 / 1.5 <= ratio <= 1.5:
+        if 1 / 1.35 <= ratio <= 1.35:
             return prop
         if not (1 / 3 <= ratio <= 3):
             return None
@@ -398,13 +398,14 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
         for name, pv in picks:
             new = dict(prop); new[key] = prop[key] + [name]
             va2, vb2 = va + (pv if light == "a" else 0), vb + (pv if light == "b" else 0)
-            if 1 / 1.5 <= va2 / vb2 <= 1.5:
+            if 1 / 1.35 <= va2 / vb2 <= 1.35:
                 new["why"] = prop["why"] + f"; {name} tops up the light side"
                 return new
         return None
 
     cands = list(proposals(a, b, stance_a))
-    cands += [{"a_sends": p["b_sends"], "b_sends": p["a_sends"], "why": p["why"]} for p in proposals(b, a, stance_b)]
+    cands += [{"a_sends": p["b_sends"], "b_sends": p["a_sends"], "why": p["why"],
+               "lens": {"buy": "sell", "sell": "buy"}[p["lens"]]} for p in proposals(b, a, stance_b)]
     # Every named player must be something ITS OWN team would move - a rebuild wanting
     # kb's Brian Thomas doesn't make Thomas available (kb is WR-weak; he's a starter).
     movable_a = trade_targets.offerable_names(trade_targets.find_targets(league_id, a, stance=stance_a or None))
@@ -443,14 +444,23 @@ def trade_ideas(league_id: str, owner: str) -> list[dict]:
             cands += _suggest(league_id, owner, other, limit=2)
     # Bigger deals first (what comes back, in dynasty value), one per partner, and no
     # repeating the outgoing piece - three ideas should be three different conversations.
+    # A waiting team is patient by definition: nothing to convert, so sell-lens ideas are
+    # noise; its buy-lens ideas are only live IF it chose to push (owner). Decide teams
+    # get both, labelled; contenders buy; rebuilds sell.
+    path = next((t["path"] for t in team_state.classify_league(league_id) if t["owner"] == owner), "")
+    if path.startswith("wait"):
+        cands = [{**c, "framing": "if you decided to push"} for c in cands if c.get("lens") == "buy"]
     cands.sort(key=lambda c: -sum(value.get(n, 0) for n in c["b_sends"]))
-    out, partners, sent = [], set(), set()
-    for c in cands:
-        if c["partner"] in partners or set(c["a_sends"]) & sent:
-            continue
-        partners.add(c["partner"]); sent |= set(c["a_sends"]); out.append(c)
-        if len(out) == 3:
-            break
+    # Up to three PER LENS - a decide team's "as buyer" and "as seller" are two columns.
+    out = []
+    for lens in ("buy", "sell"):
+        partners, sent, n = set(), set(), 0
+        for c in (x for x in cands if x.get("lens") == lens):
+            if c["partner"] in partners or set(c["a_sends"]) & sent:
+                continue
+            partners.add(c["partner"]); sent |= set(c["a_sends"]); out.append(c); n += 1
+            if n == 3:
+                break
     return out
 
 

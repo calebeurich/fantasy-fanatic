@@ -1056,14 +1056,16 @@ def test_a_starter_out_runwayed_by_his_own_bench_carries_the_inversion():
     assert not any(e.get("runway_inversion") for e in out["situational"])
 
 
-def test_offer_pool_lets_a_push_team_offer_an_ascending_starter():
+def test_offer_pool_lets_a_contender_offer_an_ascending_starter():
     """"Is he a starter" was a proxy for "does moving him cost me", and on a real roster it
     hid the owner's single biggest trade chip: an ascending TE at 3,660 dynasty against
-    1,035 redraft, i.e. mostly future value sitting in a win-now lineup. A closing window
-    exists to spend exactly that.
+    1,035 redraft, i.e. mostly future value sitting in a win-now lineup. A contender
+    spends exactly that - on a clock or not (owner, 2026-08-17: "KB would trade BTJ, a
+    non-cornerstone ascending asset buttboi wants, and refill with someone
+    contending-priced"); alignment is a dial, not a gate.
 
     Three players, identical except for the one attribute each is testing:
-      - ascending starter -> offerable while pushing, protected while contending
+      - ascending starter -> offerable for any contender (Push or Contend), not a rebuild
       - prime starter at the same value -> protected in both (he IS the production)
       - a starter the bench replaces for free -> offerable regardless of window
     """
@@ -1080,7 +1082,10 @@ def test_offer_pool_lets_a_push_team_offer_an_ascending_starter():
                                               needs={}, covered=covered)
 
     assert sorted(e["name"] for e in pushing) == ["Free", "Rising"]
-    assert [e["name"] for e in contending] == ["Free"], "no clock, no reason to sell the future"
+    assert sorted(e["name"] for e in contending) == ["Free", "Rising"], "a contender spends future value too"
+    rebuilding = trade_targets._my_offer_pool({**roster, "window": "Rebuild"}, _board(thresholds=thresholds),
+                                              needs={}, covered=covered)
+    assert [e["name"] for e in rebuilding] == ["Free"], "a rebuild keeps its ascending starters"
     # The cost is reported, not used as a veto - what it's worth paying depends on the
     # return, which this module deliberately doesn't price.
     assert next(e for e in pushing if e["name"] == "Rising")["lineup_cost"] == 420
