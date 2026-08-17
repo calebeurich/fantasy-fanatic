@@ -112,11 +112,11 @@ def test_relevance_floor_is_exactly_at_the_fraction():
 def _players(spec):
     """spec: list of (position, value) -> the {player_id: info} shape sources produce.
 
-    redraft_value defaults to the dynasty value so fixtures stay terse. Tests that care
-    about the distinction (lineup ranking, efficiency swaps) set it explicitly - needs
-    and surplus are measured on current production, so it has to be present."""
+    redraft_value (the market's season price) and projected_ppg (what he produces)
+    both default to the dynasty value so fixtures stay terse. Tests that care about the
+    distinctions set them explicitly."""
     return {str(i): {"name": f"P{i}", "position": pos, "value": val,
-                     "redraft_value": val, "age": 26}
+                     "redraft_value": val, "projected_ppg": val, "age": 26}
             for i, (pos, val) in enumerate(spec)}
 
 
@@ -130,7 +130,7 @@ def _league(specs: dict[str, list[tuple[str, int]]]) -> tuple[list[dict], dict]:
         for pos, val in spec:
             pid = str(len(players))
             players[pid] = {"name": f"{owner_id}-{pid}", "position": pos, "value": val,
-                            "redraft_value": val, "age": 26}
+                            "redraft_value": val, "projected_ppg": val, "age": 26}
             ids.append(pid)
         rosters.append({"owner_id": owner_id, "roster_id": len(rosters) + 1,
                         "players": ids, "starters": []})
@@ -311,8 +311,8 @@ def test_trajectory_measures_current_production_not_dynasty_value():
     so production-weighted trajectory reads mildly rising where value-weighted would read
     overwhelmingly so."""
     roster, players, starters = _roster([("WR", 9000), ("WR", 1000)])
-    players["0"] |= {"age": 22, "redraft_value": 1000}   # ascending prospect, big price
-    players["1"] |= {"age": 30, "redraft_value": 1000}   # declining vet, same production
+    players["0"] |= {"age": 22, "projected_ppg": 1000}   # ascending prospect, big price
+    players["1"] |= {"age": 30, "projected_ppg": 1000}   # declining vet, same production
 
     result = team_state.classify(roster, players, 10_000, starters)
     assert result["ascending_pct"] == 50 and result["declining_pct"] == 50
@@ -900,7 +900,7 @@ def test_an_offer_says_who_backfills_and_what_the_trade_off_is():
         backfills={"Cheap": {"name": "Backup", "position": "WR", "redraft_value": 944}})
     entry = offers[0]
     assert entry["backfill"]["name"] == "Backup"
-    assert "frees 3,688 of dynasty value for 122 of production" in entry["trade_off"]
+    assert "frees 3,688 of dynasty value for 122.0 points a game" in entry["trade_off"]
     assert "because Backup" in entry["trade_off"]
     # 122 of 38,467 leaves 99.7% standing, so it is not friction - but the trade-off line
     # still has to state the number, which is the only place it now appears.
@@ -2251,10 +2251,10 @@ def test_injury_drop_prices_the_marginal_lineup_spot():
     actually enters the lineup is the best bench RB. So the loss is (worst starter - best
     bench), not (best starter - best bench). Real case: a roster starting McCaffrey,
     Taylor, Henderson and Swift is exposed by 1,043, not by 4,298."""
-    players = {"a": {"name": "Best", "position": "RB", "value": 6653, "redraft_value": 6653},
-               "b": {"name": "Mid", "position": "RB", "value": 2330, "redraft_value": 2330},
-               "c": {"name": "Last", "position": "RB", "value": 1527, "redraft_value": 1527},
-               "d": {"name": "Bench", "position": "RB", "value": 484, "redraft_value": 484}}
+    players = {"a": {"name": "Best", "position": "RB", "value": 6653, "redraft_value": 6653, "projected_ppg": 6653},
+               "b": {"name": "Mid", "position": "RB", "value": 2330, "redraft_value": 2330, "projected_ppg": 2330},
+               "c": {"name": "Last", "position": "RB", "value": 1527, "redraft_value": 1527, "projected_ppg": 1527},
+               "d": {"name": "Bench", "position": "RB", "value": 484, "redraft_value": 484, "projected_ppg": 484}}
     roster = {"owner_id": "me", "players": list(players)}
     drop = roster_needs._injury_drop(roster, players, "RB", {"a", "b", "c"},
                                      {"QB": 0, "RB": 3, "WR": 0, "TE": 0}, [])
@@ -2267,11 +2267,11 @@ def test_injury_drop_accounts_for_flex_slots_backfilling_from_any_position():
     superflex team with two good QBs and a cheap third is - which is how the format is
     meant to be built, not a weakness."""
     players = {
-        "qb1": {"name": "QB1", "position": "QB", "value": 7000, "redraft_value": 7000},
-        "qb2": {"name": "QB2", "position": "QB", "value": 6000, "redraft_value": 6000},
-        "qb3": {"name": "Cheap", "position": "QB", "value": 300, "redraft_value": 300},
-        "wr1": {"name": "WR1", "position": "WR", "value": 5000, "redraft_value": 5000},
-        "wr2": {"name": "GoodBench", "position": "WR", "value": 4000, "redraft_value": 4000},
+        "qb1": {"name": "QB1", "position": "QB", "value": 7000, "redraft_value": 7000, "projected_ppg": 7000},
+        "qb2": {"name": "QB2", "position": "QB", "value": 6000, "redraft_value": 6000, "projected_ppg": 6000},
+        "qb3": {"name": "Cheap", "position": "QB", "value": 300, "redraft_value": 300, "projected_ppg": 300},
+        "wr1": {"name": "WR1", "position": "WR", "value": 5000, "redraft_value": 5000, "projected_ppg": 5000},
+        "wr2": {"name": "GoodBench", "position": "WR", "value": 4000, "redraft_value": 4000, "projected_ppg": 4000},
     }
     roster = {"owner_id": "me", "players": list(players)}
     dedicated, flex = {"QB": 1, "RB": 0, "WR": 1, "TE": 0}, [("QB", "RB", "WR", "TE")]
@@ -2391,9 +2391,9 @@ def test_an_ascending_roster_starting_a_final_year_piece_gets_the_clock_mismatch
     0.1-year RB the market still prices as a cornerstone). _cliff_case pointed at one's
     own roster: win_now_core's starters, on a tilt that makes the mismatch real."""
     players = {
-        "kid": {"name": "Kid", "position": "WR", "value": 6000, "redraft_value": 6000, "age": 22},
-        "cook": {"name": "OldCook", "position": "RB", "value": 5000, "redraft_value": 2000, "age": 27.4},
-        "role": {"name": "Role", "position": "TE", "value": 300, "redraft_value": 200, "age": 25},
+        "kid": {"name": "Kid", "position": "WR", "value": 6000, "redraft_value": 6000, "projected_ppg": 6000, "age": 22},
+        "cook": {"name": "OldCook", "position": "RB", "value": 5000, "redraft_value": 2000, "projected_ppg": 2000, "age": 27.4},
+        "role": {"name": "Role", "position": "TE", "value": 300, "redraft_value": 200, "projected_ppg": 200, "age": 25},
     }
     out = team_state.classify({"players": list(players)}, players,
                               threshold=4500, starter_ids={"kid", "cook"})
@@ -2418,10 +2418,10 @@ def test_a_no_clock_contender_gets_told_about_a_position_on_one():
     bar reads Contend with an RB exception - not Push (which would tell him to pay
     premiums at positions where patience is free), and not silence."""
     players = {
-        "qb": {"name": "YoungQB", "position": "QB", "value": 7000, "redraft_value": 6000, "age": 26},
-        "wr": {"name": "YoungWR", "position": "WR", "value": 8000, "redraft_value": 5000, "age": 24},
-        "rb1": {"name": "OldBack1", "position": "RB", "value": 3000, "redraft_value": 3000, "age": 28},
-        "rb2": {"name": "OldBack2", "position": "RB", "value": 2400, "redraft_value": 2500, "age": 27.5},
+        "qb": {"name": "YoungQB", "position": "QB", "value": 7000, "redraft_value": 6000, "projected_ppg": 6000, "age": 26},
+        "wr": {"name": "YoungWR", "position": "WR", "value": 8000, "redraft_value": 5000, "projected_ppg": 5000, "age": 24},
+        "rb1": {"name": "OldBack1", "position": "RB", "value": 3000, "redraft_value": 3000, "projected_ppg": 3000, "age": 28},
+        "rb2": {"name": "OldBack2", "position": "RB", "value": 2400, "redraft_value": 2500, "projected_ppg": 2500, "age": 27.5},
     }
     out = team_state.classify({"players": list(players)}, players,
                               threshold=6500, starter_ids=set(players))
@@ -2441,15 +2441,15 @@ def _eval_fixture():
     """Two-team stub league (plus needs enough shape to assess). Team A has a spare QB;
     team B has no QB at all - the cleanest possible need to open and close."""
     players = {
-        "qb1": {"name": "StarQB", "position": "QB", "value": 5000, "redraft_value": 4000, "age": 25},
-        "qb2": {"name": "SpareQB", "position": "QB", "value": 2000, "redraft_value": 1500, "age": 26},
-        "wr0": {"name": "OkWR", "position": "WR", "value": 900, "redraft_value": 500, "age": 24},
-        "wr1": {"name": "BigWR", "position": "WR", "value": 6000, "redraft_value": 3000, "age": 23},
-        "wr2": {"name": "SmallWR", "position": "WR", "value": 800, "redraft_value": 700, "age": 24},
-        "rb1": {"name": "BackA", "position": "RB", "value": 1000, "redraft_value": 900, "age": 24},
-        "rb2": {"name": "OldBack", "position": "RB", "value": 1000, "redraft_value": 900, "age": 28},
-        "te1": {"name": "TightA", "position": "TE", "value": 700, "redraft_value": 600, "age": 25},
-        "te2": {"name": "TightB", "position": "TE", "value": 700, "redraft_value": 600, "age": 25},
+        "qb1": {"name": "StarQB", "position": "QB", "value": 5000, "redraft_value": 4000, "projected_ppg": 4000, "age": 25},
+        "qb2": {"name": "SpareQB", "position": "QB", "value": 2000, "redraft_value": 1500, "projected_ppg": 1500, "age": 26},
+        "wr0": {"name": "OkWR", "position": "WR", "value": 900, "redraft_value": 500, "projected_ppg": 500, "age": 24},
+        "wr1": {"name": "BigWR", "position": "WR", "value": 6000, "redraft_value": 3000, "projected_ppg": 3000, "age": 23},
+        "wr2": {"name": "SmallWR", "position": "WR", "value": 800, "redraft_value": 700, "projected_ppg": 700, "age": 24},
+        "rb1": {"name": "BackA", "position": "RB", "value": 1000, "redraft_value": 900, "projected_ppg": 900, "age": 24},
+        "rb2": {"name": "OldBack", "position": "RB", "value": 1000, "redraft_value": 900, "projected_ppg": 900, "age": 28},
+        "te1": {"name": "TightA", "position": "TE", "value": 700, "redraft_value": 600, "projected_ppg": 600, "age": 25},
+        "te2": {"name": "TightB", "position": "TE", "value": 700, "redraft_value": 600, "projected_ppg": 600, "age": 25},
     }
     rosters = [{"owner_id": "a", "players": ["qb1", "qb2", "wr0", "rb1", "te1"]},
                {"owner_id": "b", "players": ["wr1", "wr2", "rb2", "te2"]}]

@@ -127,6 +127,13 @@ def rank_map(scores: dict, high_is_first: bool = True) -> dict:
     return {key: i for i, key in enumerate(order, start=1)}
 
 
+def ppg(info: dict) -> float:
+    """What a player PRODUCES per game this season (league-scored Sleeper projection,
+    attached in `league.context`) - the unit for every sum or share of a lineup's
+    production. What he is PRICED at stays `redraft_value`."""
+    return info.get("projected_ppg") or 0
+
+
 # Two values inside this band are the same value, on either axis and in either direction -
 # a routine FantasyCalc refresh moves prices about this much, so any finding that needs a
 # finer difference flickers between runs. Born in trade matching (one-sided use called a

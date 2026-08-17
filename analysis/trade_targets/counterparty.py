@@ -4,7 +4,7 @@ History: LOGIC.md, "The counterparty".
 """
 
 from .. import team_state, roster_needs
-from ..team_values import INSIDE_FINAL_YEAR, MIN_MEANINGFUL_RUNWAY
+from ..team_values import INSIDE_FINAL_YEAR, MIN_MEANINGFUL_RUNWAY, ppg
 from .board import (Board, NOT_SELLER, _best_chip, _buy_friction, _friction, _others,
                     acquires_by_default, _sells_him, _with_trade_note)
 
@@ -250,7 +250,7 @@ def _counterparty_fit(other: dict, their_needs: dict, my_offers: list[dict],
     # the shipper's lineup better (owner, the Pickens-for-Goff case: "hard to move
     # cornerstones ... often not a clear reason to move them that helps both sides").
     # `lineup_cost` is what losing him costs after the lineup refills itself.
-    target_brings = (target or {}).get("redraft_value") or 0
+    target_brings = ppg(target or {})
     fitting = [e for e in my_offers
                if e["position"] in their_needs
                and acquires_by_default(other.get("window", ""), e)

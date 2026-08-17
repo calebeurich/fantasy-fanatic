@@ -23,7 +23,7 @@ Smoke test (picks resolve against the sender's owned picks, same fuzzy contract)
 
 from . import roster_needs
 from .team_values import (age_bucket, years_to_decline, INSIDE_FINAL_YEAR,
-                          MIN_MEANINGFUL_RUNWAY)
+                          MIN_MEANINGFUL_RUNWAY, ppg)
 from .trade_targets.board import build_board
 
 EVAL_NOTE = (
@@ -160,10 +160,10 @@ def _league_needs_with(ctx, replaced: dict[str, list]) -> dict:
                                          (ctx.lineup_dedicated, ctx.lineup_flex))
 
 
-def _lineup_production(ctx, player_ids) -> int:
+def _lineup_production(ctx, player_ids) -> float:
     filled = roster_needs.fill_lineup({"players": player_ids}, ctx.players,
                                       ctx.lineup_dedicated, ctx.lineup_flex)
-    return round(sum(ctx.players[pid].get("redraft_value") or 0 for _, pid in filled))
+    return round(sum(ppg(ctx.players[pid]) for _, pid in filled), 1)
 
 
 def _need_changes(before: dict, after: dict) -> list[dict]:
@@ -233,14 +233,14 @@ def _package_read(receives: list[dict], best: dict, receives_best: bool, pct: fl
     return f"{usual} {this}{tail} A benchmark for the ask, not a fairness verdict."
 
 
-def _goal_line(lens: str, lineup_delta: int, changes: list[dict], value_in: int,
+def _goal_line(lens: str, lineup_delta: float, changes: list[dict], value_in: int,
                value_out: int, n_in: int, n_out: int) -> str:
     """One sentence per side saying whether the trade serves what that side's path is
     FOR - a better starting lineup for buyers, more dynasty value for sellers."""
     opened = [c["position"] for c in changes if c["direction"] == "opens"]
     closed = [c["position"] for c in changes if c["direction"] == "closes"]
     sign = "+" if lineup_delta >= 0 else ""
-    lineup = (f"starting lineup {sign}{lineup_delta:,} after it re-settles"
+    lineup = (f"starting lineup {sign}{lineup_delta:.1f} points a game after it re-settles"
               + (f", closes {'/'.join(closed)}" if closed else "")
               + (f", but OPENS A NEW HOLE at {'/'.join(opened)}" if opened else ""))
     value = (f"dynasty value {value_in:,} in for {value_out:,} out, across "
@@ -268,8 +268,8 @@ def _side_read(state, receives, changes, lineup_delta, best, receives_best,
         else:
             read.append(f"opens a hole at {c['position']} ({c['before']} -> {c['after']})")
     if lineup_delta:
-        read.append(f"starting production {'+' if lineup_delta > 0 else ''}{lineup_delta:,} "
-                    f"this season, after the lineup re-settles")
+        read.append(f"starting production {'+' if lineup_delta > 0 else ''}{lineup_delta:.1f} "
+                    f"points a game this season, after the lineup re-settles")
     # Timeline check on what this side takes back, with the bar matched to how far out
     # its window is. A true Rebuild's next competitive season is beyond the buyer's
     # two-season horizon, so anything under MIN_MEANINGFUL_RUNWAY won't be part of it;
@@ -397,8 +397,8 @@ def evaluate_from_board(board, owner_a: str, sends_a: list[str],
             (a, pieces_a, pieces_b, a["owner_id"], stance_a),
             (b, pieces_b, pieces_a, b["owner_id"], stance_b)):
         changes = _need_changes(needs_before[changes_key], needs_after[changes_key])
-        delta = (_lineup_production(ctx, after[changes_key])
-                 - _lineup_production(ctx, rosters[changes_key]["players"]))
+        delta = round(_lineup_production(ctx, after[changes_key])
+                      - _lineup_production(ctx, rosters[changes_key]["players"]), 1)
         lens = _lens(state.get("path", ""))
         declared = STANCE_LENS.get((stance or "").lower())
         stance_note = None
@@ -469,8 +469,8 @@ def evaluate_sequence(league_id: str, legs: list[dict]) -> dict:
     needs_end = _league_needs_with(ctx, players)
     cumulative = {
         ctx.owner_names[oid]: {
-            "lineup_production_delta": (_lineup_production(ctx, players[oid])
-                                        - _lineup_production(ctx, original[oid])),
+            "lineup_production_delta": round(_lineup_production(ctx, players[oid])
+                                             - _lineup_production(ctx, original[oid]), 1),
             "need_changes": _need_changes(needs_start[oid], needs_end[oid]),
         }
         for oid in players}

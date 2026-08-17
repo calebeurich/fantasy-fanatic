@@ -102,7 +102,7 @@ def _my_offer_pool(me: dict, board: Board, needs: dict[str, dict],
         return (e["value"] > thresholds[e["position"]]
                 or (e.get("redraft_value") or 0) >= start_bars.get(e["position"], 0))
 
-    offers = [{**e, "lineup_cost": round(covered[e["name"]])} if e["name"] in covered else e
+    offers = [{**e, "lineup_cost": round(covered[e["name"]], 1)} if e["name"] in covered else e
               for e in me["sellable"] + me["tradeable_surplus"]
               if offerable(e) and e["position"] not in needs
               and team_state.clears_relevance_floor(e, thresholds)
@@ -123,7 +123,7 @@ def _my_offer_pool(me: dict, board: Board, needs: dict[str, dict],
             share = (f" - {round(100 * cost_now / produced)}% of what it scores now"
                      if produced else "")
             friction.append(_friction("costs_you_production",
-                                      f"moving him costs {cost_now:,.0f} of production out of your "
+                                      f"moving him costs {cost_now:.1f} points a game out of your "
                                       f"own lineup{share}, after it refills itself"))
         e["friction"] = friction
         # The trade-off in one line, in both currencies - naming the replacement is what
@@ -132,7 +132,7 @@ def _my_offer_pool(me: dict, board: Board, needs: dict[str, dict],
             bf = backfills[e["name"]]
             e["backfill"] = bf
             e["trade_off"] = (f"frees {e['value']:,} of dynasty value for "
-                              f"{cost_now:,.0f} of production, because {bf['name']} "
+                              f"{cost_now:.1f} points a game, because {bf['name']} "
                               f"({bf['position']}, {bf['redraft_value']:,}) steps in")
         # Trade value is not linear in raw value: above replacement is scarce, below it is
         # replaceable off waivers - discounted, not zero.

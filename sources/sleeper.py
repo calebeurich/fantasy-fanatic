@@ -3,7 +3,7 @@
 import sys
 import requests
 
-from .cache import ttl_cache, LIVE_TTL, LEAGUE_CONFIG_TTL, REFERENCE_TTL
+from .cache import ttl_cache, LIVE_TTL, LEAGUE_CONFIG_TTL, MARKET_TTL, REFERENCE_TTL
 
 BASE = "https://api.sleeper.app/v1"
 
@@ -80,6 +80,28 @@ def get_winners_bracket(league_id: str) -> list[dict]:
     placement games, `p` - the place being played for. `p == 1` is the championship, so
     its `w` is the champion. Only meaningful for a completed season."""
     return _get(f"league/{league_id}/winners_bracket")
+
+
+PROJECTION_POSITIONS = ("QB", "RB", "WR", "TE")
+
+
+@ttl_cache(MARKET_TTL)
+def get_projections(season: str, week: int | None = None) -> dict[str, dict]:
+    """Sleeper's projections (undocumented, but the same numbers the app shows):
+    player_id -> raw projected stat line (pass_yd, rec, rush_td, ...). Season totals by
+    default; a week gives that week's line. Raw stats rather than Sleeper's pts_ppr so
+    each league's own scoring_settings can price them - see `score`."""
+    path = f"projections/nfl/{season}" + (f"/{week}" if week else "")
+    query = "season_type=regular&" + "&".join(f"position[]={p}" for p in PROJECTION_POSITIONS)
+    resp = _http.get(f"https://api.sleeper.app/{path}?{query}")
+    resp.raise_for_status()
+    return {r["player_id"]: r["stats"] for r in resp.json() if r.get("stats")}
+
+
+def score(stats: dict, scoring_settings: dict) -> float:
+    """Fantasy points for a stat line under a league's scoring - the same dot product
+    Sleeper uses (verified: reproduces its pts_ppr exactly for a PPR league)."""
+    return sum(v * scoring_settings[k] for k, v in stats.items() if k in scoring_settings)
 
 
 def get_season_chain(league_id: str) -> list[str]:

@@ -217,6 +217,7 @@ def _team_detail(ctx, roster: dict) -> dict:
         by_pos.setdefault(info["position"], []).append({
             "name": info["name"], "value": info["value"],
             "redraft_value": info.get("redraft_value"), "age": info["age"],
+            "projected_ppg": team_values.ppg(info),
             "bucket": age_bucket(info["position"], info["age"], info.get("usage_role")),
             "starter": pid in starters,
             "cornerstone": info["name"] in corner,

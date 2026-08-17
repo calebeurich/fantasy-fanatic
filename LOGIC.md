@@ -8,10 +8,14 @@ narrative on purpose).
 
 ## The model in one page
 
-1. **Two currencies.** Dynasty value prices production plus future years; redraft value
-   prices this season alone. Confusing them is this project's most common bug, and the two
-   scales are unnormalized - never compare or ratio them absolutely; compare ranks within a
-   position, or pairwise at the same position where the skew cancels.
+1. **Two currencies, and one measure of points.** Dynasty value prices production plus
+   future years; redraft value prices this season alone. Confusing them is this project's
+   most common bug, and the two scales are unnormalized - never compare or ratio them
+   absolutely; compare ranks within a position, or pairwise at the same position where the
+   skew cancels. What a lineup actually SCORES is neither: it is projected points a game
+   (Sleeper's season projection under the league's scoring), and every sum or share of a
+   lineup's production is measured in it - prices are convex in points, so summing them
+   made one star look like a lineup.
 2. **Three states, each with flavors.** Contending (`Push`/`Contend` - only the clock
    differs), Middling (`rising`/`falling`/`steady`/`convertible`), Rebuilding
    (`ascending`/`stalled`/`convertible`). Contenders and rebuilders complement each other
@@ -32,7 +36,9 @@ narrative on purpose).
 ## Data sources and why
 
 - **Sleeper API** (`sources/sleeper.py`): public, free, no auth. League settings,
-  rosters, users, transactions, traded picks.
+  rosters, users, transactions, traded picks, and season/weekly projections (the
+  undocumented `/projections` endpoint the app itself reads - raw stat lines, priced
+  by each league's own scoring).
 - **FantasyCalc** (`sources/fantasycalc.py`): dynasty + redraft values, ages, pick
   values. Chosen over KeepTradeCut because KTC's ToS forbids scraping or reproducing
   their values; FantasyCalc has a genuine public API.
@@ -205,12 +211,41 @@ sight.
   moved the TE-heavy roster UP (Bowers is 9.6x TE replacement). The scarcity premium in
   that league is at QB. The allocation thesis has no support in these numbers.
 
-### The axis is misnamed (backlog)
+## Production is projected points (`league.context`, `team_values.ppg`)
 
-`starting_production` is a sum of redraft TRADE VALUES of projected starters, not points.
-Defensible measurement (best available, format-correct), overclaiming name - it is the
-most load-bearing axis in the project and its notes say "production" about market value.
-Rename to "lineup market value" or similar.
+`starting_production` used to be a sum of redraft TRADE VALUES of the projected
+starters. That was the wrong measure and the owner caught it live (2026-08-16): trade
+values are convex in points - Gibbs was priced 3.3x Chase Brown and projected 1.6x - so
+one star made a lineup of holes read as a middle-third team ("Ben would be losing most
+games because most of his team is bad", yet he read `wait` at 59% of best).
+
+Now: **what a lineup PRODUCES is Sleeper's season projection under the league's own
+scoring, per game** (`projected_ppg`, attached to every player in `league.context`;
+`sources.sleeper.get_projections` returns the raw stat lines and `score` is the same
+dot product Sleeper uses - reproduces its `pts_ppr` exactly for a PPR league; season
+total / 17). **What a player is PRICED at stays `redraft_value`.** The split, by
+question:
+
+- Sums and shares of a lineup -> ppg: contention rank and `pct_of_best`, the
+  ascending/declining/expiring shares, position clocks, the framer's
+  `lineup_production_delta`, `production_lost_without` (`lineup_cost`, injury drop),
+  `optimal_lineup` totals, prior-season continuity, and the Pickens comparison
+  (lineup cost vs what the target brings, both in ppg).
+- Who starts, positional bars, per-body quality, flex ranks, cornerstones, value
+  basis, give-up cost, every price -> market values (owner: "trades and positional
+  ranking based on redraft values are good, but production pcts were the issue").
+  Fill order stays market-ordered; only the sum changed.
+
+Measured effect on the 48-team corpus: `pct_of_best` now spans ~70-100 instead of
+28-100 (no lineup scores zero) and 13 of 48 paths moved - kb wait -> contend at 93% of
+best, Ben wait -> build, Paulyt wait -> contend on a clock (the read the owner expected
+from his aging starters), shivvv contend -> press. Declining shares rose almost
+everywhere: the market's convexity favours the young elite, so value-shares had been
+squeezing old producers (Henry projects real points at a collapsed price). Open
+follow-ups: BARBELL_MIN_PCT / ARRIVING_MARGIN_PCT were calibrated on value shares and
+want re-verifying on ppg shares; the tertiles can now be a distance from best rather
+than fixed thirds (ROADMAP). Weekly projections come from the same endpoint (`week=`)
+and are an in-season consumer.
 
 ## Team windows (`analysis/team_state.py`)
 
@@ -1504,7 +1539,6 @@ Measured or confirmed, none urgent, kept so nobody re-derives them:
 - **The market refuses our rushing-QB discount on Josh Allen** (10,415 at 29.5, 7.1
   carries/game; our curve gives him 1.5 years) - `dual_threat_qb` absorbs most of this,
   but an elite thrower-and-runner forced onto the rushing curve may still be underrated.
-- **`starting_production` is misnamed** (see the axis section).
 - **`miss_rate` is attached to players who could never play**; `would_start_if_one_out`
   could gate it. Depth is not weighted by injury risk (needs severity/duration by injury
   type - a real modelling exercise, deliberately not half-built). Availability is

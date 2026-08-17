@@ -54,6 +54,7 @@ def results(league_id: str) -> dict[str, dict]:
     prior season's league.
     """
     from .league import context
+    from .team_values import ppg
 
     chain = sleeper.get_season_chain(league_id)
     if len(chain) < 2:
@@ -91,8 +92,7 @@ def results(league_id: str) -> dict[str, dict]:
         # here for last season's result, and a swapped-out deep bench doesn't change that.
         starters = ctx.starters_for(roster)
         kept = starters & prev_players.get(owner_id, set())
-        produced = lambda ids: sum((ctx.players[p].get("redraft_value") or 0)
-                                   for p in ids if p in ctx.players)
+        produced = lambda ids: sum(ppg(ctx.players[p]) for p in ids if p in ctx.players)
         total = produced(starters)
         continuity = produced(kept) / total if total else 0.0
 

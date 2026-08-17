@@ -10,6 +10,13 @@ with three startable WRs as critically short.
 
 **One starter concept:** `starters`, value-derived. Nothing reads Sleeper's current-week
 snapshot, which is meaningless in the preseason.
+
+**Two production concepts:** `redraft_value` is the MARKET's this-season price - what
+buys, sells and clears a positional bar. `projected_ppg` is what a lineup PRODUCES -
+Sleeper's season projection under this league's own scoring, per game. Every sum or
+share of a lineup's production uses ppg; market prices are convex in points (Gibbs
+priced 3.3x Chase Brown, projected 1.6x), so summing them made one star look like a
+whole lineup. LOGIC.md, "Production is projected points".
 """
 
 from dataclasses import dataclass, field
@@ -19,6 +26,8 @@ from sources.cache import ttl_cache, LEAGUE_CONFIG_TTL
 
 from . import roster_needs
 from .team_values import get_players_with_roles
+
+GAMES_PER_SEASON = 17
 
 
 @dataclass
@@ -92,6 +101,12 @@ def context(league_id: str) -> LeagueContext:
     fmt = sleeper.describe_format(league)
     players = get_players_with_roles(fmt["num_qbs"], fmt["num_teams"],
                                      fmt["ppr"], fmt["is_dynasty"], fmt["tep_tier"])
+    # A copy per league: the market dict is shared across formats, the projection is
+    # priced by THIS league's scoring.
+    projections = sleeper.get_projections(league["season"])
+    players = {pid: {**info, "projected_ppg": round(
+        sleeper.score(projections.get(pid, {}), league["scoring_settings"]) / GAMES_PER_SEASON, 1)}
+        for pid, info in players.items()}
     needs_slots = roster_needs.dedicated_slots(league["roster_positions"])
     lineup_dedicated, lineup_flex = roster_needs.lineup_slots(league["roster_positions"])
     rosters = sleeper.get_rosters(league_id)

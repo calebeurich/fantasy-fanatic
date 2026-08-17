@@ -285,6 +285,13 @@ not by preference:
   and to the asset tertiles leverage uses. Guard: small leagues need a minimum
   group size, and the grouping must be stable under weekly value refreshes
   (the same stability test the tertile hard-breakpoint fix already passes).
+  **Re-opened by the owner 2026-08-16, and now tractable**: with production measured
+  in projected points a game (LOGIC.md "Production is projected points") `pct_of_best`
+  is a real distance - the corpus spans ~70-100 instead of 28-100 - so tier 1 can be
+  "how far from the best lineup" (a bar, or the gap-grouping above) instead of fixed
+  thirds. Do it after eye-testing the 13/48 path moves the ppg switch produced, and
+  re-verify BARBELL_MIN_PCT / ARRIVING_MARGIN_PCT on ppg shares in the same pass
+  (declining shares rose almost everywhere; the value-share calibration is stale).
 - **Contend harder vs contend longer** (owner-backlogged 2026-08-15): the aligned
   contender's real question - convert future into a stronger NOW, or keep the
   young core and contend more consistently now AND later - is a durability
@@ -389,8 +396,10 @@ number would be quietly wrong.
 
 ## Farther out
 
-- **Projections source**: still the biggest single upgrade to the live agent's
-  advice (jwall's sessions are the standing argument).
+- **Projections source**: DONE for season projections (2026-08-16, Sleeper's own,
+  league-scored - LOGIC.md "Production is projected points"). Still open: WEEKLY
+  projections as an in-season consumer (same endpoint with `week=`; start/sit, "he's
+  on bye", the Track 4 questions) - deliberately not wired until there is a week.
 - **Sportsbook lines / news-flow value arb** (ordering decided 2026-08-14:
   SEASON-LONG lines first - player season totals and futures for calibration and
   draft-season/dynasty-valuation use - before any week-by-week props; weekly is an

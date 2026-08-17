@@ -464,12 +464,13 @@ async function toggleDetail(tr, leagueId) {
       }
       return `hsl(${Math.round(10 + 30 * (1 + y / tail))}, 65%, 55%)`;
     };
-    const group = (title, rows, heads = ["now", "dyn", "age"]) =>
+    const group = (title, rows, heads = ["ppg", "now", "dyn", "age"]) =>
       `<div class="pgroup"><div class="ptitle">${title}</div>` +
-      `<div class="prow phead"><span></span><span class="pv">${heads[0]}</span>` +
-      `<span class="pv">${heads[1]}</span><span class="pa">${heads[2]}</span></div>` +
+      `<div class="prow phead"><span></span><span class="pv">${heads[0]}</span><span class="pv">${heads[1]}</span>` +
+      `<span class="pv">${heads[2]}</span><span class="pa">${heads[3]}</span></div>` +
       rows.map(p => `<div class="prow${p.starter ? " st" : ""}">` +
         `<span>${p.cornerstone ? "★ " : ""}${p.name}</span>` +
+        `<span class="pv">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
         `<span class="pv">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
         `<span class="pv">${(p.value || 0).toLocaleString()}</span>` +
         `<span class="pa" style="color:${runwayColor(p, title)}">` +
@@ -566,7 +567,7 @@ async function loadLeague(id) {
         <td class="rk">${t.rank}</td>
         <td class="who" style="white-space:nowrap">${t.owner}${tn}<div class="cs">${flags}</div></td>
         <td><span class="tag ${chip[0]} ${heat}" title="${t.path_reason.replace(/"/g, "&quot;")}">${chip[1]}</span></td>
-        <td class="cs" style="white-space:nowrap">${t.starting_production.toLocaleString()}
+        <td class="cs" style="white-space:nowrap">${t.starting_production.toFixed(1)} <span class="cs">pts/gm</span>
           <div class="cs">${t.pct_of_best}% of best</div>
           <div class="cs">${t.ascending_pct}% asc · ${t.declining_pct}% dec</div></td>
         <td class="cs">${t.starter_value.toLocaleString()}<div class="cs">${firsts}</div></td>
@@ -579,7 +580,7 @@ async function loadLeague(id) {
     }).join("");
     $("overview").innerHTML = `
       <table><thead><tr><th></th><th>Owner</th><th>Suggested move</th>
-        <th class="sortable" data-sort="sv" title="click to sort">Season value <span class="arrow">↓</span></th>
+        <th class="sortable" data-sort="sv" title="click to sort — projected points a game, this league's scoring">Projected lineup <span class="arrow">↓</span></th>
         <th class="sortable" data-sort="dv" title="click to sort">Dynasty value <span class="arrow"></span></th>
         <th>Needs</th><th>Core</th></tr></thead>
       <tbody>${rows}</tbody></table>

@@ -17,7 +17,7 @@ import sys
 from sources import sleeper
 
 from sources import injuries, degraded
-from .team_values import age_bucket, rank_map, tertile
+from .team_values import age_bucket, ppg, rank_map, tertile
 
 POSITIONS = ["QB", "RB", "WR", "TE"]
 
@@ -255,7 +255,7 @@ def production_lost_without(roster: dict, players: dict[str, dict], player_id: s
     and "can I afford to trade him" are the same question asked from opposite directions."""
 
     def produced(ids):
-        return sum(players[p].get("redraft_value") or 0 for p in ids if p in players)
+        return sum(ppg(players[p]) for p in ids if p in players)
 
     without = {**roster, "players": [p for p in (roster["players"] or []) if p != player_id]}
     refilled = projected_starters(without, players, dedicated, flex)
@@ -397,7 +397,7 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
             }
             drop = drops.get(owner_id)
             entry = out[owner_id][pos]
-            entry["drop_if_injured"] = round(drop) if drop is not None else None
+            entry["drop_if_injured"] = round(drop, 1) if drop is not None else None
             entry["exposure"] = entry["exposure_rank"] = None
             if drop is not None:
                 entry["exposure_rank"] = drop_rank[owner_id]
@@ -433,8 +433,8 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                     if entry["exposure"] == "low"
                     and entry["level"] == "critical" else "")
                 entry["note"] += (
-                    f" Depth: losing the last {pos} in this lineup costs {round(drop):,} of "
-                    f"production before a replacement starts, {entry['exposure_rank']} of "
+                    f" Depth: losing the last {pos} in this lineup costs {drop:.1f} points a "
+                    f"game before a replacement starts, {entry['exposure_rank']} of "
                     f"{len(drop_rank)} in the league - {entry['exposure']} exposure.{consolation}"
                     f" This is the magnitude IF it happens, not an expected loss.{likelihood}"
                     f"{caveat} Separate from the need above, and not one.")

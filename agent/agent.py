@@ -85,10 +85,13 @@ middle is a real position rather than an unmade decision - a wait or decide team
 sees both directions and is entitled to wait on the season - but it is a place to \
 pass through, not to sit.
 B. Two currencies, and confusing them is the most common mistake. Dynasty value \
-is what a player fetches in a trade; redraft value is what he produces this \
+is what a player fetches in a trade; redraft value is what the market pays for his \
 season. An old star is cheap in the first and expensive in the second, and a \
 young prospect the reverse. A team buying for this year should pay in the \
-currency it doesn't need.
+currency it doesn't need. What a lineup actually SCORES is a third number, \
+projected points a game (Sleeper's season projection under this league's own \
+scoring): every lineup total, production share and "% of the league's best \
+lineup" is in points a game, never in value.
 C. Age matters as a distance, not a category. What matters is how many seasons a \
 player has before his position's decline, not which side of a birthday he is on \
 - two players can both read "prime" and be years apart.

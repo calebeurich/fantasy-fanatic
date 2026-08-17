@@ -5,7 +5,7 @@ this is what actually makes up that aggregate. Usage: python -m analysis.roster_
 import sys
 
 from sources import contracts, injuries, nflverse_ids
-from .team_values import age_bucket, years_to_decline
+from .team_values import age_bucket, ppg, years_to_decline
 
 
 def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, dict],
@@ -42,6 +42,7 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
             "position": info["position"],
             "value": info["value"],
             "redraft_value": info.get("redraft_value"),
+            "projected_ppg": ppg(info),
             "age": info["age"],
             "bucket": age_bucket(info["position"], info["age"], info.get("usage_role")),
             # The distance to the boundary, not just which side of it he's on - two players
@@ -122,8 +123,9 @@ def optimal_lineup(league_id: str, owner_name: str, without: list[str] | None = 
                                           ctx.lineup_dedicated, ctx.lineup_flex)
         rows = [{"slot": slot, "name": ctx.players[pid]["name"],
                  "position": ctx.players[pid]["position"],
-                 "redraft_value": ctx.players[pid].get("redraft_value") or 0} for slot, pid in filled]
-        return rows, sum(r["redraft_value"] for r in rows)
+                 "redraft_value": ctx.players[pid].get("redraft_value") or 0,
+                 "projected_ppg": ppg(ctx.players[pid])} for slot, pid in filled]
+        return rows, round(sum(r["projected_ppg"] for r in rows), 1)
 
     before_rows, before_total = build(roster["players"] or [])
     if not dropped:
@@ -141,11 +143,11 @@ def optimal_lineup(league_id: str, owner_name: str, without: list[str] | None = 
         "without": dropped,
         "lineup": after_rows,
         "total_production": after_total,
-        "production_lost": before_total - after_total,
+        "production_lost": round(before_total - after_total, 1),
         "promoted": [r for r in after_rows if r["name"] not in before_names],
         "moved_slots": moved,
-        "note": (f"Removing {', '.join(dropped)} costs {before_total - after_total:,} of "
-                 f"current production. This is the league's real slot rules applied "
+        "note": (f"Removing {', '.join(dropped)} costs {before_total - after_total:.1f} "
+                 f"projected points a game. This is the league's real slot rules applied "
                  f"exactly - flex and superflex slots refill from every eligible position, "
                  f"so the replacement is often not the same position as the player lost."),
     }

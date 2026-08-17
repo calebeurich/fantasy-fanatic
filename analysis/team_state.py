@@ -27,7 +27,7 @@ import sys
 from sources import sleeper, fantasycalc
 from . import trade_activity
 from .team_values import (age_bucket, years_to_decline, MIN_MEANINGFUL_RUNWAY,
-                          INSIDE_FINAL_YEAR, NOISE_BAND,
+                          INSIDE_FINAL_YEAR, NOISE_BAND, ppg,
                           get_players_with_roles, rank_map,
                           owned_picks, pick_capital,
                           split_starters_bench, tertile)
@@ -284,7 +284,7 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
         info = players.get(pid)
         if info:
             bucket = age_bucket(info["position"], info["age"], info.get("usage_role"))
-            buckets[bucket] += info.get("redraft_value") or 0
+            buckets[bucket] += ppg(info)
     production = sum(buckets.values())
     asc_pct = buckets["ascending"] / production * 100 if production else 0
     dec_pct = buckets["declining"] / production * 100 if production else 0
@@ -405,22 +405,22 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
         i for infos in by_pos.values() for i in infos
         if (y := years_to_decline(i["position"], i["age"], i.get("usage_role"))) is not None
         and y < MIN_MEANINGFUL_RUNWAY]
-    expiring_starters.sort(key=lambda i: -(i.get("redraft_value") or 0))
-    expiring_total = sum(i.get("redraft_value") or 0 for i in expiring_starters)
+    expiring_starters.sort(key=lambda i: -ppg(i))
+    expiring_total = sum(ppg(i) for i in expiring_starters)
     expiring_pct = round(100 * expiring_total / production) if production else 0
     for pos, infos in by_pos.items():
-        total = sum(i.get("redraft_value") or 0 for i in infos)
+        total = sum(ppg(i) for i in infos)
         expiring = [i for i in infos
                     if (yrs := years_to_decline(i["position"], i["age"],
                                                 i.get("usage_role"))) is not None
                     and yrs < MIN_MEANINGFUL_RUNWAY]
-        exp_total = sum(i.get("redraft_value") or 0 for i in expiring)
+        exp_total = sum(ppg(i) for i in expiring)
         if total and exp_total / total > 0.5:
             position_clocks.append({
                 "position": pos,
                 "expiring_pct": round(100 * exp_total / total),
                 "names": [i["name"] for i in
-                          sorted(expiring, key=lambda i: -(i.get("redraft_value") or 0))]})
+                          sorted(expiring, key=lambda i: -ppg(i))]})
     def _slope_phrase(e):
         y = e["years_to_decline"]
         if y is None:
@@ -447,7 +447,7 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
             "position_clocks": position_clocks,
             "expiring_pct": expiring_pct,
             "expiring_names": [i["name"] for i in expiring_starters[:3]],
-            "starting_production": round(production),
+            "starting_production": round(production, 1),
             "trajectory_score": round(asc_pct - dec_pct),
             "ascending_pct": round(asc_pct), "declining_pct": round(dec_pct),
             "cornerstones": cornerstones, "win_now_core": win_now_core,
