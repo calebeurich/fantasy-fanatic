@@ -1231,20 +1231,33 @@ def test_projected_starters_ignores_the_live_snapshot():
     assert not ({"2", "3"} & projected), "QB3/QB4 are genuinely spare"
 
 
-def test_projected_starters_rank_by_current_production_not_dynasty_value():
-    """A lineup is "who scores most this week", which is redraft value; dynasty value
-    governs who you keep, not who you start. Modelled on the real RB room that exposed
-    it - Bijan (10,255 dyn / 10,004 redraft), a rookie (7,008 / 6,290), and McCaffrey
-    (4,367 / 6,518). By dynasty McCaffrey is RB3 and was offered away; by current
-    production he is the second-best back on the roster and belongs in the lineup."""
+def test_projected_starters_rank_by_projected_points_not_dynasty_value():
+    """A lineup is "who scores most", which is the projection; dynasty value governs who
+    you keep, not who you start. Modelled on the real RB room that exposed it - Bijan, a
+    hyped rookie, and McCaffrey: by dynasty McCaffrey is RB3 and was offered away; by
+    projected points he is the second-best back on the roster and belongs in the lineup."""
     slots = {"QB": 1, "RB": 2, "WR": 3, "TE": 1}
     players = _players([("RB", 10255), ("RB", 7008), ("RB", 4367)])
-    for i, redraft in enumerate([10004, 6290, 6518]):
-        players[str(i)]["redraft_value"] = redraft
+    for i, (redraft, points) in enumerate([(10004, 20.1), (6290, 12.4), (6518, 14.0)]):
+        players[str(i)] |= {"redraft_value": redraft, "projected_ppg": points}
     roster = {"players": list(players), "starters": []}
 
     projected = roster_needs.projected_starters(roster, players, slots)
-    assert projected == {"0", "2"}, "redraft ranking starts McCaffrey over the rookie"
+    assert projected == {"0", "2"}, "projected points start McCaffrey over the rookie"
+
+
+def test_projected_starters_let_the_market_break_a_near_tie():
+    """One projection source's 0.2-ppg opinion should not reorder a slot: two players
+    inside the noise band are the same projection, and the market price picks. Here the
+    rookie projects a hair MORE but the market pays more for the vet, so the vet starts."""
+    slots = {"QB": 0, "RB": 1, "WR": 0, "TE": 0}
+    players = _players([("RB", 7008), ("RB", 4367)])
+    players["0"] |= {"redraft_value": 6290, "projected_ppg": 14.1}   # rookie
+    players["1"] |= {"redraft_value": 6518, "projected_ppg": 14.0}   # vet, market prefers
+    roster = {"players": list(players), "starters": []}
+    assert roster_needs.projected_starters(roster, players, slots) == {"1"}
+    players["0"]["projected_ppg"] = 15.0  # outside the band: the projection decides
+    assert roster_needs.projected_starters(roster, players, slots) == {"0"}
 
 
 def test_flex_slots_let_three_good_backs_all_start():
@@ -1282,18 +1295,16 @@ def test_flex_fills_most_restrictive_slot_first():
     assert roster_needs.projected_starters(roster, players, dedicated, flex) == {"0", "1"}
 
 
-def test_projected_starters_sorts_missing_redraft_prices_last():
-    """Redraft covers the top ~200 players, so deep dynasty-only assets have no price.
-    Safe to treat as non-starters: across a real 12-team league the highest-dynasty
-    rostered player missing one was 1,350, far below every replacement level."""
+def test_projected_starters_sort_unprojected_players_last():
+    """A player with no projection (and no price) is not a starter, whatever his dynasty
+    value - deep dynasty-only prospects fall below every real producer."""
     slots = {"QB": 1, "RB": 1, "WR": 1, "TE": 1}
     players = _players([("WR", 1350), ("WR", 900)])
-    players["0"]["redraft_value"] = None   # dynasty-only prospect
-    players["1"]["redraft_value"] = 2500   # real current producer
+    players["0"] |= {"redraft_value": None, "projected_ppg": 0}      # dynasty-only prospect
+    players["1"] |= {"redraft_value": 2500, "projected_ppg": 9.2}    # real current producer
     roster = {"players": list(players), "starters": []}
 
     assert roster_needs.projected_starters(roster, players, slots) == {"1"}
-
 
 def test_win_now_buyer_sees_production_priced_targets_first():
     """A Win-Now team buys current production. This project's own pricing model calls

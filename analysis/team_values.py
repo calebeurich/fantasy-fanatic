@@ -127,7 +127,7 @@ def rank_map(scores: dict, high_is_first: bool = True) -> dict:
     return {key: i for i, key in enumerate(order, start=1)}
 
 
-def ppg(info: dict) -> float:
+def eppg(info: dict) -> float:
     """What a player PRODUCES per game this season (league-scored Sleeper projection,
     attached in `league.context`) - the unit for every sum or share of a lineup's
     production. What he is PRICED at stays `redraft_value`."""

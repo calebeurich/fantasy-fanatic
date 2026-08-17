@@ -23,7 +23,7 @@ Smoke test (picks resolve against the sender's owned picks, same fuzzy contract)
 
 from . import roster_needs
 from .team_values import (age_bucket, years_to_decline, INSIDE_FINAL_YEAR,
-                          MIN_MEANINGFUL_RUNWAY, ppg)
+                          MIN_MEANINGFUL_RUNWAY, eppg)
 from .trade_targets.board import build_board
 
 EVAL_NOTE = (
@@ -163,7 +163,7 @@ def _league_needs_with(ctx, replaced: dict[str, list]) -> dict:
 def _lineup_production(ctx, player_ids) -> float:
     filled = roster_needs.fill_lineup({"players": player_ids}, ctx.players,
                                       ctx.lineup_dedicated, ctx.lineup_flex)
-    return round(sum(ppg(ctx.players[pid]) for _, pid in filled), 1)
+    return round(sum(eppg(ctx.players[pid]) for _, pid in filled), 1)
 
 
 def _need_changes(before: dict, after: dict) -> list[dict]:

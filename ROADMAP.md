@@ -292,26 +292,11 @@ not by preference:
   thirds. Do it after eye-testing the 13/48 path moves the ppg switch produced, and
   re-verify BARBELL_MIN_PCT / ARRIVING_MARGIN_PCT on ppg shares in the same pass
   (declining shares rose almost everywhere; the value-share calibration is stale).
-- **Who starts: market order vs projected order** (owner-backlogged 2026-08-16):
-  `fill_lineup` still ranks by redraft value and only tiebreaks on ppg. Neither
-  field is obviously the more accurate "who scores most" - the market prices
-  upside and injury news faster, projections price volume - so before switching,
-  run a DIAGNOSTIC: for all 48 teams, fill both ways, list every lineup that
-  differs (who's in, who's out, the ppg and value gap), and count how many
-  needs/paths would move. If the disagreements are all sub-noise, leave it; if
-  they cluster (rookies the market loves, vets projections love), that is the
-  finding that decides the order. Also the place to check whether an injured
-  starter with a stale market price is being started.
-  **DIAGNOSTIC RUN 2026-08-17 (scratch_fill_diag.py)**: 27/48 lineups differ, 40
-  swaps, mean +1.3 ppg, nearly all the last slot. The shape is consistent: the
-  market starts youth (Corum, RJ Harvey, Travis Hunter, Tyson, Lemon, 22-25) where
-  projections start volume (Schultz, Hunter Henry, Hockenson, Waller, Geno Smith at
-  ZERO market value, 30-36); market picks WR/RB 33/40, ppg picks TE/QB 17/40. If
-  fill were ppg-first: 10 rank shifts, 3 path changes (Brad 7->4 wait->contend, +5.9
-  ppg from Willis over Ward + Hockenson over Dobbins; Paulyt 4->5 crosses the
-  tertile line; HiThirsty sell->build). Injury doesn't tip it - both numbers dip
-  for a hurt starter; "back for the playoffs" is a rest-of-season projection
-  question (Track 4). Recommendation: ppg-first, market tiebreak. OWNER DECIDES.
+- **Who starts: DONE 2026-08-17** - fill order is ePPG-first with the market breaking
+  near-ties (LOGIC.md "Production is projected points"). Still open from it: a second
+  projection source for consensus (every free one needs scraping - waits until it
+  earns a module), and moving the positional BARS to ePPG so "startable" and "who
+  starts" share a unit (only after the tier-1/tier-2 revalidation).
 - **Contend harder vs contend longer** (owner-backlogged 2026-08-15): the aligned
   contender's real question - convert future into a stronger NOW, or keep the
   young core and contend more consistently now AND later - is a durability

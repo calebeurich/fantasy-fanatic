@@ -27,7 +27,7 @@ import sys
 from sources import sleeper, fantasycalc
 from . import trade_activity
 from .team_values import (age_bucket, years_to_decline, MIN_MEANINGFUL_RUNWAY,
-                          INSIDE_FINAL_YEAR, NOISE_BAND, ppg,
+                          INSIDE_FINAL_YEAR, NOISE_BAND, eppg,
                           get_players_with_roles, rank_map,
                           owned_picks, pick_capital,
                           split_starters_bench, tertile)
@@ -284,7 +284,7 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
         info = players.get(pid)
         if info:
             bucket = age_bucket(info["position"], info["age"], info.get("usage_role"))
-            buckets[bucket] += ppg(info)
+            buckets[bucket] += eppg(info)
     production = sum(buckets.values())
     asc_pct = buckets["ascending"] / production * 100 if production else 0
     dec_pct = buckets["declining"] / production * 100 if production else 0
@@ -405,22 +405,22 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
         i for infos in by_pos.values() for i in infos
         if (y := years_to_decline(i["position"], i["age"], i.get("usage_role"))) is not None
         and y < MIN_MEANINGFUL_RUNWAY]
-    expiring_starters.sort(key=lambda i: -ppg(i))
-    expiring_total = sum(ppg(i) for i in expiring_starters)
+    expiring_starters.sort(key=lambda i: -eppg(i))
+    expiring_total = sum(eppg(i) for i in expiring_starters)
     expiring_pct = round(100 * expiring_total / production) if production else 0
     for pos, infos in by_pos.items():
-        total = sum(ppg(i) for i in infos)
+        total = sum(eppg(i) for i in infos)
         expiring = [i for i in infos
                     if (yrs := years_to_decline(i["position"], i["age"],
                                                 i.get("usage_role"))) is not None
                     and yrs < MIN_MEANINGFUL_RUNWAY]
-        exp_total = sum(ppg(i) for i in expiring)
+        exp_total = sum(eppg(i) for i in expiring)
         if total and exp_total / total > 0.5:
             position_clocks.append({
                 "position": pos,
                 "expiring_pct": round(100 * exp_total / total),
                 "names": [i["name"] for i in
-                          sorted(expiring, key=lambda i: -ppg(i))]})
+                          sorted(expiring, key=lambda i: -eppg(i))]})
     def _slope_phrase(e):
         y = e["years_to_decline"]
         if y is None:

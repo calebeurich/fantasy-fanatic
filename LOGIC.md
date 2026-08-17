@@ -231,10 +231,24 @@ question:
   `lineup_production_delta`, `production_lost_without` (`lineup_cost`, injury drop),
   `optimal_lineup` totals, prior-season continuity, and the Pickens comparison
   (lineup cost vs what the target brings, both in ppg).
-- Who starts, positional bars, per-body quality, flex ranks, cornerstones, value
-  basis, give-up cost, every price -> market values (owner: "trades and positional
-  ranking based on redraft values are good, but production pcts were the issue").
-  Fill order stays market-ordered; only the sum changed.
+- Positional bars, per-body quality, flex ranks, cornerstones, value basis, give-up
+  cost, every price -> market values (owner: "trades and positional ranking based on
+  redraft values are good, but production pcts were the issue").
+- **Who starts -> projected points too (2026-08-17).** The split, in the owner's words:
+  ePPG is what he DOES, redraft is what he COSTS, dynasty is what he's WORTH - and
+  filling a slot is a what-he-does question. Decided by a diagnostic, not a guess
+  (`scratch_fill_diag.py`): market-first and ePPG-first disagreed on 27/48 lineups,
+  40 swaps, mean +1.3 ppg, nearly all the last slot, with one shape - the market
+  starts youth (Corum, RJ Harvey, Travis Hunter, 22-25) where projections start
+  volume (Schultz, Hunter Henry, Hockenson, Geno Smith at ZERO market value, 30-36).
+  Effect: 3 paths (Brad 7->4 wait->contend, Paulyt on-a-clock->decide across the
+  tertile line, HiThirsty sell->build), 9 rank swaps. GUARD against trusting one
+  projection source (Sleeper's = Rotowire's) too far: two players within NOISE_BAND
+  of each other are the same projection and the MARKET picks between them - 15 of the
+  40 swaps were under 1 ppg. Bars stay market so a bad projection cannot both bench a
+  player and call his position a hole. Real season PPG (Sleeper fpts / games) is a
+  display-only column and feeds nothing; the accessor is `team_values.eppg` so it
+  cannot be misread.
 
 Measured effect on the 48-team corpus: `pct_of_best` now spans ~70-100 instead of
 28-100 (no lineup scores zero) and 13 of 48 paths moved - kb wait -> contend at 93% of

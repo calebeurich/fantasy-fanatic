@@ -17,7 +17,7 @@ import sys
 from sources import sleeper
 
 from sources import injuries, degraded
-from .team_values import age_bucket, ppg, rank_map, tertile
+from .team_values import NOISE_BAND, age_bucket, eppg, rank_map, tertile
 
 POSITIONS = ["QB", "RB", "WR", "TE"]
 
@@ -255,7 +255,7 @@ def production_lost_without(roster: dict, players: dict[str, dict], player_id: s
     and "can I afford to trade him" are the same question asked from opposite directions."""
 
     def produced(ids):
-        return sum(ppg(players[p]) for p in ids if p in players)
+        return sum(eppg(players[p]) for p in ids if p in players)
 
     without = {**roster, "players": [p for p in (roster["players"] or []) if p != player_id]}
     refilled = projected_starters(without, players, dedicated, flex)
@@ -559,10 +559,11 @@ def projected_starters(roster: dict, players: dict[str, dict], slots: dict[str, 
     """Player ids a team would actually start - the single definition of "starter" in
     this project (`LeagueContext.starters` calls it once; everything else reads that).
     Not Sleeper's snapshot, which is whatever the current week's lineup happens to be and
-    once classed a superflex QB2 as spare parts. Ranked by redraft value (a lineup is "who
-    scores most this week", in every window; missing prices sort last, safely below every
-    replacement level), ties - mostly the unpriced tail - broken on projected points, with
-    flex slots filled properly - dedicated first, then flex, most restrictive first."""
+    once classed a superflex QB2 as spare parts. Ranked by projected points (a lineup is
+    "who scores most", in every window); two players within the noise band of each other
+    are the same projection and the MARKET picks between them - a 0.3-ppg opinion from one
+    projection source should not reorder a slot. Flex slots filled properly - dedicated
+    first, then flex, most restrictive first."""
     return {pid for _, pid in fill_lineup(roster, players, slots, flex)}
 
 
@@ -576,30 +577,33 @@ def fill_lineup(roster: dict, players: dict[str, dict], slots: dict[str, int],
     each player occupies, which is the whole answer to "what happens if X goes down".
     Exposed as a tool so the model never fills flex slots in prose, which it gets subtly
     wrong (a vacated FLEX correctly went to a tight end, not the assumed WR)."""
-    by_pos: dict[str, list[tuple[float, str]]] = {pos: [] for pos in POSITIONS}
+    remaining: dict[str, list[str]] = {pos: [] for pos in POSITIONS}
     for pid in roster["players"] or []:
         info = players.get(pid)
-        if info and info["position"] in by_pos:
-            by_pos[info["position"]].append(((info.get("redraft_value") or 0, ppg(info)), pid))
+        if info and info["position"] in remaining:
+            remaining[info["position"]].append(pid)
+
+    def best_of(pool: list[str]) -> str:
+        top = max(eppg(players[p]) for p in pool)
+        same = [p for p in pool if eppg(players[p]) >= top * (1 - NOISE_BAND)]
+        return max(same, key=lambda p: (players[p].get("redraft_value") or 0, eppg(players[p])))
 
     filled: list[tuple[str, str]] = []
-    remaining: dict[str, list[tuple[float, str]]] = {}
-    for pos, entries in by_pos.items():
-        entries.sort(reverse=True)
-        take = slots.get(pos, 0)
-        filled += [(pos, pid) for _, pid in entries[:take]]
-        remaining[pos] = entries[take:]
+    for pos in POSITIONS:
+        for _ in range(min(slots.get(pos, 0), len(remaining[pos]))):
+            pid = best_of(remaining[pos])
+            filled.append((pos, pid))
+            remaining[pos].remove(pid)
 
     # Then flex, most restrictive slot first - otherwise a SUPER_FLEX (any position)
     # can take a player that a narrower FLEX (RB/WR/TE only) was the sole home for.
     for eligible in sorted(flex or [], key=len):
-        pool = [(v, p) for pos in eligible for v, p in remaining.get(pos, [])]
+        pool = [p for pos in eligible for p in remaining.get(pos, [])]
         if not pool:
             continue
-        _, pid = max(pool)
+        pid = best_of(pool)
         filled.append((_FLEX_NAME.get(tuple(eligible), "FLEX"), pid))
-        for pos in eligible:
-            remaining[pos] = [(v, p) for v, p in remaining.get(pos, []) if p != pid]
+        remaining[players[pid]["position"]].remove(pid)
     return filled
 
 

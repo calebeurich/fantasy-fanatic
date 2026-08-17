@@ -5,7 +5,7 @@ this is what actually makes up that aggregate. Usage: python -m analysis.roster_
 import sys
 
 from sources import contracts, injuries, nflverse_ids
-from .team_values import age_bucket, ppg, years_to_decline
+from .team_values import age_bucket, eppg, years_to_decline
 
 
 def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, dict],
@@ -42,7 +42,7 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
             "position": info["position"],
             "value": info["value"],
             "redraft_value": info.get("redraft_value"),
-            "projected_ppg": ppg(info),
+            "projected_ppg": eppg(info),
             "age": info["age"],
             "bucket": age_bucket(info["position"], info["age"], info.get("usage_role")),
             # The distance to the boundary, not just which side of it he's on - two players
@@ -124,7 +124,7 @@ def optimal_lineup(league_id: str, owner_name: str, without: list[str] | None = 
         rows = [{"slot": slot, "name": ctx.players[pid]["name"],
                  "position": ctx.players[pid]["position"],
                  "redraft_value": ctx.players[pid].get("redraft_value") or 0,
-                 "projected_ppg": ppg(ctx.players[pid])} for slot, pid in filled]
+                 "projected_ppg": eppg(ctx.players[pid])} for slot, pid in filled]
         return rows, round(sum(r["projected_ppg"] for r in rows), 1)
 
     before_rows, before_total = build(roster["players"] or [])

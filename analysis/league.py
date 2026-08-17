@@ -14,7 +14,7 @@ snapshot, which is meaningless in the preseason.
 **Two production concepts:** `redraft_value` is the MARKET's this-season price - what
 buys, sells and clears a positional bar. `projected_ppg` is what a lineup PRODUCES -
 Sleeper's season projection under this league's own scoring, per game. Every sum or
-share of a lineup's production uses ppg; market prices are convex in points (Gibbs
+share of a lineup's production uses eppg; market prices are convex in points (Gibbs
 priced 3.3x Chase Brown, projected 1.6x), so summing them made one star look like a
 whole lineup. LOGIC.md, "Production is projected points".
 """
