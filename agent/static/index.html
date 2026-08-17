@@ -493,7 +493,11 @@ async function fillSide(leagueId, k) {
   (d.picks || []).forEach(p => { const key = `${p.season}-${p.round}`; seen[p.pick] = seen[p.pick] || {n: 0, v: p.value, key}; seen[p.pick].n++; });
   const picks = Object.entries(seen).map(([pk, o]) =>
     `<span class="cpick ${mv.picks.has(o.key) ? "" : "off"} ${trade[k].picks.has(pk) ? "on" : ""}" data-name="${pk}">${pk}${o.n > 1 ? ` ×${o.n}` : ""} <span class="cs">${(o.v || 0).toLocaleString()}</span></span>`).join("");
-  box.innerHTML = html + (picks ? `<div class="cpos">picks</div><div class="cpicks">${picks}</div>` : "");
+  const nPicks = Object.keys(seen).length, nSpend = Object.values(seen).filter(o => mv.picks.has(o.key)).length;
+  const pickNote = !nPicks ? "" : nSpend === 0
+    ? `<span style="color:var(--rebuild);font-weight:600;letter-spacing:0;text-transform:none;float:right">keeping its picks (rebuilding)</span>`
+    : `<span style="color:var(--ok);font-weight:600;letter-spacing:0;text-transform:none;float:right">would spend picks · ${nSpend} of ${nPicks} kinds</span>`;
+  box.innerHTML = html + (picks ? `<div class="cpos">picks${pickNote}</div><div class="cpicks">${picks}</div>` : "");
   box.querySelectorAll(".crow").forEach(r => r.onclick = () => { r.classList.toggle("on"); renderTray(leagueId); });
   box.querySelectorAll(".cpick").forEach(c => c.onclick = () => {
     const nm = c.dataset.name;
@@ -525,7 +529,8 @@ function renderTray(leagueId) {
   $("cask").onclick = () => {
     const stance = k => trade[k].stance ? ` (${trade[k].owner} says they'd ${trade[k].stance === "sell" ? "sell" : "press"})` : "";
     $("q").value = `Evaluate this trade for both sides: ${a} sends ${pa.join(", ")}; ${b} sends ${pb.join(", ")}.${stance("a")}${stance("b")}`;
-    $("q").focus(); $("q").scrollIntoView({behavior: "smooth", block: "center"});
+    $("f").requestSubmit();
+    $("log").scrollIntoView({behavior: "smooth", block: "end"});
   };
   clearTimeout(evalTimer);
   if (!(pa.length && pb.length && a !== b)) return;
