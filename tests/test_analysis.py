@@ -500,6 +500,21 @@ def test_idle_youth_priced_value_makes_a_calm_contender_unaligned():
                                     assets_bottom=False, clear_sells=["X"])[1].startswith("wait")
 
 
+def test_an_ascending_starter_producing_at_core_level_counts_as_prime_in_the_tilt():
+    """Owner: "cornerstones should not count truly as ascending - they are ascending but
+    just prime. Fannin is the ascending archetype, Pickens is fine for a contender to
+    have." A young starter already clearing the league's top-10% production bar has
+    ARRIVED and sits on neither side of the tilt; a young starter below it is the wave
+    still coming. Price is untouched - only the shares move."""
+    roster, players, starters = _roster([("WR", 8000), ("TE", 3000), ("RB", 4000)])
+    players["0"] |= {"age": 24, "redraft_value": 7000, "projected_ppg": 16}   # Pickens shape
+    players["1"] |= {"age": 22, "redraft_value": 1500, "projected_ppg": 8}    # Fannin shape
+    players["2"] |= {"age": 30, "redraft_value": 4000, "projected_ppg": 16}   # the vet
+    out = team_state.classify(roster, players, 10_000, starters, redraft_threshold=5000)
+    assert out["ascending_pct"] == 20 and out["declining_pct"] == 40, (
+        "only the not-yet-producing youngster is ascending; the arrived one is prime")
+
+
 def test_value_basis_uses_the_final_year_clock_not_the_buyer_horizon():
     """A shipped bug the suite used to let back in: with the 2.0 buyer horizon here
     instead of INSIDE_FINAL_YEAR, the RB curve calls any back over 25 production-priced.

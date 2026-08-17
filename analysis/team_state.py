@@ -296,11 +296,18 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
     about, so weighting by it would report the market's opinion back as a roster fact."""
     all_ids = roster["players"] or []
 
+    # An ascending starter already producing at core level (top-10% redraft) has ARRIVED
+    # - he delivers now and later, so for the tilt he is prime, not a wave still coming.
+    # Counting him as ascending made a producing young core read as a barbell against
+    # its vets (owner: "cornerstones should not count truly as ascending... Fannin is
+    # the ascending archetype, Pickens is fine for a contender"). Price is untouched.
     buckets = {"ascending": 0, "prime": 0, "declining": 0, "unknown": 0}
     for pid in starter_ids:
         info = players.get(pid)
         if info:
             bucket = age_bucket(info["position"], info["age"], info.get("usage_role"))
+            if bucket == "ascending" and (info.get("redraft_value") or 0) >= redraft_threshold:
+                bucket = "prime"
             buckets[bucket] += eppg(info)
     production = sum(buckets.values())
     asc_pct = buckets["ascending"] / production * 100 if production else 0

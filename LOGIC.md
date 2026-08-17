@@ -345,6 +345,16 @@ the wrong currency for the rank, and that asset is the decision pending:
 `aging_chips` and `idle_youth` ship on every row as facts; only the tier-1 branch that
 owns the lean interprets them (a contender rides its aging chips). The middle has no
 lean, so neither fact moves a fringe read.
+**Arrived youth is prime, not ascending (owner, 2026-08-17).** "Cornerstones should
+not count truly as ascending - they are ascending but just prime. Fannin is the
+ascending archetype, Pickens is fine for a contender to have." An ascending starter
+already producing at core level (redraft value clearing the top-10% production bar)
+has arrived: he delivers now AND later, so for the TILT he counts as prime; a young
+starter below that bar is the wave still coming. Price and value basis are untouched.
+Effect on the corpus: ascending shares deflate everywhere (median 32 -> ~17); shivvv
+40/27 -> 17/27, press -> contend on a clock (JSN and Lawrence were the "wave");
+bergenjay/teomilner lose the "production is arriving" flavor (Nabers, Love, Purdy,
+Bowers have arrived); obamagg build -> sell. 4 paths.
 **Bars re-verified on ePPG shares (2026-08-17)**: 26 arriving / 15 leaving / 4 barbell /
 3 flat of 48; the four barbells (shivvv, kieran, freethepenguins, woozer) and the nine
 on-a-clock contenders all pass the smell test, so BARBELL_MIN_PCT 25 and
