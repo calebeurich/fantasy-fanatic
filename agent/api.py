@@ -239,50 +239,50 @@ def movable(league_id: str, owner: str, stance: str | None = None) -> dict:
 
 
 @app.get("/api/league/{league_id}/team/{owner}/fits", dependencies=[Depends(tier)])
-def fits(league_id: str, owner: str, stance: str | None = None) -> list[dict]:
-    """Pieces on OTHER rosters that fit this team, flattened from trade_targets: buy-path
-    targets, efficiency swaps (value_upgrades: more production for less dynasty cost than
-    a current starter), production adds (would start today), depth adds. The composer
-    tags the counterparty's rows with these so "why would shivvv want Evans" is visible
-    without reading a list. Facts from the same tool the agent uses; no verdicts."""
-    from analysis import trade_targets
+def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
+         seller_stance: str | None = None) -> list[dict]:
+    """Why `owner` would want pieces on `seller`'s roster - the composer's tags. One rule,
+    stance-aware on both sides: for every piece the seller would MOVE (its offerable set
+    under its read or declared stance), fill `owner`'s lineup with him added - if he
+    starts, "starts for them today" (naming who he displaces); if he'd start once one
+    starter were out, "depth for them"; else nothing. Plus efficiency swaps from
+    `owner`'s value_upgrades whose return sits on the seller (the page shows those only
+    when the seller is selling). Facts from the same functions the tools use."""
+    from analysis import roster_needs, trade_targets
+    from analysis.league import context
+    from analysis.team_values import eppg
+    ctx = context(league_id)
+    buyer = ctx.roster_for(owner)
+    seller_roster = ctx.roster_for(seller)
+    movable = trade_targets.offerable_names(trade_targets.find_targets(league_id, seller, stance=seller_stance or None))
+    starters = ctx.starters_for(buyer)
+    out = []
+    for pid in seller_roster["players"] or []:
+        info = ctx.players.get(pid)
+        if not info or info["name"] not in movable:
+            continue
+        with_him = {**buyer, "players": list(buyer["players"] or []) + [pid]}
+        new_starters = roster_needs.projected_starters(with_him, ctx.players, ctx.lineup_dedicated, ctx.lineup_flex)
+        gain = (sum(eppg(ctx.players[q]) for q in new_starters if q in ctx.players)
+                - sum(eppg(ctx.players[q]) for q in starters if q in ctx.players))
+        # A CLEAR upgrade lifts the whole lineup by at least a point a game (owner: "unless
+        # it's a clear-ish upgrade they should all be depth"); a 0.5 edge is depth.
+        if pid in new_starters and gain >= 1.0:
+            dropped = [ctx.players[q]["name"] for q in starters - new_starters if q in ctx.players]
+            out.append({"name": info["name"], "owner": seller, "tag": f"starts for them (+{gain:.1f})",
+                        "why": f"projects {eppg(info):.1f} a game; {owner}'s lineup gains {gain:.1f} a game"
+                               + (f", displacing {', '.join(dropped)}" if dropped else "")})
+        elif pid in new_starters or roster_needs.would_start_if_one_out(
+                buyer, ctx.players, pid, starters, ctx.lineup_dedicated, ctx.lineup_flex):
+            out.append({"name": info["name"], "owner": seller, "tag": "depth for them",
+                        "why": f"would start for {owner} if one {info['position']} were out"})
     result = trade_targets.find_targets(league_id, owner, stance=stance or None)
-    branches = [result] + [b for b in (result.get("push"), result.get("pivot")) if isinstance(b, dict)]
-    out, seen = [], set()
-
-    def add(name, from_owner, tag, why):
-        if name and from_owner and (name, tag) not in seen:
-            seen.add((name, tag))
-            out.append({"name": name, "owner": from_owner, "tag": tag, "why": (why or "")[:200]})
-
-    # Tags are written from the OTHER roster's point of view ("fills their RB hole") -
-    # the row they sit on belongs to the counterparty, and "swap for Odunze" on your own
-    # Higgins read as you converting Higgins into Odunze (owner, 2026-08-17).
-    # Owner's rule: unless a piece is a CLEAR upgrade - it would start over what they
-    # already start (positive margin over their weakest starter) or beats a starter on
-    # both axes - it is depth, whatever list it came from. A "target" that fills a hole
-    # without out-producing the incumbent is depth in that format.
-    def production_tag(p):
-        return "starts for them today" if (p.get("over_weakest_starter") or 0) > 0 else "depth for them"
-
-    for r in branches:
-        for t in (r.get("targets") or []) + (r.get("long_shots") or []):
-            friction = "; ".join(f.get("why", "") for f in (t.get("friction") or []) if isinstance(f, dict))
-            add(t.get("name"), t.get("owner") or t.get("from_owner"), production_tag(t),
-                (f"long shot - {friction}. " if friction else "") + (t.get("why_it_fits") or t.get("why") or t.get("note") or ""))
-        for t in r.get("acquire_targets") or []:
-            add(t.get("name"), t.get("owner") or t.get("from_owner"), "on their rebuild wish list",
-                t.get("why_it_fits") or t.get("why") or t.get("note"))
+    for r in [result] + [b for b in (result.get("push"), result.get("pivot")) if isinstance(b, dict)]:
         for u in r.get("value_upgrades") or []:
             for ret in u.get("returns") or []:
-                if not ret.get("already_mine"):
-                    add(ret.get("name"), ret.get("owner") or ret.get("from_owner"),
-                        f"beats their {u['move_off']}", ret.get("note"))
-        for p in r.get("production_adds") or []:
-            add(p.get("name"), p.get("from_owner"), production_tag(p),
-                p.get("starter_caveat") or "production-priced; would start for them today")
-        for p in r.get("depth_adds") or []:
-            add(p.get("name"), p.get("from_owner"), "depth for them", p.get("note"))
+                if (ret.get("owner") or ret.get("from_owner")) == seller and not ret.get("already_mine"):
+                    out.append({"name": ret["name"], "owner": seller, "tag": f"beats their {u['move_off']}",
+                                "why": (ret.get("note") or "")[:200]})
     return out
 
 

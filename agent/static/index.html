@@ -408,10 +408,11 @@ async function fetchMovable(leagueId, owner, stance) {
   return movableCache[key];
 }
 
-async function fetchFits(leagueId, owner, stance) {
-  const key = `${leagueId}/${owner}/${stance}`;
+async function fetchFits(leagueId, owner, stance, seller, sellerStance) {
+  const key = `${leagueId}/${owner}/${stance}/${seller}/${sellerStance}`;
   if (!fitsCache[key]) {
-    const q = stance ? `?stance=${encodeURIComponent(stance)}` : "";
+    const q = `?seller=${encodeURIComponent(seller)}` + (stance ? `&stance=${encodeURIComponent(stance)}` : "")
+            + (sellerStance ? `&seller_stance=${encodeURIComponent(sellerStance)}` : "");
     const res = await fetch(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/fits${q}`, {headers: hdrs()});
     fitsCache[key] = await res.json();
   }
@@ -431,8 +432,7 @@ function renderBuilder(leagueId, owners) {
   box.innerHTML = `<details class="builder" id="bdetails" open><summary>Propose a trade — tap pieces on both rosters</summary>` +
     `<div class="cs" style="margin-top:6px">● = a piece that team would move on its path (or the stance you picked) · ○ dim italic = it wouldn't, tap anyway if you insist. ` +
     `Tags say why the <em>other</em> team wants a piece, from its own lists: ` +
-    `<span class="ftag">✚ starts for them today</span> out-produces what they start now · <span class="ftag swap">⇄ beats their X</span> more production for less dynasty cost than their starter X · ` +
-    `<span class="ftag">✚ on their rebuild wish list</span> young value a rebuild is collecting · ` +
+    `<span class="ftag">✚ starts for them (+2.1)</span> would start for the other team, lifting their lineup that many points a game · <span class="ftag swap">⇄ beats their X</span> more production for less dynasty cost than their starter X (shown when you're selling) · ` +
     `<span class="ftag depth">depth for them</span> cover, below the trade bar. Hover a tag for the why. Nothing is judged here — the assistant does that.</div>` +
     `<div class="csides">${side("a")}${side("b")}</div>` +
     `<div class="ctray" id="ctray"></div></details>`;
@@ -475,7 +475,7 @@ async function fillSide(leagueId, k) {
   const other = trade[k === "a" ? "b" : "a"];
   let d, mv, fits = [];
   try { [d, mv, fits] = await Promise.all([fetchDetail(leagueId, owner), fetchMovable(leagueId, owner, trade[k].stance),
-                                          other.owner ? fetchFits(leagueId, other.owner, other.stance) : []]); }
+                                          other.owner ? fetchFits(leagueId, other.owner, other.stance, owner, trade[k].stance) : []]); }
   catch (e) { box.innerHTML = `<div class="cs warn">couldn't load</div>`; return; }
   // Tags: why the OTHER team would want this piece (its own targets / swaps / adds).
   // Swap tags ("beats their X") describe the other team's efficiency; they only mean
