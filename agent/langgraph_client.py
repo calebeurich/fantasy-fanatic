@@ -22,6 +22,8 @@ import asyncio
 import os
 import sys
 
+import httpx
+
 from dotenv import load_dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
@@ -45,7 +47,10 @@ async def run(question: str, verbose: bool = True) -> dict:
         "fantasy_fanatic": {"transport": "stdio", "command": sys.executable, "args": [str(MCP_SERVER_PATH)]},
     })
     tools = [t for t in await client.get_tools() if t.name in TOOL_NAMES]
-    model = ChatOpenAI(model=MODEL, base_url=BASE_URL, api_key=API_KEY, temperature=0)
+    # An explicit httpx client: openai 3.x's default async transport hits a RecursionError
+    # on this machine (httpx 0.28 + httpx2 side by side); a plain AsyncClient is fine.
+    model = ChatOpenAI(model=MODEL, base_url=BASE_URL, api_key=API_KEY, temperature=0,
+                       http_async_client=httpx.AsyncClient(timeout=120))
     graph = create_react_agent(model, tools, prompt=SYSTEM_PROMPT)
     result = await graph.ainvoke({"messages": [("user", question)]},
                                  config={"recursion_limit": 2 * MAX_TURNS + 1})

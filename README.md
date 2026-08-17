@@ -208,8 +208,9 @@ thumbs-down comments from league mates have been the richest source of real bugs
   deterministically, and the critic is exact instead of another opinion.
 - **One orchestrator, one model** — the Claude Agent SDK on Haiku, chosen after
   measuring cost and quality. A small LangGraph client driving the same MCP tools with
-  an open-weight model exists as a portability proof (`agent/langgraph_client.py`), to
-  show the tool layer is the asset and the orchestrator is swappable.
+  an open-weight model exists as a portability proof (`agent/langgraph_client.py`;
+  verified with Qwen2.5-72B-Instruct via HuggingFace's router driving the identical
+  MCP tools), to show the tool layer is the asset and the orchestrator is swappable.
 
 ## Status
 
