@@ -308,6 +308,17 @@ def _print_stranded(result: dict) -> None:
 
 
 def _print_depth(result: dict) -> None:
+    if result.get("production_adds"):
+        print()
+        print("production adds (the rental market - would start for you today, from sellers):")
+        for a in result["production_adds"]:
+            flavors = (" [" + ", ".join(f["flavor"] for f in a["friction"]) + "]"
+                       if a.get("friction") else "")
+            print(f"  {a['name']} ({a['position']}, value={a['value']}, "
+                  f"{a['redraft_value']:,} this season, {a['years_to_decline']} yrs) starts at "
+                  f"{a['slot']} {a['over_weakest_starter']:+,} vs your weakest - from "
+                  f"{a['from_owner']} [{a['seller_path']}]{flavors}")
+        print(f"  {result['production_adds_note']}")
     if not result.get("depth_adds"):
         return
     print("\ncheap depth (cheapest first - nominal price, never worth a real asset):")

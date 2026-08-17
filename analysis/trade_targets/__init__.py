@@ -18,7 +18,8 @@ python -m analysis.trade_targets <league_id> [owner_name] [max_per_position]
 from .. import roster_needs, team_state
 from .board import (Board, DEFAULT_MAX_PER_POSITION, NOISE_BAND, NOISE_RETAINED,
                     NOW_PREMIUM_PERCENTILE, acquires_by_default, build_board, _sells_him)
-from .buy import _buy_path, _depth_adds, _my_offer_pool, DEPTH_NOTE, DEPTH_NOTE_REBUILD
+from .buy import (_buy_path, _depth_adds, _my_offer_pool, _production_adds,
+                  DEPTH_NOTE, DEPTH_NOTE_REBUILD, PRODUCTION_ADDS_NOTE)
 from .counterparty import (_cliff_case, _counterparty_fit, _persuasion_targets,
                            _seller_case, _why_they_would_move_him, wanted_by, wanted_line)
 from .outlook import OUTLOOK_NOTE, outlook_from_board, player_outlook
@@ -189,6 +190,14 @@ def find_targets(league_id: str, owner_query: str,
                 result["value_upgrade_note"] = VALUE_UPGRADE_NOTE
                 surfaced |= {u["name"] for m in upgrades for u in m["returns"]
                              if not u.get("already_mine")}
+        # The win-harder list for buying paths (owner: shivvv should know a 2nd for
+        # Evans or McLaurin is directionally sound and possible even with no WR hole).
+        if me["window"] != "Rebuild":
+            production = _production_adds(my_roster, board, my_starters, surfaced)
+            if production:
+                result["production_adds"] = production
+                result["production_adds_note"] = PRODUCTION_ADDS_NOTE
+                surfaced |= {p["name"] for p in production}
         depth = _depth_adds(my_roster, board, me["window"] != "Rebuild",
                             my_starters, surfaced)
         if depth:

@@ -258,6 +258,11 @@ def get_trade_targets(league_id: str, owner_name: str, max_per_position: int = 3
     report runs their chosen side's paths, and `stance_note` says how to present the
     choice next to the measured read. Never pass it on your own initiative.
 
+    For a buying path with no hole, `production_adds` is the rental market: sellers'
+    production-priced pieces that would START for this team today, with the margin over
+    the starter displaced - a 2nd for one of these is an ordinary, directionally sound
+    trade, and it is the natural second leg after a consolidation move opens a slot.
+
     Every block ships with its own note ("..._note", plus per-entry fields like
     "cost_note", "why_they_might_listen", "their_reason", "starter_caveat", "friction").
     THE NOTES ARE THE INSTRUCTIONS: each states what its block means, what to lead with,

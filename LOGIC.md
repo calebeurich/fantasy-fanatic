@@ -772,6 +772,21 @@ codebase - waivers reuse it rather than inventing another.
   hid players from both lists at once. Whether he also beats the weakest starter is
   stated per line.
 
+**Production adds - the rental market for buyers** (2026-08-16, `_production_adds`).
+Owner: "shivvv should know that trading a second for Evans or McLaurin is generally
+directionally sound and possible" even with no WR hole - and the need-gated buy list gave
+a no-need contender nothing, while `value_upgrades` (ranked by dynasty value, capped at
+4 per move) let the deepest-discount vets fall off. The list: sellers' PRODUCTION-PRICED
+pieces (`value_basis == "production"` - declining, or inside the final year) that would
+start for this team today - beat the weakest starter at their position or the weakest
+flex occupant - ranked by that margin, cheapest in dynasty among equals, capped at 6.
+Studs a seller holds are deliberately excluded (a first cut ranked purely by production
+gain listed Chase, Jefferson, Achane - those belong to value_upgrades/persuasion, and
+they crowded out exactly the cheap production this list is for). Both sides of the
+direction gate are satisfied by construction (buyer acquires production, seller parts
+with it), which is what makes "a 2nd for one of these" ordinary. It is also the natural
+second leg of a plan (see Sequences).
+
 ### The counterparty (`counterparty.py`)
 
 **Offers cannot cost the buyer more than the target brings** (2026-08-16, the

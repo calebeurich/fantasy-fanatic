@@ -336,3 +336,66 @@ def _depth_adds(me_roster: dict, board: Board, filling_lineup: bool,
                                   + verdict)})
     adds.sort(key=lambda a: a["value"])
     return adds[:DEPTH_LIMIT]
+
+
+PRODUCTION_ADDS_NOTE = (
+    "PRODUCTION ADDS - the rental market, the win-harder list for a buyer with no hole to "
+    "fill. Each of these is a PRODUCTION-PRICED piece (declining, or inside his final "
+    "year) a seller is moving that would START for this team today - he beats the "
+    "weakest starter at his position or the weakest flex occupant, and `over_weakest_starter` "
+    "is by how much - ranked by that gain, cheapest in dynasty first among equals. Because "
+    "they come from selling paths they are priced on production, not future: a 2nd-round "
+    "pick for one of these is a directionally sound, ordinary trade (the direction gate is "
+    "satisfied on both sides by construction). `runway` says which are rentals (this season "
+    "only) and which are declining-not-done. This is also the natural SECOND LEG of a plan: "
+    "after a consolidation trade opens a slot, one of these closes it. Not a priced offer."
+)
+
+PRODUCTION_ADDS_LIMIT = 6
+
+
+def _production_adds(me_roster: dict, board: Board, my_starters: set[str],
+                     already: set[str]) -> list[dict]:
+    """Sellers' pieces that would start for me right now, ranked by production over the
+    starter they displace. The complement of `_depth_adds` (bodies who start only if
+    someone is out): these start today. Only sellers - a contender's producers are not
+    on the table (the direction gate) - and only pieces that clear the relevance floor."""
+    ctx, states, trade_counts = board.ctx, board.states, board.trade_counts
+    others_have_traded = board.others_have_traded(me_roster["owner_id"])
+    filled = roster_needs.fill_lineup(me_roster, ctx.players, ctx.lineup_dedicated,
+                                      ctx.lineup_flex)
+    # The bar a candidate must clear: the weakest occupant of any slot he could take -
+    # his own position's dedicated slots, or a flex he is eligible for.
+    def bar_for(pos):
+        doors = [(slot, ctx.players[pid].get("redraft_value") or 0) for slot, pid in filled
+                 if pid in ctx.players
+                 and (slot == pos or pos in roster_needs.FLEX_ELIGIBILITY.get(slot, ()))]
+        return min(doors, key=lambda d: d[1]) if doors else None
+    adds = []
+    for other in _others(states, me_roster, MIGHT_SELL):
+        for player in other["sellable"] + other["tradeable_surplus"]:
+            if player["name"] in already or not _sells_him(other, player):
+                continue
+            if not team_state.clears_relevance_floor(player, board.thresholds):
+                continue
+            # The rental market only: production-priced pieces (declining, or inside the
+            # final year). Studs a seller holds belong to value_upgrades / persuasion -
+            # ranked here they crowd out exactly the cheap production this list is for.
+            if team_state.value_basis(player) != "production":
+                continue
+            door = bar_for(player["position"])
+            produced = player.get("redraft_value") or 0
+            if door is None or produced <= door[1]:
+                continue
+            adds.append({"name": player["name"], "position": player["position"],
+                         "value": player["value"], "redraft_value": produced,
+                         "years_to_decline": player.get("years_to_decline"),
+                         "bucket": player.get("bucket"), "from_owner": other["owner"],
+                         "seller_path": other.get("path", ""),
+                         "slot": door[0], "over_weakest_starter": round(produced - door[1]),
+                         "friction": _buy_friction(player, other, None,
+                                                   trade_counts.get(other["owner_id"], 0),
+                                                   others_have_traded)["friction"],
+                         **_with_trade_note(player, other, trade_counts)})
+    adds.sort(key=lambda a: (-a["over_weakest_starter"], a["value"]))
+    return adds[:PRODUCTION_ADDS_LIMIT]
