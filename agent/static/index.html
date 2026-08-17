@@ -172,6 +172,9 @@
      greyed cannot be mistaken for a lit bench name. */
   .crow .n::before{content:"●";color:var(--dim);font-size:8px;margin-right:6px;vertical-align:middle}
   .crow.off{opacity:.3}
+  /* Movable but nothing on the other roster wants him (Metcalf on dez when Ben is a
+     rebuild): faded, so bright means "a real chip in THIS pairing" (owner). */
+  .crow.spare{opacity:.55}
   .crow.off .n{font-style:italic}
   .crow.off .n::before{content:"○";color:var(--dim)}
   .crow.chead2{cursor:default;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);padding:0 4px}
@@ -502,8 +505,8 @@ function renderBuilder(leagueId, owners) {
         <div class="cstance" id="cstance${k}"></div></div>
       <div class="cmeta" id="cmeta${k}"></div>
       <div id="croster${k}"><div class="cs"><span class="spin"></span>loading roster</div></div></div>`;
-  box.innerHTML = `<div class="cs">Pick two teams, tap pieces, ask. Dim = that team wouldn't move it on its path (tap anyway if you insist). ` +
-    `Tags = why the <em>other</em> team wants a piece — hover for the why.</div>` +
+  box.innerHTML = `<div class="cs">Pick two teams, tap pieces, ask. Bright = that team would move it <em>and</em> the other team has a use for it (the tag says what — hover for the why) · ` +
+    `faded = would move it, nothing over there wants it · dim = wouldn't move it on its path (tap anyway if you insist).</div>` +
     `<div class="csides">${side("a")}${side("b")}</div>` +
     `<div class="ctray" id="ctray"></div>`;
   document.querySelector('#tabs [data-view="trade"]').disabled = false;
@@ -572,7 +575,8 @@ async function fillSide(leagueId, k) {
       const on = chosen.has(p.name);
       const title = off ? "not something this team would move on its path — tap anyway if you insist"
                   : health ? "a starter under this league's start bar at " + pos : "";
-      return `<div class="crow ${p.starter ? "st" : ""} ${health} ${off ? "off" : ""} ${on ? "on" : ""} ${tagOf[p.name] ? "tagged" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${title}">` +
+      const spare = !off && !tagOf[p.name] && !on;
+      return `<div class="crow ${p.starter ? "st" : ""} ${health} ${off ? "off" : ""} ${spare ? "spare" : ""} ${on ? "on" : ""} ${tagOf[p.name] ? "tagged" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${title}">` +
         `<span class="n">${p.cornerstone ? "★ " : ""}${p.name}</span>${tag(p.name)}` +
         `<span class="v">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
         `<span class="v">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
