@@ -213,6 +213,18 @@ thumbs-down comments from league mates have been the richest source of real bugs
   verified with Qwen2.5-72B-Instruct via HuggingFace's router driving the identical
   MCP tools), to show the tool layer is the asset and the orchestrator is swappable.
 
+## License and data
+
+Source is available under the **PolyForm Noncommercial License 1.0.0** (see
+[`LICENSE`](LICENSE)): read it, run it, modify it, use it for anything noncommercial;
+commercial use needs permission. The live demo is free to use by anyone at the link
+above — using the hosted service needs no license at all.
+
+The data is not the author's to license and stays under its sources' own terms:
+Sleeper's public API, FantasyCalc's public API (used instead of KeepTradeCut, whose ToS
+forbids reproducing values), nflverse (fetched, not vendored), and the DynastyProcess
+values archive (GPL-3.0 — fetched at analysis time, never committed).
+
 ## Status
 
 Live for friends and as a public demo. Planned work is in [`ROADMAP.md`](ROADMAP.md);
