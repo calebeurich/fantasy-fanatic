@@ -1607,14 +1607,21 @@ def test_rebuilder_pick_targets_are_empty_without_pick_data():
     assert "picks_to_acquire" not in out
 
 
-def test_offer_pool_never_includes_a_position_the_team_needs():
-    """Trading a WR while WR is your own need just moves the shortage. Real bug this
-    guards: a Win-Now team with a critical WR need was told to offer its WRs."""
-    me = {"sellable": [{"name": "W", "position": "WR", "value": 900, "is_starter": False, "bucket": "prime"}],
-          "tradeable_surplus": []}
+def test_offer_pool_never_offers_a_starter_at_a_position_the_team_needs():
+    """Trading a WR starter while WR is your own need just moves the shortage. Real bug
+    this guards: a Win-Now team with a critical WR need was told to offer its WRs. Bench
+    surplus at that position is different: rjl's QB3 Stroud behind Mayfield/Darnold at a
+    weak QB room costs the lineup nothing and is exactly what a QB-critical seller wants
+    (owner, 2026-08-17) - he stays offerable."""
+    starter = {"name": "W", "position": "WR", "value": 900, "is_starter": True, "bucket": "prime"}
+    bench = {"name": "B", "position": "WR", "value": 900, "is_starter": False, "bucket": "prime"}
     thresholds = {"WR": 100}
-    assert trade_targets._my_offer_pool(me, _board(thresholds=thresholds), needs={}) != []
-    assert trade_targets._my_offer_pool(me, _board(thresholds=thresholds), needs={"WR": "critical"}) == []
+    me = {"sellable": [starter], "tradeable_surplus": []}
+    assert trade_targets._my_offer_pool(me, _board(thresholds=thresholds), needs={"WR": "critical"},
+                                        covered={"W": 500}) == []
+    me = {"sellable": [bench], "tradeable_surplus": []}
+    assert [e["name"] for e in trade_targets._my_offer_pool(me, _board(thresholds=thresholds),
+                                                             needs={"WR": "critical"})] == ["B"]
 
 
 # ------------------------------------------------------------------- league format

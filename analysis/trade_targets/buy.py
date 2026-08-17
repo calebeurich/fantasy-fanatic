@@ -76,9 +76,12 @@ def _my_offer_pool(me: dict, board: Board, needs: dict[str, dict],
     """What you could realistically offer, most value over replacement first, friction
     last. In: bench value, young surplus, any starter the bench covers for free
     (`covered == 0`), and - for a Push team only - ascending starters, whose value is the
-    future a closing window exists to spend. Out: any position this team itself needs
-    (trading it just moves the shortage), and prime/declining starters, who ARE the
-    current production. A starter's `lineup_cost` is stated, never used as a veto."""
+    future a closing window exists to spend. Out: STARTERS at a position this team itself
+    needs (trading one just moves the shortage - bench surplus there is still an offer:
+    rjl's QB3 Stroud behind Mayfield/Darnold at a weak QB room costs the lineup nothing
+    and is exactly what a QB-critical seller wants; owner, 2026-08-17), and
+    prime/declining starters, who ARE the current production. A starter's `lineup_cost`
+    is stated, never used as a veto."""
     thresholds, pick_values = board.thresholds, board.pick_values
     covered = covered or {}
     backfills = backfills or {}
@@ -104,7 +107,7 @@ def _my_offer_pool(me: dict, board: Board, needs: dict[str, dict],
 
     offers = [{**e, "lineup_cost": round(covered[e["name"]], 1)} if e["name"] in covered else e
               for e in me["sellable"] + me["tradeable_surplus"]
-              if offerable(e) and e["position"] not in needs
+              if offerable(e) and (e["position"] not in needs or not e["is_starter"])
               and team_state.clears_relevance_floor(e, thresholds)
               and worth_offering(e)]
 

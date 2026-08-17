@@ -915,6 +915,15 @@ direction gate are satisfied by construction (buyer acquires production, seller 
 with it), which is what makes "a 2nd for one of these" ordinary. It is also the natural
 second leg of a plan (see Sequences).
 
+**Bench surplus at a needed position is still an offer (2026-08-17).** The pool used to
+exclude every piece at a position the team is short at ("trading it just moves the
+shortage"). That was blunter than the situation: rjl starts Mayfield and Darnold at a
+weak QB room and holds Stroud as a QB3 - moving Stroud costs his lineup nothing and is
+exactly what a QB-critical seller (spugz) wants for Chase Brown or Montgomery+Sutton,
+yet the blanket rule hid the whole idea. Now only STARTERS at a needed position are
+out; bench pieces there stay offerable. Flows to the grounding check and the composer
+through offerable_names.
+
 ### The counterparty (`counterparty.py`)
 
 **Offers cannot cost the buyer more than the target brings** (2026-08-16, the
