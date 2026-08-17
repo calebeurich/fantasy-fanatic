@@ -508,7 +508,11 @@ async function fillSide(leagueId, k) {
         `<span class="v">${(p.value || 0).toLocaleString()}</span>` +
         `<span class="a" style="color:${ageColor(p, pos)}">${p.age != null ? p.age.toFixed(1) : ""}</span></div>`;
     }).join("");
-    return rows ? `<div class="cpos">${pos}</div><div class="crow chead2"><span class="n"></span><span class="v">ePPG</span><span class="v">now</span><span class="v">dyn</span><span class="a">age</span></div>${rows}` : "";
+    // The OTHER team's hole at this position, right on the section that could fill it.
+    const theirNeed = ((leagueTeams[other.owner] || {}).needs || {})[pos];
+    const holeChip = theirNeed && theirNeed.level && theirNeed.level !== "ok"
+      ? ` <span class="need ${theirNeed.level}" style="display:inline-block;margin-left:8px;text-transform:none;letter-spacing:0">${other.owner}: ${pos} ${theirNeed.level}</span>` : "";
+    return rows ? `<div class="cpos">${pos}${holeChip}</div><div class="crow chead2"><span class="n"></span><span class="v">ePPG</span><span class="v">now</span><span class="v">dyn</span><span class="a">age</span></div>${rows}` : "";
   }).join("");
   // Picks: identical names collapse to one chip with a count.
   const seen = {};
@@ -517,7 +521,7 @@ async function fillSide(leagueId, k) {
     `<span class="cpick ${mv.picks.has(o.key) ? "" : "off"} ${trade[k].picks.has(pk) ? "on" : ""}" data-name="${pk}">${pk}${o.n > 1 ? ` ×${o.n}` : ""} <span class="cs">${(o.v || 0).toLocaleString()}</span></span>`).join("");
   const nPicks = Object.keys(seen).length, nSpend = Object.values(seen).filter(o => mv.picks.has(o.key)).length;
   const pickNote = !nPicks ? "" : nSpend === 0
-    ? `<span style="color:var(--rebuild);font-weight:600;letter-spacing:0;text-transform:none;float:right">keeping its picks (rebuilding)</span>`
+    ? `<span style="color:var(--rebuild);font-weight:600;letter-spacing:0;text-transform:none;float:right">keeping its picks${mv.mode === "rebuild" ? " (rebuilding)" : ""}</span>`
     : `<span style="color:var(--ok);font-weight:600;letter-spacing:0;text-transform:none;float:right">would spend picks · ${nSpend} of ${nPicks} kinds</span>`;
   box.innerHTML = html + (picks ? `<div class="cpos">picks${pickNote}</div><div class="cpicks">${picks}</div>` : "");
   box.querySelectorAll(".crow").forEach(r => r.onclick = () => { r.classList.toggle("on"); renderTray(leagueId); });

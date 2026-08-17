@@ -235,10 +235,11 @@ def movable(league_id: str, owner: str, stance: str | None = None) -> dict:
     # Cornerstones are offerable by doctrine (the hardest ask is a price, not a veto) but
     # would not actually move on this path - the page shows them as a half state.
     corner = {e["name"] for e in result["me"].get("cornerstones", [])}
+    picks = result.get("picks_to_trade_away") or (result.get("push") or {}).get("picks_to_trade_away") or []
     return {"owner": owner, "mode": result["mode"], "stance": stance or None,
             "players": sorted(trade_targets.offerable_names(result)),
             "cornerstones": sorted(corner),
-            "picks": [{"season": p["season"], "round": p["round"]} for p in result.get("picks_to_trade_away", [])],
+            "picks": [{"season": p["season"], "round": p["round"]} for p in picks],
             "stance_note": result.get("stance_note")}
 
 
@@ -295,8 +296,17 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
                                + (f", displacing {', '.join(d['name'] for d in dropped)}" if dropped else "") + market})
         elif pid in new_starters or roster_needs.would_start_if_one_out(
                 buyer, ctx.players, pid, starters, ctx.lineup_dedicated, ctx.lineup_flex):
-            out.append({"name": info["name"], "owner": seller, "tag": "depth for them",
-                        "why": f"would start for {owner} if one {info['position']} were out"})
+            # Within noise of the starter he'd sit behind is not "depth" (Purdy at 17.1 vs
+            # Dak's 17.1 is a wash, not a backup) - say level with whom.
+            same = [ctx.players[q] for q in starters if q in ctx.players and ctx.players[q]["position"] == info["position"]]
+            weakest = min(same, key=lambda q: eppg(q)) if same else None
+            if weakest and eppg(info) >= 0.95 * eppg(weakest):
+                out.append({"name": info["name"], "owner": seller, "tag": f"level with their {weakest['name']}",
+                            "why": f"{eppg(info):.1f} vs {eppg(weakest):.1f} a game; season price "
+                                   f"{info.get('redraft_value') or 0:,} vs {weakest.get('redraft_value') or 0:,}"})
+            else:
+                out.append({"name": info["name"], "owner": seller, "tag": "depth for them",
+                            "why": f"would start for {owner} if one {info['position']} were out"})
     for r in [result] + [b for b in (result.get("push"), result.get("pivot")) if isinstance(b, dict)]:
         # A rebuild's wish list is young VALUE, not production - tagged only above the
         # position's trade bar (a 748-dynasty QB3 is a roster clogger, not a wish; owner).
