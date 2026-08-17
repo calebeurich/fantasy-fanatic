@@ -193,6 +193,47 @@ def team_detail(league_id: str, owner: str) -> dict:
     return _team_detail(ctx, ctx.roster_for(owner))
 
 
+@app.get("/api/league/{league_id}/team/{owner}/movable", dependencies=[Depends(require_key)])
+def movable(league_id: str, owner: str, stance: str | None = None) -> dict:
+    """What this team would plausibly move, given its path (or a declared stance: press /
+    sell) - the composer greys out everything else. Straight from trade_targets'
+    offerable set and picks-to-pay-with; the single source of truth the agent's grounding
+    check already uses. Facts, no verdicts."""
+    from analysis import trade_targets
+    result = trade_targets.find_targets(league_id, owner, stance=stance or None)
+    return {"owner": owner, "mode": result["mode"], "stance": stance or None,
+            "players": sorted(trade_targets.offerable_names(result)),
+            "picks": [{"season": p["season"], "round": p["round"]} for p in result.get("picks_to_trade_away", [])],
+            "stance_note": result.get("stance_note")}
+
+
+class EvaluateRequest(BaseModel):
+    owner_a: str
+    sends_a: list[str]
+    owner_b: str
+    sends_b: list[str]
+    stance_a: str | None = None
+    stance_b: str | None = None
+
+
+@app.post("/api/league/{league_id}/evaluate", dependencies=[Depends(require_key)])
+def evaluate(league_id: str, req: EvaluateRequest) -> dict:
+    """The framer's deterministic facts for a proposed trade, so the composer can show
+    impact on every tap: per side the goal line (lineup delta / value in-out, holes
+    opened or closed), need changes, best single piece. Free per call, no model. The
+    'should' stays the agent's."""
+    from analysis import trade_eval
+    from analysis.trade_targets.board import build_board
+    out = trade_eval.evaluate_from_board(build_board(league_id), req.owner_a, req.sends_a,
+                                         req.owner_b, req.sends_b, req.stance_a or None, req.stance_b or None)
+    if not out["ok"]:
+        return {"ok": False, "problem": out["problem"]}
+    return {"ok": True, "best_piece": out["best_piece"],
+            "sides": [{k: s.get(k) for k in ("owner", "path", "alignment", "lens", "goal",
+                                             "lineup_production_delta", "need_changes", "sends", "receives")}
+                      for s in out["sides"]]}
+
+
 @app.get("/api/league/{league_id}/teams", dependencies=[Depends(require_key)])
 def all_team_details(league_id: str) -> dict:
     """Every team's detail in one response, keyed by owner. The UI prefetches all of
@@ -253,7 +294,7 @@ def _team_detail(ctx, roster: dict) -> dict:
         "alignment": t["alignment"], "path": t["path"], "path_reason": t["path_reason"],
         "clock_mismatch_note": t.get("clock_mismatch_note"),
         "players": by_pos,
-        "picks": [{"pick": p["pick"], "value": p["value"]}
+        "picks": [{"pick": p["pick"], "value": p["value"], "season": p["season"], "round": p["round"]}
                   for p in picks.get(t["roster_id"], [])],
     }
 

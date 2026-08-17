@@ -123,17 +123,41 @@
   th.sortable:hover{color:var(--ink)}
   th.sortable .arrow{color:var(--ok)}
   .chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 12px}
-  /* The trade composer: picks pieces, writes the question. Nothing judged here. */
+  /* The trade composer: two rosters overlaid, everything a team would NOT move greyed,
+     tap to add to the trade, the framer's facts underneath. Nothing judged here. */
   .builder{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
   .builder summary{cursor:pointer;color:var(--muted);font-size:13px}
-  .bsides{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px}
-  .bside{flex:1;min-width:260px}
-  .bside select{width:100%;margin-bottom:6px}
-  .blist{max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;padding:4px 6px}
-  .blist label{display:flex;gap:6px;align-items:center;font-size:12.5px;padding:1px 0;cursor:pointer}
-  .blist label .bv{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
-  .blist .bpos{color:var(--muted);font-size:11px;min-width:24px}
-  .bsum{font-size:12.5px;color:var(--muted);margin-top:6px;min-height:1.2em}
+  .csides{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:10px}
+  @media (max-width:760px){.csides{grid-template-columns:minmax(0,1fr)}}
+  .cside{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
+  .chead{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  .chead select{max-width:180px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);
+                background:var(--bg);color:var(--ink);font:inherit}
+  .cstance{display:flex;gap:4px;margin-left:auto}
+  .cstance button{padding:3px 8px;font-size:11.5px;border-radius:999px}
+  .cstance button.on{border-color:var(--ok);color:var(--ok)}
+  .cmeta{color:var(--muted);font-size:12px;margin-bottom:6px}
+  .cpos{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;margin:6px 0 2px}
+  .crow{display:flex;gap:6px;align-items:baseline;font-size:12.5px;padding:2px 4px;border-radius:5px;cursor:pointer}
+  .crow:hover{background:var(--panel2)}
+  .crow.off{opacity:.38}
+  .crow.on{background:rgba(74,222,128,.13);outline:1px solid var(--ok)}
+  .crow .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+  .crow.st .n{color:#fff;font-weight:600}
+  .crow .v{width:40px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);flex:none;font-size:12px}
+  .crow .a{width:30px;text-align:right;font-variant-numeric:tabular-nums;color:var(--dim);flex:none;font-size:12px}
+  .cpicks{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+  .cpick{border:1px solid var(--line);border-radius:999px;padding:2px 8px;font-size:11.5px;color:var(--muted);cursor:pointer}
+  .cpick.off{opacity:.38}
+  .cpick.on{border-color:var(--ok);color:var(--ok);background:rgba(74,222,128,.13)}
+  .ctray{margin-top:10px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .ctray .side{font-size:13px;margin:2px 0}
+  .ctray .side b{color:#fff}
+  .cimpact{margin-top:8px;display:grid;gap:6px}
+  .cimpact .goal{font-size:12.5px;color:var(--muted);padding:6px 8px;border-left:2px solid var(--line)}
+  .cimpact .goal b{color:var(--ink)}
+  .cimpact .goal.hole{border-left-color:var(--crit)}
+  .cimpact .goal.gain{border-left-color:var(--ok)}
   .chip{background:transparent;border:1px dashed var(--line);color:var(--muted);
         border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer}
   .chip:hover{color:var(--ink);border-color:var(--mid)}
@@ -351,86 +375,149 @@ async function prefetchDetails(leagueId) {
     Object.entries(all).forEach(([owner, d]) => { detailCache[leagueId + "/" + owner] = d; });
   } catch (_) { /* clicks fall back to per-team fetches */ }
 }
-// ---- the trade composer: pick pieces on two teams, it writes the question ----
-// A composer, not a calculator: nothing is judged here. The framer's facts and the
-// agent's judgment both come back in the chat, which keeps the deciding rule (facts in
-// the table, every "should" in the agent) and keeps the page from growing a second
-// brain. It removes the one friction that stopped friends asking about trades at all:
-// typing names and hoping they resolve.
-let builderOwners = [];
+// ---- the trade composer: two rosters overlaid, the framer's facts underneath ----
+// A composer, not a calculator: the page shows FACTS (what each team would move, what
+// a proposal does to each lineup, which holes open) and the "should" stays the agent's.
+// Greying is trade_targets' own offerable set - the same one the grounding check uses -
+// so the roster IS the option list; a stance toggle (press / sell) re-greys it.
+let leagueTeams = {};        // owner -> overview row (path, ePPG, needs) for the headers
+const movableCache = {};     // league/owner/stance -> {players:Set, picks:Set}
+const trade = {a: {owner: null, stance: "", picks: new Set()}, b: {owner: null, stance: "", picks: new Set()}};
+let evalTimer = null;
+
+async function fetchMovable(leagueId, owner, stance) {
+  const key = `${leagueId}/${owner}/${stance}`;
+  if (!movableCache[key]) {
+    const q = stance ? `?stance=${encodeURIComponent(stance)}` : "";
+    const res = await fetch(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/movable${q}`, {headers: hdrs()});
+    const d = await res.json();
+    movableCache[key] = {players: new Set(d.players || []), picks: new Set((d.picks || []).map(p => `${p.season}-${p.round}`)), mode: d.mode};
+  }
+  return movableCache[key];
+}
+
 function renderBuilder(leagueId, owners) {
-  builderOwners = owners;
   const box = $("builder");
+  trade.a.owner = trade.a.owner || myTeam || owners[0];
+  trade.b.owner = trade.b.owner || owners.find(o => o !== trade.a.owner);
   const opts = sel => owners.map(o => `<option${o === sel ? " selected" : ""}>${o}</option>`).join("");
-  const side = (k, sel) => `<div class="bside"><select id="bsel${k}">${opts(sel)}</select>` +
-    `<div class="blist" id="blist${k}"></div><div class="bsum" id="bsum${k}"></div></div>`;
-  const leg = n => `<div class="bsides" id="leg${n}">${side(n + "a", n === 1 ? (myTeam || owners[0]) : "")}${side(n + "b", "")}</div>`;
-  box.innerHTML = `<details class="builder" id="bdetails"><summary>Propose a trade — pick pieces on both sides, then ask the assistant</summary>` +
-    `<div class="cs" style="margin-top:6px">▸ starter · ★ cornerstone · numbers are this-season · dynasty value. ` +
-    `Nothing is judged here — the assistant evaluates it in the chat.</div>` +
-    leg(1) +
-    `<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">` +
-    `<button type="button" class="ghost" id="bleg2">+ and then a second trade</button>` +
-    `<button type="button" class="primary" id="bask">Ask about this trade</button></div>` +
-    `<div id="leg2wrap" style="display:none"><div class="cs" style="margin-top:10px">and then…</div>${leg(2)}</div>` +
-    `</details>`;
+  const side = k => `<div class="cside" id="cside${k}">
+      <div class="chead"><select id="csel${k}">${opts(trade[k].owner)}</select>
+        <div class="cstance" id="cstance${k}"></div></div>
+      <div class="cmeta" id="cmeta${k}"></div>
+      <div id="croster${k}"><div class="cs">loading…</div></div></div>`;
+  box.innerHTML = `<details class="builder" id="bdetails" open><summary>Propose a trade — tap pieces on both rosters; greyed = that team wouldn't move him on its path</summary>` +
+    `<div class="csides">${side("a")}${side("b")}</div>` +
+    `<div class="ctray" id="ctray"></div></details>`;
   box.style.display = "block";
-  ["1a", "1b", "2a", "2b"].forEach(k => {
-    const sel = $("bsel" + k);
-    sel.onchange = () => fillSide(leagueId, k);
+  ["a", "b"].forEach(k => {
+    $("csel" + k).onchange = () => { trade[k].owner = $("csel" + k).value; trade[k].stance = ""; trade[k].picks = new Set(); fillSide(leagueId, k); };
     fillSide(leagueId, k);
   });
-  $("bleg2").onclick = () => {
-    const w = $("leg2wrap"); const on = w.style.display === "none";
-    w.style.display = on ? "block" : "none";
-    $("bleg2").textContent = on ? "− drop the second trade" : "+ and then a second trade";
-  };
-  $("bask").onclick = () => {
-    const legs = [composeLeg("1")].concat($("leg2wrap").style.display === "none" ? [] : [composeLeg("2")]);
-    if (legs.some(l => !l)) return;
-    $("q").value = legs.length === 1
-      ? `Evaluate this trade for both sides: ${legs[0]}`
-      : `Evaluate this two-trade plan for me: first, ${legs[0]}; and then, ${legs[1]}. Judge each trade and the plan as a whole.`;
-    $("q").focus();
-    $("q").scrollIntoView({behavior: "smooth", block: "center"});
-  };
+  renderTray(leagueId);
 }
+
+// Which declared stances make sense for a team: a contender can declare a sell, a
+// rebuild can declare a press, the middle already shows both branches (union) so its
+// toggles narrow rather than widen.
+function stanceOptions(row) {
+  const word = (row?.path || "").split(" - ")[0];
+  if (["contend", "press"].includes(word)) return [["", "as read"], ["sell", "if selling"]];
+  if (["build", "sell"].includes(word)) return [["", "as read"], ["press", "if pressing"]];
+  return [["", "either way"], ["press", "as buyer"], ["sell", "as seller"]];
+}
+
 async function fillSide(leagueId, k) {
-  const owner = $("bsel" + k).value;
-  const list = $("blist" + k);
-  if (!owner) { list.innerHTML = ""; return; }
-  list.innerHTML = `<div class="cs">loading…</div>`;
-  let d;
-  try { d = await fetchDetail(leagueId, owner); } catch (e) { list.innerHTML = `<div class="cs warn">couldn't load</div>`; return; }
-  const rows = [];
-  ["QB", "RB", "WR", "TE"].forEach(pos => (d.players[pos] || []).forEach(p => rows.push(
-    `<label><input type="checkbox" data-name="${p.name.replace(/"/g, "&quot;")}"><span class="bpos">${pos}</span>` +
-    `${p.starter ? "▸ " : ""}${p.cornerstone ? "★ " : ""}${p.name}` +
-    `<span class="bv">${p.redraft_value != null ? p.redraft_value.toLocaleString() : "–"} · ${(p.value || 0).toLocaleString()}</span></label>`)));
-  // Picks: identical names collapse to one line with a count (two "2028 1st"s are the
-  // same piece twice); the composed question names one, which is all the framer needs.
+  const owner = trade[k].owner;
+  const row = leagueTeams[owner] || {};
+  const st = $("cstance" + k);
+  st.innerHTML = stanceOptions(row).map(([v, label]) =>
+    `<button type="button" data-v="${v}" class="${trade[k].stance === v ? "on" : ""}">${label}</button>`).join("");
+  st.querySelectorAll("button").forEach(b => b.onclick = () => { trade[k].stance = b.dataset.v; fillSide(leagueId, k); });
+  const needs = Object.entries(row.needs || {}).filter(([, n]) => n && n.level && n.level !== "ok")
+    .map(([pos, n]) => `<span class="need ${n.level}" style="display:inline-block;margin:0 3px 0 0">${pos} ${n.level}</span>`).join("");
+  $("cmeta" + k).innerHTML = row.path
+    ? `<span class="tag p-${row.path.split(" - ")[0]} ${row.alignment === "unaligned" ? "hot" : "cool"}">${row.path.split(" - ")[0]}</span> ` +
+      `${row.starting_production ? row.starting_production.toFixed(1) + " ePPG · " + row.pct_of_best + "% of best" : ""} ${needs}` : "";
+  const box = $("croster" + k);
+  let d, mv;
+  try { [d, mv] = await Promise.all([fetchDetail(leagueId, owner), fetchMovable(leagueId, owner, trade[k].stance)]); }
+  catch (e) { box.innerHTML = `<div class="cs warn">couldn't load</div>`; return; }
+  const chosen = new Set(picked(k));
+  const html = ["QB", "RB", "WR", "TE"].map(pos => {
+    const rows = (d.players[pos] || []).map(p => {
+      const off = !mv.players.has(p.name);
+      const on = chosen.has(p.name);
+      return `<div class="crow ${p.starter ? "st" : ""} ${off ? "off" : ""} ${on ? "on" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${off ? "not something this team would move on its path — tap anyway if you insist" : ""}">` +
+        `<span class="n">${p.cornerstone ? "★ " : ""}${p.name}</span>` +
+        `<span class="v">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
+        `<span class="v">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
+        `<span class="v">${(p.value || 0).toLocaleString()}</span>` +
+        `<span class="a" style="color:${ageColor(p, pos)}">${p.age != null ? p.age.toFixed(1) : ""}</span></div>`;
+    }).join("");
+    return rows ? `<div class="cpos">${pos}<span style="float:right;letter-spacing:0">ePPG · now · dyn · age</span></div>${rows}` : "";
+  }).join("");
+  // Picks: identical names collapse to one chip with a count.
   const seen = {};
-  (d.picks || []).forEach(p => { seen[p.pick] = seen[p.pick] || {n: 0, v: p.value}; seen[p.pick].n++; });
-  Object.entries(seen).forEach(([pk, o]) => rows.push(
-    `<label><input type="checkbox" data-name="${pk}"><span class="bpos">PICK</span>${pk}${o.n > 1 ? ` ×${o.n}` : ""}` +
-    `<span class="bv">${(o.v || 0).toLocaleString()}</span></label>`));
-  list.innerHTML = rows.join("") || `<div class="cs">nothing to pick</div>`;
-  list.querySelectorAll("input").forEach(cb => cb.onchange = () => summarize(k));
-  summarize(k);
+  (d.picks || []).forEach(p => { const key = `${p.season}-${p.round}`; seen[p.pick] = seen[p.pick] || {n: 0, v: p.value, key}; seen[p.pick].n++; });
+  const picks = Object.entries(seen).map(([pk, o]) =>
+    `<span class="cpick ${mv.picks.has(o.key) ? "" : "off"} ${trade[k].picks.has(pk) ? "on" : ""}" data-name="${pk}">${pk}${o.n > 1 ? ` ×${o.n}` : ""} <span class="cs">${(o.v || 0).toLocaleString()}</span></span>`).join("");
+  box.innerHTML = html + (picks ? `<div class="cpos">picks</div><div class="cpicks">${picks}</div>` : "");
+  box.querySelectorAll(".crow").forEach(r => r.onclick = () => { r.classList.toggle("on"); renderTray(leagueId); });
+  box.querySelectorAll(".cpick").forEach(c => c.onclick = () => {
+    const nm = c.dataset.name;
+    if (trade[k].picks.has(nm)) trade[k].picks.delete(nm); else trade[k].picks.add(nm);
+    c.classList.toggle("on"); renderTray(leagueId);
+  });
+}
+// The same age color the roster view uses - runway relative to the position's prime.
+function ageColor(p, pos) {
+  const y = p.years_to_decline;
+  if (y == null) return "var(--dim)";
+  if (y >= 0) { const t = p.prime_span ? Math.max(0, Math.min(1, y / p.prime_span)) : 0.5; return `hsl(${Math.round(45 + t * 45)}, 65%, 58%)`; }
+  const tail = {QB: 6, RB: 3, WR: 4, TE: 4}[pos] || 4;
+  return `hsl(${Math.round(10 + 30 * (1 + y / tail))}, 65%, 55%)`;
 }
 function picked(k) {
-  return [...document.querySelectorAll(`#blist${k} input:checked`)].map(cb => cb.dataset.name);
+  return [...document.querySelectorAll(`#croster${k} .crow.on`)].map(r => r.dataset.name).concat([...trade[k].picks]);
 }
-function summarize(k) {
-  const names = picked(k);
-  $("bsum" + k).textContent = names.length ? `${$("bsel" + k).value} sends: ${names.join(", ")}` : "";
+
+function renderTray(leagueId) {
+  const a = trade.a.owner, b = trade.b.owner, pa = picked("a"), pb = picked("b");
+  const tray = $("ctray");
+  const line = (o, ps) => `<div class="side"><b>${o}</b> sends: ${ps.length ? ps.join(", ") : "<span class='cs'>nothing yet</span>"}</div>`;
+  tray.innerHTML = line(a, pa) + line(b, pb) +
+    `<div class="cimpact" id="cimpact"></div>` +
+    `<div class="row" style="margin-top:8px;gap:8px"><button type="button" class="ghost" id="cclear">clear</button>` +
+    `<button type="button" class="primary" id="cask" ${pa.length && pb.length && a !== b ? "" : "disabled"}>Ask the assistant about this trade</button></div>`;
+  $("cclear").onclick = () => { document.querySelectorAll(".crow.on").forEach(r => r.classList.remove("on")); trade.a.picks.clear(); trade.b.picks.clear(); document.querySelectorAll(".cpick.on").forEach(c => c.classList.remove("on")); renderTray(leagueId); };
+  $("cask").onclick = () => {
+    const stance = k => trade[k].stance ? ` (${trade[k].owner} says they'd ${trade[k].stance === "sell" ? "sell" : "press"})` : "";
+    $("q").value = `Evaluate this trade for both sides: ${a} sends ${pa.join(", ")}; ${b} sends ${pb.join(", ")}.${stance("a")}${stance("b")}`;
+    $("q").focus(); $("q").scrollIntoView({behavior: "smooth", block: "center"});
+  };
+  clearTimeout(evalTimer);
+  if (!(pa.length && pb.length && a !== b)) return;
+  evalTimer = setTimeout(() => showImpact(leagueId, a, pa, b, pb), 250);
 }
-function composeLeg(n) {
-  const a = $("bsel" + n + "a").value, b = $("bsel" + n + "b").value;
-  const pa = picked(n + "a"), pb = picked(n + "b");
-  if (!a || !b || a === b) { alert("pick two different teams"); return null; }
-  if (!pa.length || !pb.length) { alert("pick at least one piece on each side"); return null; }
-  return `${a} sends ${pa.join(", ")}; ${b} sends ${pb.join(", ")}`;
+
+// The framer's facts for the proposal as it stands: goal line per side (lineup delta or
+// value in/out, holes opened or closed), best single piece. No verdict.
+async function showImpact(leagueId, a, pa, b, pb) {
+  const box = $("cimpact"); if (!box) return;
+  box.innerHTML = `<div class="cs">working out the impact…</div>`;
+  try {
+    const res = await fetch(`/api/league/${encodeURIComponent(leagueId)}/evaluate`, {
+      method: "POST", headers: hdrs({"Content-Type": "application/json"}),
+      body: JSON.stringify({owner_a: a, sends_a: pa, owner_b: b, sends_b: pb, stance_a: trade.a.stance || null, stance_b: trade.b.stance || null})});
+    const d = await res.json();
+    if (!d.ok) { box.innerHTML = `<div class="cs warn">${d.problem}</div>`; return; }
+    box.innerHTML = d.sides.map(s => {
+      const goal = (s.goal || "").replace(/^GOAL for a (buying|selling|middle) path is [^:]+: /, "");
+      const cls = /OPENS A NEW HOLE/.test(goal) ? "hole" : (s.lineup_production_delta > 0 || /value .* in for/.test(goal) && /closes/.test(goal)) ? "gain" : "";
+      return `<div class="goal ${cls}"><b>${s.owner}</b> <span class="cs">(${s.path}, ${s.lens} lens)</span> — ${goal}</div>`;
+    }).join("") + `<div class="cs" style="padding:0 8px">best single piece: <b>${d.best_piece.name}</b> → ${d.best_piece.to}. Facts only — ask the assistant for the read.</div>`;
+  } catch (e) { box.innerHTML = `<div class="cs warn">couldn't evaluate</div>`; }
 }
 
 async function toggleDetail(tr, leagueId) {
@@ -545,6 +632,7 @@ async function loadLeague(id) {
       startNewConversation(`Switched leagues — started a new conversation for ${currentLeagueName || "this league"}.`);
     }
     currentLeague = id;
+    leagueTeams = Object.fromEntries(d.teams.map(t => [t.owner, t]));
     const rows = d.teams.map(t => {
       const needs = Object.entries(t.needs)
         .map(([pos, n]) => `<span class="need ${n.level}" title="${n.note}">${pos} ${n.level}</span>`).join("") || "—";

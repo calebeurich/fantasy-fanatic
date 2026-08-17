@@ -1603,6 +1603,23 @@ bold. Cornerstones alone made the column lie by omission: a roster showed only
 value. The reader wants the roster's headline pieces; which of them are young enough
 to build around is a flag on the name, not a filter on the list.
 
+### The trade composer (staging only, 2026-08-17 v2)
+
+Owner's verdict on v1 (two dropdowns + checkbox lists): "works but looks bad, doesn't
+present info, options, and impact easily." v2, per his direction: **the two rosters
+overlaid, with everything a team would NOT move greyed out** - the roster IS the option
+list. Greying is `trade_targets.offerable_names` (plus `picks_to_trade_away`), the same
+set the agent's grounding check uses, served by `/api/league/{id}/team/{owner}/movable`;
+a stance toggle per team (a contender "if selling", a rebuild "if pressing", the middle
+"as buyer / as seller") re-greys under a declared stance - the spugz case. Tap a row or
+a pick chip to put it in the trade; the tray shows both sides and, on every change,
+`/api/league/{id}/evaluate` (the framer's `evaluate_from_board`) returns the FACTS:
+each side's goal line (lineup delta or value in/out, holes opened or closed) and the
+best single piece - free per tap, no model. One button pins the structured question
+to chat, carrying declared stances. The deciding rule holds: facts render, every
+"should" is the agent's. Greyed rows stay tappable ("tap anyway if you insist") - the
+user may know something the path doesn't.
+
 ## Known limitations / backlog
 
 Measured or confirmed, none urgent, kept so nobody re-derives them:
