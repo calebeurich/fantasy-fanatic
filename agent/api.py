@@ -17,7 +17,6 @@ import os
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import traceback
 from contextlib import asynccontextmanager
@@ -37,31 +36,16 @@ from pydantic import BaseModel
 # loop before importing this module, so the policy applies too late (tried it).
 # Unaffected on Linux, which is why the container never hit this.
 
-from analysis import format_support, roster_needs, team_state
+from analysis import format_support, roster_needs, team_state, warm
 
 from . import budget, observability
 from .agent import run_query, MCP_SERVER_PATH, _options
 from .sessions import SessionManager
 
 
-def _warm(league_ids: list[str]) -> None:
-    """Pull every source a page load needs, so a friend arriving at a cold container
-    gets a warm one. Cloud Run scales to zero between visits, and a cold load pays
-    ~10s of fetches (nflverse alone is ~5s) that no request should wait on. Runs off
-    the event loop; a failure here costs nothing but the warm-up."""
-    for league_id in league_ids:
-        try:
-            team_state.classify_league(league_id)
-            roster_needs.league_needs(league_id)
-        except Exception as e:  # noqa: BLE001 - best effort, the request path will retry
-            print(f"warm-up failed for {league_id}: {type(e).__name__}: {e}", file=sys.stderr)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    warm = [l for l in os.environ.get("WARM_LEAGUES", "").split(",") if l]
-    if warm:
-        threading.Thread(target=_warm, args=(warm,), daemon=True).start()
+    warm.start_from_env()
     yield
     # Sessions hold live subprocesses; without this they'd be orphaned on shutdown.
     await sessions.close_all()
@@ -271,6 +255,13 @@ def session_status() -> dict:
     return sessions.status()
 
 
+@app.post("/sessions/{session_id}/warm", dependencies=[Depends(require_key)])
+async def warm_session(session_id: str) -> dict:
+    """The page calls this on load so the first question skips the ~8s subprocess
+    start-up. Only takes a free slot - see SessionManager.prewarm."""
+    return {"opened": await sessions.prewarm(session_id)}
+
+
 @app.get("/diagnostics", dependencies=[Depends(require_key)])
 async def diagnostics() -> dict:
     """Spawns the MCP server directly and reports what actually happens.
@@ -439,17 +430,18 @@ def budget_status() -> dict:
     return budget.status()
 
 
-# What each in-flight question is doing right now, keyed by the client's session id.
-# Polling rather than streaming on purpose: /ask already returns one whole answer, and
-# turning it into an SSE stream would rewrite the response contract, the retry logic and
-# the eval harness to show a progress line. A dict the client reads while it waits costs
-# ~15 lines and nothing else changes.
+# What each in-flight question is doing right now, keyed by the client's session id:
+# the tool step it is on, and the answer text so far. Polling rather than streaming on
+# purpose: /ask already returns one whole answer, and turning it into an SSE stream
+# would rewrite the response contract, the retry logic and the eval harness. Two dicts
+# the client reads while it waits cost ~15 lines and nothing else changes.
 _progress: dict[str, str] = {}
+_partial: dict[str, str] = {}
 
 
 @app.get("/progress/{session_id}", dependencies=[Depends(require_key)])
 def progress(session_id: str) -> dict:
-    return {"step": _progress.get(session_id)}
+    return {"step": _progress.get(session_id), "text": _partial.get(session_id)}
 
 
 # The last finished answer per session, so leaving does not destroy it.
@@ -484,6 +476,8 @@ async def ask(request: AskRequest) -> AskResponse:
 
     track = (lambda step: _progress.__setitem__(request.session_id, step)) \
         if request.session_id else None
+    stream = (lambda text: _partial.__setitem__(request.session_id, text)) \
+        if request.session_id else None
     created = False
     try:
         if request.session_id:
@@ -492,13 +486,13 @@ async def ask(request: AskRequest) -> AskResponse:
             # interleave on the same client and corrupt the conversation.
             async with session.lock:
                 result = await run_query(question, verbose=False, client=session.client,
-                                         on_progress=track)
+                                         on_progress=track, on_text=stream)
                 # Convert the client's cumulative total into this question's own cost -
                 # see Session.cost_delta for why the raw value would both over-report
                 # and over-charge the daily budget on a persistent session.
                 result["cost_usd"] = session.cost_delta(result["cost_usd"])
         else:
-            result = await run_query(question, verbose=False, on_progress=track)
+            result = await run_query(question, verbose=False, on_progress=track, on_text=stream)
     except Exception as e:
         # Log before swallowing. The detail is still withheld from the caller (internals
         # shouldn't leak from a public endpoint), but it must go *somewhere*: failures in
@@ -517,9 +511,11 @@ async def ask(request: AskRequest) -> AskResponse:
         # failing), so it counts against the day rather than being free to retry in a loop.
         budget.record(None)
         _progress.pop(request.session_id, None)
+        _partial.pop(request.session_id, None)
         return AskResponse(text="Something went wrong answering that. Try again, or try a different league.")
 
     _progress.pop(request.session_id, None)
+    _partial.pop(request.session_id, None)
     budget.record(result["cost_usd"])
     if request.session_id:
         # Written whether or not anyone is still listening - that is the entire point.

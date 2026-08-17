@@ -224,6 +224,10 @@ localStorage.setItem("ff_session", sessionId);
 const KEY = () => localStorage.getItem("ff_key") || "";
 const hdrs = extra => Object.assign({"X-FF-Key": KEY()}, extra || {});
 
+// Start the conversation's subprocesses now, while the reader is still picking a
+// league - the first question then skips ~8s of start-up. Best effort.
+fetch(`/sessions/${sessionId}/warm`, {method: "POST", headers: hdrs()}).catch(() => {});
+
 const $ = id => document.getElementById(id);
 let currentLeague = null;
 let currentLeagueName = null;
@@ -699,25 +703,26 @@ $("f").onsubmit = async e => {
   $("q").value = "";
   add(`<p>${typed.replace(/</g, "&lt;")}</p>`, "me");
   const pending = add("<p><span id='step'>thinking…</span> <span id='tick'>0s</span>"
-                      + "<br><span class='cs'>a full answer takes about a minute — keep this tab open</span></p>");
+                      + "<br><span class='cs'>a full answer takes about a minute — keep this tab open</span></p>"
+                      + "<div id='partial'></div>");
   $("send").disabled = true;
-  // A clock AND the actual step, because the honest expectation is ~60-90s: a silent
-  // spinner is what makes someone switch tabs, and a backgrounded mobile tab gets its
-  // fetch killed. The step comes from the agent's real tool calls (GET /progress), not
-  // from a scripted sequence - a fake progress bar that finishes before the answer does
-  // is worse than none.
+  // A clock, the actual step, and the answer as it is written. The step comes from the
+  // agent's real tool calls and the text from the model's own stream (GET /progress),
+  // never from a scripted sequence - a fake progress bar that finishes before the
+  // answer does is worse than none. Words arriving is what keeps someone on the tab.
   const started = Date.now();
   let beat = 0;
   const ticker = setInterval(async () => {
     const el = document.getElementById("tick");
     if (el) el.textContent = Math.round((Date.now() - started) / 1000) + "s";
-    // The clock ticks every second; the step is polled every fifth tick - the agent
-    // changes tools every 10-20s, and polling at 2s was 30-45 requests per question.
-    if (++beat % 5) return;
+    if (++beat % 2) return;  // the clock ticks every second, the server is asked every 2s
     try {
       const p = await (await fetch(`/progress/${sessionId}`, {headers: hdrs()})).json();
       const s = document.getElementById("step");
-      if (s && p.step) s.textContent = p.step + "…";
+      if (s && p.text) s.textContent = "writing…";
+      else if (s && p.step) s.textContent = p.step + "…";
+      const t = document.getElementById("partial");
+      if (t && p.text) t.innerHTML = md(p.text);
     } catch (_) { /* progress is decoration; never let it break the answer */ }
   }, 1000);
   // Note the question as in-flight BEFORE sending, so a reload mid-answer knows to go
