@@ -26,7 +26,18 @@
   .brand{color:var(--dim);font-size:11.5px;text-align:right;padding:2px 12px 0}
   section.view{display:none}
   section.view.on{display:grid;gap:18px}
-  @media (max-width:600px){.brand{display:none}}
+  @media (max-width:600px){
+    .brand{display:none}
+    main{padding:10px}
+    .pad{padding:10px}
+    /* iOS zooms the page on focus when an input's font is under 16px. */
+    input[type=text]{font-size:16px}
+    /* Idea cards: text on top, ask/tweak below it, instead of squeezing side by side. */
+    .idea{flex-wrap:wrap}
+    .iacts{margin-left:auto}
+    .chips{padding:4px 10px 10px}
+    .chip{font-size:12px;padding:5px 9px}
+  }
   h1{font-size:15px;margin:0;letter-spacing:.3px}
   .sub{color:var(--dim);font-size:12.5px}
   main{max-width:1440px;margin:0 auto;padding:18px;display:grid;gap:18px}
@@ -276,7 +287,7 @@
 <main>
 <section class="view on" data-view="league">
   <p id="demonote" style="display:none;margin:0;color:var(--thin);font-size:13.5px"></p>
-  <details class="card" open>
+  <details class="card" id="intro" open>
     <summary style="cursor:pointer;font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);padding:11px 14px;background:var(--panel2)">What this is (and isn't)</summary>
     <div class="pad tldr">
       <p><strong>A dynasty trade advisor for Sleeper leagues.</strong> It knows every roster,
@@ -416,6 +427,7 @@ function showView(name) {
   window.scrollTo({top: 0});
 }
 document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => showView(b.dataset.view));
+if (matchMedia("(max-width:600px)").matches) $("intro").open = false;   // a screen of text before the table, on a phone
 showView(["trade", "ask"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "league");
 let currentLeague = null;
 let currentLeagueName = null;
