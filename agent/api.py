@@ -441,6 +441,8 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
     value = {p["name"]: p["value"] for p in ctx.players.values()}
     eppg = {p["name"]: p.get("projected_ppg") or 0 for p in ctx.players.values()}
     position = {p["name"]: p["position"] for p in ctx.players.values()}
+    from analysis.team_values import years_to_decline
+    runway = {p["name"]: years_to_decline(p["position"], p["age"], p.get("usage_role")) for p in ctx.players.values()}
     bars = ctx.trade_thresholds
 
     def real_chip(name):
@@ -565,12 +567,21 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
     wish_a = {t["name"] for t in result_a.get("acquire_targets") or []}
     wish_b = {t["name"] for t in result_b.get("acquire_targets") or []}
     def available(prop):
-        # The replaced starter is fine to send - unless the receiver is a rebuild that
-        # didn't ask for him (spugz doesn't want DJ Moore for Jefferson; owner).
-        swap_ok = lambda n, receiver_wish, receiver: n == prop.get("upgrade") and (receiver["mode"] != "rebuild" or n in receiver_wish)
-        ok_a = lambda n: n in movable_a or swap_ok(n, wish_b, result_b) or n not in position
-        ok_b = lambda n: n in movable_b or swap_ok(n, wish_a, result_a) or n not in position
-        return all(ok_a(n) for n in prop["a_sends"]) and all(ok_b(n) for n in prop["b_sends"])
+        # Sender side: the piece is something its team would move (or the replaced starter
+        # of an upgrade swap). Receiver side: a REBUILD only takes players it is actually
+        # collecting - its acquire list - or picks; Olave for Garrett Wilson (26.2 for 26.1)
+        # was a lateral that did nothing for Bartolos (owner: "doesn't make sense").
+        # "Collecting" = on its wish list (a shortlist, pre-filtered by who would move him)
+        # OR clearly more runway than the best piece it sends - a year or more. Tyson (7.0)
+        # for Zay Flowers (3.0) is what a rebuild does; Wilson (2.9) for Olave (2.8) is not.
+        sender_ok = lambda n, movable: n in movable or n == prop.get("upgrade") or n not in position
+        def taker_ok(n, receiver, wish, it_sends):
+            if receiver["mode"] != "rebuild" or n not in position or n in wish:
+                return True
+            leaving = max((runway.get(m) or 0 for m in it_sends if m in position), default=0)
+            return (runway.get(n) or 0) >= leaving + 1
+        return (all(sender_ok(n, movable_a) and taker_ok(n, result_b, wish_b, prop["b_sends"]) for n in prop["a_sends"])
+                and all(sender_ok(n, movable_b) and taker_ok(n, result_a, wish_a, prop["a_sends"]) for n in prop["b_sends"]))
     seen, used_a, used_b, out = set(), set(), set(), []
     for prop in filter(None, (balance(c) for c in cands if available(c))):
         key = (tuple(prop["a_sends"]), tuple(prop["b_sends"]))

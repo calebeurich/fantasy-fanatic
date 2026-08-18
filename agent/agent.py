@@ -493,6 +493,19 @@ def _trade_violations(text: str, banned: set[str]) -> list[str]:
     return sorted(violations)
 
 
+BALLPARK_WORDS = ("ballpark", "benchmark", "typically lands", "usually lands", "usually fetches")
+
+
+def _ballpark_violation(text: str, tool_results: list[dict]) -> bool:
+    """The framer's ballpark is SILENT for some trades (a pick as the best piece, a plain
+    mid-tier swap) and the model wrote one anyway - "typically lands around a 2027 2nd or
+    2028 1st early" (a slot 2028 picks don't have; owner: "the model is hallucinating").
+    A benchmark sentence with no BALLPARK line in any tool result is invented."""
+    if not any(w in text.lower() for w in BALLPARK_WORDS):
+        return False
+    return not any("BALLPARK" in _content_text(r.get("content")) for r in tool_results)
+
+
 def _content_text(content) -> str:
     """Tool result content comes back as a plain string, a list of {"type",
     "text", ...} blocks, or None depending on the tool/transport - normalize to
@@ -590,9 +603,10 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
                 else (set(), set()))
             violations = _trade_violations(turn["text"], banned)
             need_violations = _need_claim_violations(turn["text"], flagged, league_owner_names)
-            while (violations or need_violations) and retries < MAX_GROUNDING_RETRIES:
+            ballpark_violation = _ballpark_violation(turn["text"], all_tool_results)
+            while (violations or need_violations or ballpark_violation) and retries < MAX_GROUNDING_RETRIES:
                 if verbose:
-                    print(f"[grounding check failed: {violations + need_violations} - retrying]")
+                    print(f"[grounding check failed: {violations + need_violations + (['invented ballpark'] if ballpark_violation else [])} - retrying]")
                 # List every violation found, not just one - an earlier version only
                 # named a single offender (via next() on a set), so when an answer
                 # named two non-offerable players at once, the one retry fixed one
@@ -612,6 +626,12 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
                         f"contain: {claims} Only claim a team needs a position when the tools "
                         f"flag that need - if you have not called get_roster_needs for this "
                         f"league, call it rather than inferring needs.")
+                if ballpark_violation:
+                    problems.append(
+                        "You quoted a ballpark / benchmark for this trade, but no tool result "
+                        "contains a BALLPARK line for it - the measured benchmark exists only "
+                        "for player-centred returns. There is no benchmark here: say so if it "
+                        "matters, and never invent one.")
                 # The reader never sees this exchange, and the model must not either: a live
                 # retry opened its answer "You're absolutely right - I apologize", claimed
                 # the tool output had been "too large to display" (confabulated - the run's
@@ -637,6 +657,7 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
                 violations = _trade_violations(turn["text"], banned)
                 need_violations = _need_claim_violations(turn["text"], flagged,
                                                          league_owner_names)
+                ballpark_violation = _ballpark_violation(turn["text"], all_tool_results)
 
         answer_text = turn["text"]
         if FAKE_TOOL_CALL.search(answer_text or "") and not all_tool_calls:

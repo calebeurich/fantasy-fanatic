@@ -334,7 +334,8 @@ def evaluate_trade(league_id: str, owner_a: str, sends_a: list[str],
     the ballpark as the tool's benchmark from real trades and STOP there: it is the one
     place this project sums values, and only because the benchmark was measured that
     way; never extend the arithmetic, never call a side the winner, never say "fair".
-    A trade can be right for both seats; say so when it is.
+    When there is no BALLPARK line (a pick is the best piece; a plain swap) there is no
+    benchmark - never write one. A trade can be right for both seats; say so when it is.
 
     `stance_a`/`stance_b`: pass ONLY when the user declares that side's branch ("kieran
     wants to pivot", "I'm pressing this year") - one of press/contend/buy/sell/build/
