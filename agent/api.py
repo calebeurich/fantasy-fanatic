@@ -405,7 +405,7 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
             # who starts for him too), so both rows see the same pairs.
             if adds:
                 tag = {f["name"]: f["tag"] for f in fits(league_id, me, them)}
-                for p1, p2 in consolidations(list(tag), lambda n: tag[n].startswith(("starts", "level")), lambda n: tag[n].startswith("depth")):
+                for p1, p2 in consolidations(list(tag), lambda n: tag[n].startswith(("starts", "level", "beats")), lambda n: tag[n].startswith("depth")):
                     out.append({"a_sends": [], "b_sends": [p1, p2], "lens": "buy",
                                 "why": f"{me} takes {p1} and {p2} from {them} in one deal - starter and cover for a run"})
             sells = [e["name"] for e in (r.get("sell_candidates") or []) if e["name"] in offerable][:3]
@@ -419,7 +419,7 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
                                             key=lambda n: -value[n])), None)
             if sells:   # a rebuild, or a decide team's pivot branch
                 tag = {f["name"]: f["tag"] for f in fits(league_id, them, me)}
-                pairs = consolidations(sells, lambda n: tag.get(n, "").startswith(("starts", "level")), lambda n: tag.get(n, "").startswith("depth"))
+                pairs = consolidations(sells, lambda n: tag.get(n, "").startswith(("starts", "level", "beats")), lambda n: tag.get(n, "").startswith("depth"))
             for t in r.get("acquire_targets") or []:
                 if t.get("from_owner") == them:
                     for sell in sells:
