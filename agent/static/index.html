@@ -780,7 +780,7 @@ async function fillIdeas(leagueId, owner) {
   if (!el) return;
   const key = `${leagueId}/${owner}`;
   try {
-    if (!ideasCache[key]) ideasCache[key] = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/ideas`, {headers: hdrs()});
+    if (!ideasCache[key]) ideasCache[key] = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/ideas?limit=8`, {headers: hdrs()});
   } catch (_) { el.textContent = "couldn't look"; return; }
   const list = ideasCache[key];
   if (!list.length) { el.textContent = "nothing obvious — build one in the trade helper below"; return; }
@@ -791,10 +791,15 @@ async function fillIdeas(leagueId, owner) {
     `<span class="iacts"><button type="button" class="ask" data-i="${i}">ask</button><button type="button" class="tweak" data-i="${i}">tweak</button></span></div>`;
   const buys = list.map((s, i) => [s, i]).filter(([s]) => s.lens !== "sell");
   const sells = list.map((s, i) => [s, i]).filter(([s]) => s.lens === "sell");
+  // Three up front, the rest behind one tap ("more ideas") - the list is fetched once.
   const col = (title, cls, items) => items.length
-    ? `<div style="flex:1;min-width:260px"><div class="cs" style="margin-bottom:3px"><span class="tag ${cls} cool">${title}</span></div>${items.map(([s, i]) => card(s, i)).join("")}</div>` : "";
+    ? `<div style="flex:1;min-width:260px"><div class="cs" style="margin-bottom:3px"><span class="tag ${cls} cool">${title}</span></div>` +
+      items.slice(0, 3).map(([s, i]) => card(s, i)).join("") +
+      (items.length > 3 ? `<div class="more" hidden>${items.slice(3).map(([s, i]) => card(s, i)).join("")}</div>` +
+        `<button type="button" class="ghost morebtn">${items.length - 3} more idea${items.length - 3 > 1 ? "s" : ""}</button>` : "") + `</div>` : "";
   el.innerHTML = framing + `<div style="display:flex;gap:14px;flex-wrap:wrap">${col("as buyer", "p-contend", buys)}${col("as seller", "p-sell", sells)}</div>` +
     `<div class="cs" style="margin-top:4px">ask = the assistant reads it for both sides · tweak = open it in Trade first</div>`;
+  el.querySelectorAll(".morebtn").forEach(btn => btn.onclick = () => { btn.previousElementSibling.hidden = false; btn.remove(); });
   el.querySelectorAll(".idea .ask").forEach(btn => btn.onclick = () => openComposerWith(leagueId, owner, list[+btn.dataset.i], true));
   el.querySelectorAll(".idea .tweak").forEach(btn => btn.onclick = () => openComposerWith(leagueId, owner, list[+btn.dataset.i], false));
 }

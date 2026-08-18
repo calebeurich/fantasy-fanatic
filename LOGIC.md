@@ -1686,8 +1686,12 @@ with its best sellable production, the UPGRADE SWAP (the starter the target woul
 replace goes back the other way - "Bryce Young + a pick for Goff", owner - only when
 the target out-produces him by 5%+ in ePPG; Parker Washington for McLaurin at the
 same ePPG is a swap, not an upgrade), and for a rebuild its single biggest movable
-piece whether or not he is aging (owner: "have to give jq something with Chase - such
-a notable player on his sell team"); mirrored. The band is DIRECTIONAL, in the buyer's
+piece that has STOPPED GAINING value - Chase at 26.5, prime (owner: "have to give jq
+something with Chase - such a notable player on his sell team") but never an ascending
+one (Drake Maye surfaced as "aging production" for shivvv - owner: "win now but also win
+later, not an aging asset at all"); a rebuild's ascending situational pieces are not idea
+material at all, in any family - "at a cornerstone's price" is the composer's business,
+here they are what the rebuild is collecting; mirrored. The band is DIRECTIONAL, in the buyer's
 view: he sends 0.9x-1.2x of what he gets in dynasty value (a hair under, 0.04, is not
 worth stapling a 4th on; overpaying to 1.2x is what contenders do; past that the
 seller evens it up). One floor for every piece: the aging discount is already in a

@@ -393,15 +393,22 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
                     out.append({"a_sends": [], "b_sends": [t["name"]], "lens": "buy",
                                 "why": f"{t['name']} would start for {me} today; {them} is selling production for picks"})
             sells = [e["name"] for e in (r.get("sell_candidates") or []) if e["name"] in offerable][:3]
-            # A rebuild's biggest piece is a conversation whether or not he is aging (owner:
-            # "have to give jq something with Chase - such a notable player on his sell team").
+            # A rebuild's biggest piece is a conversation once he has stopped GAINING value
+            # (Chase at 26.5 - owner: "have to give jq something with Chase"), never while he
+            # is still ascending (Drake Maye is what a rebuild is collecting, not selling).
+            headline = None
             if r.get("mode") == "rebuild":
-                sells += sorted((n for n in offerable if n in value and n not in sells), key=lambda n: -value[n])[:1]
+                bucket = {e["name"]: e.get("bucket") for e in (r.get("sell_candidates") or []) + (r.get("situational") or [])}
+                headline = next(iter(sorted((n for n in offerable if n in value and n not in sells and bucket.get(n) != "ascending"),
+                                            key=lambda n: -value[n])), None)
             for t in r.get("acquire_targets") or []:
                 if t.get("from_owner") == them:
                     for sell in sells:
                         out.append({"a_sends": [sell], "b_sends": [t["name"]], "lens": "sell",
                                     "why": f"{me} converts {sell} into {t['name']} - young value for aging production"})
+                    if headline:
+                        out.append({"a_sends": [headline], "b_sends": [t["name"]], "lens": "sell",
+                                    "why": f"{headline} is {me}'s biggest chip and no longer gaining value; a rebuild turns him into youth and picks"})
         return out
 
     ctx = context(league_id)
@@ -516,8 +523,14 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
     # kb's Brian Thomas doesn't make Thomas available (kb is WR-weak; he's a starter). The
     # one exception is the starter an upgrade swap replaces: he goes because a better one
     # arrives.
-    movable_a = trade_targets.offerable_names(result_a)
-    movable_b = trade_targets.offerable_names(result_b)
+    # ...and a rebuild's ASCENDING situational pieces (Drake Maye) are not idea material
+    # at all - "at a cornerstone's price" is the composer's business; here they are what
+    # the rebuild is collecting, not selling (owner: "win now but also win later").
+    def still_gaining(result):
+        sit = result.get("situational") or (result.get("pivot") or {}).get("situational") or []
+        return {e["name"] for e in sit if e.get("bucket") == "ascending"}
+    movable_a = trade_targets.offerable_names(result_a) - still_gaining(result_a)
+    movable_b = trade_targets.offerable_names(result_b) - still_gaining(result_b)
     wish_a = {t["name"] for t in result_a.get("acquire_targets") or []}
     wish_b = {t["name"] for t in result_b.get("acquire_targets") or []}
     def available(prop):
@@ -545,7 +558,7 @@ def suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance_
 
 
 @app.get("/api/league/{league_id}/team/{owner}/ideas", dependencies=[Depends(tier)])
-def trade_ideas(league_id: str, owner: str) -> list[dict]:
+def trade_ideas(league_id: str, owner: str, limit: int = 3) -> list[dict]:
     """Up to three starting points for one team across the whole league - one per
     partner - shown in the team's expanded row, click-to-load into the composer.
     Deterministic and cheap once the board is warm; cached client-side per team."""
@@ -555,7 +568,7 @@ def trade_ideas(league_id: str, owner: str) -> list[dict]:
     cands = []
     for other in ctx.owner_names.values():
         if other != owner:
-            cands += _suggest(league_id, owner, other, limit=2)
+            cands += _suggest(league_id, owner, other, limit=3)
     # Bigger deals first (what comes back, in dynasty value), one per partner, and no
     # repeating the outgoing piece - three ideas should be three different conversations.
     # A waiting team is patient by definition: nothing to convert, so sell-lens ideas are
@@ -578,7 +591,7 @@ def trade_ideas(league_id: str, owner: str) -> list[dict]:
             if c["partner"] in partners or (mine & sent) or (shape and shape in shapes):
                 continue
             partners.add(c["partner"]); sent |= mine; shapes.add(shape); out.append(c); n += 1
-            if n == 3:
+            if n == limit:   # per lens; the page shows three and reveals the rest on a tap
                 break
     return out
 
