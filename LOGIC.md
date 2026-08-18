@@ -1350,7 +1350,13 @@ hole" is a contender's sentence); and a middle team offered a win on BOTH curren
 for Ward + a pick because "my TE hole stays unfixed", which the owner read as backwards:
 "it's such a value and production win that it would be good if he committed, and it
 does not stop him fixing the rest of his lineup." The commit IS the move; the untouched
-holes are the next trade's problem.
+holes are the next trade's problem. And the persona is deliberately a little
+adversarial (owner: "people like and slightly overvalue their players, so bake this in
+as what the person might say and manage expectations"): it prices its own players a
+touch above market, so an "even" trade needs a stated reason; it never gives up the
+best player in the deal without naming the premium; and if yes means committing - press
+or pivot - it names the commitment and the moves it forces. Its job is to say what the
+real manager would say, so the asker walks in with the right expectations.
 
 ### Two tiers on one deploy: friends and the public demo (2026-08-17)
 

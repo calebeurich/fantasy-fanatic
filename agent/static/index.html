@@ -431,6 +431,7 @@ if (matchMedia("(max-width:600px)").matches) $("intro").open = false;   // a scr
 showView(["trade", "ask"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "league");
 let currentLeague = null;
 let currentLeagueName = null;
+let lastCounterparty = null;   // the composer's last "both sides" ask, so a retry re-runs the other manager too
 let myTeam = null;
 let myName = null;   // the Sleeper display name they looked themselves up with
 
@@ -708,7 +709,8 @@ function renderTray(leagueId) {
     $("f").requestSubmit();
     // The other side of the table: whichever team isn't mine reacts as its own manager,
     // in parallel, on its own card. Two agents, opposing stances, one referee (the framer).
-    if (pageTier === "friend") askCounterparty(myTeam === b ? a : b, proposal);
+    lastCounterparty = pageTier === "friend" ? {owner: myTeam === b ? a : b, proposal, typed: $("q").value} : null;
+    if (lastCounterparty) askCounterparty(lastCounterparty.owner, proposal);
     showView("ask");
   };
   clearTimeout(evalTimer);
@@ -1189,28 +1191,38 @@ async function askCounterparty(owner, proposal) {
       if (t && p.text) t.innerHTML = md(p.text);
     } catch (_) {}
   }, 2000);
-  const started = Date.now();
   try {
-    let d;
-    try {
-      const res = await fetch("/ask", {method: "POST", headers: hdrs({"Content-Type": "application/json"}),
-        body: JSON.stringify({question: withContext(`Trade proposal: ${proposal}. You are ${owner} - decide it as ${owner} would.`),
-                              session_id: cpId, counterparty: owner})});
-      d = await res.json();
-    } catch (netErr) {   // same as the main ask: the answer is still being written server-side
-      d = await reclaim(started, 210, cpId);
-      if (!d) throw netErr;
-    }
+    const d = await askAndWatch({question: withContext(`Trade proposal: ${proposal}. You are ${owner} - decide it as ${owner} would.`),
+                                 session_id: cpId, counterparty: owner}, cpId);
     card.innerHTML = `<p class="cs">how <strong>${owner}</strong> likely sees it — the other side of the table, judging from its own path with the same tools</p>` + md(d.text || "(no answer)");
   } catch (e) {
     card.innerHTML = `<p class="cs warn">couldn't get ${owner}'s side: ${e}</p>`;
   } finally { clearInterval(poll); }
 }
 
+// Send the ask and, in parallel, watch /answer for it - whichever lands first wins. A
+// phone that loses service mid-request usually leaves the request HANGING rather than
+// failing (owner: "when I reconnected it was still hanging"), so a failure-only reclaim
+// never fired. The server keeps writing the answer either way; the watcher also wakes on
+// the `online` event so a reconnect picks it up within seconds, for up to 5 minutes.
+async function askAndWatch(body, id, seconds = 300) {
+  const started = Date.now();
+  const ctl = new AbortController();
+  const send = fetch("/ask", {method: "POST", headers: hdrs({"Content-Type": "application/json"}),
+                              body: JSON.stringify(body), signal: ctl.signal}).then(r => r.json());
+  const watch = reclaim(started, seconds, id);
+  try {
+    const giveUp = new Promise((_, rej) => setTimeout(() => rej(new Error("no answer within " + seconds + "s")), (seconds + 10) * 1000));
+    const d = await Promise.race([send.catch(() => watch), watch.then(a => a || send), giveUp]);
+    if (!d) throw new Error("no answer within " + seconds + "s");
+    return d;
+  } finally { ctl.abort(); }
+}
+
 async function reclaim(since, seconds, id = sessionId) {
   const deadline = Date.now() + seconds * 1000;
   while (Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, 3000));
+    await Promise.race([new Promise(r => setTimeout(r, 3000)), new Promise(r => addEventListener("online", r, {once: true}))]);
     try {
       const a = await (await fetch(`/answer/${id}`, {headers: hdrs()})).json();
       if (a && a.finished_at && a.finished_at * 1000 > since) return a;
@@ -1253,24 +1265,10 @@ $("f").onsubmit = async e => {
   // looking for it rather than showing an empty page.
   localStorage.setItem("ff_pending", JSON.stringify({typed, question, started, session: sessionId}));
   try {
-    let d;
-    try {
-      const res = await fetch("/ask", {
-        method: "POST", headers: hdrs({"Content-Type": "application/json"}),
-        body: JSON.stringify({question, session_id: sessionId}),
-      });
-      d = await res.json();
-    } catch (netErr) {
-      // The connection died, NOT the answer. Measured on the deployed service: a request
-      // abandoned by its client still runs to completion server-side, because Cloud Run
-      // keeps CPU allocated while the handler runs and uvicorn does not cancel it. So the
-      // right move is to WAIT for the answer that is already being computed - re-asking
-      // would pay for the same work twice and take another minute.
-      const s = document.getElementById("step");
-      if (s) s.textContent = "connection dropped — waiting for the answer, which is still being written";
-      d = await reclaim(started, 210);
-      if (!d) throw netErr;
-    }
+    // A request abandoned by its client still runs to completion server-side (Cloud Run
+    // keeps CPU allocated; uvicorn does not cancel), so we never re-ask - we wait for
+    // the answer that is already being written. See askAndWatch.
+    const d = await askAndWatch({question, session_id: sessionId}, sessionId);
     markReset(d);
     renderAnswer(pending, d, question);
     remember({typed, question, answer: d});
@@ -1284,7 +1282,10 @@ $("f").onsubmit = async e => {
       + "end.</p>";
     const again = document.createElement("button");
     again.type = "button"; again.className = "ghost"; again.textContent = "ask it again";
-    again.onclick = () => { $("q").value = typed; $("f").requestSubmit(); };
+    again.onclick = () => {
+      $("q").value = typed; $("f").requestSubmit();
+      if (lastCounterparty && lastCounterparty.typed === typed) askCounterparty(lastCounterparty.owner, lastCounterparty.proposal);
+    };
     pending.appendChild(again);
   } finally {
     clearInterval(ticker);

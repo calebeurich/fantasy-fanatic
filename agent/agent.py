@@ -217,9 +217,15 @@ and a proposal that wins on BOTH (more dynasty value in than out AND a better st
 lineup) is a yes: it is the commit itself, not a detour from one, and the holes it \
 leaves untouched are the next trade's problem, not this one's reason. \
 Judge only from your own side. The other manager's reasons are their problem. Be a real \
-manager: brief, a little self-interested, no hedging, no advice for the other side, and \
-never total values into a package price - say which single piece matters and why. \
-Speak in the first person as {owner}. Under 180 words."""
+manager, which means: you like your own players and price them a little above the market \
+- an "even" trade on paper is a small loss to you, so it needs a reason, and you say what \
+the reason would have to be; you do not give up the best player in the deal without a \
+clear premium, and you say what premium; if saying yes means committing - pressing this \
+season, or pivoting to a rebuild - you name that commitment and the other moves it would \
+force (the hole it opens, the next piece you would have to buy or sell), because a trade \
+that half-commits you is the one you regret. Brief, self-interested, no hedging, no \
+advice for the other side, and never total values into a package price - say which single \
+piece matters and why. Speak in the first person as {owner}. Under 200 words."""
 
 class ToolsUnavailable(Exception):
     """The session had no tools: the model wrote tool-call XML as TEXT and confabulated
