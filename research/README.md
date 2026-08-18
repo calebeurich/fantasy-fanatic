@@ -133,6 +133,38 @@ into sell-window payloads; the contract-year signal as a second note; the declin
 tails from eye-test to measured; the rushing-QB override review once the EPA split
 is reconstructed.
 
+## Study: the pick premium - what a lone 1st actually buys (2026-08-18)
+
+`research/pick_premium.py`. Owner: "we may just be undervaluing 1sts - in reality they
+come off as golden trade pieces. I'd probably never send one for some pseudo bums."
+Scale-free test on the crawl ledger: every trade where ONE side is exactly one pick, what
+PERCENTILE of player it fetched (DP snapshot at the time), then where FantasyCalc prices
+that pick TODAY in its own percentile ranking, and the FC value at the fetched percentile.
+
+| pick | FC today (12-team SF) | a lone one fetches | premium | n |
+|---|---|---|---|---|
+| this-year 1st (flat) | 2,875 | top-9% player, ~4,372 | x1.5 | 24 |
+| next-year 1st | 2,063 | top-12%, ~3,885 | x1.9 | 38 |
+| two-years-out 1st | 1,840 | top-11%, ~4,136 | x2.2 | 11 |
+| this-year 2nd | 1,854 | top-19%, ~3,095 | x1.7 | 23 |
+| next-year 2nd | 1,339 | top-26%, ~2,045 | x1.5 | 59 |
+
+- **The market barely discounts future years; FantasyCalc discounts them hard.** A lone
+  1st fetches a top-11% player (quartiles 8-16%) whether it is this year's or two years
+  out; FC halves the value per year out. That gap - not the current-year number - is
+  where "1sts are golden" lives.
+- **A 1st buys a starter, not a rental**: 76% one player back, median age 26.3, only 27%
+  aged 28+. Owner's "never for pseudo bums" is what the corpus does.
+- **2nds carry the same shape at a lower tier** (top-22%), premium x1.5-1.7.
+
+Caveats: selection - picks measured as a WHOLE side; a 1st stapled on as a sweetener may
+carry a different premium and that is how the generator mostly uses them; cross-scale
+(DP percentile then -> FC value at that percentile now) is the right comparison but not
+precise to the hundred; n=11 / 5 at two and three years out. Not yet applied anywhere:
+if adopted, one named multiplier per years-out goes into the framer's ballpark AND the
+ideas band together, and the visible consequence is that ideas need FEWER picks (Price + a
+2nd lands for Taylor again).
+
 ## Study: what a stud actually fetches - return shape across the value spectrum (2026-08-16)
 
 `research/stud_returns.py`. Owner's prior, from the framer's first edge cases: "the
