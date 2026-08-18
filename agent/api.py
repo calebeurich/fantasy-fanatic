@@ -582,10 +582,27 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
             return (runway.get(n) or 0) >= leaving + 1
         return (all(sender_ok(n, movable_a) and taker_ok(n, result_b, wish_b, prop["b_sends"]) for n in prop["a_sends"])
                 and all(sender_ok(n, movable_b) and taker_ok(n, result_a, wish_a, prop["a_sends"]) for n in prop["b_sends"]))
+    # The buyer's lineup has to get BETTER - the framer's own test, ~3ms. Parker Washington
+    # + a 2nd for Hurts balanced on value and made kb's lineup worse (Hurts over Dart at QB,
+    # minus Washington at kb's weak WR: -0.9; owner: "how does this even end up a
+    # suggestion"). Sellers aren't held to it - they are selling production by definition.
+    from analysis import trade_eval
+    from analysis.trade_targets.board import build_board
+    board = build_board(league_id)
+    def buyer_gains(prop):
+        buyer = a if prop.get("lens") == "buy" else b
+        try:
+            ev = trade_eval.evaluate_from_board(board, a, prop["a_sends"], b, prop["b_sends"], stance_a or None, stance_b or None)
+        except Exception:
+            return True   # a resolve failure isn't a verdict; let the framer's UI say so
+        if not ev.get("ok"):
+            return True
+        side = next((sd for sd in ev["sides"] if sd["owner"] == buyer), None)
+        return side is None or (side.get("lineup_production_delta") or 0) > 0
     seen, used_a, used_b, out = set(), set(), set(), []
     for prop in filter(None, (balance(c) for c in cands if available(c))):
         key = (tuple(prop["a_sends"]), tuple(prop["b_sends"]))
-        if key in seen or (set(prop["a_sends"]) & used_a) or (set(prop["b_sends"]) & used_b):
+        if key in seen or (set(prop["a_sends"]) & used_a) or (set(prop["b_sends"]) & used_b) or not buyer_gains(prop):
             continue
         seen.add(key); used_a |= set(prop["a_sends"]); used_b |= set(prop["b_sends"])
         out.append({**prop, "partner": b})

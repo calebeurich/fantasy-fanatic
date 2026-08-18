@@ -1739,7 +1739,12 @@ the RECEIVING side, a rebuild only takes players it is collecting: on its wish l
 with a year or more of runway beyond the best piece it sends (Tyson at 7.0 for Zay
 Flowers at 3.0 - yes; Garrett Wilson at 2.9 for Olave at 2.8 - a lateral that does
 nothing for a rebuild; owner: "doesn't make sense"). The wish list alone over-prunes -
-it is pre-filtered by who would move him. Each lens ranks by its own currency - a
+it is pre-filtered by who would move him. And a BUY has to buy: every buy-lens idea
+runs the framer's own lineup test for the buyer (~3ms) and is dropped when his lineup
+gets worse - Parker Washington + a 2nd for Hurts balanced on value and cost kb 0.9 a
+game (Hurts over Dart +1.1, Washington leaving kb's weak WR -2.4; owner: "how does this
+even end up a suggestion"). The human can still build it in Trade; the generator's label
+"fills a hole / upgrades" may not contradict the framer's fact. Each lens ranks by its own currency - a
 buyer by what comes IN, a seller by the aging value it moves OUT - so a consolidation
 outranks a single smaller sell instead of hiding behind the stud deal. The band is DIRECTIONAL, in the buyer's
 view: he sends 0.9x-1.2x of what he gets in dynasty value (a hair under, 0.04, is not
