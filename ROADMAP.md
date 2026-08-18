@@ -70,6 +70,17 @@ an MCP tool where the agent adds the team-analysis flavor in conversation.
 The UI promise "not a trade calculator" stays true on both: it judges, it
 never prices. Training never touches the LLM.
 
+**Study to run: the pick premium (2026-08-18).** Owner: "we may just be undervaluing
+1sts - in reality they come off as golden trade pieces. I'd probably never send one for
+some pseudo bums. Last year shivvv traded one for Kelce and Henry" (~4,800 of aging
+production for a ~1,850 pick). Testable on the league's own accepted trades: when a 1st
+moves, how much FantasyCalc value comes back against the pick's own number, split by the
+receiver's mode (a rebuild receiving vs a contender). If the ratio is consistently >1,
+that is a measured multiplier the ideas generator's band and the framer's ballpark should
+both carry - like RETURN_SHAPES, from real trades, never a hand-set constant. Until then
+the generator prices picks at FantasyCalc and the ideas footer says "starting points, not
+offers"; the '29 1st + '28 2nd for Evans + Hockenson idea is the case that surfaced it.
+
 ## Track 2: The trade-market dataset
 
 Real trades, to ground trade_eval's sentences in measured behavior and
