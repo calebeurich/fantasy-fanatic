@@ -582,30 +582,37 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
             return (runway.get(n) or 0) >= leaving + 1
         return (all(sender_ok(n, movable_a) and taker_ok(n, result_b, wish_b, prop["b_sends"]) for n in prop["a_sends"])
                 and all(sender_ok(n, movable_b) and taker_ok(n, result_a, wish_a, prop["a_sends"]) for n in prop["b_sends"]))
-    # The buyer's lineup has to get BETTER - the framer's own test, ~3ms. Parker Washington
-    # + a 2nd for Hurts balanced on value and made kb's lineup worse (Hurts over Dart at QB,
-    # minus Washington at kb's weak WR: -0.9; owner: "how does this even end up a
-    # suggestion"). Sellers aren't held to it - they are selling production by definition.
+    # The buyer's lineup must not get meaningfully worse - the framer's own test, ~3ms. A
+    # small dip is allowed: Parker Washington + a 2nd for Hurts reads -0.9 for kb (Hurts
+    # over Dart +1.1, Washington leaving kb's weak WR -2.4) and the owner still wants it
+    # shown - "Hurts is a real upgrade in many ways over Dart", the WR loss is fixable in
+    # a later trade. Sellers aren't held to it - they are selling production by definition.
     from analysis import trade_eval
     from analysis.trade_targets.board import build_board
     board = build_board(league_id)
-    def buyer_gains(prop):
+    BUYER_DIP_OK = 1.0   # points a game the buyer's lineup may lose and still be a "buy"
+    def buyer_delta(prop):
+        """The framer's lineup delta for the buyer, stamped on the idea: a dip past
+        BUYER_DIP_OK drops it; a small dip keeps it but ranks it below ideas that gain."""
         buyer = a if prop.get("lens") == "buy" else b
         try:
             ev = trade_eval.evaluate_from_board(board, a, prop["a_sends"], b, prop["b_sends"], stance_a or None, stance_b or None)
         except Exception:
-            return True   # a resolve failure isn't a verdict; let the framer's UI say so
+            return 0.0   # a resolve failure isn't a verdict; let the framer's UI say so
         if not ev.get("ok"):
-            return True
+            return 0.0
         side = next((sd for sd in ev["sides"] if sd["owner"] == buyer), None)
-        return side is None or (side.get("lineup_production_delta") or 0) > 0
+        return float(side.get("lineup_production_delta") or 0) if side else 0.0
     seen, used_a, used_b, out = set(), set(), set(), []
     for prop in filter(None, (balance(c) for c in cands if available(c))):
         key = (tuple(prop["a_sends"]), tuple(prop["b_sends"]))
-        if key in seen or (set(prop["a_sends"]) & used_a) or (set(prop["b_sends"]) & used_b) or not buyer_gains(prop):
+        if key in seen or (set(prop["a_sends"]) & used_a) or (set(prop["b_sends"]) & used_b):
+            continue
+        delta = buyer_delta(prop)
+        if delta < -BUYER_DIP_OK:
             continue
         seen.add(key); used_a |= set(prop["a_sends"]); used_b |= set(prop["b_sends"])
-        out.append({**prop, "partner": b})
+        out.append({**prop, "partner": b, "buyer_delta": delta})
         if len(out) == limit:
             break
     return out
@@ -636,9 +643,12 @@ def trade_ideas(league_id: str, owner: str, limit: int = 3) -> list[dict]:
     path = next((t["path"] for t in team_state.classify_league(league_id) if t["owner"] == owner), "")
     if path.startswith("wait"):
         cands = [{**c, "framing": "if you decided to push"} for c in cands if c.get("lens") == "buy"]
-    # Each lens ranks by its own currency: a buyer by what comes IN, a seller by the aging
-    # value it moves OUT (a two-piece consolidation outranks a single smaller sell).
-    cands.sort(key=lambda c: -sum(value.get(n, 0) for n in (c["a_sends"] if c.get("lens") == "sell" else c["b_sends"])))
+    # Each lens ranks by its own currency: a buyer by what comes IN - but an idea that dips
+    # his lineup ranks below every one that lifts it (owner: "ranked lower, not a top 3") -
+    # a seller by the aging value it moves OUT (a two-piece consolidation outranks a single
+    # smaller sell).
+    cands.sort(key=lambda c: (c.get("lens") == "buy" and c.get("buyer_delta", 0) <= 0,
+                              -sum(value.get(n, 0) for n in (c["a_sends"] if c.get("lens") == "sell" else c["b_sends"]))))
     # Up to three PER LENS - a decide team's "as buyer" and "as seller" are two columns.
     out = []
     for lens in ("buy", "sell"):
