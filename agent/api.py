@@ -397,13 +397,17 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
             # the buyer's a_sends starts empty and balance() finds the pick(s). Two at once
             # is the buy-side consolidation - both start, or one starts and one is depth.
             adds = [t["name"] for t in r.get("production_adds") or [] if t.get("from_owner") == them]
-            depth = [t["name"] for t in r.get("depth_adds") or [] if t.get("from_owner") == them]
             for n in adds:
                 out.append({"a_sends": [], "b_sends": [n], "lens": "buy",
                             "why": f"{n} would start for {me} today; {them} is selling production for picks"})
-            for p1, p2 in consolidations(adds + depth, lambda n: n in adds, lambda n: n in depth):
-                out.append({"a_sends": [], "b_sends": [p1, p2], "lens": "buy",
-                            "why": f"{me} takes {p1} and {p2} from {them} in one deal - starter and cover for a run"})
+            # Same lineup test as the sell side, over everything they would move - not the
+            # production_adds shortlist (it had McLaurin and Evans for dez but not Warren,
+            # who starts for him too), so both rows see the same pairs.
+            if adds:
+                tag = {f["name"]: f["tag"] for f in fits(league_id, me, them)}
+                for p1, p2 in consolidations(list(tag), lambda n: tag[n].startswith(("starts", "level")), lambda n: tag[n].startswith("depth")):
+                    out.append({"a_sends": [], "b_sends": [p1, p2], "lens": "buy",
+                                "why": f"{me} takes {p1} and {p2} from {them} in one deal - starter and cover for a run"})
             sells = [e["name"] for e in (r.get("sell_candidates") or []) if e["name"] in offerable][:3]
             # A rebuild's biggest piece is a conversation once he has stopped GAINING value
             # (Chase at 26.5 - owner: "have to give jq something with Chase"), never while he
