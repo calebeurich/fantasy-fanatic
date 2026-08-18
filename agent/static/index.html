@@ -382,25 +382,18 @@ window.addEventListener("unhandledrejection", e => showCrash(String(e.reason).sl
 let sessionId = localStorage.getItem("ff_session") || crypto.randomUUID();
 localStorage.setItem("ff_session", sessionId);
 
-// The friends link carries ?key=... - keep it in localStorage and take it off the URL
-// so a copied/screenshotted address bar doesn't hand the key around by accident.
+// The friends link carries ?key=... - it STAYS in the URL. It used to be stripped (so a
+// screenshot wouldn't leak it), but a phone discards tabs and reloads them from the bare
+// URL, and in a private tab the stored copy is gone too - the page came back as the demo
+// (owner). The URL is the only thing that survives every kind of discard; the key is a
+// brake, not real auth, and rotates by changing one secret if it ever leaks. localStorage
+// keeps a copy so a bare URL still works on a device that has seen the key.
 {
   const urlKey = new URLSearchParams(location.search).get("key");
-  if (urlKey) {
-    localStorage.setItem("ff_key", urlKey);
-    history.replaceState(null, "", location.pathname + location.hash);
-  }
+  if (urlKey) localStorage.setItem("ff_key", urlKey);
+  else if (localStorage.getItem("ff_key")) history.replaceState(null, "", `${location.pathname}?key=${encodeURIComponent(localStorage.getItem("ff_key"))}${location.hash}`);
 }
 const KEY = () => localStorage.getItem("ff_key") || "";
-// A phone discards background tabs and reloads them from the bare URL - in a private tab
-// the stored key is gone too, and the page came back as the demo (owner). So the key
-// goes BACK into the URL only while the tab is hidden, and off again when it is visible:
-// a reload finds it, a screenshot never shows it.
-document.addEventListener("visibilitychange", () => {
-  if (!KEY()) return;
-  const url = location.pathname + (document.hidden ? `?key=${encodeURIComponent(KEY())}` : "") + location.hash;
-  history.replaceState(null, "", url);
-});
 const hdrs = extra => Object.assign({"X-FF-Key": KEY()}, extra || {});
 
 // Every read goes through here: a phone in and out of service (the subway - owner) drops
