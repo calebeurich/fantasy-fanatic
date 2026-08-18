@@ -396,8 +396,10 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
             # A rebuild's biggest piece is a conversation once he has stopped GAINING value
             # (Chase at 26.5 - owner: "have to give jq something with Chase"), never while he
             # is still ascending (Drake Maye is what a rebuild is collecting, not selling).
-            headline = None
+            headline, plays = None, []
             if r.get("mode") == "rebuild":
+                starts = {f["name"] for f in fits(league_id, them, me) if f["tag"].startswith(("starts", "level"))}
+                plays = [n for n in sells if n in starts][:4]
                 bucket = {e["name"]: e.get("bucket") for e in (r.get("sell_candidates") or []) + (r.get("situational") or [])}
                 headline = next(iter(sorted((n for n in offerable if n in value and n not in sells and bucket.get(n) != "ascending"),
                                             key=lambda n: -value[n])), None)
@@ -409,6 +411,14 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
                     if headline:
                         out.append({"a_sends": [headline], "b_sends": [t["name"]], "lens": "sell",
                                     "why": f"{headline} is {me}'s biggest chip and no longer gaining value; a rebuild turns him into youth and picks"})
+                    # CONSOLIDATION: two aging pieces that both START for the buyer, for one
+                    # young piece - kills two sell trades with one stone and moves a rebuild
+                    # toward aligned without touching its big assets (owner). "Starts for them"
+                    # is the bum filter - not a value bar: Evans + Warren for dez, not White.
+                    for i, p1 in enumerate(plays):
+                        for p2 in plays[i + 1:]:
+                            out.append({"a_sends": [p1, p2], "b_sends": [t["name"]], "lens": "sell",
+                                        "why": f"{me} moves {p1} and {p2} in one deal - both start for {them} - for {t['name']}"})
         return out
 
     ctx = context(league_id)
@@ -465,7 +475,12 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
 
     def balance(prop):
         chip = lambda n: real_chip(n) or (n == prop.get("upgrade") and value.get(n, 0) >= 0.9 * bars.get(position.get(n), 0))
-        if not any(chip(n) for n in prop["b_sends"]) or (prop["a_sends"] and not any(chip(n) for n in prop["a_sends"])):
+        def side_ok(side):
+            """A side clears the bar with one real chip - or, for a consolidation, as a pair:
+            neither Evans nor Warren clears it alone, together they clear any bar."""
+            players = [n for n in side if n in position]
+            return any(chip(n) for n in side) or (len(players) >= 2 and sum(value[n] for n in players) >= max(bars.get(position[n], 0) for n in players))
+        if not side_ok(prop["b_sends"]) or (prop["a_sends"] and not side_ok(prop["a_sends"])):
             return None
         va = sum(value.get(n, 0) for n in prop["a_sends"]); vb = sum(value.get(n, 0) for n in prop["b_sends"])
         if not vb:
@@ -577,7 +592,9 @@ def trade_ideas(league_id: str, owner: str, limit: int = 3) -> list[dict]:
     path = next((t["path"] for t in team_state.classify_league(league_id) if t["owner"] == owner), "")
     if path.startswith("wait"):
         cands = [{**c, "framing": "if you decided to push"} for c in cands if c.get("lens") == "buy"]
-    cands.sort(key=lambda c: -sum(value.get(n, 0) for n in c["b_sends"]))
+    # Each lens ranks by its own currency: a buyer by what comes IN, a seller by the aging
+    # value it moves OUT (a two-piece consolidation outranks a single smaller sell).
+    cands.sort(key=lambda c: -sum(value.get(n, 0) for n in (c["a_sends"] if c.get("lens") == "sell" else c["b_sends"])))
     # Up to three PER LENS - a decide team's "as buyer" and "as seller" are two columns.
     out = []
     for lens in ("buy", "sell"):

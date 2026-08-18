@@ -1691,7 +1691,14 @@ something with Chase - such a notable player on his sell team") but never an asc
 one (Drake Maye surfaced as "aging production" for shivvv - owner: "win now but also win
 later, not an aging asset at all"); a rebuild's ascending situational pieces are not idea
 material at all, in any family - "at a cornerstone's price" is the composer's business,
-here they are what the rebuild is collecting; mirrored. The band is DIRECTIONAL, in the buyer's
+here they are what the rebuild is collecting; and the CONSOLIDATION: two of a rebuild's
+sell candidates that both START for the buyer (the composer's own lineup test - the bum
+filter is "would you actually play him", not a value bar: Evans + Warren for dez, not
+Rachaad White) for one of the buyer's young pieces (owner: "kills two sell trades with
+one stone and brings him closer to aligned without involving huge assets"); a two-piece
+side clears the trade bar as a pair; mirrored. Each lens ranks by its own currency - a
+buyer by what comes IN, a seller by the aging value it moves OUT - so a consolidation
+outranks a single smaller sell instead of hiding behind the stud deal. The band is DIRECTIONAL, in the buyer's
 view: he sends 0.9x-1.2x of what he gets in dynasty value (a hair under, 0.04, is not
 worth stapling a 4th on; overpaying to 1.2x is what contenders do; past that the
 seller evens it up). One floor for every piece: the aging discount is already in a
