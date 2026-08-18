@@ -426,3 +426,16 @@ number would be quietly wrong.
 4. League report card as a product surface for the friends test.
 5. Sleeper crawler at pilot scope (one hop), then scale; re-run everything at n.
 6. "What converts to wins" regression; only then talk about learned models.
+
+**Backlog added 2026-08-18 (owner, after the friends' first day on the three-tab build):**
+- **In-season logic** - Track 4 in full: weekly projections in the lineup lens, the season
+  record and real PPG taking over from preseason ePPG as they accumulate, deadline
+  rentals, and the trade-ideas band re-checked against in-season market moves. Time
+  triggered: the 2026 season starts in September; nothing here matters until Week 1.
+- **Calibrate to a 10-team single-QB league** - a friend's league "seemed to not work as
+  well". Everything was validated on XFL 2 (12-team superflex): the start bars, trade
+  bars, tertiles, need levels and the pick premium all key on the format
+  (`format_support`, `fmt["num_qbs"]`), but nothing has been eye-tested at 10 teams /
+  1QB, where QBs are cheap, the replacement level sits higher and the league bar means
+  something different. Do the same spot-check pass (LOGIC.md "render the whole result as
+  a grid") on that league before promising the friends anything about it.
