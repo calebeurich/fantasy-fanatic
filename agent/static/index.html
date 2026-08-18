@@ -388,10 +388,19 @@ localStorage.setItem("ff_session", sessionId);
   const urlKey = new URLSearchParams(location.search).get("key");
   if (urlKey) {
     localStorage.setItem("ff_key", urlKey);
-    history.replaceState(null, "", location.pathname);
+    history.replaceState(null, "", location.pathname + location.hash);
   }
 }
 const KEY = () => localStorage.getItem("ff_key") || "";
+// A phone discards background tabs and reloads them from the bare URL - in a private tab
+// the stored key is gone too, and the page came back as the demo (owner). So the key
+// goes BACK into the URL only while the tab is hidden, and off again when it is visible:
+// a reload finds it, a screenshot never shows it.
+document.addEventListener("visibilitychange", () => {
+  if (!KEY()) return;
+  const url = location.pathname + (document.hidden ? `?key=${encodeURIComponent(KEY())}` : "") + location.hash;
+  history.replaceState(null, "", url);
+});
 const hdrs = extra => Object.assign({"X-FF-Key": KEY()}, extra || {});
 
 // Every read goes through here: a phone in and out of service (the subway - owner) drops
