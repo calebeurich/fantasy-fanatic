@@ -1558,11 +1558,11 @@ def test_pick_slot_follows_the_original_team_not_the_holder(monkeypatch):
     )
     # Roster 1 (a contender) acquired roster 2's (a rebuilder's) first.
     acquired = next(p for p in owned[1] if p["originally"] == 2)
-    assert acquired["value"] == 4487, "priced early - it's the rebuilder's pick"
+    assert acquired["value"] == round(4487 * team_values.PICK_PREMIUM_THIS_YEAR), "priced early - it's the rebuilder's pick - times the measured premium"
     assert "Early" in acquired["pick"]
 
     own_pick = next(p for p in owned[1] if p["originally"] == 1)
-    assert own_pick["value"] == 2263, "the contender's own first is a late pick"
+    assert own_pick["value"] == round(2263 * team_values.PICK_PREMIUM_THIS_YEAR), "the contender's own first is a late pick"
 
 
 def test_pick_falls_back_to_flat_value_when_no_tier_is_published(monkeypatch):
@@ -1577,7 +1577,7 @@ def test_pick_falls_back_to_flat_value_when_no_tier_is_published(monkeypatch):
         strategy_by_roster={1: "Rebuilding"},
     )
     pick = next(p for p in owned[1] if p["season"] == 2028)
-    assert pick["value"] == 2028
+    assert pick["value"] == round(2028 * team_values.PICK_PREMIUM_LATER)   # flat round value, times the future-year premium
     assert "unknowable" in pick["slot_basis"]
 
 

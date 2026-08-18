@@ -1673,6 +1673,23 @@ bold. Cornerstones alone made the column lie by omission: a roster showed only
 value. The reader wants the roster's headline pieces; which of them are young enough
 to build around is a flag on the name, not a filter on the list.
 
+### The pick premium: a pick is priced at what it buys (2026-08-18)
+
+Owner: "we may just be undervaluing 1sts - in reality they come off as golden trade
+pieces. I'd probably never send one for some pseudo bums." Measured
+(`research/pick_premium.py`, 78 lone-1st and 111 lone-2nd trades in the crawl): a lone 1st
+fetches a top-11% player whether it is this year's or two years out, while FantasyCalc
+halves a pick's value per year out - x1.5 this year, x1.9 next year, x2.2 after; 2nds
+x1.5-1.7. Applied in ONE place, `team_values.owned_picks`, so the framer's ballpark, the
+ideas band, the table's pick capital and the agent's payloads all price a pick the same:
+`PICK_PREMIUM_THIS_YEAR = 1.25` (this year's picks are already slotted Early/Mid/Late,
+which carries most of it - Jeremiyah Love vs Denzel Boston is in the slot) and
+`PICK_PREMIUM_LATER = 1.6` for the unslotted future years - a deliberate under-correction
+of the measured numbers (owner: "a middle ground smaller multiplier"). Visible effect:
+ideas need FEWER picks (Stroud + a 2nd lands for Taylor; Chase finally has a price -
+Odunze + two 1sts), which is the "golden" instinct stated correctly: a 1st buys a
+starter, so you spend fewer of them.
+
 ### Trade ideas: the door into the composer (2026-08-17)
 
 Owner: "a lot of info burying the agent to auto open the league table and the trade

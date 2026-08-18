@@ -263,6 +263,22 @@ WINDOW_TO_PICK_TIER = {"Rebuild": "Early", "Middling": "Mid", "Contend": "Late",
 PICK_TIER_REASON = {"Early": "bottom third", "Mid": "middle third", "Late": "top third"}
 
 
+# What a pick actually BUYS vs what FantasyCalc says it is worth (research/pick_premium.py,
+# 2026-08-18): a lone 1st fetches a top-11% player whether it is this year's or two years
+# out - x1.5 this year, x1.9 next year, x2.2 after - because the market barely discounts
+# future years and FC halves them. Applied as a deliberate under-correction (owner: "a
+# middle ground"): this year's picks are already slotted Early/Mid/Late, which carries
+# most of it (Jeremiyah Love vs Denzel Boston is in the slot), so they get a little; the
+# unslotted future years get more. One place, so the framer, the ideas and the agent's
+# payloads all price a pick the same.
+PICK_PREMIUM_THIS_YEAR = 1.25
+PICK_PREMIUM_LATER = 1.6
+
+
+def pick_premium(year_offset: int) -> float:
+    return PICK_PREMIUM_THIS_YEAR if year_offset == 1 else PICK_PREMIUM_LATER
+
+
 def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list[int],
                 pick_values: dict[str, int],
                 strategy_by_roster: dict[int, str] | None = None) -> dict[int, list[dict]]:
@@ -294,7 +310,7 @@ def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list
                 # the roster list and should surface, not silently create a phantom team.
                 owned[current_owner].append({
                     "pick": name if not tiered_value else f"{name} ({tier})",
-                    "value": tiered_value or flat_value,
+                    "value": round((tiered_value or flat_value) * pick_premium(year_offset)),
                     "round": round_num,
                     "season": pick_season,
                     "originally": rid,  # whose pick it was, so "their own 1st" is visible
