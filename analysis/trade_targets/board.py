@@ -60,10 +60,14 @@ def build_board(league_id: str) -> Board:
         trade_counts=trade_activity.get_trade_counts(league_id),
         prior=prior_season.results(league_id),
         pick_values=pick_values,
-        picks_by_owner=owned_picks(league_id, int(ctx.league["season"]),
-                                   ctx.league["settings"]["draft_rounds"],
-                                   [r["roster_id"] for r in ctx.rosters], pick_values,
-                                   strategy_by_roster),
+        # Everything that prices a DEAL - the framer, the ideas, the agent's payloads -
+        # reads a pick at what it buys (team_values.PICK_PREMIUM_*), so `market_value`
+        # becomes `value` here. The page keeps the raw FantasyCalc number.
+        picks_by_owner={rid: [{**p, "value": p["market_value"]} for p in picks]
+                        for rid, picks in owned_picks(league_id, int(ctx.league["season"]),
+                                                      ctx.league["settings"]["draft_rounds"],
+                                                      [r["roster_id"] for r in ctx.rosters], pick_values,
+                                                      strategy_by_roster).items()},
     )
 
 

@@ -270,7 +270,10 @@ PICK_TIER_REASON = {"Early": "bottom third", "Mid": "middle third", "Late": "top
 # middle ground"): this year's picks are already slotted Early/Mid/Late, which carries
 # most of it (Jeremiyah Love vs Denzel Boston is in the slot), so they get a little; the
 # unslotted future years get more. One place, so the framer, the ideas and the agent's
-# payloads all price a pick the same.
+# payloads all price a pick the same. Every pick carries BOTH numbers: `value` is the raw
+# FantasyCalc price (what the page shows - owner: "leave the raw pick value numbers alone
+# in the UI"), `market_value` is what it buys; the trade board swaps market in for
+# everything that prices a deal.
 PICK_PREMIUM_THIS_YEAR = 1.25
 PICK_PREMIUM_LATER = 1.6
 
@@ -310,7 +313,9 @@ def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list
                 # the roster list and should surface, not silently create a phantom team.
                 owned[current_owner].append({
                     "pick": name if not tiered_value else f"{name} ({tier})",
-                    "value": round((tiered_value or flat_value) * pick_premium(year_offset)),
+                    "value": tiered_value or flat_value,
+                    "market_value": round((tiered_value or flat_value) * pick_premium(year_offset)),
+                    "tier": tier if tiered_value else None,
                     "round": round_num,
                     "season": pick_season,
                     "originally": rid,  # whose pick it was, so "their own 1st" is visible

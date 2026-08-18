@@ -663,9 +663,9 @@ async function fillSide(leagueId, k) {
   }).join("");
   // Picks: identical names collapse to one chip with a count.
   const seen = {};
-  (d.picks || []).forEach(p => { const key = `${p.season}-${p.round}`; seen[p.pick] = seen[p.pick] || {n: 0, v: p.value, key}; seen[p.pick].n++; });
+  (d.picks || []).forEach(p => { const key = `${p.season}-${p.round}`; seen[p.pick] = seen[p.pick] || {n: 0, v: p.value, key, tier: p.tier}; seen[p.pick].n++; });
   const picks = Object.entries(seen).map(([pk, o]) =>
-    `<span class="cpick ${mv.picks.has(o.key) ? "" : "off"} ${trade[k].picks.has(pk) ? "on" : ""}" data-name="${pk}">${pk}${o.n > 1 ? ` ×${o.n}` : ""} <span class="cs">${(o.v || 0).toLocaleString()}</span></span>`).join("");
+    `<span class="cpick ${mv.picks.has(o.key) ? "" : "off"} ${trade[k].picks.has(pk) ? "on" : ""}" data-name="${pk}">${pk}${o.tier ? ` <span class="cs">${o.tier.toLowerCase()}</span>` : ""}${o.n > 1 ? ` ×${o.n}` : ""} <span class="cs">${(o.v || 0).toLocaleString()}</span></span>`).join("");
   const nPicks = Object.keys(seen).length, nSpend = Object.values(seen).filter(o => mv.picks.has(o.key)).length;
   const pickNote = !nPicks ? "" : nSpend === 0
     ? `<span style="color:var(--rebuild);font-weight:600;letter-spacing:0;text-transform:none;float:right">keeping its picks${mv.mode === "rebuild" ? " (rebuilding)" : ""}</span>`

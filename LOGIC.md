@@ -1680,8 +1680,11 @@ pieces. I'd probably never send one for some pseudo bums." Measured
 (`research/pick_premium.py`, 78 lone-1st and 111 lone-2nd trades in the crawl): a lone 1st
 fetches a top-11% player whether it is this year's or two years out, while FantasyCalc
 halves a pick's value per year out - x1.5 this year, x1.9 next year, x2.2 after; 2nds
-x1.5-1.7. Applied in ONE place, `team_values.owned_picks`, so the framer's ballpark, the
-ideas band, the table's pick capital and the agent's payloads all price a pick the same:
+x1.5-1.7. Every pick carries both numbers from `team_values.owned_picks` - `value` (raw
+FantasyCalc, slotted Early/Mid/Late for this year's class - what the page shows; owner:
+"leave the raw pick value numbers alone in the UI") and `market_value` (x premium); the
+trade board swaps market in as `value` for everything that prices a DEAL - the framer's
+ballpark, the ideas band, the agent's payloads - so those all price a pick the same:
 `PICK_PREMIUM_THIS_YEAR = 1.25` (this year's picks are already slotted Early/Mid/Late,
 which carries most of it - Jeremiyah Love vs Denzel Boston is in the slot) and
 `PICK_PREMIUM_LATER = 1.6` for the unslotted future years - a deliberate under-correction

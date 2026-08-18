@@ -677,7 +677,8 @@ def _team_detail(ctx, roster: dict) -> dict:
     league_id = ctx.league_id
     owner_name = ctx.owner_names[roster["owner_id"]]
     starters = ctx.starters_for(roster)
-    t = next(t for t in team_state.classify_league(league_id)
+    states = team_state.classify_league(league_id)
+    t = next(t for t in states
              if t["owner"] == owner_name)
     corner = {e["name"] for e in t["cornerstones"]}
 
@@ -708,16 +709,21 @@ def _team_detail(ctx, roster: dict) -> dict:
 
     pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.fmt["num_teams"],
                                               ctx.fmt["ppr"], ctx.fmt["is_dynasty"])
+    # Slotted the way the board slots them (by the ORIGINATING team's window) so the page
+    # shows Early / Mid / Late on this year's picks (owner) - raw FantasyCalc value, not
+    # the market premium: `pick` keeps the base name so the composer's chips match ideas.
     picks = team_values.owned_picks(league_id, int(ctx.league["season"]),
                                     ctx.league["settings"]["draft_rounds"],
-                                    [r["roster_id"] for r in ctx.rosters], pick_values)
+                                    [r["roster_id"] for r in ctx.rosters], pick_values,
+                                    {r["roster_id"]: r["window"] for r in states})
+    picks = {rid: [{**p, "pick": p["pick"].split(" (")[0]} for p in ps] for rid, ps in picks.items()}
     return {
         "owner": owner_name,
         "alignment": t["alignment"], "path": t["path"], "path_reason": t["path_reason"],
         "clock_mismatch_note": t.get("clock_mismatch_note"),
         "players": by_pos,
         "start_bars": {pos: round(v) for pos, v in (getattr(ctx, "start_thresholds", None) or {}).items()},
-        "picks": [{"pick": p["pick"], "value": p["value"], "season": p["season"], "round": p["round"]}
+        "picks": [{"pick": p["pick"], "value": p["value"], "season": p["season"], "round": p["round"], "tier": p.get("tier")}
                   for p in picks.get(t["roster_id"], [])],
     }
 
