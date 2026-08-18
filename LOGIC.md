@@ -317,7 +317,11 @@ arriving - no roster spot, no injury, the year ladder prices their appreciation)
 the `assets_bottom` guard on rebuilds (an ascending tilt that isn't accumulating
 value is not a working rebuild), and ARRIVING_MARGIN_PCT (15) so "arriving" means a
 real tilt, not 25/20 noise. An arriving-tilt convertible stays ALIGNED (bergenjay:
-war chest plus an incoming wave is a plan, not an undecided option). A
+war chest plus an incoming wave is a plan, not an undecided option), and so does a
+convertible with NO clock running (BenSimonds, 6% declining, 2026-08-18): a war chest
+and nothing aging out is one door - press if you like, otherwise waiting costs nothing
+- and "decide" needs a sell door (owner: "how can Ben be decide with no sell offers -
+why isn't he wait"). A
 young CONTENDER is aligned, not a pending decision: an ascending starter delivers
 now AND later, so "stack or convert - decide" advice there would tell the best spot
 on the board to unwind the point of competing (the owner's RJL test: two young stud

@@ -222,7 +222,10 @@ def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: f
         # weak lineup, small-league guarded) - a second pick-share bar here once let
         # a convertible team read "aligned - wait" while leverage called it an
         # unspent option (Vicdank: assets #3 on rank 7, but 22% picks missed the bar).
-        if convertible and not arriving:
+        # But a war chest with NO clock running is one door, not two: press if you like,
+        # otherwise waiting costs nothing - "decide" needs a sell door (owner: "how can
+        # Ben be decide with no sell offers - why isn't he wait"; Ben 6% declining).
+        if convertible and not arriving and aging_pct >= AGING_WORTH_NOTING_PCT:
             return ("unaligned", "decide",
                     "an unspent war chest on an undecided roster - the option is real "
                     "and unexercised, and the middle rank gives no lean")
