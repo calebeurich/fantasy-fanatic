@@ -432,10 +432,19 @@ number would be quietly wrong.
   record and real PPG taking over from preseason ePPG as they accumulate, deadline
   rentals, and the trade-ideas band re-checked against in-season market moves. Time
   triggered: the 2026 season starts in September; nothing here matters until Week 1.
-- **Calibrate to a 10-team single-QB league** - a friend's league "seemed to not work as
-  well". Everything was validated on XFL 2 (12-team superflex): the start bars, trade
-  bars, tertiles, need levels and the pick premium all key on the format
-  (`format_support`, `fmt["num_qbs"]`), but nothing has been eye-tested at 10 teams /
-  1QB, where QBs are cheap, the replacement level sits higher and the league bar means
-  something different. Do the same spot-check pass (LOGIC.md "render the whole result as
-  a grid") on that league before promising the friends anything about it.
+- **Calibrate to single-QB leagues** - a friend's league "seemed to not work as well".
+  First pass done 2026-08-18 on the one 1QB league with real use in the prod logs
+  (William Byrd Dead Weights, `1312114705313042432`, 12-team 1QB PPR - Vicdank's other
+  league; the true 10-team/1QB leagues that were tapped were a redraft and a keeper
+  league, declined by design). Format detection, values, contention table and paths all
+  read right by eye. What does NOT: the **needs layer over-flags** - `roster_needs`
+  judges "startable" on REDRAFT value against redraft bars, and the 1QB redraft market
+  compresses mid-tier QBs/WRs so hard that ePPG-fine starters read as holes (Stafford at
+  16.6 ePPG = "no startable QB"; Shakir at 10.0 = "2 startable WRs for 3 slots"; two
+  contenders at 90-94% of best carry "critical"). Superflex hides it because there the
+  redraft and ePPG views agree. Downstream it poisons the composer's hole chips, the
+  ideas' "fills a X hole" family and the agent's need sentences. Fix: needs on ePPG bars
+  (the lineup layer's instrument since 2026-08-16 - "ePPG = what he does, redraft = what
+  he costs"), redraft kept for price only; `_usable_by_position` already takes the metric
+  as a parameter, `flex_bars` and the weakest-starter picks need the same switch. Then
+  re-run the XFL 2 grid to confirm nothing already blessed moves.
