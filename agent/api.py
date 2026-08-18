@@ -360,6 +360,13 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
     def branches(result):
         return [result] + [x for x in (result.get("push"), result.get("pivot")) if isinstance(x, dict)]
 
+    def consolidations(names, starts, is_depth):
+        """Pairs where at least one STARTS for the receiver and the other starts or is
+        depth for him - never two depth pieces (owner: throw-in vets are real, "valuable
+        depth within an injury", but don't over-index on depth). Up to four names."""
+        names = [n for n in names if starts(n) or is_depth(n)][:4]
+        return [(p1, p2) for i, p1 in enumerate(names) for p2 in names[i + 1:] if starts(p1) or starts(p2)]
+
     def proposals(me, them, stance):
         result = trade_targets.find_targets(league_id, me, stance=stance or None)
         offerable = trade_targets.offerable_names(result)
@@ -387,22 +394,28 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
                     out.append({"a_sends": [], "b_sends": [t["name"]], "lens": "buy",
                                 "why": f"{me} fills a {t.get('for_slot') or t.get('position')} hole with {t['name']}"})
             # Production a seller is moving, paid for in picks - "a 2nd for Evans" (owner):
-            # the buyer's a_sends starts empty and balance() finds the pick(s).
-            for t in r.get("production_adds") or []:
-                if t.get("from_owner") == them:
-                    out.append({"a_sends": [], "b_sends": [t["name"]], "lens": "buy",
-                                "why": f"{t['name']} would start for {me} today; {them} is selling production for picks"})
+            # the buyer's a_sends starts empty and balance() finds the pick(s). Two at once
+            # is the buy-side consolidation - both start, or one starts and one is depth.
+            adds = [t["name"] for t in r.get("production_adds") or [] if t.get("from_owner") == them]
+            depth = [t["name"] for t in r.get("depth_adds") or [] if t.get("from_owner") == them]
+            for n in adds:
+                out.append({"a_sends": [], "b_sends": [n], "lens": "buy",
+                            "why": f"{n} would start for {me} today; {them} is selling production for picks"})
+            for p1, p2 in consolidations(adds + depth, lambda n: n in adds, lambda n: n in depth):
+                out.append({"a_sends": [], "b_sends": [p1, p2], "lens": "buy",
+                            "why": f"{me} takes {p1} and {p2} from {them} in one deal - starter and cover for a run"})
             sells = [e["name"] for e in (r.get("sell_candidates") or []) if e["name"] in offerable][:3]
             # A rebuild's biggest piece is a conversation once he has stopped GAINING value
             # (Chase at 26.5 - owner: "have to give jq something with Chase"), never while he
             # is still ascending (Drake Maye is what a rebuild is collecting, not selling).
-            headline, plays = None, []
+            headline, pairs = None, []
             if r.get("mode") == "rebuild":
-                starts = {f["name"] for f in fits(league_id, them, me) if f["tag"].startswith(("starts", "level"))}
-                plays = [n for n in sells if n in starts][:4]
                 bucket = {e["name"]: e.get("bucket") for e in (r.get("sell_candidates") or []) + (r.get("situational") or [])}
                 headline = next(iter(sorted((n for n in offerable if n in value and n not in sells and bucket.get(n) != "ascending"),
                                             key=lambda n: -value[n])), None)
+            if sells:   # a rebuild, or a decide team's pivot branch
+                tag = {f["name"]: f["tag"] for f in fits(league_id, them, me)}
+                pairs = consolidations(sells, lambda n: tag.get(n, "").startswith(("starts", "level")), lambda n: tag.get(n, "").startswith("depth"))
             for t in r.get("acquire_targets") or []:
                 if t.get("from_owner") == them:
                     for sell in sells:
@@ -415,10 +428,9 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
                     # young piece - kills two sell trades with one stone and moves a rebuild
                     # toward aligned without touching its big assets (owner). "Starts for them"
                     # is the bum filter - not a value bar: Evans + Warren for dez, not White.
-                    for i, p1 in enumerate(plays):
-                        for p2 in plays[i + 1:]:
-                            out.append({"a_sends": [p1, p2], "b_sends": [t["name"]], "lens": "sell",
-                                        "why": f"{me} moves {p1} and {p2} in one deal - both start for {them} - for {t['name']}"})
+                    for p1, p2 in pairs:
+                        out.append({"a_sends": [p1, p2], "b_sends": [t["name"]], "lens": "sell",
+                                    "why": f"{me} moves {p1} and {p2} in one deal - {them} would play both - for {t['name']}"})
         return out
 
     ctx = context(league_id)
