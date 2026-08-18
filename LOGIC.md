@@ -1358,6 +1358,16 @@ best player in the deal without naming the premium; and if yes means committing 
 or pivot - it names the commitment and the moves it forces. Its job is to say what the
 real manager would say, so the asker walks in with the right expectations.
 
+### Grounding: no ballpark where the tool gave none (2026-08-18)
+
+The framer's BALLPARK is silent when the best piece is a pick or the trade is a plain
+mid-tier swap - the shape table describes player-centred returns. The model wrote one
+anyway ("typically lands around a 2027 2nd or 2028 1st early" - a slot 2028 picks don't
+have; owner: "the model is hallucinating"). Two guards: the tool docstring says no line
+means no benchmark, and the deterministic grounding check retries any answer that speaks
+of a ballpark/benchmark when no tool result carried a BALLPARK line - the same shape as
+the chip and need-claim checks: the tools are the record, the answer may not add to it.
+
 ### Two tiers on one deploy: friends and the public demo (2026-08-17)
 
 The friends link carries one shared key (`FF_LINK_KEY`) - not real auth, a brake that
@@ -1720,7 +1730,12 @@ value bar: Evans + Warren for dez, not Rachaad White) and the other starts or is
 for him - never two depth pieces (owner: throw-in vets are "valuable depth within an
 injury" and set up the next trade, "don't over-index on depth though"). Owner's case
 for it: "kills two sell trades with one stone and brings him closer to aligned without
-involving huge assets". A two-piece side clears the trade bar as a pair; mirrored. Each lens ranks by its own currency - a
+involving huge assets". A two-piece side clears the trade bar as a pair; mirrored. And on
+the RECEIVING side, a rebuild only takes players it is collecting: on its wish list, or
+with a year or more of runway beyond the best piece it sends (Tyson at 7.0 for Zay
+Flowers at 3.0 - yes; Garrett Wilson at 2.9 for Olave at 2.8 - a lateral that does
+nothing for a rebuild; owner: "doesn't make sense"). The wish list alone over-prunes -
+it is pre-filtered by who would move him. Each lens ranks by its own currency - a
 buyer by what comes IN, a seller by the aging value it moves OUT - so a consolidation
 outranks a single smaller sell instead of hiding behind the stud deal. The band is DIRECTIONAL, in the buyer's
 view: he sends 0.9x-1.2x of what he gets in dynasty value (a hair under, 0.04, is not
