@@ -798,7 +798,7 @@ async function fillIdeas(leagueId, owner) {
       (items.length > 3 ? `<div class="more" hidden>${items.slice(3).map(([s, i]) => card(s, i)).join("")}</div>` +
         `<button type="button" class="ghost morebtn">${items.length - 3} more idea${items.length - 3 > 1 ? "s" : ""}</button>` : "") + `</div>` : "";
   el.innerHTML = framing + `<div style="display:flex;gap:14px;flex-wrap:wrap">${col("as buyer", "p-contend", buys)}${col("as seller", "p-sell", sells)}</div>` +
-    `<div class="cs" style="margin-top:4px">ask = the assistant reads it for both sides · tweak = open it in Trade first</div>`;
+    `<div class="cs" style="margin-top:4px"><strong>Starting points, not offers.</strong> Each stops at two pieces a side; a 3-for-1 or a throw-in you'd actually do is yours to add — <em>tweak</em> opens it in Trade, <em>ask</em> gets the read for both sides as-is.</div>`;
   el.querySelectorAll(".morebtn").forEach(btn => btn.onclick = () => { btn.previousElementSibling.hidden = false; btn.remove(); });
   el.querySelectorAll(".idea .ask").forEach(btn => btn.onclick = () => openComposerWith(leagueId, owner, list[+btn.dataset.i], true));
   el.querySelectorAll(".idea .tweak").forEach(btn => btn.onclick = () => openComposerWith(leagueId, owner, list[+btn.dataset.i], false));
