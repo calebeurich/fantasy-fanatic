@@ -426,7 +426,9 @@ function showView(name) {
   document.querySelectorAll("section.view").forEach(v => v.classList.toggle("on", v.dataset.view === name));
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === name));
   if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
-  window.scrollTo({top: 0});
+  // Ask opens on the NEWEST message (the question you just sent), other views on top.
+  const last = name === "ask" && document.querySelector("#log .msg:last-child");
+  if (last) last.scrollIntoView({block: "start"}); else window.scrollTo({top: 0});
 }
 document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => showView(b.dataset.view));
 if (matchMedia("(max-width:600px)").matches) $("intro").open = false;   // a screen of text before the table, on a phone
