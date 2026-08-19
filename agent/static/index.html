@@ -641,7 +641,7 @@ function renderBuilder(leagueId, owners) {
   trade.b.owner = trade.b.owner || owners.find(o => o !== trade.a.owner);
   const opts = sel => owners.map(o => `<option${o === sel ? " selected" : ""}>${o}</option>`).join("");
   const side = k => `<div class="cside" id="cside${k}">
-      <div class="chead"><select id="csel${k}">${opts(trade[k].owner)}</select>
+      <div class="chead"><span class="cs" style="white-space:nowrap">${k === "a" ? "you" : "them"}:</span><select id="csel${k}">${opts(trade[k].owner)}</select>
         <div class="cstance" id="cstance${k}"></div></div>
       <div class="cmeta" id="cmeta${k}"></div>
       <div id="croster${k}"><div class="cs"><span class="spin"></span>loading roster</div></div></div>`;
