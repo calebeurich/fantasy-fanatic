@@ -205,8 +205,13 @@ thumbs-down comments from league mates have been the richest source of real bugs
   evals carry the quality story.
 - **One orchestrator, one model** — the Claude Agent SDK on Haiku, chosen after
   measuring cost and quality — with a small LangGraph client (`agent/langgraph_client.py`,
-  verified with Qwen2.5-72B via HuggingFace) driving the identical MCP tools, to show the
-  tool layer is the asset and the orchestrator is swappable.
+  Qwen2.5-72B via HuggingFace) driving the identical MCP tools, to show the tool layer is
+  the asset and the orchestrator is swappable. Measured 2026-08-19 by running the same
+  eval cases through it (`EVAL_ORCHESTRATOR=langgraph python -m agent.evals <case>`):
+  5 of 6 passed with zero prompt or tool changes (team read, trade targets, non-dynasty
+  refusal, two scope refusals); the one failure was the prompt-injection case — Qwen
+  wrote the cookie recipe Haiku refuses — a model property, not an orchestrator one. The
+  remaining six cases were not run: the free HF credit ran out.
 
 ## License and data
 
