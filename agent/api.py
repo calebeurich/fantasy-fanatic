@@ -604,6 +604,24 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
             return 0.0
         side = next((sd for sd in ev["sides"] if sd["owner"] == buyer), None)
         return float(side.get("lineup_production_delta") or 0) if side else 0.0
+    # A rebuild's appetite at QB saturates: with as many real young QB chips as the
+    # lineup has QB slots, the next one can't start and is harder to resell (owner:
+    # "you probably don't want a 3rd young stud QB on a rebuild"). A friction tag on
+    # the idea, not a veto - "not impossible for sure" - and it ranks below clean ideas.
+    from analysis.team_values import age_bucket
+    def young_qb_chips(owner):
+        return sum(1 for pid in ctx.roster_for(owner)["players"] if pid in ctx.players
+                   and (pl := ctx.players[pid])["position"] == "QB" and pl["value"] >= bars.get("QB", 0)
+                   and age_bucket("QB", pl["age"], pl.get("usage_role")) == "ascending")
+    qb_slots = ctx.needs_slots.get("QB", 1)
+    stock = {o: young_qb_chips(o) for o, r in ((a, result_a), (b, result_b)) if r.get("mode") == "rebuild"}
+    def qb_stockpile(prop):
+        for receiver, incoming in ((b, prop["a_sends"]), (a, prop["b_sends"])):
+            if receiver in stock and stock[receiver] >= qb_slots and any(
+                    position.get(n) == "QB" and (runway.get(n) or 0) >= 1 for n in incoming):
+                return (f"{receiver} already holds {stock[receiver]} young QB chip"
+                        f"{'s' if stock[receiver] > 1 else ''} - one more can't start and is slow to resell")
+        return None
     seen, used_a, used_b, out = set(), set(), set(), []
     for prop in filter(None, (balance(c) for c in cands if available(c))):
         key = (tuple(prop["a_sends"]), tuple(prop["b_sends"]))
@@ -613,6 +631,9 @@ def _suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance
         if delta < -BUYER_DIP_OK:
             continue
         seen.add(key); used_a |= set(prop["a_sends"]); used_b |= set(prop["b_sends"])
+        pile = qb_stockpile(prop)
+        if pile:
+            prop = {**prop, "why": f"{prop.get('why', '')}; {pile}".strip("; "), "qb_stockpile": True}
         out.append({**prop, "partner": b, "buyer_delta": delta})
         if len(out) == limit:
             break
@@ -655,8 +676,8 @@ def trade_ideas(league_id: str, owner: str, limit: int = 3, stance: str | None =
     def order(c):
         vin = sum(value.get(n, 0) for n in (c["a_sends"] if c.get("lens") == "sell" else c["b_sends"]))
         if c.get("lens") == "sell":
-            return (False, -vin, 0)
-        return (c.get("buyer_delta", 0) <= 0, -c.get("buyer_delta", 0), -vin)
+            return (False, bool(c.get("qb_stockpile")), -vin, 0)
+        return (c.get("buyer_delta", 0) <= 0, bool(c.get("qb_stockpile")), -c.get("buyer_delta", 0), -vin)
     cands.sort(key=order)
     # Up to `limit` PER LENS - a decide team's "as buyer" and "as seller" are two columns.
     # Two passes: the strict one wants every idea to be a different conversation (new

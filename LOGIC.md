@@ -1787,7 +1787,15 @@ outgoing piece while candidates last (three ideas = three conversations - kb was
 Price three times); but a thin roster has two or three offerable pieces total, so once
 the strict pass runs dry a second pass refills to the limit allowing repeated pieces,
 preferring partners not yet shown (owner: "the point is variety of offers"); a repeated
-pick SHAPE stays once-only throughout. Each partner keeps exactly ONE idea - a second
+pick SHAPE stays once-only throughout. A rebuild's appetite at QB saturates (owner:
+"you probably don't want a 3rd young stud QB on a rebuild - hard to move later, and
+impossible to start"): when a rebuild receiving a young QB already holds as many
+ascending above-the-bar QB chips as its lineup has QB slots, the idea gets a friction
+line ("already holds 2 young QB chips - one more can't start and is slow to resell")
+and ranks below clean ideas in its lens - a tag, never a veto ("not impossible for
+sure"). QB only: it is the position where slots are fewest, chips are priciest, and
+the resale market for a spare is thinnest; a rebuild hoarding young WRs is just
+rebuilding. Each partner keeps exactly ONE idea - a second
 deal with the same manager is the same conversation wearing a different centerpiece
 ("kieran is likely to respond similar to trading any of his RBs"), so the alternates
 ride the shown idea as an "also could land X instead" line instead of spending slots. And for a
