@@ -447,4 +447,10 @@ number would be quietly wrong.
   (the lineup layer's instrument since 2026-08-16 - "ePPG = what he does, redraft = what
   he costs"), redraft kept for price only; `_usable_by_position` already takes the metric
   as a parameter, `flex_bars` and the weakest-starter picks need the same switch. Then
-  re-run the XFL 2 grid to confirm nothing already blessed moves.
+  re-run the XFL 2 grid to confirm nothing already blessed moves. **Test case: n0duh's
+  league "White People", `1316239643640860672` (10-team 1QB PPR)** - all ten teams carry a
+  critical/weak flag today; the #1 team at 100% of best reads "QB weak, FLEX critical"
+  (Lawrence 17.8 ePPG ranked 7th by redraft; Parker Washington 12.5 ePPG in the flex under
+  a ~3,000 redraft flex bar), and n0duh at rank 9 reads "wait - aligned" beside four red
+  chips. The tiers/paths themselves hold (the league is flat: ranks 3-9 within 85-91% of
+  best, six fringe teams is the honest read); the flags are what he saw as off.
