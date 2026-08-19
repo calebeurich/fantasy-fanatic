@@ -456,6 +456,14 @@ and the overview's needs take the same parameter; withContext pins it. ~half a d
 the XFL eye-test; needs-on-ePPG (below) should land first or alongside, since the chips
 this surfaces are the ones that over-flag in 1QB.
 
+**Backlog added 2026-08-19:**
+- **`redraft_value` misread as points, once** - Haiku said Shough is "producing 2,984
+  points this season" (it's his market price; prompt rule B already defines both
+  currencies). One instance, 2026-08-19, in a live "move Shough for a starting RB"
+  answer. If it recurs in the logs: rename the MODEL-VISIBLE key only (roster-detail
+  rows, trade_targets entries) to something un-misreadable like `season_market_price`,
+  ~20 edits + fixtures; internal code keeps the name. Not worth it on one slip.
+
 **Backlog added 2026-08-18 (owner, after the friends' first day on the three-tab build):**
 - **In-season logic** - Track 4 in full: weekly projections in the lineup lens, the season
   record and real PPG taking over from preseason ePPG as they accumulate, deadline
