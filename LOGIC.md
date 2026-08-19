@@ -1243,7 +1243,11 @@ every such note now says "the market prices his season at X" / "priced X over", 
 the keys are `season_price_gained` / `season_price_per_cost`. The claim the notes make
 is unchanged - a higher season price IS the market's read on who produces more - the
 fix is that the number is quoted as the price it is. Real points-per-game claims
-(`projected_ppg`, lineup deltas) were already in ppg and stay untouched.
+(`projected_ppg`, lineup deltas) were already in ppg and stay untouched. The notes fix
+alone was not enough: the very next answer invented the unit itself ("scores 2,984
+PPG"), so a fourth grounding guard (`_unit_violations`) joins the retry loop - any 3+
+digit number wearing a per-game unit is deterministically a price narrated as points
+(real ppg is two digits) and triggers the same silent redo as the other guards.
 
 ## Recurring defect families, and the guards (`analysis/audit.py`)
 

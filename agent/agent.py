@@ -511,6 +511,17 @@ def _ballpark_violation(text: str, tool_calls: list[dict], tool_results: list[di
     return not any("BALLPARK" in _content_text(r.get("content")) for r in tool_results)
 
 
+# Real per-game numbers in fantasy football are two digits; a 3+ digit number wearing a
+# per-game unit is a season market PRICE narrated as points ("Shough scores 2,984 PPG").
+# The tool notes were fixed to say "season price" (2026-08-19) and the model then invented
+# the unit itself, so the guard is on the ANSWER: deterministic, no tool context needed.
+_PPG_LIE = re.compile(r"\b(?:\d{1,3}(?:,\d{3})+|\d{3,})(?:\.\d+)?\s*(?:ppg\b|points?\s+(?:per|a)\s+game)", re.I)
+
+
+def _unit_violations(text: str) -> list[str]:
+    return _PPG_LIE.findall(text or "")
+
+
 def _content_text(content) -> str:
     """Tool result content comes back as a plain string, a list of {"type",
     "text", ...} blocks, or None depending on the tool/transport - normalize to
@@ -609,9 +620,10 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
             violations = _trade_violations(turn["text"], banned)
             need_violations = _need_claim_violations(turn["text"], flagged, league_owner_names)
             ballpark_violation = _ballpark_violation(turn["text"], all_tool_calls, all_tool_results)
-            while (violations or need_violations or ballpark_violation) and retries < MAX_GROUNDING_RETRIES:
+            unit_violations = _unit_violations(turn["text"])
+            while (violations or need_violations or ballpark_violation or unit_violations) and retries < MAX_GROUNDING_RETRIES:
                 if verbose:
-                    print(f"[grounding check failed: {violations + need_violations + (['invented ballpark'] if ballpark_violation else [])} - retrying]")
+                    print(f"[grounding check failed: {violations + need_violations + unit_violations + (['invented ballpark'] if ballpark_violation else [])} - retrying]")
                 # List every violation found, not just one - an earlier version only
                 # named a single offender (via next() on a set), so when an answer
                 # named two non-offerable players at once, the one retry fixed one
@@ -637,6 +649,13 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
                         "contains a BALLPARK line for it - the measured benchmark exists only "
                         "for player-centred returns. There is no benchmark here: say so if it "
                         "matters, and never invent one.")
+                if unit_violations:
+                    quoted = ", ".join(f'"{v}"' for v in unit_violations[:4])
+                    problems.append(
+                        f"You wrote {quoted} - numbers that size are season market PRICES "
+                        "(redraft value), never points. Real points-per-game numbers are two "
+                        "digits (projected_ppg, lineup deltas). Call a price a season price, "
+                        "and only quote per-game units on per-game fields.")
                 # The reader never sees this exchange, and the model must not either: a live
                 # retry opened its answer "You're absolutely right - I apologize", claimed
                 # the tool output had been "too large to display" (confabulated - the run's
@@ -663,6 +682,7 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
                 need_violations = _need_claim_violations(turn["text"], flagged,
                                                          league_owner_names)
                 ballpark_violation = _ballpark_violation(turn["text"], all_tool_calls, all_tool_results)
+                unit_violations = _unit_violations(turn["text"])
 
         answer_text = turn["text"]
         if FAKE_TOOL_CALL.search(answer_text or "") and not all_tool_calls:

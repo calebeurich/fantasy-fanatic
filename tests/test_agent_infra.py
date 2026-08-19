@@ -217,3 +217,15 @@ def test_ballpark_guard_needs_an_evaluated_trade():
     assert _ballpark_violation("Ballpark: a QB-for-pick deal typically lands around a 2nd.", with_eval, []) is True
     has_line = [{"content": "... BALLPARK for a top-10% piece ..."}]
     assert _ballpark_violation("Ballpark: a QB-for-pick deal typically lands around a 2nd.", with_eval, has_line) is False
+
+
+def test_ppg_guard_flags_prices_wearing_pergame_units():
+    """A 3+ digit number with a per-game unit is a season market price narrated as
+    points (live, 2026-08-19: "Shough scores 2,984 PPG this season"); real per-game
+    numbers are two digits and pass untouched."""
+    from agent.agent import _unit_violations
+    assert _unit_violations("Shough scores 2,984 PPG this season")
+    assert _unit_violations("adds 590 ppg over Dobbins")
+    assert _unit_violations("costs 1,611 points a game")
+    assert not _unit_violations("gains 2.4 points a game; Lamar projects 18.1 ppg")
+    assert not _unit_violations("priced at 2,984 for the season")
