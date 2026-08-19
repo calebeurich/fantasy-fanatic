@@ -478,7 +478,8 @@ function setYou(owner, stance, opts = {}) {
   if ((teamChanged && was) || (stanceChanged && !teamChanged)) {
     if (document.querySelector("#log .msg")) add(`<p class="cs">${teamChanged ? `now asking as <strong>${myTeam}</strong> (was ${was}) — answers above were for ${was}` : `${myTeam} now ${stanceWord(myStance)} (was ${stanceWord(wasStance)})`}</p>`);
   }
-  if (teamChanged && $("csela")) {      // side A of the trade helper IS you
+  if (opts.noTrade) return;
+  if ((teamChanged || trade.a.owner !== myTeam) && $("csela")) {      // side A of the trade helper IS you
     trade.a.owner = myTeam; trade.a.stance = myStance; trade.a.picks = new Set();
     if (trade.b.owner === myTeam) trade.b.owner = Object.keys(leagueTeams).find(o => o !== myTeam);
     $("csela").value = trade.a.owner; $("cselb").value = trade.b.owner;
@@ -653,6 +654,8 @@ function renderBuilder(leagueId, owners) {
   ["a", "b"].forEach(k => {
     // Either side changing re-fills BOTH: the tags on one roster depend on the other team.
     $("csel" + k).onchange = () => {
+      // Side A IS you: changing it changes the pin (and the pin re-fills both sides).
+      if (k === "a") { $("crostera").innerHTML = ""; setYou($("csela").value, ""); return; }
       trade[k].owner = $("csel" + k).value; trade[k].stance = ""; trade[k].picks = new Set();
       $("croster" + k).innerHTML = "";  // that side's picks are gone with the roster
       Promise.all([fillSide(leagueId, "a"), fillSide(leagueId, "b")]).then(() => renderTray(leagueId));
@@ -678,7 +681,10 @@ async function fillSide(leagueId, k) {
   const st = $("cstance" + k);
   st.innerHTML = stanceOptions(row).map(([v, label]) =>
     `<button type="button" data-v="${v}" class="${trade[k].stance === v ? "on" : ""}">${label}</button>`).join("");
-  st.querySelectorAll("button").forEach(b => b.onclick = () => { trade[k].stance = b.dataset.v; fillSide(leagueId, "a"); fillSide(leagueId, "b"); });
+  st.querySelectorAll("button").forEach(b => b.onclick = () => {
+    if (k === "a") { setYou(myTeam, b.dataset.v); return; }   // side A's stance is the pinned stance
+    trade[k].stance = b.dataset.v; fillSide(leagueId, "a"); fillSide(leagueId, "b");
+  });
   const needs = Object.entries(row.needs || {}).filter(([, n]) => n && n.level && n.level !== "ok")
     .map(([pos, n]) => `<span class="need ${n.level}" style="display:inline-block;margin:0 3px 0 0">${pos} ${n.level}</span>`).join("");
   $("cmeta" + k).innerHTML = row.path
@@ -884,7 +890,8 @@ async function fillIdeas(leagueId, owner) {
 }
 async function openComposerWith(leagueId, owner, s, ask) {
   if (!$("csela")) return;
-  trade.a.owner = owner; trade.b.owner = s.partner; trade.a.stance = owner === myTeam ? myStance : ""; trade.b.stance = "";
+  if (owner !== myTeam) setYou(owner, "", {noTrade: true});   // side A is you, so opening their idea makes them you
+  trade.a.owner = owner; trade.b.owner = s.partner; trade.a.stance = myStance; trade.b.stance = "";
   trade.a.picks = new Set(); trade.b.picks = new Set();
   $("csela").value = owner; $("cselb").value = s.partner;
   await Promise.all([fillSide(leagueId, "a"), fillSide(leagueId, "b")]);

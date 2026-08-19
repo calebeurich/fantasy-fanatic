@@ -1816,8 +1816,9 @@ line under the tab bar on every view: `you: <team> · <path chip> [as read · bu
 [if selling]` (the options are `stanceOptions`: a contender may declare a sell, a
 rebuild a press, the middle either). One setter (`setYou`) and everything that reads
 "you" follows it: the table highlight and question chips; **side A of the Trade view
-IS you** with the pinned stance preselected (the per-side toggle stays as a local
-override, and picking another team A still works for framing someone else's trade);
+IS you** - not a copy of the pin but the same thing: changing side A's team or stance
+changes the pin, and opening another team's idea card makes them you (owner, on dev:
+"you can change the left trade person without the top part being the same");
 **your trade ideas** are recomputed under the stance (`/ideas?stance=`, the same
 declared-stance parameter `find_targets` already took - a waiting team pinned to
 "pressing" gets its buy ideas without the "if you decided to push" framing, because it
