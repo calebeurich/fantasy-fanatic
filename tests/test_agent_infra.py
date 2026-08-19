@@ -203,3 +203,17 @@ def test_fake_tool_call_xml_in_an_answer_is_detected():
             "<parameter name=\"league_id\">1</parameter></invoke></function_calls> Mild win for you.")
     assert FAKE_TOOL_CALL.search(fake)
     assert not FAKE_TOOL_CALL.search("For dezdroppedit27 (contend - on a clock): starting lineup +1.3 points a game.")
+
+
+def test_ballpark_guard_needs_an_evaluated_trade():
+    """The guard fires only when evaluate_trade ran AND the answer benchmarks without a
+    BALLPARK line - the word "benchmark" in a format answer must not trigger a retry
+    (it did, live: the retry replaced a correct answer with "I haven't evaluated a trade")."""
+    from agent.agent import _ballpark_violation
+    text = "Every trade benchmark the tools return is priced for this format."
+    no_eval = [{"name": "mcp__fantasy_fanatic__check_league_format", "input": {}}]
+    assert _ballpark_violation(text, no_eval, []) is False
+    with_eval = [{"name": "mcp__fantasy_fanatic__evaluate_trade", "input": {}}]
+    assert _ballpark_violation("Ballpark: a QB-for-pick deal typically lands around a 2nd.", with_eval, []) is True
+    has_line = [{"content": "... BALLPARK for a top-10% piece ..."}]
+    assert _ballpark_violation("Ballpark: a QB-for-pick deal typically lands around a 2nd.", with_eval, has_line) is False

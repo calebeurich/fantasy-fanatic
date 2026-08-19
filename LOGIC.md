@@ -1371,6 +1371,22 @@ have; owner: "the model is hallucinating"). Two guards: the tool docstring says 
 means no benchmark, and the deterministic grounding check retries any answer that speaks
 of a ballpark/benchmark when no tool result carried a BALLPARK line - the same shape as
 the chip and need-claim checks: the tools are the record, the answer may not add to it.
+Scoped to runs where evaluate_trade was actually called: the first version fired on the
+word "benchmark" in a plain format answer, and the retry replaced a correct answer with
+"I haven't evaluated a trade" (live, the same day) - a guard that can destroy a good
+answer is worse than the hallucination it catches.
+
+### The format is spoken, not just priced (2026-08-18)
+
+A tester's top note: "the AI didn't seem to know this is a TE premium or superflex
+league." It did not - not because the numbers were wrong (FantasyCalc values are fetched
+for the exact format, the TE premium is applied, the lineup math knows SUPER_FLEX) but
+because `check_league_format` returned only "full / standard dynasty league" and nothing
+ever SAID the format. Now the tool returns a `format` line ("12-team superflex (2 QB
+starters) dynasty, full PPR, TE premium"), the prompt tells the model to state it once and
+reason in it, the page shows it under the table, and the model names FantasyCalc (never
+KeepTradeCut) when asked where a value comes from. The lesson generalises: every fact the
+analysis computes and never speaks is a fact the reader assumes is missing.
 
 ### Two tiers on one deploy: friends and the public demo (2026-08-17)
 

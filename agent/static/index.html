@@ -1000,6 +1000,7 @@ async function loadLeague(id) {
         <th class="sortable" data-sort="dv" title="click to sort">Dynasty value <span class="arrow"></span></th>
         <th>Needs</th><th>Core</th></tr></thead>
       <tbody>${rows}</tbody></table>
+      ${d.format ? `<div class="note">${d.format} — every value and lineup number here is priced for this format (FantasyCalc, not KeepTradeCut).</div>` : ""}
       ${d.tier === "degraded" ? '<div class="note warn">Shallow league — percentile-based numbers are rougher than usual.</div>' : ""}
       ${d.no_trade_history ? '<div class="note warn">No trades in this league yet — the team reads are less reliable this early.</div>' : ""}
       <div class="note" style="display:grid;grid-template-columns:repeat(3,auto);gap:4px 18px;justify-content:start">
@@ -1010,7 +1011,7 @@ async function loadLeague(id) {
         <span><span class="tag p-decide hot">decide</span> press or sell — season can pick</span>
         <span><span class="tag p-sell hot">sell</span> trade aging value for future</span>
       </div>
-      <div class="note">The chip = the move each roster's <em>position</em> calls for, not what its manager is doing. Bright = decision pending; hover for why. Core: <strong>bold</strong> = build-around, <span class="pp">orange</span> = priced on this season. asc / dec = how much of the starting lineup's production comes from players still <span style="color:hsl(120,65%,58%)">gaining</span> value vs already <span style="color:hsl(25,65%,55%)">losing</span> it — the rest are in their prime, holding, so the two rarely add to 100. PPG = real points per game this season; ePPG = expected points per game (Sleeper's season projections, this league's scoring). Rows rank by ePPG; click a header to re-sort. Click a team to ask about them.</div>`;
+      <div class="note">The chip = the move each roster's <em>position</em> calls for, not what its manager is doing. Bright = decision pending; hover for why. Core: <strong>bold</strong> = build-around, <span class="pp">orange</span> = priced on this season. asc / dec = how much of the starting lineup's production comes from players still <span style="color:hsl(120,65%,58%)">gaining</span> value vs already <span style="color:hsl(25,65%,55%)">losing</span> it — the rest are in their prime, holding, so the two rarely add to 100. PPG = real points per game this season; ePPG = expected points per game (Sleeper's season projections, this league's scoring); % of best = this starting lineup's ePPG as a share of the league's best lineup. Rows rank by ePPG; click a header to re-sort. Click a team to ask about them.</div>`;
     const pick = tr => {
       myTeam = tr.dataset.owner;
       document.querySelectorAll("tr.team").forEach(x => x.classList.remove("mine"));

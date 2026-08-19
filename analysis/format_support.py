@@ -37,9 +37,20 @@ def assess_format(league_id: str) -> dict:
                       "(cornerstone value, positional replacement level) get noisy in "
                       "a shallow league. Numbers are still computed, but treat them "
                       "as rougher estimates than in a standard-sized league.",
+            "format": format_line(fmt), **fmt,
         }
 
-    return {"tier": "full", "reason": "Standard dynasty league, no caveats."}
+    return {"tier": "full", "reason": "Standard dynasty league, no caveats.", "format": format_line(fmt), **fmt}
+
+
+def format_line(fmt: dict) -> str:
+    """One sentence the agent can SAY - a tester's top note was that the assistant never
+    mentioned the league was superflex or TE premium, even though every number under it
+    was already priced for that format. The facts were computed and never spoken."""
+    ppr = {1.0: "full PPR", 0.5: "half PPR", 0: "standard (non-PPR)"}.get(fmt["ppr"], f"{fmt['ppr']} PPR")
+    tep = {"tep": ", TE premium", "teppp": ", heavy TE premium (TEP++)"}.get(fmt["tep_tier"], "")
+    qb = "superflex (2 QB starters)" if fmt["is_superflex"] else "single-QB"
+    return f"{fmt['num_teams']}-team {qb} dynasty, {ppr}{tep}"
 
 
 if __name__ == "__main__":

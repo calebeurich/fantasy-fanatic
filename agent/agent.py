@@ -124,7 +124,7 @@ check_league_format first, before any other tool for that league.
 dynasty league, so this analysis doesn't apply there) and do not call any other \
 tool for that league.
 3. If the result is "degraded", proceed normally but mention the caveat (a shallow \
-league - percentile-based numbers are rougher estimates than usual).
+league - percentile-based numbers are rougher estimates than usual). Either way the result carries the league's FORMAT line ("12-team superflex dynasty, full PPR, TE premium") - state it once early in your first answer about a league and reason in it: in superflex a second QB is a starter and QBs are priced like one; under TE premium a TE's catches score more and his value carries that. Every number the tools give you is already priced for this format. Dynasty values are FantasyCalc's for this exact format (never KeepTradeCut); when asked where a value comes from, say so.
 4. Everything you say is advisory only. Never claim you executed a trade, waiver \
 claim, or any other change - you can only analyze and suggest.
 5. Ground every claim in what the tools actually returned. Never invent a player \
@@ -496,11 +496,16 @@ def _trade_violations(text: str, banned: set[str]) -> list[str]:
 BALLPARK_WORDS = ("ballpark", "benchmark", "typically lands", "usually lands", "usually fetches")
 
 
-def _ballpark_violation(text: str, tool_results: list[dict]) -> bool:
+def _ballpark_violation(text: str, tool_calls: list[dict], tool_results: list[dict]) -> bool:
     """The framer's ballpark is SILENT for some trades (a pick as the best piece, a plain
     mid-tier swap) and the model wrote one anyway - "typically lands around a 2027 2nd or
     2028 1st early" (a slot 2028 picks don't have; owner: "the model is hallucinating").
-    A benchmark sentence with no BALLPARK line in any tool result is invented."""
+    A benchmark sentence with no BALLPARK line in any tool result is invented. Only when a
+    trade was actually evaluated this run: the first version fired on the word "benchmark"
+    in a format answer and the retry replaced a correct answer with "I haven't evaluated a
+    trade" - live, 2026-08-18."""
+    if not any(c["name"].endswith("evaluate_trade") for c in tool_calls):
+        return False
     if not any(w in text.lower() for w in BALLPARK_WORDS):
         return False
     return not any("BALLPARK" in _content_text(r.get("content")) for r in tool_results)
@@ -603,7 +608,7 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
                 else (set(), set()))
             violations = _trade_violations(turn["text"], banned)
             need_violations = _need_claim_violations(turn["text"], flagged, league_owner_names)
-            ballpark_violation = _ballpark_violation(turn["text"], all_tool_results)
+            ballpark_violation = _ballpark_violation(turn["text"], all_tool_calls, all_tool_results)
             while (violations or need_violations or ballpark_violation) and retries < MAX_GROUNDING_RETRIES:
                 if verbose:
                     print(f"[grounding check failed: {violations + need_violations + (['invented ballpark'] if ballpark_violation else [])} - retrying]")
@@ -657,7 +662,7 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
                 violations = _trade_violations(turn["text"], banned)
                 need_violations = _need_claim_violations(turn["text"], flagged,
                                                          league_owner_names)
-                ballpark_violation = _ballpark_violation(turn["text"], all_tool_results)
+                ballpark_violation = _ballpark_violation(turn["text"], all_tool_calls, all_tool_results)
 
         answer_text = turn["text"]
         if FAKE_TOOL_CALL.search(answer_text or "") and not all_tool_calls:

@@ -80,7 +80,10 @@ def check_league_format(league_id: str) -> dict:
     """Call this first for any league_id not yet checked this conversation. Returns
     'full' (proceed normally), 'degraded' (shallow league - proceed but caveat any
     percentile-based numbers), or 'unsupported' (not a dynasty league - explain why
-    and do not call any other analysis tool for this league)."""
+    and do not call any other analysis tool for this league) - plus `format`, the
+    league in one line (teams, superflex or single-QB, PPR, TE premium): say it, and
+    reason in it. Every value and lineup number from every other tool is already
+    priced for this format (FantasyCalc values for this exact format, never KTC)."""
     return format_support.assess_format(league_id)
 
 

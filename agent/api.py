@@ -182,6 +182,7 @@ def league_overview(league_id: str) -> dict:
         "supported": True,
         "tier": tier["tier"],
         "reason": tier["reason"],
+        "format": tier.get("format"),
         "no_trade_history": bool(teams and teams[0].get("no_trade_history")),
         "teams": [
             {
