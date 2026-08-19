@@ -427,6 +427,32 @@ number would be quietly wrong.
 5. Sleeper crawler at pilot scope (one hop), then scale; re-run everything at n.
 6. "What converts to wins" regression; only then talk about learned models.
 
+**Next build (agreed 2026-08-18 evening): pin "you" + a stance, everywhere.** From a
+tester's top two asks ("shift perspective to my team"; "a button that says Build and the
+AI shifts") and the owner's sketch review. One thin line under the tab bar on every view:
+`you: dezdroppedit27 · contend  [as read · buying] [if selling]  change team` - the
+team from the username lookup, the table's path chip, and the composer's existing stance
+toggle (as read / if pressing / if selling by path). The stance changes, at once: the
+League view's need chips and hole chips and your trade ideas (recomputed under it; the
+path chip itself stays - it is the read, the toggle shows you deviating, bright when
+you do); the Trade view (side A IS you with that stance preselected - a per-trade flip
+is a local override; a small "pick a different team A" escape hatch stays for framing
+someone else's trade); the Ask view (every question carries "you = dez, selling"; the
+model advises the stance and still says the table's read). Per league, in localStorage.
+Byproducts: need chips can carry the KIND of piece once a stance is pinned ("QB critical
+· win-now" for a presser, "young" for a seller; plain on an unpinned decide team - the
+ambiguity is real there, worked through on kieran/tj12123); the counterparty card no
+longer guesses which side is "you"; a TYPED trade question in Ask runs the counterparty
+too when the other side resolves to exactly one team (none for general questions; off on
+the demo tier). Swapping teams does NOT wipe the conversation (comparison is a use case,
+and the reclaim logic depends on the session) - it drops a marker line "Now asking as
+kieran (was dez); answers above were for dez" and the next question carries the new pin;
+a stance flip mid-conversation gets the same marker. A LEAGUE swap still starts a new
+conversation, as today. Plumbing exists (`?stance=` on /movable, /fits, /suggest); ideas
+and the overview's needs take the same parameter; withContext pins it. ~half a day plus
+the XFL eye-test; needs-on-ePPG (below) should land first or alongside, since the chips
+this surfaces are the ones that over-flag in 1QB.
+
 **Backlog added 2026-08-18 (owner, after the friends' first day on the three-tab build):**
 - **In-season logic** - Track 4 in full: weekly projections in the lineup lens, the season
   record and real PPG taking over from preseason ePPG as they accumulate, deadline
