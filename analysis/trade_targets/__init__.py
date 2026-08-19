@@ -146,18 +146,18 @@ def find_targets(league_id: str, owner_query: str,
         margin = (door["redraft_value"] - (info.get("redraft_value") or 0)) if door else None
         door_sentence = (
             f" His cheapest reachable slot is {door['slot']}, where {door['held_by']} "
-            f"starts at {door['redraft_value']:,} - {info['name']} is {margin:,} points "
-            f"of current production behind that door." if door else "")
+            f"starts at a season price of {door['redraft_value']:,} - {info['name']} is "
+            f"{margin:,} of season price behind that door." if door else "")
         stranded.append({**entry, "blocked_by": info["position"],
                          **({"nearest_door": {**door, "margin": margin}} if door else {}),
                          "wanted_by": wanted_line(wanted),
                          "times_weakest": (round((info.get("redraft_value") or 0) / floor, 1)
                                            if floor else None),
-                         "note": (f"Produces {info.get('redraft_value') or 0:,} this season against the "
+                         "note": (f"The market prices his season at {info.get('redraft_value') or 0:,} against the "
                                   f"{weakest['redraft_value'] or 0:,} of {weakest['name']} "
                                   f"({weakest['position']}), who starts - and every "
                                   f"{info['position']}-capable slot is held by someone better, so "
-                                  f"none of it reaches the lineup today."
+                                  f"none of that production reaches the lineup today."
                                   + door_sentence
                                   + (f" {len(wanted)} team(s) are short at {info['position']}: "
                                      + ", ".join(f"{w['owner']} ({w['need_level']})" for w in wanted[:3])

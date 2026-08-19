@@ -568,7 +568,7 @@ def test_value_upgrade_requires_beating_a_starter_on_both_axes():
     assert [m["move_off"] for m in moves] == ["Pricey"]
     assert [u["name"] for u in moves[0]["returns"]] == ["Cheaper"], (
         "Lateral is pricier, Worse produces less")
-    assert moves[0]["returns"][0]["production_gained"] == 233
+    assert moves[0]["returns"][0]["season_price_gained"] == 233
     assert moves[0]["returns"][0]["value_freed"] == 1073
 
 
@@ -2172,7 +2172,7 @@ def test_every_list_of_offerable_pieces_says_it_is_not_a_package():
         assert "does not add across players" in note
 
 
-def test_persuasion_ranks_by_production_per_cost_not_by_value():
+def test_persuasion_ranks_by_season_price_per_cost_not_by_value():
     """The trap this exists to avoid. Ranking by dynasty value puts the *more valuable*
     player first, which is backwards for a win-now buyer: the cheaper name delivers more
     current production per unit paid, because the market discounts him for seasons a
@@ -2184,7 +2184,7 @@ def test_persuasion_ranks_by_production_per_cost_not_by_value():
         ME, _board(states=[holder], thresholds={"RB": 100},
                    prior={"kk": _prior(9, made_playoffs=False)}, premium_bars=BARS), NEED_RB)
     assert [t["name"] for t in out] == ["Barkley", "Taylor"], "cheaper but better ratio leads"
-    assert out[0]["production_per_cost"] > out[1]["production_per_cost"]
+    assert out[0]["season_price_per_cost"] > out[1]["season_price_per_cost"]
 
 
 def test_the_persuasion_tier_is_defined_by_runway_not_by_the_price_ratio():

@@ -52,7 +52,7 @@ DEPTH_NOTE = (
     "BELOW replacement level - startable quality - meaning they are cheap by definition and "
     "not who the buy targets above are for. Price them as sweeteners: worth a late pick or a "
     "spare body, never worth a real asset. But below LEAGUE replacement is not the same as "
-    "unable to help THIS lineup - each line says whether the player actually outproduces your "
+    "unable to help THIS lineup - each line says whether the market prices the player over your "
     "weakest starter at the position or only covers an absence, and on a thin roster several "
     "will. Cheapest first, because at this tier price is the entire point."
 )
@@ -224,7 +224,7 @@ def _buy_path(me: dict, board: Board, max_per_position: int,
                                      "over_weakest_starter": over_weakest,
                                      "sells_because": ("rebuilding" if other["window"] == "Rebuild"
                                                        else "rising, so selling age not youth"),
-                                     "production_per_cost": round(ratio, 2) if ratio else None,
+                                     "season_price_per_cost": round(ratio, 2) if ratio else None,
                                      **{k: v for k, v in fit.items() if k != "fills_a_hole"},
                                      **_buy_friction(player, other, best_chip,
                                                      trade_counts.get(other["owner_id"], 0),
@@ -273,7 +273,7 @@ def _depth_adds(me_roster: dict, board: Board, filling_lineup: bool,
     on what the asking team is doing: filling a lineup is a redraft question, holding a
     lottery ticket is a dynasty one. Deliberately not `clears_relevance_floor`, whose
     tiered fractions opened a crack between the two lists that hid players from both.
-    Whether he also outproduces the asking team's weakest starter is stated per line,
+    Whether the market also prices him over the asking team's weakest starter is stated per line,
     never used as a bar."""
     ctx, states, trade_counts = board.ctx, board.states, board.trade_counts
     # Excluding my own roster is not incidental: a rebuilding team searching rebuilding
@@ -323,11 +323,11 @@ def _depth_adds(me_roster: dict, board: Board, filling_lineup: bool,
             if edge is None:
                 verdict = ""
             elif edge > 0:
-                verdict = (f" Also outproduces your weakest {info['position']} starter by "
-                           f"{edge:,} right now, so he is a real if modest upgrade there, "
+                verdict = (f" Also priced {edge:,} over your weakest {info['position']} starter's "
+                           f"season, so he is a real if modest upgrade there, "
                            f"not only cover.")
             else:
-                verdict = (f" Does not outproduce your weakest {info['position']} starter, "
+                verdict = (f" Priced under your weakest {info['position']} starter's season, "
                            f"so he is cover for an absence and nothing more.")
             adds.append({"name": info["name"], "position": info["position"],
                          "value": info["value"], "redraft_value": info.get("redraft_value"),

@@ -1230,6 +1230,21 @@ often as skill players. Rules that make the number honest:
   read None-for-unknown rather than 0.000-for-durable; pooled over player-weeks, not
   averaged over players, because the question is what happens to a lineup slot.
 
+### Season price spoken as points (fixed 2026-08-19)
+
+A live "pressing" answer said Shough "produces 2,984 points this season" and priced a
+lineup change in "points of current production" - all redraft VALUES (season market
+prices) narrated as production. The model was not inventing: the tool notes themselves
+said "Produces X this season" (stranded), "outproduces your weakest starter by X"
+(production adds), and shipped keys named `production_gained` / `production_per_cost`
+for redraft diffs and ratios - and the notes are the instructions, so the model
+repeated our own mislabel. Family 1 (labels drift from the math), fixed at the source:
+every such note now says "the market prices his season at X" / "priced X over", and
+the keys are `season_price_gained` / `season_price_per_cost`. The claim the notes make
+is unchanged - a higher season price IS the market's read on who produces more - the
+fix is that the number is quoted as the price it is. Real points-per-game claims
+(`projected_ppg`, lineup deltas) were already in ppg and stay untouched.
+
 ## Recurring defect families, and the guards (`analysis/audit.py`)
 
 Every real bug here was a wrong recommendation produced by correct arithmetic. The

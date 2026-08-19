@@ -412,7 +412,7 @@ def _persuasion_targets(me: dict, board: Board, my_needs: dict,
                 **(fit or {}),
                 **_with_trade_note(player, other, trade_counts),
                 "seller_path": other.get("path", other["window"]),
-                "production_per_cost": round(ratio, 2),
+                "season_price_per_cost": round(ratio, 2),
                 "why_they_might_listen": why,
                 "friction": friction,
                 "needs_a_pivot": not is_fit,
@@ -422,5 +422,5 @@ def _persuasion_targets(me: dict, board: Board, my_needs: dict,
                 friction.append(_friction(
                     "holds_to_win" if other["window"] in ("Push", "Contend")
                     else "needs_a_pivot", cost_note))
-    plausible.sort(key=lambda t: -t["production_per_cost"])
+    plausible.sort(key=lambda t: -t["season_price_per_cost"])
     return plausible

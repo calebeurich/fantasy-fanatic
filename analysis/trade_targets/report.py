@@ -159,7 +159,7 @@ def _print_push(push: dict, extras: dict) -> None:
             if t["needs_a_pivot"]:
                 marker = (" [HOLDS TO WIN]" if str(t.get("seller_path", "")).startswith("contend")
                           else " [PIVOT]")
-            print(f"  {t['name']} ({t['position']}, {t['production_per_cost']}x production "
+            print(f"  {t['name']} ({t['position']}, {t['season_price_per_cost']}x season price "
                   f"per unit of cost - dyn {t['value']:,} / redraft {t['redraft_value']:,}) "
                   f"from {t['from_owner']}{marker}")
             print(f"      why they might listen: {t['why_they_might_listen']}")
@@ -239,7 +239,7 @@ def _print_value_upgrades(result: dict) -> None:
             price = (f"{u['value_freed']:,} dynasty freed" if u["value_freed"] > 0
                      else "same dynasty price")
             print(f"      <- {u['name']} ({u['redraft_value']:,} this season, "
-                  f"{u['production_gained']:+,} production, {price})"
+                  f"{u['season_price_gained']:+,} season price, {price})"
                   f"{UPGRADE_KIND_TAG[u['kind']]} from {u['from_owner']} - {trades}")
             if u.get("their_reason"):
                 print(f"           why they'd move him: {u['their_reason']}")
@@ -287,7 +287,7 @@ def _print_conversion_candidates(result: dict) -> None:
     print("\nWHAT THEY WILL CALL YOU ABOUT - your own aging starters, priced for a season your "
           "roster is least short of:")
     for e in result["conversion_candidates"]:
-        print(f"  {e['name']} ({e['position']}, {e['production_per_cost']}x production per unit "
+        print(f"  {e['name']} ({e['position']}, {e['season_price_per_cost']}x season price per unit "
               f"of cost - dyn {e['value']:,} / redraft {e['redraft_value']:,})")
         print(f"      {e['note']}")
     print(f"  {result['choice_note']}")

@@ -104,16 +104,17 @@ def _upgrade_note(kind: str, produced: float, replaced: dict, freed: float, mine
         # is not a sentence.
         price = (f"costs {freed:,} less in dynasty value" if freed > 0 else
                  f"costs the same in dynasty value, inside the {abs(freed):,} that separates them")
-        return (f"Produces {produced:,} this season against {replaced['name']}'s {theirs:,}, and "
+        return (f"Priced at {produced:,} for this season against {replaced['name']}'s {theirs:,} "
+                f"(the market's read on who produces more), and "
                 f"{price} - strictly the better holding for a team trying to win now. {action}")
     pct = round(produced / theirs * 100)
     if kind == "value_decision":
-        return (f"Produces {produced:,} against {replaced['name']}'s {theirs:,} - {pct}% of it, so "
+        return (f"Season price {produced:,} against {replaced['name']}'s {theirs:,} - {pct}% of it, so "
                 f"the lineup barely moves - while costing {freed:,} less in dynasty value. A value "
                 f"decision, not a lineup upgrade: neither is clearly the better start week to "
                 f"week, and what you are buying is the {freed:,} released, not the points. {action}")
-    return (f"Produces {produced:,} against {replaced['name']}'s {theirs:,} - {pct}%, so this "
-            f"GIVES UP {theirs - produced:,} of real production this season - to free {freed:,} in "
+    return (f"Season price {produced:,} against {replaced['name']}'s {theirs:,} - {pct}%, so this "
+            f"GIVES UP real production this season ({theirs - produced:,} in season price) - to free {freed:,} in "
             f"dynasty value. A conversion, not an upgrade: worth it only if you would rather own "
             f"the value than score the points, which is a defensible call with no clock and the "
             f"wrong one if you are pushing. {action}")
@@ -185,7 +186,7 @@ def find_value_upgrades(me_roster: dict, board: Board, my_starters: set[str],
                 "value": info["value"], "redraft_value": produced,
                 "is_starter": pid in their_starters,
                 "upgrades_over": replaced["name"],
-                "production_gained": gained, "value_freed": freed,
+                "season_price_gained": gained, "value_freed": freed,
                 "kind": kind, "already_mine": mine_side,
                 "note": _upgrade_note(kind, produced, replaced, freed, mine_side),
                 **({"their_reason": "already yours - no counterparty at all"} if mine_side else
@@ -212,7 +213,7 @@ def find_value_upgrades(me_roster: dict, board: Board, my_starters: set[str],
             continue
         # A man already on my bench leads and is never truncated away: he ranks last on
         # production gained by construction, and he is the only option costing no trade.
-        ranked = sorted(by_starter[mine["name"]], key=lambda u: -u["production_gained"])
+        ranked = sorted(by_starter[mine["name"]], key=lambda u: -u["season_price_gained"])
         free = [u for u in ranked if u.get("already_mine")]
         returns = free + [u for u in ranked if not u.get("already_mine")][:RETURNS_PER_MOVE]
         produced = mine.get("redraft_value") or 0
@@ -226,7 +227,7 @@ def find_value_upgrades(me_roster: dict, board: Board, my_starters: set[str],
             **({"priced_for": pricing[pid]} if pid in pricing else {}),
             "wanted_by": wanted_line(wanted_by(profile, me_roster, board)),
             "returns": returns,
-            "best_gain": returns[0]["production_gained"],
+            "best_gain": returns[0]["season_price_gained"],
         })
     # One move per beatable starter with no ceiling made this the largest block in the
     # result (41% of a Middling report), and the whole result is undeliverable past a
@@ -261,5 +262,5 @@ def _conversion_candidates(me: dict, board: Board) -> list[dict]:
                 f"({ratio:.2f}x his own trade value) - so the case is about whose window he "
                 f"fits: his remaining seasons aren't the ones the rest of this roster is "
                 f"built for.")
-        out.append({**player, "production_per_cost": round(ratio, 2), "note": note})
+        out.append({**player, "season_price_per_cost": round(ratio, 2), "note": note})
     return out
