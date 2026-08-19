@@ -1806,6 +1806,41 @@ to chat, carrying declared stances. The deciding rule holds: facts render, every
 "should" is the agent's. Greyed rows stay tappable ("tap anyway if you insist") - the
 user may know something the path doesn't.
 
+### Pinned "you" and a stance, on every view (2026-08-19)
+
+Two of the first testers' top asks were the same ask: "shift the perspective to my
+team" and "a button that says Build and the AI shifts." The page already knew both
+halves - which row is yours (the username lookup) and the composer's stance toggle - but
+in two different places, and only the composer's read followed the toggle. Now one thin
+line under the tab bar on every view: `you: <team> · <path chip> [as read · buying]
+[if selling]` (the options are `stanceOptions`: a contender may declare a sell, a
+rebuild a press, the middle either). One setter (`setYou`) and everything that reads
+"you" follows it: the table highlight and question chips; **side A of the Trade view
+IS you** with the pinned stance preselected (the per-side toggle stays as a local
+override, and picking another team A still works for framing someone else's trade);
+**your trade ideas** are recomputed under the stance (`/ideas?stance=`, the same
+declared-stance parameter `find_targets` already took - a waiting team pinned to
+"pressing" gets its buy ideas without the "if you decided to push" framing, because it
+just did); **every question** carries "I'm X and I'm open to selling (treat me as a
+seller)" / "pressing to win now (treat me as a buyer)" - the model advises the stance
+and still reports the table's read, which is the spugz rule from the stance override
+above. Pinned per league in localStorage, restored on return.
+
+Two consequences worth naming. A **typed** trade question in Ask now runs the
+counterparty too (`typedCounterparty`): friends tier only, exactly one team other than
+you named, and the question reads like a trade (trade / send / offer / swap / deal /
+take / accept, or "do … for"); general questions ("what does Vicdank need") get no
+second agent, because one is an ask that costs. And **swapping teams does not wipe the
+conversation** - comparing two teams is a real use, and the dropped-connection reclaim
+leans on the session id - it drops a marker line ("now asking as kieran (was dez) -
+answers above were for dez"), as does a stance flip; the next question carries the new
+pin. A league swap still starts a new conversation, as before.
+
+Not done, on purpose: need chips carrying the KIND of piece under a stance ("QB
+critical - win-now" for a presser, "young" for a seller) - the needs layer reads
+redraft bars that already over-flag in 1QB (ROADMAP), and a second label on a
+chip that is sometimes wrong would compound it.
+
 ## Known limitations / backlog
 
 Measured or confirmed, none urgent, kept so nobody re-derives them:

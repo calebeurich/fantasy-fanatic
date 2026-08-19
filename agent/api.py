@@ -625,24 +625,26 @@ def suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance_
 
 
 @app.get("/api/league/{league_id}/team/{owner}/ideas", dependencies=[Depends(tier)])
-def trade_ideas(league_id: str, owner: str, limit: int = 3) -> list[dict]:
+def trade_ideas(league_id: str, owner: str, limit: int = 3, stance: str | None = None) -> list[dict]:
     """Up to three starting points for one team across the whole league - one per
     partner - shown in the team's expanded row, click-to-load into the composer.
-    Deterministic and cheap once the board is warm; cached client-side per team."""
+    Deterministic and cheap once the board is warm; cached client-side per team.
+    `stance` is the page's pinned "if pressing / if selling" for this team - the same
+    declared stance the composer passes - so the ideas follow the stance, not just the read."""
     from analysis.league import context
     ctx = context(league_id)
     value = {p["name"]: p["value"] for p in ctx.players.values()}
     cands = []
     for other in ctx.owner_names.values():
         if other != owner:
-            cands += _suggest(league_id, owner, other, limit=3)
+            cands += _suggest(league_id, owner, other, stance_a=stance or None, limit=3)
     # Bigger deals first (what comes back, in dynasty value), one per partner, and no
     # repeating the outgoing piece - three ideas should be three different conversations.
     # A waiting team is patient by definition: nothing to convert, so sell-lens ideas are
     # noise; its buy-lens ideas are only live IF it chose to push (owner). Decide teams
     # get both, labelled; contenders buy; rebuilds sell.
     path = next((t["path"] for t in team_state.classify_league(league_id) if t["owner"] == owner), "")
-    if path.startswith("wait"):
+    if path.startswith("wait") and not stance:
         cands = [{**c, "framing": "if you decided to push"} for c in cands if c.get("lens") == "buy"]
     # Each lens ranks by its own currency: a buyer by what comes IN - but an idea that dips
     # his lineup ranks below every one that lifts it (owner: "ranked lower, not a top 3") -

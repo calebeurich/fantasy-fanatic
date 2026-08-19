@@ -427,6 +427,9 @@ number would be quietly wrong.
 5. Sleeper crawler at pilot scope (one hop), then scale; re-run everything at n.
 6. "What converts to wins" regression; only then talk about learned models.
 
+**Pinned "you" + stance: SHIPPED 2026-08-19** (LOGIC.md "Pinned you and a stance"). The
+design below is kept as the record; what was left out: need chips carrying the piece
+KIND under a stance (depends on needs-on-ePPG below). Original sketch -
 **Next build (agreed 2026-08-18 evening): pin "you" + a stance, everywhere.** From a
 tester's top two asks ("shift perspective to my team"; "a button that says Build and the
 AI shifts") and the owner's sketch review. One thin line under the tab bar on every view:

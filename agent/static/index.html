@@ -23,6 +23,17 @@
                   font-size:15px;font-weight:600;color:var(--muted);background:transparent}
   nav.tabs button.on{color:var(--ink);border-bottom-color:var(--ok);background:var(--panel2)}
   nav.tabs button:disabled{opacity:.35}
+  /* The pin: who "you" are and the stance every view reads under - one thin line, every view. */
+  #pin{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:5px 12px;font-size:12.5px;color:var(--muted);
+       border-top:1px solid var(--line);background:var(--panel)}
+  #pin select{font-size:12.5px;padding:2px 4px;max-width:46vw}
+  #pin .cstance{margin-left:0}
+  #pin .cstance button.on.dev{border-color:var(--ok);color:var(--ok)}
+  @media (max-width:600px){
+    #pin{gap:4px;padding:4px 8px;font-size:11.5px}
+    #pin select{max-width:34vw;font-size:11.5px}
+    #pin .cstance button{padding:2px 6px;font-size:11px}
+  }
   .brand{color:var(--dim);font-size:11.5px;text-align:right;padding:2px 12px 0}
   section.view{display:none}
   section.view.on{display:grid;gap:18px}
@@ -285,6 +296,7 @@
     <button type="button" data-view="trade" disabled>Trade</button>
     <button type="button" data-view="ask">Ask</button>
   </nav>
+  <div id="pin" style="display:none"></div>
 </header>
 <div class="brand">fantasy-fanatic · dynasty analysis · real Sleeper + FantasyCalc data</div>
 
@@ -442,6 +454,56 @@ let currentLeagueName = null;
 let lastCounterparty = null;   // the composer's last "both sides" ask, so a retry re-runs the other manager too
 let myTeam = null;
 let myName = null;   // the Sleeper display name they looked themselves up with
+let myStance = "";   // "" = as read, "press" / "sell" = declared; pinned per league
+
+// The pin: "you: dez · contend [as read · buying] [if selling]" under the tab bar on
+// every view (testers: "shift perspective to my team", "a button that says Build and
+// the AI shifts"). One place sets it; everything that reads "you" follows: the table
+// highlight, the question chips, the trade helper's side A, your trade ideas, and the
+// line every question carries. Remembered per league.
+function setYou(owner, stance, opts = {}) {
+  const teamChanged = owner !== myTeam, stanceChanged = (stance || "") !== myStance;
+  const was = myTeam, wasStance = myStance;
+  myTeam = owner; myStance = stance || "";
+  if (currentLeague) localStorage.setItem("ff_you:" + currentLeague, JSON.stringify({team: myTeam, stance: myStance}));
+  document.querySelectorAll("tr.team").forEach(x => x.classList.toggle("mine", x.dataset.owner === myTeam));
+  renderPin();
+  if (!myTeam) return;
+  showChips(myTeam);
+  $("q").placeholder = `ask anything about ${myTeam} or the league…`;
+  showAskContext();
+  if (opts.silent) return;
+  // The conversation is NOT wiped (comparing teams is a use case, and the reclaim logic
+  // leans on the session) - a marker says whose answers are whose from here on.
+  if ((teamChanged && was) || (stanceChanged && !teamChanged)) {
+    if (document.querySelector("#log .msg")) add(`<p class="cs">${teamChanged ? `now asking as <strong>${myTeam}</strong> (was ${was}) — answers above were for ${was}` : `${myTeam} now ${stanceWord(myStance)} (was ${stanceWord(wasStance)})`}</p>`);
+  }
+  if (teamChanged && $("csela")) {      // side A of the trade helper IS you
+    trade.a.owner = myTeam; trade.a.stance = myStance; trade.a.picks = new Set();
+    if (trade.b.owner === myTeam) trade.b.owner = Object.keys(leagueTeams).find(o => o !== myTeam);
+    $("csela").value = trade.a.owner; $("cselb").value = trade.b.owner;
+    Promise.all([fillSide(currentLeague, "a"), fillSide(currentLeague, "b")]).then(() => renderTray(currentLeague));
+  } else if (stanceChanged && $("csela") && trade.a.owner === myTeam) {
+    trade.a.stance = myStance;
+    Promise.all([fillSide(currentLeague, "a"), fillSide(currentLeague, "b")]).then(() => renderTray(currentLeague));
+  }
+  if (stanceChanged) fillIdeas(currentLeague, myTeam);   // your ideas follow the stance
+}
+const stanceWord = st => ({sell: "selling", press: "pressing"})[st] || "as read";
+function renderPin() {
+  const pin = $("pin");
+  if (!currentLeague || !Object.keys(leagueTeams).length) { pin.style.display = "none"; return; }
+  const row = leagueTeams[myTeam] || {};
+  const word = (row.path || "").split(" - ")[0];
+  const opts = ["", ...Object.keys(leagueTeams)].map(o => `<option value="${o}"${o === (myTeam || "") ? " selected" : ""}>${o || "pick your team"}</option>`).join("");
+  pin.innerHTML = `<span>you:</span><select id="pinsel">${opts}</select>` +
+    (myTeam ? `<span class="tag p-${word} ${row.alignment === "unaligned" ? "hot" : "cool"}" title="${(row.path_reason || "").replace(/"/g, "&quot;")}">${word}</span>` +
+      `<span class="cstance" id="pinstance">${stanceOptions(row).map(([v, label]) =>
+        `<button type="button" data-v="${v}" class="${myStance === v ? "on" + (v ? " dev" : "") : ""}">${label}</button>`).join("")}</span>` : "");
+  pin.style.display = "flex";
+  $("pinsel").onchange = () => { const o = $("pinsel").value; if (o) setYou(o, ""); };
+  pin.querySelectorAll("#pinstance button").forEach(b => b.onclick = () => setYou(myTeam, b.dataset.v));
+}
 
 // Questions are silently pinned to the selected league/team (withContext) - silently
 // was the problem, so the pin is shown right where the question is typed.
@@ -449,7 +511,7 @@ function showAskContext() {
   const el = $("askctx");
   if (!currentLeague) { el.style.display = "none"; return; }
   el.textContent = "questions go to: " + (currentLeagueName || "league " + currentLeague)
-    + (myTeam ? " · you = " + myTeam + " — but ask about any team by name" : "");
+    + (myTeam ? " · you = " + myTeam + (myStance ? ", " + stanceWord(myStance) : "") + " — but ask about any team by name" : "");
   el.style.display = "block";
 }
 
@@ -574,6 +636,7 @@ async function fetchFits(leagueId, owner, stance, seller, sellerStance) {
 function renderBuilder(leagueId, owners) {
   const box = $("builder");
   trade.a.owner = trade.a.owner || myTeam || owners[0];
+  if (trade.a.owner === myTeam && !trade.a.stance) trade.a.stance = myStance;
   trade.b.owner = trade.b.owner || owners.find(o => o !== trade.a.owner);
   const opts = sel => owners.map(o => `<option${o === sel ? " selected" : ""}>${o}</option>`).join("");
   const side = k => `<div class="cside" id="cside${k}">
@@ -718,10 +781,11 @@ function renderTray(leagueId) {
     const stance = k => trade[k].stance ? ` (${trade[k].owner} says they'd ${trade[k].stance === "sell" ? "sell" : "press"})` : "";
     const proposal = `${a} sends ${pa.join(", ")}; ${b} sends ${pb.join(", ")}`;
     $("q").value = `Evaluate this trade for both sides: ${proposal}.${stance("a")}${stance("b")}`;
-    $("f").requestSubmit();
     // The other side of the table: whichever team isn't mine reacts as its own manager,
     // in parallel, on its own card. Two agents, opposing stances, one referee (the framer).
+    // Set before the submit so the typed-question path sees it and doesn't fire a second.
     lastCounterparty = pageTier === "friend" ? {owner: myTeam === b ? a : b, proposal, typed: $("q").value} : null;
+    $("f").requestSubmit();
     if (lastCounterparty) askCounterparty(lastCounterparty.owner, proposal);
     showView("ask");
   };
@@ -790,13 +854,16 @@ const ideasCache = {};
 async function fillIdeas(leagueId, owner) {
   const el = document.getElementById(`ideas-${owner.replace(/[^a-z0-9]/gi, "_")}`);
   if (!el) return;
-  const key = `${leagueId}/${owner}`;
+  const stance = owner === myTeam ? myStance : "";
+  const key = `${leagueId}/${owner}/${stance}`;
+  el.innerHTML = '<span class="spin"></span>looking across the league for starting points';
   try {
-    if (!ideasCache[key]) ideasCache[key] = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/ideas?limit=8`, {headers: hdrs()});
+    if (!ideasCache[key]) ideasCache[key] = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/ideas?limit=8${stance ? "&stance=" + stance : ""}`, {headers: hdrs()});
   } catch (_) { el.textContent = "couldn't look"; return; }
   const list = ideasCache[key];
   if (!list.length) { el.textContent = "nothing obvious — build one in the trade helper below"; return; }
-  const framing = list[0] && list[0].framing ? `<div class="cs" style="margin-bottom:4px">${owner} is waiting — these are production moves <em>${list[0].framing}</em>:</div>` : "";
+  const framing = list[0] && list[0].framing ? `<div class="cs" style="margin-bottom:4px">${owner} is waiting — these are production moves <em>${list[0].framing}</em>:</div>`
+                : stance ? `<div class="cs" style="margin-bottom:4px">under your pinned stance — <em>${stanceWord(stance)}</em>:</div>` : "";
   const card = (s, i) => `<div class="idea" data-i="${i}" title="${(s.why || "").replace(/"/g, "&quot;")}">` +
     `<div style="flex:1;min-width:0">send <b>${s.a_sends.join(" + ")}</b> to <b>${s.partner}</b> for <b>${s.b_sends.join(" + ")}</b>` +
     `<span class="cs">${(s.why || "").split(";")[0]}</span></div>` +
@@ -817,7 +884,7 @@ async function fillIdeas(leagueId, owner) {
 }
 async function openComposerWith(leagueId, owner, s, ask) {
   if (!$("csela")) return;
-  trade.a.owner = owner; trade.b.owner = s.partner; trade.a.stance = ""; trade.b.stance = "";
+  trade.a.owner = owner; trade.b.owner = s.partner; trade.a.stance = owner === myTeam ? myStance : ""; trade.b.stance = "";
   trade.a.picks = new Set(); trade.b.picks = new Set();
   $("csela").value = owner; $("cselb").value = s.partner;
   await Promise.all([fillSide(leagueId, "a"), fillSide(leagueId, "b")]);
@@ -942,6 +1009,7 @@ async function loadLeague(id) {
     if (currentLeague && currentLeague !== id) {
       startNewConversation(`Switched leagues — started a new conversation for ${currentLeagueName || "this league"}.`);
     }
+    if (currentLeague !== id) { myTeam = null; myStance = ""; }
     currentLeague = id;
     leagueTeams = Object.fromEntries(d.teams.map(t => [t.owner, t]));
     const rows = d.teams.map(t => {
@@ -1012,14 +1080,7 @@ async function loadLeague(id) {
         <span><span class="tag p-sell hot">sell</span> trade aging value for future</span>
       </div>
       <div class="note">The chip = the move each roster's <em>position</em> calls for, not what its manager is doing. Bright = decision pending; hover for why. Core: <strong>bold</strong> = build-around, <span class="pp">orange</span> = priced on this season. asc / dec = how much of the starting lineup's production comes from players still <span style="color:hsl(120,65%,58%)">gaining</span> value vs already <span style="color:hsl(25,65%,55%)">losing</span> it — the rest are in their prime, holding, so the two rarely add to 100. PPG = real points per game this season; ePPG = expected points per game (Sleeper's season projections, this league's scoring); % of best = this starting lineup's ePPG as a share of the league's best lineup. Rows rank by ePPG; click a header to re-sort. Click a team to ask about them.</div>`;
-    const pick = tr => {
-      myTeam = tr.dataset.owner;
-      document.querySelectorAll("tr.team").forEach(x => x.classList.remove("mine"));
-      tr.classList.add("mine");
-      showChips(myTeam);
-      $("q").placeholder = `ask anything about ${myTeam} or the league…`;
-      showAskContext();
-    };
+    const pick = tr => setYou(tr.dataset.owner, tr.dataset.owner === myTeam ? myStance : "");
     showAskContext();
     // Sort by either value column (a tester's ask: "sort by dynasty value"). The
     // rank number stays the contention rank - position in the league is a fact,
@@ -1036,6 +1097,7 @@ async function loadLeague(id) {
       };
     });
     prefetchDetails(id).then(() => renderBuilder(id, d.teams.map(t => t.owner)));
+    const saved = JSON.parse(localStorage.getItem("ff_you:" + id) || "null");   // read before any pick overwrites it
     document.querySelectorAll("tr.team").forEach(tr => {
       // Click = select for asking AND toggle the expanded roster. Deterministic data
       // rendered directly, same doctrine as the table itself.
@@ -1048,6 +1110,10 @@ async function loadLeague(id) {
         toggleDetail(tr, id);  // seeing your own roster is why you loaded the league
       }
     });
+    // Back in a league you had pinned yourself in: same team, same stance, no clicks.
+    if (saved && leagueTeams[saved.team] && !myTeam) setYou(saved.team, saved.stance, {silent: true});
+    else if (saved && saved.team === myTeam && saved.stance) setYou(myTeam, saved.stance, {silent: true});
+    renderPin();
   } catch (e) {
     $("overview").innerHTML = `<div class="empty warn">Failed to load: ${e}</div>`;
   }
@@ -1132,7 +1198,8 @@ $("reset").onclick = () => startNewConversation("Started a new conversation.");
 // and only when the question doesn't already carry it (the chips do).
 function withContext(question) {
   if (!currentLeague || question.includes(currentLeague)) return question;
-  const who = myTeam ? `, I'm ${myTeam}` : "";
+  const stance = {sell: " and I'm open to selling (treat me as a seller)", press: " and I'm pressing to win now (treat me as a buyer)"}[myStance] || "";
+  const who = myTeam ? `, I'm ${myTeam}${stance}` : "";
   return `For Sleeper league ${currentLeague}${who}. ${question}`;
 }
 
@@ -1193,6 +1260,15 @@ function renderAnswer(el, d, question) {
   }
 }
 
+// Which team is across the table in a typed trade question - exactly one team other
+// than you, named in a question that reads like a trade; anything else is a no.
+function typedCounterparty(typed) {
+  if (pageTier !== "friend" || !myTeam || (lastCounterparty && lastCounterparty.typed === typed)) return null;
+  if (!/\b(trade|trades|send|sends|offer|swap|deal|take|accept|(do|give|move|get)\b.*\bfor)\b/i.test(typed)) return null;
+  const low = typed.toLowerCase();
+  const named = Object.keys(leagueTeams).filter(o => o !== myTeam && low.includes(o.toLowerCase()));
+  return named.length === 1 ? named[0] : null;
+}
 // Poll for an answer this session finished after `since`. Used both when a connection
 // drops mid-question and when the page is reopened while one was in flight.
 // One-shot answer AS the other manager (agent.COUNTERPARTY_PROMPT): its own /ask with a
@@ -1256,6 +1332,10 @@ $("f").onsubmit = async e => {
   const question = withContext(typed);
   $("q").value = "";
   add(`<p>${typed.replace(/</g, "&lt;")}</p>`, "me");
+  // A typed trade question gets the other manager's read too, when the page can tell
+  // who that is: one other team named, in a question that reads like a trade.
+  const other = typedCounterparty(typed);
+  if (other) { lastCounterparty = {owner: other, proposal: typed, typed}; askCounterparty(other, typed); }
   const pending = add("<p><span id='step'>thinking…</span> <span id='tick'>0s</span>"
                       + "<br><span class='cs'>a full answer takes about a minute — keep this tab open</span></p>"
                       + "<div id='partial'></div>");
