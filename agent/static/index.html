@@ -479,12 +479,12 @@ function setYou(owner, stance, opts = {}) {
     if (document.querySelector("#log .msg")) add(`<p class="cs">${teamChanged ? `now asking as <strong>${myTeam}</strong> (was ${was}) — answers above were for ${was}` : `${myTeam} now ${stanceWord(myStance)} (was ${stanceWord(wasStance)})`}</p>`);
   }
   if (opts.noTrade) return;
-  if ((teamChanged || trade.a.owner !== myTeam) && $("csela")) {      // side A of the trade helper IS you
+  if ((teamChanged || trade.a.owner !== myTeam) && $("cselb")) {      // side A of the trade helper IS you
     trade.a.owner = myTeam; trade.a.stance = myStance; trade.a.picks = new Set();
     if (trade.b.owner === myTeam) trade.b.owner = Object.keys(leagueTeams).find(o => o !== myTeam);
-    $("csela").value = trade.a.owner; $("cselb").value = trade.b.owner;
+    $("cselb").value = trade.b.owner;
     Promise.all([fillSide(currentLeague, "a"), fillSide(currentLeague, "b")]).then(() => renderTray(currentLeague));
-  } else if (stanceChanged && $("csela") && trade.a.owner === myTeam) {
+  } else if (stanceChanged && $("cselb") && trade.a.owner === myTeam) {
     trade.a.stance = myStance;
     Promise.all([fillSide(currentLeague, "a"), fillSide(currentLeague, "b")]).then(() => renderTray(currentLeague));
   }
@@ -641,8 +641,9 @@ function renderBuilder(leagueId, owners) {
   trade.b.owner = trade.b.owner || owners.find(o => o !== trade.a.owner);
   const opts = sel => owners.map(o => `<option${o === sel ? " selected" : ""}>${o}</option>`).join("");
   const side = k => `<div class="cside" id="cside${k}">
-      <div class="chead"><span class="cs" style="white-space:nowrap">${k === "a" ? "you" : "them"}:</span><select id="csel${k}">${opts(trade[k].owner)}</select>
-        <div class="cstance" id="cstance${k}"></div></div>
+      <div class="chead">${k === "a"
+        ? `<span class="cs">you:</span><b id="cnamea" style="font-size:14px">${trade.a.owner}</b><span class="cs">— change team or stance in the bar at the top</span><span id="cstancea" hidden></span>`
+        : `<span class="cs">them:</span><select id="cselb">${opts(trade.b.owner)}</select><div class="cstance" id="cstanceb"></div>`}</div>
       <div class="cmeta" id="cmeta${k}"></div>
       <div id="croster${k}"><div class="cs"><span class="spin"></span>loading roster</div></div></div>`;
   box.innerHTML = `<div class="cs">Pick two teams, tap pieces, ask. Bright = that team would move it <em>and</em> the other team has a use for it (the tag says what — hover for the why) · ` +
@@ -651,17 +652,14 @@ function renderBuilder(leagueId, owners) {
     `<div class="csides">${side("a")}${side("b")}</div>` +
     `<div class="ctray" id="ctray"></div>`;
   document.querySelector('#tabs [data-view="trade"]').disabled = false;
-  ["a", "b"].forEach(k => {
-    // Either side changing re-fills BOTH: the tags on one roster depend on the other team.
-    $("csel" + k).onchange = () => {
-      // Side A IS you: changing it changes the pin (and the pin re-fills both sides).
-      if (k === "a") { $("crostera").innerHTML = ""; setYou($("csela").value, ""); return; }
-      trade[k].owner = $("csel" + k).value; trade[k].stance = ""; trade[k].picks = new Set();
-      $("croster" + k).innerHTML = "";  // that side's picks are gone with the roster
-      Promise.all([fillSide(leagueId, "a"), fillSide(leagueId, "b")]).then(() => renderTray(leagueId));
-    };
-    fillSide(leagueId, k);
-  });
+  // Side A is the pin (the bar at the top); only side B is picked here. Either side
+  // changing re-fills BOTH: the tags on one roster depend on the other team.
+  $("cselb").onchange = () => {
+    trade.b.owner = $("cselb").value; trade.b.stance = ""; trade.b.picks = new Set();
+    $("crosterb").innerHTML = "";  // that side's picks are gone with the roster
+    Promise.all([fillSide(leagueId, "a"), fillSide(leagueId, "b")]).then(() => renderTray(leagueId));
+  };
+  fillSide(leagueId, "a"); fillSide(leagueId, "b");
   renderTray(leagueId);
 }
 
@@ -678,8 +676,9 @@ function stanceOptions(row) {
 async function fillSide(leagueId, k) {
   const owner = trade[k].owner;
   const row = leagueTeams[owner] || {};
+  if (k === "a") $("cnamea").textContent = owner;
   const st = $("cstance" + k);
-  st.innerHTML = stanceOptions(row).map(([v, label]) =>
+  st.innerHTML = k === "a" ? "" : stanceOptions(row).map(([v, label]) =>
     `<button type="button" data-v="${v}" class="${trade[k].stance === v ? "on" : ""}">${label}</button>`).join("");
   st.querySelectorAll("button").forEach(b => b.onclick = () => {
     if (k === "a") { setYou(myTeam, b.dataset.v); return; }   // side A's stance is the pinned stance
@@ -889,11 +888,11 @@ async function fillIdeas(leagueId, owner) {
   el.querySelectorAll(".idea .tweak").forEach(btn => btn.onclick = () => openComposerWith(leagueId, owner, list[+btn.dataset.i], false));
 }
 async function openComposerWith(leagueId, owner, s, ask) {
-  if (!$("csela")) return;
+  if (!$("cselb")) return;
   if (owner !== myTeam) setYou(owner, "", {noTrade: true});   // side A is you, so opening their idea makes them you
   trade.a.owner = owner; trade.b.owner = s.partner; trade.a.stance = myStance; trade.b.stance = "";
   trade.a.picks = new Set(); trade.b.picks = new Set();
-  $("csela").value = owner; $("cselb").value = s.partner;
+  $("cselb").value = s.partner;
   await Promise.all([fillSide(leagueId, "a"), fillSide(leagueId, "b")]);
   loadProposal(leagueId, s);
   const btn = $("cask");
