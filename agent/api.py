@@ -646,27 +646,39 @@ def trade_ideas(league_id: str, owner: str, limit: int = 3, stance: str | None =
     path = next((t["path"] for t in team_state.classify_league(league_id) if t["owner"] == owner), "")
     if path.startswith("wait") and not stance:
         cands = [{**c, "framing": "if you decided to push"} for c in cands if c.get("lens") == "buy"]
-    # Each lens ranks by its own currency: a buyer by what comes IN - but an idea that dips
-    # his lineup ranks below every one that lifts it (owner: "ranked lower, not a top 3") -
-    # a seller by the aging value it moves OUT (a two-piece consolidation outranks a single
-    # smaller sell).
-    cands.sort(key=lambda c: (c.get("lens") == "buy" and c.get("buyer_delta", 0) <= 0,
-                              -sum(value.get(n, 0) for n in (c["a_sends"] if c.get("lens") == "sell" else c["b_sends"]))))
-    # Up to three PER LENS - a decide team's "as buyer" and "as seller" are two columns.
+    # Each lens ranks by its own currency: a buyer by what the deal does to HIS LINEUP
+    # (the whole point of buying; dynasty value in breaks ties - value-first once ranked
+    # Waddle over an Etienne who lifted the lineup twice as much), and any idea that dips
+    # the lineup ranks below every one that lifts it (owner: "ranked lower, not a top 3");
+    # a seller by the aging value it moves OUT (a two-piece consolidation outranks a
+    # single smaller sell).
+    def order(c):
+        vin = sum(value.get(n, 0) for n in (c["a_sends"] if c.get("lens") == "sell" else c["b_sends"]))
+        if c.get("lens") == "sell":
+            return (False, -vin, 0)
+        return (c.get("buyer_delta", 0) <= 0, -c.get("buyer_delta", 0), -vin)
+    cands.sort(key=order)
+    # Up to `limit` PER LENS - a decide team's "as buyer" and "as seller" are two columns.
+    # Two passes: the strict one wants every idea to be a different conversation (new
+    # partner, no repeated outgoing piece); a thin roster runs out of pieces after two,
+    # so a second pass refills to `limit` allowing repeats (owner: "okay to repeat to get
+    # to 3"). One pick-shape ("starter + two 1sts") stays once-only throughout.
     out = []
     for lens in ("buy", "sell"):
-        partners, sent, n = set(), set(), 0
-        shapes = set()
-        for c in (x for x in cands if x.get("lens") == lens):
-            mine = {n for n in c["a_sends"] if n in value}
-            # The pick pattern is the "shape" - "starter + two 1sts for a stud" is real but
-            # once is enough (owner); plain player-for-player ideas differ by the players.
-            shape = tuple(sorted(n.split(" ", 1)[1] for n in c["a_sends"] + c["b_sends"] if n not in value))
-            if c["partner"] in partners or (mine & sent) or (shape and shape in shapes):
-                continue
-            partners.add(c["partner"]); sent |= mine; shapes.add(shape); out.append(c); n += 1
-            if n == limit:   # per lens; the page shows three and reveals the rest on a tap
-                break
+        pool = [c for c in cands if c.get("lens") == lens]
+        picked, partners, sent, shapes = [], set(), set(), set()
+        for strict in (True, False):
+            for c in pool:
+                if len(picked) == limit:
+                    break
+                mine = frozenset(n for n in c["a_sends"] if n in value)
+                shape = tuple(sorted(n.split(" ", 1)[1] for n in c["a_sends"] + c["b_sends"] if n not in value))
+                if c in picked or (shape and shape in shapes):
+                    continue
+                if strict and (c["partner"] in partners or (mine & sent)):
+                    continue
+                partners.add(c["partner"]); sent |= mine; shapes.add(shape); picked.append(c)
+        out += picked
     return out
 
 

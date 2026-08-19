@@ -1762,9 +1762,12 @@ calibrating case: -0.9 for kb (Hurts over Dart +1.1, Washington leaving kb's wea
 -2.4) - first read as "how does this even end up a suggestion", then "Hurts is a real
 upgrade in many ways over Dart, the WR loss is fixable in a later trade", then "ranked
 lower, not a top 3" - so a small dip stays but ranks below every idea that lifts the
-lineup, and a real loss goes. Each lens ranks by its own currency - a
-buyer by what comes IN, a seller by the aging value it moves OUT - so a consolidation
-outranks a single smaller sell instead of hiding behind the stud deal. The band is DIRECTIONAL, in the buyer's
+lineup, and a real loss goes. Each lens ranks by its own currency - a buyer by what the
+deal does to HIS LINEUP (2026-08-19: value-in ranked first for a day and buried
+Shough-for-Etienne, +2.8 a game, under Shough-for-Waddle, +1.2, because Waddle's FC
+price was higher - the buyer's currency is the lineup, dynasty value in breaks ties), a
+seller by the aging value it moves OUT - so a consolidation outranks a single smaller
+sell instead of hiding behind the stud deal. The band is DIRECTIONAL, in the buyer's
 view: he sends 0.9x-1.2x of what he gets in dynasty value (a hair under, 0.04, is not
 worth stapling a 4th on; overpaying to 1.2x is what contenders do; past that the
 seller evens it up). One floor for every piece: the aging discount is already in a
@@ -1779,9 +1782,12 @@ when a 2nd does it; same-round picks cost the same so the NEAREST year goes firs
 wants picks (rebuild/middle - a contender wants production); a seller adds picks the
 same way if it has any to spend, or a SMALLER piece it is moving anyway - "Evans on
 top of McLaurin for Shough", the mirror of the pick top-up (owner) - never a piece
-bigger than the one it started with, that is a different trade. Ranked by what comes
-back, one per partner, no repeated outgoing piece across the three (three ideas =
-three conversations - kb was shown Price three times); and for a
+bigger than the one it started with, that is a different trade. One per partner and no repeated
+outgoing piece while candidates last (three ideas = three conversations - kb was shown
+Price three times); but a thin roster has two or three offerable pieces total, so once
+the strict pass runs dry a second pass refills to the limit allowing repeats (owner:
+"if there aren't 3 unique send assets, okay to repeat to get to 3") - a repeated pick
+SHAPE stays once-only throughout. And for a
 top-tier piece the sum is not enough - the return's centerpiece must clear the framer's
 measured band (`RETURN_SHAPES` q1; Sadiq + a 1st for Jefferson summed to 0.85x and was
 still 0.43 on the centerpiece against 0.64-0.84 - the owner's gut said "Jefferson might
