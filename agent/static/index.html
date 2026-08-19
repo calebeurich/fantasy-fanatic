@@ -871,7 +871,8 @@ async function fillIdeas(leagueId, owner) {
                 : stance ? `<div class="cs" style="margin-bottom:4px">under your pinned stance — <em>${stanceWord(stance)}</em>:</div>` : "";
   const card = (s, i) => `<div class="idea" data-i="${i}" title="${(s.why || "").replace(/"/g, "&quot;")}">` +
     `<div style="flex:1;min-width:0">send <b>${s.a_sends.join(" + ")}</b> to <b>${s.partner}</b> for <b>${s.b_sends.join(" + ")}</b>` +
-    `<span class="cs">${(s.why || "").split(";")[0]}</span></div>` +
+    `<span class="cs">${(s.why || "").split(";")[0]}</span>` +
+    (s.also ? `<span class="cs">same conversation could land ${s.also.join(" or ")} instead</span>` : "") + `</div>` +
     `<span class="iacts"><button type="button" class="ask" data-i="${i}">ask</button><button type="button" class="tweak" data-i="${i}">tweak</button></span></div>`;
   const buys = list.map((s, i) => [s, i]).filter(([s]) => s.lens !== "sell");
   const sells = list.map((s, i) => [s, i]).filter(([s]) => s.lens === "sell");

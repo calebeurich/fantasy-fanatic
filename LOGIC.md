@@ -1785,9 +1785,12 @@ top of McLaurin for Shough", the mirror of the pick top-up (owner) - never a pie
 bigger than the one it started with, that is a different trade. One per partner and no repeated
 outgoing piece while candidates last (three ideas = three conversations - kb was shown
 Price three times); but a thin roster has two or three offerable pieces total, so once
-the strict pass runs dry a second pass refills to the limit allowing repeats (owner:
-"if there aren't 3 unique send assets, okay to repeat to get to 3") - a repeated pick
-SHAPE stays once-only throughout. And for a
+the strict pass runs dry a second pass refills to the limit allowing repeated pieces,
+preferring partners not yet shown (owner: "the point is variety of offers"); a repeated
+pick SHAPE stays once-only throughout. Each partner keeps exactly ONE idea - a second
+deal with the same manager is the same conversation wearing a different centerpiece
+("kieran is likely to respond similar to trading any of his RBs"), so the alternates
+ride the shown idea as an "also could land X instead" line instead of spending slots. And for a
 top-tier piece the sum is not enough - the return's centerpiece must clear the framer's
 measured band (`RETURN_SHAPES` q1; Sadiq + a 1st for Jefferson summed to 0.85x and was
 still 0.43 on the centerpiece against 0.64-0.84 - the owner's gut said "Jefferson might

@@ -663,12 +663,16 @@ def trade_ideas(league_id: str, owner: str, limit: int = 3, stance: str | None =
     # partner, no repeated outgoing piece); a thin roster runs out of pieces after two,
     # so a second pass refills to `limit` allowing repeats (owner: "okay to repeat to get
     # to 3"). One pick-shape ("starter + two 1sts") stays once-only throughout.
+    # The refill prefers partners you don't already have an idea with (owner: "the point
+    # is variety of offers - kieran is likely to respond the same to trading any of his
+    # RBs"), so a second kieran deal only shows once every other team's ideas are in.
     out = []
     for lens in ("buy", "sell"):
         pool = [c for c in cands if c.get("lens") == lens]
         picked, partners, sent, shapes = [], set(), set(), set()
         for strict in (True, False):
-            for c in pool:
+            todo = pool if strict else sorted(pool, key=lambda c: c["partner"] in partners)
+            for c in todo:
                 if len(picked) == limit:
                     break
                 mine = frozenset(n for n in c["a_sends"] if n in value)
@@ -678,7 +682,18 @@ def trade_ideas(league_id: str, owner: str, limit: int = 3, stance: str | None =
                 if strict and (c["partner"] in partners or (mine & sent)):
                     continue
                 partners.add(c["partner"]); sent |= mine; shapes.add(shape); picked.append(c)
-        out += picked
+        # A second deal with the SAME partner is the same conversation wearing a
+        # different centerpiece (owner: "kieran is likely to respond similar to trading
+        # his RBs") - so each partner keeps ONE idea and the rest become an "also" line
+        # on it ("kieran could also do Kyren Williams") instead of spending slots.
+        firsts = {}
+        for c in picked:
+            firsts.setdefault(c["partner"], c)
+        for c in pool:
+            first = firsts.get(c["partner"])
+            if first is not None and c is not first:
+                first.setdefault("also", []).append(" + ".join(c["b_sends"] if lens == "buy" else c["a_sends"]))
+        out += [c for c in picked if firsts[c["partner"]] is c]
     return out
 
 
