@@ -112,7 +112,7 @@ written. Two daily budgets (friends, public demo) fail closed to a free static m
 
 Two layers, deliberately, because they catch opposite failures.
 
-**Unit tests — free, offline, instant.** 141 tests over the analysis heuristics and
+**Unit tests — free, offline, instant.** 144 tests over the analysis heuristics and
 the agent infrastructure. Almost every rule in `analysis/` is a pure function over
 plain data, so they need no fixtures and no network. They assert the *boundaries* the
 heuristics turn on — exact runway cutoffs, tier lines, the noise band — plus

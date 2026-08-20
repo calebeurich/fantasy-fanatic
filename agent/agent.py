@@ -63,11 +63,16 @@ TOOL_NAMES = [
     "get_waiver_upgrades",
     "get_roster_detail",
     "get_optimal_lineup",
+    "evaluate_trade",
+    "evaluate_trade_sequence",
 ]
-# Fully-qualified MCP tool names - the only tools this agent can ever call. Setting
-# `tools` to this explicit list (not just `allowed_tools`) is what actually excludes
-# every built-in Claude Code tool (Bash, Read, Write, WebFetch, ...) rather than just
-# gating them behind a permission prompt.
+# Fully-qualified MCP tool names. Setting `tools` to this explicit list (not just
+# `allowed_tools`) is what actually excludes every built-in Claude Code tool (Bash,
+# Read, Write, WebFetch, ...) rather than just gating them behind a permission prompt.
+# Audit finding (2026-08-20): the two evaluate tools were missing from this list for
+# months yet the SDK agent called evaluate_trade anyway - the list does NOT filter
+# within our own MCP server, only the built-ins. It is still the LangGraph client's
+# real filter, which silently denied that orchestrator the trade judge until now.
 FULL_TOOL_NAMES = [f"mcp__{SERVER_KEY}__{name}" for name in TOOL_NAMES]
 
 SYSTEM_PROMPT = """You are a dynasty fantasy football assistant with tools for \

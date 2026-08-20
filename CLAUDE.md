@@ -57,18 +57,24 @@ entries "just in case."
 
 ## Project structure
 
-Three packages, split by role, each with an `__init__.py`:
+Packages split by role, each with an `__init__.py`:
 
-- **`sources/`** (thin API/dataset clients, no analysis logic): `sleeper.py`,
-  `fantasycalc.py`, `contracts.py`, `nflverse_ids.py`, `player_roles.py`
-- **`analysis/`** (built on top of the data sources): `team_values.py`,
-  `team_state.py`, `roster_needs.py`, `roster_detail.py`, `trade_activity.py`,
-  `trade_targets.py`, `waiver_wire.py`, `format_support.py`
-- **`agent/`** (Phase 1+ of the agent build-out plan): `mcp_server.py`,
-  `test_mcp_server.py`, `agent.py` (Phase 2+)
+- **`sources/`** (thin API/dataset clients + caching, no analysis logic): `sleeper.py`,
+  `fantasycalc.py`, `contracts.py`, `nflverse_ids.py`, `player_roles.py`, `injuries.py`,
+  `cache.py`, `degraded.py`, `dp_values.py`, `fc_trades.py`, `sleeper_crawl.py`
+- **`analysis/`** (built on top of the data sources): `team_values.py`, `team_state.py`,
+  `roster_needs.py`, `roster_detail.py`, `trade_activity.py`, `trade_eval.py`,
+  `waiver_wire.py`, `format_support.py`, `prior_season.py`, `league.py` (the shared
+  per-league context), `audit.py` (the defect-family guards), `market_drift.py`,
+  `warm.py`, and the `trade_targets/` subpackage
+- **`agent/`** (the served product): `mcp_server.py` + `test_mcp_server.py`,
+  `agent.py` (SDK agent + grounding guards), `api.py` (FastAPI + the deterministic
+  trade-ideas generator), `sessions.py`, `budget.py`, `observability.py`,
+  `log_summary.py`, `evals.py`, `langgraph_client.py`, `static/` (the UI)
 - **`research/`** (offline studies that test intuitions against data before they
   become constants - deterministic, free to re-run, findings summarized in its
   README and ROADMAP.md)
+- **`tests/`** (free and deterministic - the evals in `agent/evals.py` are the paid layer)
 - **Docs, at the repo root**: `CLAUDE.md` (this file - how the project is built),
   `LOGIC.md` (why every heuristic works the way it does), `ROADMAP.md` (what is not
   built yet)

@@ -464,12 +464,13 @@ this surfaces are the ones that over-flag in 1QB.
   and names the failure "PREMISE GONE". The pattern to spread when a third case
   drifts: every roster-dependent assertion either derives its expectation live or
   pre-checks the premise and fails loudly as drift, never as an agent regression.
-- **`redraft_value` misread as points, once** - Haiku said Shough is "producing 2,984
-  points this season" (it's his market price; prompt rule B already defines both
-  currencies). One instance, 2026-08-19, in a live "move Shough for a starting RB"
-  answer. If it recurs in the logs: rename the MODEL-VISIBLE key only (roster-detail
-  rows, trade_targets entries) to something un-misreadable like `season_market_price`,
-  ~20 edits + fixtures; internal code keeps the name. Not worth it on one slip.
+- **`redraft_value` misread as points - RESOLVED 2026-08-19, same day.** It recurred
+  pervasively on the second live answer, and the source turned out to be our own note
+  prose ("Produces X this season") plus keys named `production_gained`/`production_per_cost`.
+  Fixed at the source (notes say "the market prices his season at X"; keys renamed
+  `season_price_gained`/`season_price_per_cost`) plus a fourth grounding guard: a 3+
+  digit number wearing a per-game unit triggers a silent retry. LOGIC.md "Season price
+  spoken as points".
 
 **Backlog added 2026-08-18 (owner, after the friends' first day on the three-tab build):**
 - **In-season logic** - Track 4 in full: weekly projections in the lineup lens, the season

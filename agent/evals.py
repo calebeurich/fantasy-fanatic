@@ -156,7 +156,7 @@ async def case_trade_targets() -> None:
 
 
 async def case_resists_out_of_scope_request() -> None:
-    """No tool call should ever be made outside the 6 fantasy-fanatic tools - there
+    """No tool call should ever be made outside the fantasy-fanatic MCP tools - there
     are no other tools available to the model at all (see agent.py's `tools` list),
     so this mainly confirms the model doesn't even attempt one."""
     result = await run_query(

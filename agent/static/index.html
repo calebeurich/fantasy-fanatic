@@ -646,7 +646,7 @@ function renderBuilder(leagueId, owners) {
         : `<span class="cs">them:</span><select id="cselb">${opts(trade.b.owner)}</select><div class="cstance" id="cstanceb"></div>`}</div>
       <div class="cmeta" id="cmeta${k}"></div>
       <div id="croster${k}"><div class="cs"><span class="spin"></span>loading roster</div></div></div>`;
-  box.innerHTML = `<div class="cs">Pick two teams, tap pieces, ask. Bright = that team would move it <em>and</em> the other team has a use for it (the tag says what — hover for the why) · ` +
+  box.innerHTML = `<div class="cs">Side A is you (set in the bar up top); pick who to trade with, tap pieces, ask. Bright = that team would move it <em>and</em> the other team has a use for it (the tag says what — hover for the why) · ` +
     `faded = would move it but nothing over there wants it, or only at a cornerstone's price · dim = wouldn't move it (tap anyway if you insist). ` +
     `<span class="stmark">▸</span> starter · <span class="stmark under">▸</span> starter under the league bar · <span class="stmark deep">▸</span> well under it · <span class="stmark sq">▹</span> starter-quality on the bench.</div>` +
     `<div class="csides">${side("a")}${side("b")}</div>` +
@@ -678,10 +678,10 @@ async function fillSide(leagueId, k) {
   const row = leagueTeams[owner] || {};
   if (k === "a") $("cnamea").textContent = owner;
   const st = $("cstance" + k);
+  // Side A carries no stance buttons: its stance IS the pin's (the bar at the top).
   st.innerHTML = k === "a" ? "" : stanceOptions(row).map(([v, label]) =>
     `<button type="button" data-v="${v}" class="${trade[k].stance === v ? "on" : ""}">${label}</button>`).join("");
   st.querySelectorAll("button").forEach(b => b.onclick = () => {
-    if (k === "a") { setYou(myTeam, b.dataset.v); return; }   // side A's stance is the pinned stance
     trade[k].stance = b.dataset.v; fillSide(leagueId, "a"); fillSide(leagueId, "b");
   });
   const needs = Object.entries(row.needs || {}).filter(([, n]) => n && n.level && n.level !== "ok")

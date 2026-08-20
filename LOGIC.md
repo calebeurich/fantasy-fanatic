@@ -571,8 +571,11 @@ the room whose pieces are individually below that bar.
 - `Middling` is a window, not a leftover (`Rebuild` used to be the else branch and told a
   team with the league's best QB room to sell decline it didn't have). Trajectory sets
   the note only: rising = patience is free; steady/falling = waiting buys information.
-- `Rebuild` = bottom third. A young rebuild with `dec_pct == 0` gets
-  `REBUILD_NOTHING_DECLINING` instead of "sell what's declining".
+- `Rebuild` = bottom third, flavored by whether it is working: `ascending` (young
+  production arriving) or `stalled` (no accumulating tilt, no war chest) - so a young
+  rebuild with nothing declining is never told to "sell what's declining".
+  (Audit 2026-08-20: this bullet named a `REBUILD_NOTHING_DECLINING` constant that no
+  longer exists; the flavor system replaced it.)
 
 **Flavors** are computed from fields that already existed (`trajectory`, `leverage`).
 `convertible` outranks trajectory - a weak lineup on a top-third war chest is not
@@ -1832,8 +1835,10 @@ present info, options, and impact easily." v2, per his direction: **the two rost
 overlaid, with everything a team would NOT move greyed out** - the roster IS the option
 list. Greying is `trade_targets.offerable_names` (plus `picks_to_trade_away`), the same
 set the agent's grounding check uses, served by `/api/league/{id}/team/{owner}/movable`;
-a stance toggle per team (a contender "if selling", a rebuild "if pressing", the middle
-"as buyer / as seller") re-greys under a declared stance - the spugz case. Tap a row or
+a stance toggle (a contender "if selling", a rebuild "if pressing", the middle
+"as buyer / as seller") re-greys under a declared stance - the spugz case. Since the
+pinned-you build (below), side A carries no toggle of its own: its stance IS the pin's,
+and only side B ("them") keeps a local toggle. Tap a row or
 a pick chip to put it in the trade; the tray shows both sides and, on every change,
 `/api/league/{id}/evaluate` (the framer's `evaluate_from_board`) returns the FACTS:
 each side's goal line (lineup delta or value in/out, holes opened or closed) and the
