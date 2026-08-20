@@ -219,7 +219,14 @@ thumbs-down comments from league mates have been the richest source of real bugs
   API cost, zero code changes) passes **5 of 12**: the tool layer still drives real
   answers, but a 14B loses the system-prompt discipline — it wrote the poem and the
   recipe the refusal cases ban, called tools on a redraft league, and stumbled over
-  tool arguments. Model size buys judgment; the deterministic layer is what ports.
+  tool arguments. Model size buys judgment; the deterministic layer is what ports. Meta's
+  **Muse Glimmer 30B** (Aug 2026, Apache 2.0, purpose-built for local agents) run via
+  the same HF router scores **11/12** — it passes the instruction-override and
+  runway-vs-age cases the 72B failed, and its one miss is `never_builds_a_package`
+  (it summed two players into one priced offer). Hosted at full precision;
+  ~equivalent to the local 4-bit per Meta's own validation (~1% degradation) — the
+  author's 12GB card can't hold the 18GB quant, so the local claim stops there.
+  Agent-tuning at 30B beat generalist 72B on this suite; nothing else changed.
 
 ## License and data
 

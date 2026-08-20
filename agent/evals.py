@@ -26,6 +26,9 @@ from .agent import run_query as _sdk_run_query
 # fails (it wrote the poem and the recipe, leaked instructions) and it fumbles tool
 # args, but trade_targets, grounded_trade_chips, never_builds_a_package, runway-not-age
 # still pass. Size buys judgment; the tool layer is what ports.
+# Muse Glimmer 30B (HF router, same day): 11/12 - passes the override and runway cases
+# 72B failed; its one miss is never_builds_a_package (summed two players into one
+# priced offer). Agent-tuned 30B > generalist 72B on this suite.
 if os.environ.get("EVAL_ORCHESTRATOR") == "langgraph":
     from .langgraph_client import run as run_query
 else:
