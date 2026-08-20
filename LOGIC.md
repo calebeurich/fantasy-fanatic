@@ -1840,7 +1840,13 @@ each side's goal line (lineup delta or value in/out, holes opened or closed) and
 best single piece - free per tap, no model. One button pins the structured question
 to chat, carrying declared stances. The deciding rule holds: facts render, every
 "should" is the agent's. Greyed rows stay tappable ("tap anyway if you insist") - the
-user may know something the path doesn't.
+user may know something the path doesn't. The tray's fold ("impact & starting points")
+never opens onto a blank (a tester: the dropdown "doesn't always work when clicked" -
+it worked, onto nothing): the suggestions line shows a spinner while the first fetch
+runs and an explicit "no precomputed starting points" when the pair has none, the
+impact box says "tap a piece on each side" until a full proposal exists, and the pair
+fetch is cached as a PROMISE so re-renders while it runs don't fire duplicates or
+write into a replaced DOM node.
 
 ### Pinned "you" and a stance, on every view (2026-08-19)
 

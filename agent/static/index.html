@@ -779,7 +779,7 @@ function renderTray(leagueId) {
     `<button type="button" class="primary" id="cask" ${ready ? "" : "disabled"} style="font-size:14px;padding:10px 16px">Ask the assistant — both sides</button>` +
     `<button type="button" class="ghost" id="cclear" style="margin-left:auto">clear</button></div>` +
     `<details class="tmore" id="tmore"${trayMoreOpen ? " open" : ""}><summary class="cs">impact & starting points for this pair</summary>` +
-    `<details class="csugg" id="csugg"></details><div class="cimpact" id="cimpact"></div></details>`;
+    `<details class="csugg" id="csugg"></details><div class="cimpact" id="cimpact">${ready ? "" : '<div class="cs">tap a piece on each side to see what the trade does to both lineups</div>'}</div></details>`;
   $("tmore").ontoggle = () => { trayMoreOpen = $("tmore").open; };
   $("cclear").onclick = () => { document.querySelectorAll(".crow.on").forEach(r => r.classList.remove("on")); trade.a.picks.clear(); trade.b.picks.clear(); document.querySelectorAll(".cpick.on").forEach(c => c.classList.remove("on")); renderTray(leagueId); };
   $("cask").onclick = () => {
@@ -803,19 +803,25 @@ function renderTray(leagueId) {
 // Up to three starting points between the two teams, from what trade_targets already
 // computes for each - one tap loads a proposal into the picker. Eases you into the tool;
 // still facts, no verdict.
-const suggCache = {};
+const suggCache = {};   // key -> PROMISE of the list: every tap re-renders the tray, and
+                        // caching the promise (not the result) stops each render firing
+                        // its own fetch for the same pair while the first is in flight.
 let suggOpen = false;   // the tray re-renders on every tap; the toggle should survive it
 async function showSuggestions(leagueId, a, b) {
-  const box = $("csugg"); if (!box) return;
+  if (!$("csugg")) return;
   const key = `${leagueId}/${a}/${trade.a.stance}/${b}/${trade.b.stance}`;
   if (!suggCache[key]) {
-    try {
-      const q = `?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}` + (trade.a.stance ? `&stance_a=${trade.a.stance}` : "") + (trade.b.stance ? `&stance_b=${trade.b.stance}` : "");
-      suggCache[key] = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/suggest${q}`, {headers: hdrs()});
-    } catch (_) { suggCache[key] = []; }
+    const q = `?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}` + (trade.a.stance ? `&stance_a=${trade.a.stance}` : "") + (trade.b.stance ? `&stance_b=${trade.b.stance}` : "");
+    suggCache[key] = getJSON(`/api/league/${encodeURIComponent(leagueId)}/suggest${q}`, {headers: hdrs()}).catch(() => []);
+    // The fold opened onto NOTHING while this fetch ran (a tester: the dropdown
+    // "doesn't always work") - say what is happening instead of showing a blank.
+    $("csugg").innerHTML = `<summary><span class="spin"></span>looking for starting points for this pair</summary>`;
   }
-  const list = suggCache[key];
-  if (!list.length) { box.innerHTML = ""; return; }
+  const list = await suggCache[key];
+  const box = $("csugg");   // re-found AFTER the await: the tray re-renders under slow fetches
+  if (!box) return;
+  if (trade.a.owner !== a || trade.b.owner !== b) return;   // the pair changed while we waited
+  if (!list.length) { box.innerHTML = `<summary>no precomputed starting points for this pair — tap pieces to build your own</summary>`; return; }
   box.innerHTML = `<summary>${list.length} precomputed starting point${list.length > 1 ? "s" : ""} for this pair</summary><div class="list">` + list.map((s, i) =>
     `<button type="button" data-i="${i}" title="${(s.why || "").replace(/"/g, "&quot;")}">${a} ${s.a_sends.join(" + ")} ⇄ ${b} ${s.b_sends.join(" + ")}</button>`).join("") + `</div>`;
   box.open = suggOpen; box.ontoggle = () => { suggOpen = box.open; };
