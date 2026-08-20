@@ -214,7 +214,12 @@ thumbs-down comments from league mates have been the richest source of real bugs
   recommended selling the older QB without weighing the shorter-runway one — the exact
   age-as-proxy trap the case exists to catch). The open-weight run also caught a stale
   fixture: Qwen named Rashee Rice's real current owner and the eval expected the old
-  one — the case now looks the owner up live.
+  one — the case now looks the owner up live. The same suite on a **fully local**
+  Qwen2.5-14B (Ollama on an RTX 3060, `LG_BASE_URL=http://localhost:11434/v1`, zero
+  API cost, zero code changes) passes **5 of 12**: the tool layer still drives real
+  answers, but a 14B loses the system-prompt discipline — it wrote the poem and the
+  recipe the refusal cases ban, called tools on a redraft league, and stumbled over
+  tool arguments. Model size buys judgment; the deterministic layer is what ports.
 
 ## License and data
 
