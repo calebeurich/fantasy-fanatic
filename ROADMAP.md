@@ -457,6 +457,13 @@ the XFL eye-test; needs-on-ePPG (below) should land first or alongside, since th
 this surfaces are the ones that over-flag in 1QB.
 
 **Backlog added 2026-08-19:**
+- **Eval premises drift with the live leagues** (owner: "flag the league state drift
+  thing"). The cases assert against real rosters, so real trades silently invalidate
+  fixtures: Rice's hard-coded owner failed the open-weight run for being RIGHT
+  (fixed to a live lookup); `sells_on_runway_not_age` already pre-checks its premise
+  and names the failure "PREMISE GONE". The pattern to spread when a third case
+  drifts: every roster-dependent assertion either derives its expectation live or
+  pre-checks the premise and fails loudly as drift, never as an agent regression.
 - **`redraft_value` misread as points, once** - Haiku said Shough is "producing 2,984
   points this season" (it's his market price; prompt rule B already defines both
   currencies). One instance, 2026-08-19, in a live "move Shough for a starting RB"
