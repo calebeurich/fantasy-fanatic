@@ -206,12 +206,15 @@ thumbs-down comments from league mates have been the richest source of real bugs
 - **One orchestrator, one model** — the Claude Agent SDK on Haiku, chosen after
   measuring cost and quality — with a small LangGraph client (`agent/langgraph_client.py`,
   Qwen2.5-72B via HuggingFace) driving the identical MCP tools, to show the tool layer is
-  the asset and the orchestrator is swappable. Measured 2026-08-19 by running the same
-  eval cases through it (`EVAL_ORCHESTRATOR=langgraph python -m agent.evals <case>`):
-  5 of 6 passed with zero prompt or tool changes (team read, trade targets, non-dynasty
-  refusal, two scope refusals); the one failure was the prompt-injection case — Qwen
-  wrote the cookie recipe Haiku refuses — a model property, not an orchestrator one. The
-  remaining six cases were not run: the free HF credit ran out.
+  the asset and the orchestrator is swappable. Measured 2026-08-19 by running the full
+  eval suite through it (`EVAL_ORCHESTRATOR=langgraph python -m agent.evals <case>`):
+  **10 of 12 passed with zero prompt or tool changes.** Both failures are model
+  properties, not orchestrator ones: the prompt-injection case (Qwen wrote the cookie
+  recipe Haiku refuses; the tool allowlist still held) and the runway-vs-age case (Qwen
+  recommended selling the older QB without weighing the shorter-runway one — the exact
+  age-as-proxy trap the case exists to catch). The open-weight run also caught a stale
+  fixture: Qwen named Rashee Rice's real current owner and the eval expected the old
+  one — the case now looks the owner up live.
 
 ## License and data
 
