@@ -502,6 +502,21 @@ this surfaces are the ones that over-flag in 1QB.
      computed - the needs bars run on it). When the two rank a player wildly
      differently, trust neither alone: flag it, one shared concept (like degraded
      data), not injury/December special cases.
+  **In-season v2 design notes (owner, 2026-08-21, not built - needs real Week 1+ cases):**
+  - Default table SORT flips to playoff pace (later championship % - the same soft math
+    walked through the bracket) once weeks exist. SORT only: `contention_rank` stays
+    roster-based, because paths/tiers/lenses key off rank and an injured contender
+    must not cascade into rebuild reads.
+  - **The injured win-now team** ("bad season due to injuries but still a win-now team
+    at your core... could get messy"): ePPG and redraft tank together, dynasty value
+    holds - the market pricing the comeback IS the signal, and it is already held.
+    Detection is mostly existing machinery: `leverage: convertible` (contention rank
+    fell, asset rank didn't) PLUS the missing piece - which TIMELINE the war chest is
+    on. Chest concentrated in prime-age value + injured starters = "season hurt,
+    window intact" (a new flavor); young chest = the existing convertible read. The
+    player-level twin is the parked ePPG-vs-market disagreement flag (value holds,
+    ePPG craters = injured-but-coming-back) - one shared concept at two zoom levels,
+    build it once.
   NOT in v1 (owner): record/PPG overriding the read (record stays a sortable column -
   already built), optimal-lineup start/sit ("people want to do that stuff on their
   own; we have nothing better than raw projections"), band shifts.
