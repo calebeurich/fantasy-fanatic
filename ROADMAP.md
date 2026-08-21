@@ -481,7 +481,12 @@ this surfaces are the ones that over-flag in 1QB.
      Sleeper re-issue season projections weekly? If yes, near-zero work; if static,
      compute rest-of-season ePPG from their weekly projections (`get_projections` takes
      a week already).
-  2. **Playoff pace, not a playoff gate** - a soft percentage, no hard cutoff:
+  2. **Playoff pace - BUILT 2026-08-21** (LOGIC.md "Playoff pace"): schedule-aware
+     (real posted pairings), WEEKLY_MARGIN_SD measured on 2025 XFL (36). v1.5 sketched
+     by the owner, do with real weeks: per-week optimal-lineup projections per matchup
+     (covers byes, beats Sleeper's own win probs which never re-optimize the lineup);
+     per-league margin SD from each league's own prior season. Original sketch -
+     **Playoff pace, not a playoff gate** - a soft percentage, no hard cutoff:
      expected final wins = current wins + remaining weeks x win probability implied by
      ePPG rank vs the league, held against where the playoff line falls for N teams ->
      "~70% playoff pace" on the table. Deterministic, no simulation. All-play record

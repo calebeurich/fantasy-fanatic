@@ -2678,3 +2678,54 @@ def test_a_sequence_judges_each_leg_on_the_rosters_the_last_one_produced():
     r3 = evaluate_from_board(board, "a", ["2027 1st"], "b", ["smallwr"],
                              players_override=after["players"], picks_override=after["picks"])
     assert not r3["ok"] and "not on a's roster" in r3["problem"]
+
+
+def _pace_rows(specs):
+    return [{"owner_id": str(i), "starting_production": eppg,
+             "record": {"wins": w, "losses": l, "ties": 0}, "path_reason": ""}
+            for i, (eppg, w, l) in enumerate(specs)]
+
+
+def test_playoff_pace_is_soft_not_a_gate():
+    """Preseason (no games): pace comes purely from projections and never hits the
+    poles - the best roster is likely, not certain, and the worst is alive."""
+    from analysis.team_state import playoff_pace
+    rows = _pace_rows([(150, 0, 0), (140, 0, 0), (130, 0, 0), (120, 0, 0)])
+    playoff_pace(rows, {"playoff_teams": 2, "playoff_week_start": 15})
+    paces = [r["playoff_pace"] for r in rows]
+    assert paces == sorted(paces, reverse=True)
+    assert 50 < paces[0] < 100 and 0 < paces[-1] < 50
+
+
+def test_playoff_pace_record_dominates_late():
+    """An 8-0 team with a mediocre projection is pacing ahead of an 0-8 team with a
+    great one - the wins are banked, ePPG only prices what's left."""
+    from analysis.team_state import playoff_pace
+    rows = _pace_rows([(120, 8, 0), (150, 0, 8), (135, 4, 4), (135, 4, 4)])
+    playoff_pace(rows, {"playoff_teams": 2, "playoff_week_start": 15})
+    assert rows[0]["playoff_pace"] > rows[1]["playoff_pace"]
+    assert rows[0]["playoff_pace"] > 85
+
+
+def test_playoff_pace_deadline_note_only_when_lopsided_and_started():
+    """The deadline sentence needs 4+ weeks played AND an extreme pace; a preseason
+    long shot and a mid-pace team both stay silent, and the note lands in path_reason."""
+    from analysis.team_state import playoff_pace
+    rows = _pace_rows([(150, 7, 0), (135, 4, 3), (136, 3, 4), (134, 4, 3),
+                       (120, 0, 7), (118, 0, 7)])
+    playoff_pace(rows, {"playoff_teams": 2, "playoff_week_start": 15})
+    assert rows[0]["pace_note"] and "live" in rows[0]["pace_note"]
+    assert rows[0]["pace_note"] in rows[0]["path_reason"] or rows[0]["path_reason"]
+    assert rows[1]["pace_note"] is None
+    assert rows[4]["pace_note"] and "sell" in rows[4]["pace_note"]
+    pre = _pace_rows([(150, 0, 0), (140, 0, 0), (120, 0, 0)])
+    playoff_pace(pre, {"playoff_teams": 2, "playoff_week_start": 15})
+    assert all(r["pace_note"] is None for r in pre)
+
+
+def test_playoff_pace_none_when_uncontested():
+    """Every team makes the playoffs -> pace is not a meaningful number."""
+    from analysis.team_state import playoff_pace
+    rows = _pace_rows([(150, 0, 0), (140, 0, 0)])
+    playoff_pace(rows, {"playoff_teams": 2, "playoff_week_start": 15})
+    assert all(r["playoff_pace"] is None for r in rows)

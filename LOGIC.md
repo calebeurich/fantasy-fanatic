@@ -1252,6 +1252,41 @@ PPG"), so a fourth grounding guard (`_unit_violations`) joins the retry loop - a
 digit number wearing a per-game unit is deterministically a price narrated as points
 (real ppg is two digits) and triggers the same silent redo as the other guards.
 
+## Playoff pace (`team_state.playoff_pace`, 2026-08-21)
+
+The first in-season piece (v1 scope in ROADMAP): a soft playoff-contention percentage,
+never a gate - the owner's spec was "non hard cutoff mathematical playoff contention",
+after rejecting a record-takes-over design ("ePPG should always be a more accurate
+future predictor than PPG - it factors PPG in"). The instrument never changes: ePPG
+prices the future, the record banks the past.
+
+The math, deliberately simulation-free: per remaining week, a team's win probability
+is Phi((my ePPG - opponent's) / WEEKLY_MARGIN_SD) against its ACTUAL scheduled opponent
+(Sleeper posts the whole season's pairings up front - `_season_schedule`; a missing week
+falls back to the league-average opponent). WEEKLY_MARGIN_SD = 36 is MEASURED, not
+guessed: XFL 2's completed 2025 season, 168 team-weeks, weekly SD 25.6 around each
+team's own mean, x sqrt(2) for a margin. One league's number applied to all; deriving
+it per league from its own prior season is backlogged with the rest of the "real math"
+pass. Expected final wins = banked wins + 0.5xties + the sum of those weekly
+probabilities; the playoff line is the midpoint between the last team in and the first
+team out by expected wins; pace = Phi of the margin over the line, in units of both
+sides' binomial noise. Preseason (zero games) it is purely projection-based - XFL 2
+reads 78% down to 14% across ranks 1-12 under the real schedule, boundary teams ~50%,
+nobody at the poles. Slots >= teams -> None (everyone makes it; not worth printing).
+
+Deadline flavor is a SENTENCE, not a flip: with 4+ weeks played and pace <= 20 or
+>= 85 (PACE_SELLER_MAX / PACE_BUYER_MIN), `pace_note` lands in path_reason ("~12%
+playoff pace with 5 regular-season weeks left - ... the rental market reads differently
+for a team that can sell it"). The path chip itself never moves on pace - paths stay
+roster-driven, the season is context.
+
+Not yet validated against a real season (the 2026 season starts in September);
+the note thresholds are knobs to revisit with real weeks. The owner-sketched v1.5
+(backlogged in ROADMAP): weekly optimal-lineup projections per matchup instead of one
+season ePPG - byes fall out naturally, and our per-week re-fill is structurally better
+than Sleeper's own win probs, which assume the currently-set lineup persists into
+future weeks.
+
 ## Recurring defect families, and the guards (`analysis/audit.py`)
 
 Every real bug here was a wrong recommendation produced by correct arithmetic. The

@@ -24,6 +24,7 @@ Smoke test: python -m analysis.team_state <league_id>
 
 import statistics
 import sys
+from statistics import NormalDist
 
 from sources import sleeper, fantasycalc
 from . import trade_activity
@@ -672,6 +673,106 @@ def _season_ppg(settings: dict) -> float:
     return round(points / games, 1) if games else 0.0
 
 
+# How much two lineups' weekly totals differ by luck alone. MEASURED (2026-08-21) on
+# XFL 2's completed 2025 season: 168 team-weeks, weekly SD around each team's own mean
+# = 25.6, so the MARGIN between two teams swings sqrt(2) x that = 36.2. One league's
+# number applied to all - deriving it per league from its own prior season is the
+# "real math on win pct" upgrade, backlogged. It sets how fast a projection gap turns
+# into win probability, and the pace number is deliberately soft either way.
+WEEKLY_MARGIN_SD = 36.0
+
+# The deadline sentence fires only when the season has said something (4+ weeks) and
+# the pace is lopsided enough to change what the trade market means for this team.
+PACE_MIN_WEEKS = 4
+PACE_SELLER_MAX, PACE_BUYER_MIN = 20, 85
+
+
+def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None) -> None:
+    """A soft playoff-contention percentage per team - a pace, never a gate (owner:
+    "non hard cutoff mathematical playoff contention"). If the season played out per
+    the projections: each team's weekly win probability is its average head-to-head
+    edge in ePPG (a normal over WEEKLY_MARGIN_SD), expected final wins = wins so far
+    + remaining weeks x that probability, and the pace is the probability of finishing
+    above the playoff line (the midpoint between the last team in and the first team
+    out, by expected wins). Preseason it is purely projection-based; as games accrue
+    the real record dominates through the wins term - ePPG itself stays the lens
+    (it already factors real scoring in; PPG never overrides it). Deterministic,
+    no simulation. Deadline flavor: extreme pace mid-season sets `pace_note`, a
+    sentence for path_reason - the path itself never flips on it.
+
+    `schedule` is owner_id -> {week: opponent_owner_id} for the ACTUAL remaining
+    pairings (Sleeper posts the whole season's assignments up front); a week with no
+    entry, or no schedule at all, falls back to the league-average opponent."""
+    slots = settings.get("playoff_teams") or 0
+    season_weeks = (settings.get("playoff_week_start") or 15) - 1
+    if not slots or slots >= len(rows) or season_weeks <= 0:
+        for row in rows:
+            row["playoff_pace"] = None
+        return
+    eppg = {r["owner_id"]: r["starting_production"] for r in rows}
+    phi = NormalDist().cdf
+    win_p = lambda me, them: phi((eppg[me] - eppg[them]) / WEEKLY_MARGIN_SD)
+    exp, var = {}, {}
+    for r in rows:
+        me = r["owner_id"]
+        field = statistics.mean(win_p(me, o) for o in eppg if o != me)
+        rec = r["record"]
+        played = min(rec["wins"] + rec["losses"] + rec["ties"], season_weeks)
+        mine = (schedule or {}).get(me, {})
+        probs = [win_p(me, mine[w]) if mine.get(w) in eppg else field
+                 for w in range(played + 1, season_weeks + 1)]
+        exp[me] = rec["wins"] + 0.5 * rec["ties"] + sum(probs)
+        var[me] = sum(pw * (1 - pw) for pw in probs)
+    ordered = sorted(exp, key=exp.get, reverse=True)
+    last_in, first_out = ordered[slots - 1], ordered[slots]
+    cut = (exp[last_in] + exp[first_out]) / 2
+    cut_var = (var[last_in] + var[first_out]) / 2
+    for r in rows:
+        me = r["owner_id"]
+        sd = (var[me] + cut_var) ** 0.5
+        pace = phi((exp[me] - cut) / sd) if sd > 0 else float(exp[me] > cut)
+        r["playoff_pace"] = round(100 * pace)
+        rec = r["record"]
+        played = rec["wins"] + rec["losses"] + rec["ties"]
+        remaining = season_weeks - played
+        r["pace_note"] = None
+        if played >= PACE_MIN_WEEKS and remaining > 0:
+            if r["playoff_pace"] <= PACE_SELLER_MAX:
+                r["pace_note"] = (f"~{r['playoff_pace']}% playoff pace with {remaining} "
+                                  "regular-season weeks left - this season is a long shot, "
+                                  "and the rental market reads differently for a team "
+                                  "that can sell it")
+            elif r["playoff_pace"] >= PACE_BUYER_MIN:
+                r["pace_note"] = (f"~{r['playoff_pace']}% playoff pace with {remaining} "
+                                  "regular-season weeks left - this season is live, and "
+                                  "production bought now gets used")
+        if r["pace_note"]:
+            r["path_reason"] += ". " + r["pace_note"][0].upper() + r["pace_note"][1:]
+
+
+def _season_schedule(league_id: str, league: dict, rows: list[dict]) -> dict:
+    """owner_id -> {week: opponent_owner_id} from Sleeper's posted pairings, for
+    playoff_pace. Best effort: a league without assignments yet returns {} and pace
+    falls back to the league-average opponent."""
+    owner_by_roster = {r["roster_id"]: r["owner_id"] for r in rows}
+    season_weeks = ((league.get("settings") or {}).get("playoff_week_start") or 15) - 1
+    out = {}
+    try:
+        for wk in range(1, season_weeks + 1):
+            pairs = {}
+            for m in sleeper.get_matchups(league_id, wk) or []:
+                pairs.setdefault(m.get("matchup_id"), []).append(m["roster_id"])
+            for two in pairs.values():
+                if len(two) == 2:
+                    a, b = (owner_by_roster.get(x) for x in two)
+                    if a and b:
+                        out.setdefault(a, {})[wk] = b
+                        out.setdefault(b, {})[wk] = a
+    except Exception:
+        return {}
+    return out
+
+
 def classify_league(league_id: str) -> list[dict]:
     """Full team-window report for every roster in the league, ranked by starter value.
     Reused by anything downstream that needs to know each team's strategic posture
@@ -829,6 +930,7 @@ def classify_league(league_id: str) -> list[dict]:
                 pick_share=row["pick_share"])
             if row["leverage"] else None)
 
+    playoff_pace(rows, league.get("settings") or {}, _season_schedule(league_id, league, rows))
     rows.sort(key=lambda r: r["contention_rank"])
     return rows
 

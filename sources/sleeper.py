@@ -47,6 +47,14 @@ def get_users(league_id: str) -> list[dict]:
     return _get(f"league/{league_id}/users")
 
 
+@ttl_cache(LEAGUE_CONFIG_TTL)
+def get_matchups(league_id: str, week: int) -> list[dict]:
+    """One week's head-to-head pairings: rosters sharing a `matchup_id` play each other.
+    Sleeper posts the whole season's assignments up front, so future weeks answer "who
+    do I still play" - `points` fills in as the week is scored."""
+    return _get(f"league/{league_id}/matchups/{week}")
+
+
 @ttl_cache(LIVE_TTL)
 def get_traded_picks(league_id: str) -> list[dict]:
     """Future picks that have changed hands at least once. A pick not listed here is

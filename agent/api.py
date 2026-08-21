@@ -194,6 +194,7 @@ def league_overview(league_id: str) -> dict:
                 "starter_value": t["starter_value"],
                 "record": t["record"],
                 "ppg": t["ppg"],
+                "playoff_pace": t.get("playoff_pace"),
                 "alignment": t["alignment"],
                 "path": t["path"],
                 "path_reason": t["path_reason"],
