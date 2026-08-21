@@ -208,11 +208,15 @@ thumbs-down comments from league mates have been the richest source of real bugs
   Qwen2.5-72B via HuggingFace) driving the identical MCP tools, to show the tool layer is
   the asset and the orchestrator is swappable. Measured 2026-08-19 by running the full
   eval suite through it (`EVAL_ORCHESTRATOR=langgraph python -m agent.evals <case>`):
-  **10 of 12 passed with zero prompt or tool changes.** Both failures are model
-  properties, not orchestrator ones: the prompt-injection case (Qwen wrote the cookie
-  recipe Haiku refuses; the tool allowlist still held) and the runway-vs-age case (Qwen
-  recommended selling the older QB without weighing the shorter-runway one — the exact
-  age-as-proxy trap the case exists to catch). The open-weight run also caught a stale
+  **10 of 12 passed with zero prompt or tool changes.** A doc audit then found the
+  open-weight runs had been offered 8 of the 10 tools (the two evaluate tools were
+  missing from the shared allowlist), so both hosted suites were re-run with the full
+  set: Glimmer's 11/12 held exactly; Qwen went 10 pass / 1 fail / 1 unable-to-run —
+  the injection case still fails (it wrote the recipe; the allowlist held), the
+  runway-vs-age case flipped to a pass (run-to-run variance is real; single runs are
+  indicative, not gospel), and the biggest-payload case now exceeds that provider's
+  32K context window with the two extra tool schemas aboard — a serving-stack limit,
+  not a model verdict. The open-weight run also caught a stale
   fixture: Qwen named Rashee Rice's real current owner and the eval expected the old
   one — the case now looks the owner up live. The same suite on a **fully local**
   Qwen2.5-14B (Ollama on an RTX 3060, `LG_BASE_URL=http://localhost:11434/v1`, zero
