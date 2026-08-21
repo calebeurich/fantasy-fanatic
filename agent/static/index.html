@@ -72,7 +72,11 @@
   #overview table{min-width:760px}
   /* Phone: the same rows as CARDS - rank · owner · chip on top, then a stat line, needs,
      core - instead of a nine-column table scrolled sideways. Same markup, CSS only. */
+  .pacev .dot{display:none}
+  /* Phone: the card is already dense - pace joins the record's line instead of adding one. */
   @media (max-width:700px){
+    .pacev{display:inline}
+    .pacev .dot{display:inline}
     #overview table,#overview tbody{display:block;min-width:0}
     #overview thead{display:none}
     #overview tr.team{display:grid;grid-template-columns:22px 1fr auto;column-gap:8px;row-gap:3px;
@@ -1057,7 +1061,7 @@ async function loadLeague(id) {
       const recKey = rec.wins * 1e6 + rec.ties * 1e3 + t.starting_production;
       // Pace rides under the record: a soft "if the season goes per the projections"
       // percentage, never a gate - preseason it is pure projection, so it shows always.
-      const pace = t.playoff_pace != null ? `<div class="cs" title="chance of a playoff spot if the season plays out per the projections - a pace, not a verdict">~${t.playoff_pace}% pace</div>` : "";
+      const pace = t.playoff_pace != null ? `<div class="cs pacev" title="chance of a playoff spot if the season plays out per the projections - a pace, not a verdict"><span class="dot"> · </span>~${t.playoff_pace}% pace</div>` : "";
       const recCell = `<td class="cs" style="white-space:nowrap">${rec.wins}-${rec.losses}${rec.ties ? "-" + rec.ties : ""}${pace}</td>` +
                       `<td class="cs">${(t.ppg || 0).toFixed(1)}</td>`;
       return `<tr class="team" data-owner="${t.owner}" data-sv="${t.starting_production}" data-dv="${t.starter_value}" data-rec="${recKey}" data-ppg="${t.ppg || 0}">
