@@ -2729,3 +2729,20 @@ def test_playoff_pace_none_when_uncontested():
     rows = _pace_rows([(150, 0, 0), (140, 0, 0)])
     playoff_pace(rows, {"playoff_teams": 2, "playoff_week_start": 15})
     assert all(r["playoff_pace"] is None for r in rows)
+
+
+def test_playoff_pace_weekly_strengths_price_the_bye():
+    """Two identical teams by season ePPG; one's optimal lineup craters in a specific
+    week (the bye) against the schedule it actually has - its pace drops below the
+    twin's, and weeks with no weekly number fall back to season ePPG unchanged."""
+    from analysis.team_state import playoff_pace
+    def rows():
+        return _pace_rows([(140, 0, 0), (140, 0, 0), (125, 0, 0), (125, 0, 0)])
+    sched = {str(i): {w: str((i + (1 if w % 2 else 3)) % 4) for w in range(1, 15)}
+             for i in range(4)}
+    base = rows(); playoff_pace(base, {"playoff_teams": 2, "playoff_week_start": 15}, sched)
+    strengths = {o: {w: 140.0 if o in "01" else 125.0 for w in range(1, 15)} for o in "0123"}
+    strengths["1"][7] = 60.0   # the bye week, priced
+    byed = rows(); playoff_pace(byed, {"playoff_teams": 2, "playoff_week_start": 15}, sched, strengths)
+    assert byed[1]["playoff_pace"] < base[1]["playoff_pace"]
+    assert byed[0]["playoff_pace"] >= base[0]["playoff_pace"]

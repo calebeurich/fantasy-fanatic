@@ -94,6 +94,7 @@ PROJECTION_POSITIONS = ("QB", "RB", "WR", "TE")
 
 
 @ttl_cache(MARKET_TTL)
+@ttl_cache(MARKET_TTL)
 def get_projections(season: str, week: int | None = None) -> dict[str, dict]:
     """Sleeper's projections (undocumented, but the same numbers the app shows):
     player_id -> raw projected stat line (pass_yd, rec, rush_td, ...). Season totals by

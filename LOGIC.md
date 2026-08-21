@@ -1295,11 +1295,16 @@ decile is calibrated within a few points (pace said 0-10% -> 3.2% made it; 40-50
 43.2%; 90-100% -> 97.0%). Brier 0.153 vs 0.253 for the hard "top-k today are in"
 cutoff - the cliff we refused is ~65% worse as a predictor, which is what the softness
 buys. What this does NOT validate: projection quality (ppg-to-date stood in for ePPG)
-and the note thresholds - knobs to revisit with real 2026 weeks. The owner-sketched v1.5
-(backlogged in ROADMAP): weekly optimal-lineup projections per matchup instead of one
-season ePPG - byes fall out naturally, and our per-week re-fill is structurally better
-than Sleeper's own win probs, which assume the currently-set lineup persists into
-future weeks.
+and the note thresholds - knobs to revisit with real 2026 weeks. The weekly re-fill SHIPPED same day
+(owner: "can we implement that now tho? I think sleeper has weekly eppg already" - it
+does, and the byes are in it: Lamar projects 0 in week 13, CeeDee in week 14):
+`_weekly_strengths` fills each team's optimal lineup against each week's projections
+(fill_lineup routes around a 0-projection bye automatically), and pace prices every
+matchup both sides have a weekly number for on those totals, season ePPG as the
+fallback. Structurally better than Sleeper's own win probs, which assume the
+currently-set lineup persists into future weeks. It moved the read: rjl22 edges shivvv
+once byes count. Cost: 14 weekly projection fetches, cached an hour PER SEASON (shared
+across leagues). Still backlogged from that sketch: per-league margin SD, divisions.
 
 ## Recurring defect families, and the guards (`analysis/audit.py`)
 

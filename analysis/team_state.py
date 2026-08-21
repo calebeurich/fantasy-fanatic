@@ -689,7 +689,8 @@ PACE_MIN_WEEKS = 4
 PACE_SELLER_MAX, PACE_BUYER_MIN = 25, 75
 
 
-def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None) -> None:
+def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None,
+                 strengths: dict | None = None) -> None:
     """A soft playoff-contention percentage per team - a pace, never a gate (owner:
     "non hard cutoff mathematical playoff contention"). If the season played out per
     the projections: each team's weekly win probability is its average head-to-head
@@ -704,7 +705,11 @@ def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None)
 
     `schedule` is owner_id -> {week: opponent_owner_id} for the ACTUAL remaining
     pairings (Sleeper posts the whole season's assignments up front); a week with no
-    entry, or no schedule at all, falls back to the league-average opponent."""
+    entry, or no schedule at all, falls back to the league-average opponent.
+    `strengths` is owner_id -> {week: that week's optimal-lineup projection}
+    (_weekly_strengths) - a week where both sides have one is priced on it, so byes
+    and injury timing move the odds of the specific matchups they touch; any gap
+    falls back to the season ePPG."""
     slots = settings.get("playoff_teams") or 0
     season_weeks = (settings.get("playoff_week_start") or 15) - 1
     if not slots or slots >= len(rows) or season_weeks <= 0:
@@ -714,6 +719,11 @@ def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None)
     eppg = {r["owner_id"]: r["starting_production"] for r in rows}
     phi = NormalDist().cdf
     win_p = lambda me, them: phi((eppg[me] - eppg[them]) / WEEKLY_MARGIN_SD)
+    def week_p(me, them, w):
+        sm, st = (strengths or {}).get(me, {}).get(w), (strengths or {}).get(them, {}).get(w)
+        if sm is not None and st is not None:
+            return phi((sm - st) / WEEKLY_MARGIN_SD)
+        return win_p(me, them)
     exp, var = {}, {}
     for r in rows:
         me = r["owner_id"]
@@ -721,7 +731,7 @@ def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None)
         rec = r["record"]
         played = min(rec["wins"] + rec["losses"] + rec["ties"], season_weeks)
         mine = (schedule or {}).get(me, {})
-        probs = [win_p(me, mine[w]) if mine.get(w) in eppg else field
+        probs = [week_p(me, mine[w], w) if mine.get(w) in eppg else field
                  for w in range(played + 1, season_weeks + 1)]
         exp[me] = rec["wins"] + 0.5 * rec["ties"] + sum(probs)
         var[me] = sum(pw * (1 - pw) for pw in probs)
@@ -750,6 +760,35 @@ def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None)
                                   "production bought now gets used")
         if r["pace_note"]:
             r["path_reason"] += ". " + r["pace_note"][0].upper() + r["pace_note"][1:]
+
+
+def _weekly_strengths(league_id: str, league: dict, rows: list[dict]) -> dict:
+    """owner_id -> {week: that week's OPTIMAL-lineup projected points}, the per-week
+    re-fill the owner asked pace to run on: byes fall out naturally (a bye week
+    projects 0 and the fill routes around it), and an injury's timing gets shape
+    instead of being smeared across the season average. Best effort - any gap falls
+    back to season ePPG inside playoff_pace."""
+    from sources import sleeper as _s
+    from .league import context
+    from . import roster_needs
+    ctx = context(league_id)
+    season_weeks = ((league.get("settings") or {}).get("playoff_week_start") or 15) - 1
+    scoring = league["scoring_settings"]
+    out = {}
+    try:
+        for wk in range(1, season_weeks + 1):
+            proj = _s.get_projections(league["season"], wk)
+            week_players = {pid: {**info, "projected_ppg": _s.score(proj.get(pid, {}), scoring)}
+                            for pid, info in ctx.players.items()}
+            for row in rows:
+                roster = next(r for r in ctx.rosters if r["roster_id"] == row["roster_id"])
+                filled = roster_needs.fill_lineup(roster, week_players,
+                                                  ctx.lineup_dedicated, ctx.lineup_flex)
+                out.setdefault(row["owner_id"], {})[wk] = round(
+                    sum(week_players[pid]["projected_ppg"] for _, pid in filled), 1)
+    except Exception:
+        return {}
+    return out
 
 
 def _season_schedule(league_id: str, league: dict, rows: list[dict]) -> dict:
@@ -932,7 +971,8 @@ def classify_league(league_id: str) -> list[dict]:
                 pick_share=row["pick_share"])
             if row["leverage"] else None)
 
-    playoff_pace(rows, league.get("settings") or {}, _season_schedule(league_id, league, rows))
+    playoff_pace(rows, league.get("settings") or {}, _season_schedule(league_id, league, rows),
+                 _weekly_strengths(league_id, league, rows))
     rows.sort(key=lambda r: r["contention_rank"])
     return rows
 
