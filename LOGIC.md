@@ -1286,8 +1286,16 @@ division is underrated at the edges; with 6 of 12 in, a division winner is nearl
 always top-6 by record anyway, which is why this waits for the "real math" pass rather
 than complicating v1).
 
-Not yet validated against a real season (the 2026 season starts in September);
-the note thresholds are knobs to revisit with real weeks. The owner-sketched v1.5
+VALIDATED by replay (2026-08-21, `research/pace_backtest.py` - the owner's "do this
+in-season stuff as if it was last year and check it"): 191 crawled seasons, 23,824
+team-week predictions from week 3 on, fed only what a live system would have known
+(record to date, ppg-to-date standing in for ePPG, the remaining posted schedule)
+through the REAL playoff_pace function, against the actual winners brackets. Every
+decile is calibrated within a few points (pace said 0-10% -> 3.2% made it; 40-50% ->
+43.2%; 90-100% -> 97.0%). Brier 0.153 vs 0.253 for the hard "top-k today are in"
+cutoff - the cliff we refused is ~65% worse as a predictor, which is what the softness
+buys. What this does NOT validate: projection quality (ppg-to-date stood in for ePPG)
+and the note thresholds - knobs to revisit with real 2026 weeks. The owner-sketched v1.5
 (backlogged in ROADMAP): weekly optimal-lineup projections per matchup instead of one
 season ePPG - byes fall out naturally, and our per-week re-fill is structurally better
 than Sleeper's own win probs, which assume the currently-set lineup persists into

@@ -236,3 +236,12 @@ pick constant is 2026 FC and applied to all seasons; the VEGAS-LIFE ecosystem ca
 applies (re-check outside any single ecosystem before promoting a threshold).
 Anchors for the eye: Josh Allen <- Jayden Daniels; Allen <- three 1sts + a 2nd;
 Jefferson <- St. Brown + Hockenson; Bijan <- Breece + a 1st; Lamb <- three 1sts + change.
+
+## Pace backtest (`pace_backtest.py`, 2026-08-21)
+
+Replays 191 crawled seasons through the real `team_state.playoff_pace` week by week,
+feeding only what a live system would have known, against the actual winners brackets.
+23,824 team-week predictions: calibrated within a few points in every decile (0-10%
+said -> 3.2% made it; 90-100% -> 97.0%). Brier 0.153 vs 0.253 for a hard top-k-today
+cutoff. Validates the math (record + schedule + soft margin), not projection quality -
+ppg-to-date stood in for ePPG, which history does not keep.
