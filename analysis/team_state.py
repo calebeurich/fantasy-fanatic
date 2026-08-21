@@ -683,8 +683,10 @@ WEEKLY_MARGIN_SD = 36.0
 
 # The deadline sentence fires only when the season has said something (4+ weeks) and
 # the pace is lopsided enough to change what the trade market means for this team.
+# Symmetric at the owner's call (the first cut was 20/85 on a hunch that "sell the
+# season" deserved a higher bar than "buy" - a taste, not a measurement).
 PACE_MIN_WEEKS = 4
-PACE_SELLER_MAX, PACE_BUYER_MIN = 20, 85
+PACE_SELLER_MAX, PACE_BUYER_MIN = 25, 75
 
 
 def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None) -> None:

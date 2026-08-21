@@ -1274,11 +1274,17 @@ sides' binomial noise. Preseason (zero games) it is purely projection-based - XF
 reads 78% down to 14% across ranks 1-12 under the real schedule, boundary teams ~50%,
 nobody at the poles. Slots >= teams -> None (everyone makes it; not worth printing).
 
-Deadline flavor is a SENTENCE, not a flip: with 4+ weeks played and pace <= 20 or
->= 85 (PACE_SELLER_MAX / PACE_BUYER_MIN), `pace_note` lands in path_reason ("~12%
+Deadline flavor is a SENTENCE, not a flip: with 4+ weeks played and pace <= 25 or
+>= 75 (PACE_SELLER_MAX / PACE_BUYER_MIN, symmetric at the owner's call), `pace_note` lands in path_reason ("~12%
 playoff pace with 5 regular-season weeks left - ... the rental market reads differently
 for a team that can sell it"). The path chip itself never moves on pace - paths stay
 roster-driven, the season is context.
+
+KNOWN APPROXIMATION - divisions: one league-wide playoff line, no division auto-bids
+(XFL 2 runs 2 divisions, and its leader may auto-qualify - a mediocre team atop a weak
+division is underrated at the edges; with 6 of 12 in, a division winner is nearly
+always top-6 by record anyway, which is why this waits for the "real math" pass rather
+than complicating v1).
 
 Not yet validated against a real season (the 2026 season starts in September);
 the note thresholds are knobs to revisit with real weeks. The owner-sketched v1.5
