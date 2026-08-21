@@ -2746,3 +2746,32 @@ def test_playoff_pace_weekly_strengths_price_the_bye():
     byed = rows(); playoff_pace(byed, {"playoff_teams": 2, "playoff_week_start": 15}, sched, strengths)
     assert byed[1]["playoff_pace"] < base[1]["playoff_pace"]
     assert byed[0]["playoff_pace"] >= base[0]["playoff_pace"]
+
+
+def test_price_only_flags_are_vetoed_on_the_eppg_bar():
+    """The n0duh grid: a 1QB market prices mid-tier starters near zero and manufactures
+    holes out of lineups that project fine (Bijan Robinson's room read "RB critical").
+    The redraft bar stays the base, but a flag must hold on BOTH instruments: started
+    bodies that clear the projected-points bar veto the level to ok, with the note
+    saying priced-cheap-not-short; a room under both bars keeps its flag."""
+    slots = {"QB": 1, "RB": 0, "WR": 0, "TE": 0}
+    thresholds = {"QB": 2000, "RB": 0, "WR": 0, "TE": 0}
+    rosters, players = _league({
+        "artifact": [("QB", 1500), ("QB", 900)],   # starter priced under the bar...
+        "realhole": [("QB", 1400)],
+        "full1": [("QB", 5000)], "full2": [("QB", 4000)], "full3": [("QB", 3000)],
+    })
+    for pid, p in players.items():
+        # ...but the artifact's QB PROJECTS like a starter; the real hole's does not.
+        # The bench QB at 16.0 sets the 5-team bar above the real hole's 12.0.
+        p["projected_ppg"] = {"artifact-0": 17.0, "artifact-1": 16.0,
+                              "realhole-2": 12.0}.get(p["name"], 18.0)
+    eppg_bars = roster_needs.replacement_thresholds(players, slots, len(rosters), "projected_ppg")
+    out = roster_needs.assess_positions(rosters, players, slots, thresholds,
+                                        eppg_thresholds=eppg_bars)
+    assert out["artifact"]["QB"]["level"] == "ok"
+    assert "priced cheap, not short" in out["artifact"]["QB"]["note"]
+    assert out["realhole"]["QB"]["level"] != "ok"
+    # Without the eppg bars (older callers, fixtures), nothing is vetoed.
+    out2 = roster_needs.assess_positions(rosters, players, slots, thresholds)
+    assert out2["artifact"]["QB"]["level"] != "ok"

@@ -521,7 +521,13 @@ this surfaces are the ones that over-flag in 1QB.
   already built), optimal-lineup start/sit ("people want to do that stuff on their
   own; we have nothing better than raw projections"), band shifts.
   Time triggered: the 2026 season starts in September.
-- **Calibrate to single-QB leagues** - a friend's league "seemed to not work as well".
+- **Calibrate to single-QB leagues - RESOLVED 2026-08-21** by the both-instruments veto
+  (LOGIC.md "A flag must hold on both instruments"): redraft bar stays the base, a flag
+  is vetoed when every started body clears the ePPG bar. n0duh's league went from all
+  ten teams flagged to exactly the 10-of-17 flags that were real; XFL unchanged. The
+  needs-on-ePPG metric swap sketched below was NOT done - the veto got the artifacts
+  without moving the base. Original record -
+  **Calibrate to single-QB leagues** - a friend's league "seemed to not work as well".
   First pass done 2026-08-18 on the one 1QB league with real use in the prod logs
   (William Byrd Dead Weights, `1312114705313042432`, 12-team 1QB PPR - Vicdank's other
   league; the true 10-team/1QB leagues that were tapped were a redraft and a keeper

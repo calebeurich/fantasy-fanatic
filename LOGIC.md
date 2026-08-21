@@ -817,6 +817,23 @@ lineup can disagree, and a player who would beat the door isn't locked out at al
 invisible. A body who steps in when the weakest starter at his position is out has real
 value at a nominal price - stated with "don't overpay", never as a need.
 
+### A flag must hold on both instruments (2026-08-21)
+
+The 1QB over-flag fix, landed as a VETO rather than a metric swap (owner: "can we still
+base it on the redraft bar, but only be weak if it's [under] the ePPG bar"). The redraft
+bar stays the base measurement - superflex, where price and points agree, never moves -
+but a flag at a position (or the FLEX) is downgraded to ok when every started body
+clears the projected-points bar, with the note saying why: "priced cheap, not short."
+Grounding case: n0duh's 10-team 1QB, where 7 of 17 flags were price artifacts - the
+league's #1 team read "QB weak" holding Trevor Lawrence (17.8 ePPG vs a 17.6 bar priced
+as QB15), and n0duh's own room read "RB critical" while starting Bijan Robinson at 19.1.
+After the veto, exactly the 10 flags that held on both instruments survive, and the XFL
+superflex grid is untouched. The Adams contrast (a_schoell's league) is the honest
+side: market WR22 AND ePPG WR31 -> "weak WR2" stands, because when the two currencies
+agree the chip is a fact about the roster. The ePPG bars ride in as a parameter
+(`eppg_thresholds`) so `assess_positions` stays a pure function and fixture-driven
+tests opt in.
+
 ## Trade activity (`trade_activity.py`)
 
 Sleeper exposes no trade block, so realized trade counts across the league's full season

@@ -55,7 +55,8 @@ def replacement_thresholds(players: dict[str, dict], slots: dict[str, int], num_
 
 
 def flex_bars(players: dict[str, dict], dedicated: dict[str, int],
-              flex: list[tuple[str, ...]], num_teams: int) -> dict | None:
+              flex: list[tuple[str, ...]], num_teams: int,
+              metric: str = "redraft_value") -> dict | None:
     """Replacement level for the FLEX slot, which the positional bars cannot express: they
     count only dedicated demand, so the league's flex starts are fed by definitionally
     "below-bar" players and any per-position verdict on a flex body measures the bar, not
@@ -70,8 +71,8 @@ def flex_bars(players: dict[str, dict], dedicated: dict[str, int],
     eligible = tuple(p for p in POSITIONS if p != "QB" and any(p in e for e in slots))
     pool = []
     for pos in eligible:
-        vals = sorted((i.get("redraft_value") or 0 for i in players.values()
-                       if i["position"] == pos and i.get("redraft_value")), reverse=True)
+        vals = sorted((i.get(metric) or 0 for i in players.values()
+                       if i["position"] == pos and i.get(metric)), reverse=True)
         pool += vals[num_teams * dedicated.get(pos, 0):]
     pool.sort(reverse=True)
     n = num_teams * len(slots)
@@ -94,6 +95,7 @@ def flex_occupants(roster: dict, players: dict[str, dict], dedicated: dict[str, 
             if slot == "SUPER_FLEX" and info["position"] == "QB":
                 continue
             out.append({"name": info["name"], "position": info["position"],
+                        "projected_ppg": eppg(info),
                         "redraft_value": round(info.get("redraft_value") or 0)})
     return out
 
@@ -281,7 +283,8 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
                      thresholds: dict[str, float],
                      starters: dict[str, set[str]] | None = None,
                      lineup: tuple[dict, list] | None = None,
-                     position_rates: dict[str, float] | None = None) -> dict[str, dict[str, dict]]:
+                     position_rates: dict[str, float] | None = None,
+                     eppg_thresholds: dict[str, float] | None = None) -> dict[str, dict[str, dict]]:
     """Every roster's standing at every position, keyed owner_id -> position. Count and
     quality are separate problems with opposite fixes, so the level names the SHAPE of the
     problem:
@@ -447,7 +450,46 @@ def assess_positions(rosters: list[dict], players: dict[str, dict], slots: dict[
         for r in rosters:
             oid = r["owner_id"]
             out[oid]["FLEX"] = _assess_flex(occupants[oid], bars, flex_ranks[oid], num_teams)
+    _veto_price_only_flags(out, rosters, players, slots, num_teams, lineup, eppg_thresholds)
     return out
+
+
+# A flag must hold on BOTH instruments (owner, 2026-08-21, after the n0duh grid showed
+# 7 of 17 flags were price artifacts - Bijan Robinson's room read "RB critical"): the
+# redraft bar stays the base, so superflex - where price and points agree - never moves,
+# but a 1QB market prices mid-tier starters near zero and manufactures holes out of
+# lineups that project fine. The veto: when every started body at the position clears
+# the projected-points bar, the level drops to ok and the note says why.
+PRICE_ONLY = (" (Not flagged as a need: the market prices this group under the league's "
+              "bar, but every started body clears the projected-points bar - priced "
+              "cheap, not short.)")
+
+
+def _veto_price_only_flags(out, rosters, players, slots, num_teams, lineup,
+                           eppg_bars: dict[str, float] | None) -> None:
+    eppg_bars = eppg_bars or {}
+    ebars = flex_bars(players, lineup[0], lineup[1], num_teams, "projected_ppg") if lineup else None
+    for r in rosters:
+        oid = r["owner_id"]
+        mine = [players[p] for p in r["players"] or [] if p in players]
+        for pos in POSITIONS:
+            entry = out[oid].get(pos)
+            if not entry or entry["level"] == "ok" or not slots.get(pos) or pos not in eppg_bars:
+                continue
+            started = sorted((i for i in mine if i["position"] == pos),
+                             key=lambda i: -eppg(i))[:slots[pos]]
+            if len(started) == slots[pos] and all(eppg(i) >= eppg_bars.get(pos, 0)
+                                                  for i in started):
+                entry["level"] = "ok"
+                entry["note"] += PRICE_ONLY
+        entry = out[oid].get("FLEX")
+        if entry and entry["level"] != "ok" and ebars and lineup:
+            occ = flex_occupants(r, players, *lineup)
+            bar = ebars["critical"] if entry["level"] == "critical" else ebars["competitive"]
+            if len(occ) >= ebars["slots"] and all((e.get("projected_ppg") or 0) >= bar
+                                                  for e in occ):
+                entry["level"] = "ok"
+                entry["note"] += PRICE_ONLY
 
 
 def _assess_flex(occupants: list[dict], bars: dict, rank: int, num_teams: int) -> dict:
@@ -633,7 +675,9 @@ def league_assessment(league_id: str) -> dict[str, dict[str, dict]]:
                                             "starter without the likelihood of it happening")
         rates = None
     return assess_positions(ctx.rosters, ctx.players, ctx.needs_slots, ctx.start_thresholds,
-                            ctx.starters, (ctx.lineup_dedicated, ctx.lineup_flex), rates)
+                            ctx.starters, (ctx.lineup_dedicated, ctx.lineup_flex), rates,
+                            replacement_thresholds(ctx.players, ctx.needs_slots,
+                                                   ctx.num_teams, "projected_ppg"))
 
 
 def league_needs(league_id: str) -> dict[str, dict]:
