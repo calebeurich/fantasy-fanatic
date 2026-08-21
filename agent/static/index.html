@@ -234,6 +234,7 @@
   .crow.chead2 .v,.crow.chead2 .a{color:var(--dim)}
   /* The line under the lineup: starters sort first, bench below the rule. Starters under
      the position's start bar carry a colored left edge - how bad the hole is. */
+  .flexchip{font-size:9.5px;padding:0 4px;border-radius:999px;border:1px solid var(--line);color:var(--dim);vertical-align:1px}
   .stmark{color:var(--ok);font-size:11px}   /* the roster view's marks, same colors, same meaning */
   .stmark.under{color:var(--thin)}
   .stmark.deep{color:var(--crit)}
@@ -959,7 +960,7 @@ async function toggleDetail(tr, leagueId) {
       `<div class="prow phead"><span></span><span class="pv">${heads[0]}</span><span class="pv">${heads[1]}</span>` +
       `<span class="pv">${heads[2]}</span><span class="pa">${heads[3]}</span></div>` +
       rows.map(p => `<div class="prow ${mark(p, (d.start_bars || {})[title])}">` +
-        `<span>${p.cornerstone ? "★ " : ""}${p.name}</span>` +
+        `<span>${p.cornerstone ? "★ " : ""}${p.name}${p.flex_slot ? ` <span class="flexchip">${p.flex_slot === "SUPER_FLEX" ? "sflx" : "flex"}</span>` : ""}</span>` +
         `<span class="pv">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
         `<span class="pv">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
         `<span class="pv">${(p.value || 0).toLocaleString()}</span>` +

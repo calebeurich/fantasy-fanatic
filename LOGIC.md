@@ -1882,6 +1882,16 @@ be worth more" and the study agrees). Never a price verdict: click one and
 the framer's impact appears, the assistant judges on Ask. Deterministic and ~0.3s once
 the board is warm.
 
+### Flex occupants named (2026-08-21)
+
+The expanded roster marks WHICH slot a flexible starter actually fills - a tiny `flex` /
+`sflx` chip after the name (owner: "show who is ending up at flex"). Same fill_lineup
+that defines "starter" everywhere; a dedicated slot stays unmarked because his position
+already says it. Sits beside the a_schoell-league read that prompted it: Adams as a
+"weak WR2" was checked against BOTH instruments (market WR22, ePPG WR31, bar = 20 in a
+10-team league) and held - when the two currencies agree, the chip is a fact about the
+roster, not the calibration bug.
+
 ### The trade composer (staging only, 2026-08-17 v2)
 
 Owner's verdict on v1 (two dropdowns + checkbox lists): "works but looks bad, doesn't

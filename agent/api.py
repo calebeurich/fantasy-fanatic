@@ -767,6 +767,11 @@ def _team_detail(ctx, roster: dict) -> dict:
     league_id = ctx.league_id
     owner_name = ctx.owner_names[roster["owner_id"]]
     starters = ctx.starters_for(roster)
+    # Which SLOT each starter fills - the flex occupants are the ones worth naming
+    # (owner: "show who is ending up at flex"); a dedicated slot is just his position.
+    from analysis import roster_needs as _rn
+    slot_of = {pid: slot for slot, pid in _rn.fill_lineup(roster, ctx.players,
+                                                          ctx.lineup_dedicated, ctx.lineup_flex)}
     states = team_state.classify_league(league_id)
     t = next(t for t in states
              if t["owner"] == owner_name)
@@ -783,6 +788,8 @@ def _team_detail(ctx, roster: dict) -> dict:
             "projected_ppg": team_values.eppg(info),
             "bucket": age_bucket(info["position"], info["age"], info.get("usage_role")),
             "starter": pid in starters,
+            "flex_slot": (slot_of.get(pid) if pid in starters
+                          and slot_of.get(pid) not in (None, info["position"]) else None),
             "cornerstone": info["name"] in corner,
             # The continuous variable behind the bucket - the UI colors on it, because
             # a 0.1-year piece and a 3.9-year piece are different facts the same
