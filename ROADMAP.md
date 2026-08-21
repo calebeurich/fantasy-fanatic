@@ -473,10 +473,32 @@ this surfaces are the ones that over-flag in 1QB.
   spoken as points".
 
 **Backlog added 2026-08-18 (owner, after the friends' first day on the three-tab build):**
-- **In-season logic** - Track 4 in full: weekly projections in the lineup lens, the season
-  record and real PPG taking over from preseason ePPG as they accumulate, deadline
-  rentals, and the trade-ideas band re-checked against in-season market moves. Time
-  triggered: the 2026 season starts in September; nothing here matters until Week 1.
+- **In-season logic - v1 scope AGREED 2026-08-20** (replaces the earlier "record takes
+  over" sketch, which the owner rejected: "ePPG should always be a more accurate future
+  predictor than PPG - it factors PPG in"). The instrument NEVER changes: ePPG stays
+  the lens all season. Four pieces, in build order:
+  1. **Verify ePPG is a living number** - first empirical question of September: does
+     Sleeper re-issue season projections weekly? If yes, near-zero work; if static,
+     compute rest-of-season ePPG from their weekly projections (`get_projections` takes
+     a week already).
+  2. **Playoff pace, not a playoff gate** - a soft percentage, no hard cutoff:
+     expected final wins = current wins + remaining weeks x win probability implied by
+     ePPG rank vs the league, held against where the playoff line falls for N teams ->
+     "~70% playoff pace" on the table. Deterministic, no simulation. All-play record
+     can sharpen the win-probability term later. The only genuinely new math - build
+     first.
+  3. **Deadline is a sentence, not a flip** - paths stay roster-driven; extreme pace
+     near the deadline adds a clause to path_reason ("~15% pace with 4 weeks left -
+     the rental market reads differently for you") and informs the counterparty.
+  4. **ePPG-vs-market disagreement flag** - late-season and post-injury rest-of-season
+     projections get twitchy; redraft price is slow and stable exactly there (still
+     computed - the needs bars run on it). When the two rank a player wildly
+     differently, trust neither alone: flag it, one shared concept (like degraded
+     data), not injury/December special cases.
+  NOT in v1 (owner): record/PPG overriding the read (record stays a sortable column -
+  already built), optimal-lineup start/sit ("people want to do that stuff on their
+  own; we have nothing better than raw projections"), band shifts.
+  Time triggered: the 2026 season starts in September.
 - **Calibrate to single-QB leagues** - a friend's league "seemed to not work as well".
   First pass done 2026-08-18 on the one 1QB league with real use in the prod logs
   (William Byrd Dead Weights, `1312114705313042432`, 12-team 1QB PPR - Vicdank's other
