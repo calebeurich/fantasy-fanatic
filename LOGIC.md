@@ -1481,6 +1481,16 @@ reason in it, the page shows it under the table, and the model names FantasyCalc
 KeepTradeCut) when asked where a value comes from. The lesson generalises: every fact the
 analysis computes and never speaks is a fact the reader assumes is missing.
 
+### Prod friends land on "find your league" (2026-08-21)
+
+The friends tier used to open on the author's league whenever FF_DEFAULT_LEAGUE was
+unset (falling back to DEMO_LEAGUE). Owner: "make prod not auto load a league - looks a
+bit cluttered and confusing still." Now `/api/defaults` returns no league for friends
+unless FF_DEFAULT_* is set (staging keeps it so the owner lands on his own team), and
+the page remembers the last league each friend looked at (`ff_last_league`) so a
+return visit reopens theirs, not his. The public demo still opens on DEMO_LEAGUE - a
+visitor with no league of their own needs something to look at.
+
 ### Two tiers on one deploy: friends and the public demo (2026-08-17)
 
 The friends link carries one shared key (`FF_LINK_KEY`) - not real auth, a brake that

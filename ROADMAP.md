@@ -502,6 +502,15 @@ this surfaces are the ones that over-flag in 1QB.
      computed - the needs bars run on it). When the two rank a player wildly
      differently, trust neither alone: flag it, one shared concept (like degraded
      data), not injury/December special cases.
+  **Shallow leagues (owner, 2026-08-21, after the both-instruments veto):** "in these
+  shallower leagues it gets weird because genuinely fine players are still fine and
+  the top-top players become the differentiators - it becomes about who is elite, not
+  who is startable. Shallow dynasty is dumb, good players don't play it - not worth
+  calibrating." Recorded as a stance, not a task: the startable-bar grammar is built
+  for 12-team depth and stays that way.
+  **Future tags (owner, same day):** the main chips could become some combination of
+  ePPG, redraft value, dynasty value AND playoff pace - "maybe too ambitious" for now;
+  pace is labelled "playoff pace" on the table as the first step.
   **In-season v2 design notes (owner, 2026-08-21, not built - needs real Week 1+ cases):**
   - Default table SORT flips to playoff pace (later championship % - the same soft math
     walked through the bracket) once weeks exist. SORT only: `contention_rank` stays

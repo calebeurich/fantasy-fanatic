@@ -1029,6 +1029,7 @@ async function loadLeague(id) {
     }
     if (currentLeague !== id) { myTeam = null; myStance = ""; }
     currentLeague = id;
+    localStorage.setItem("ff_last_league", id);
     leagueTeams = Object.fromEntries(d.teams.map(t => [t.owner, t]));
     const rows = d.teams.map(t => {
       const needs = Object.entries(t.needs)
@@ -1062,7 +1063,7 @@ async function loadLeague(id) {
       const recKey = rec.wins * 1e6 + rec.ties * 1e3 + t.starting_production;
       // Pace rides under the record: a soft "if the season goes per the projections"
       // percentage, never a gate - preseason it is pure projection, so it shows always.
-      const pace = t.playoff_pace != null ? `<div class="cs pacev" title="chance of a playoff spot if the season plays out per the projections - a pace, not a verdict"><span class="dot"> · </span>~${t.playoff_pace}% pace</div>` : "";
+      const pace = t.playoff_pace != null ? `<div class="cs pacev" title="chance of a playoff spot if the season plays out per the projections - a pace, not a verdict"><span class="dot"> · </span>~${t.playoff_pace}% playoff pace</div>` : "";
       const recCell = `<td class="cs" style="white-space:nowrap">${rec.wins}-${rec.losses}${rec.ties ? "-" + rec.ties : ""}${pace}</td>` +
                       `<td class="cs">${(t.ppg || 0).toFixed(1)}</td>`;
       return `<tr class="team" data-owner="${t.owner}" data-sv="${t.starting_production}" data-dv="${t.starter_value}" data-rec="${recKey}" data-ppg="${t.ppg || 0}">
@@ -1100,7 +1101,7 @@ async function loadLeague(id) {
         <span><span class="tag p-decide hot">decide</span> press or sell — season can pick</span>
         <span><span class="tag p-sell hot">sell</span> trade aging value for future</span>
       </div>
-      <div class="note">The chip = the move each roster's <em>position</em> calls for, not what its manager is doing. Bright = decision pending; hover for why. Core: <strong>bold</strong> = build-around, <span class="pp">orange</span> = priced on this season. asc / dec = how much of the starting lineup's production comes from players still <span style="color:hsl(120,65%,58%)">gaining</span> value vs already <span style="color:hsl(25,65%,55%)">losing</span> it — the rest are in their prime, holding, so the two rarely add to 100. PPG = real points per game this season; ePPG = expected points per game (Sleeper's season projections, this league's scoring); ~% pace = chance of a playoff spot if the season plays out per the projections — banked wins count, a projection edge is only likely, and nobody is ever at 0 or 100; % of best = this starting lineup's ePPG as a share of the league's best lineup. Rows rank by ePPG; click a header to re-sort. Click a team to ask about them.</div>`;
+      <div class="note">The chip = the move each roster's <em>position</em> calls for, not what its manager is doing. Bright = decision pending; hover for why. Core: <strong>bold</strong> = build-around, <span class="pp">orange</span> = priced on this season. asc / dec = how much of the starting lineup's production comes from players still <span style="color:hsl(120,65%,58%)">gaining</span> value vs already <span style="color:hsl(25,65%,55%)">losing</span> it — the rest are in their prime, holding, so the two rarely add to 100. PPG = real points per game this season; ePPG = expected points per game (Sleeper's season projections, this league's scoring); ~% playoff pace = chance of a playoff spot if the season plays out per the projections — banked wins count, a projection edge is only likely, and nobody is ever at 0 or 100; % of best = this starting lineup's ePPG as a share of the league's best lineup. Rows rank by ePPG; click a header to re-sort. Click a team to ask about them.</div>`;
     const pick = tr => setYou(tr.dataset.owner, tr.dataset.owner === myTeam ? myStance : "");
     showAskContext();
     // Sort by either value column (a tester's ask: "sort by dynasty value"). The
@@ -1461,9 +1462,11 @@ getJSON("/api/defaults", {headers: hdrs()}).then(d => {
       `the code, evals and the reasoning behind every read are on ` +
       `<a href="https://github.com/calebeurich/fantasy-fanatic" style="color:var(--mid)">GitHub</a>.`;
   }
-  if (!d.league_id || currentLeague) return;
-  myName = d.owner || myName;
-  loadLeague(d.league_id);
+  if (currentLeague) return;
+  // Friends on prod get no default league - the one they looked at last comes back.
+  const last = localStorage.getItem("ff_last_league");
+  if (d.league_id) { myName = d.owner || myName; loadLeague(d.league_id); }
+  else if (last) loadLeague(last);
 }).catch(() => {});
 </script>
 </body>
