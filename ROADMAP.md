@@ -456,6 +456,17 @@ and the overview's needs take the same parameter; withContext pins it. ~half a d
 the XFL eye-test; needs-on-ePPG (below) should land first or alongside, since the chips
 this surfaces are the ones that over-flag in 1QB.
 
+**Scaling economics (owner asked 2026-08-21: "no good path to 1000 active users/day
+without hurting my wallet?"):** the deterministic layer (table, ideas, composer, pace)
+is ~free and fully LLM-less - a free tier is 90% of the product at full quality, only
+the Ask/counterparty cost money (~$0.05/ask, ~$0.10 for a two-agent trade question).
+1000 DAU x 3 asks = ~$150/day uncapped; the levers, in order: (1) per-visitor ask caps
+for everyone (built for demo, make default), (2) trim tool payloads + skip counterparty
+unless asked (halves trade questions), (3) BYO Anthropic key, (4) paid tier. Throughput
+is the other constraint: max-instances=1 exists because sessions are in-process; moving
+session state to Redis/Firestore (~a day) unlocks horizontal scale. None of it urgent
+at current usage - recorded so the numbers survive.
+
 **Backlog added 2026-08-19:**
 - **Eval premises drift with the live leagues** (owner: "flag the league state drift
   thing"). The cases assert against real rosters, so real trades silently invalidate
