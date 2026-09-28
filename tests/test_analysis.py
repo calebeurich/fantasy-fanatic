@@ -2775,3 +2775,31 @@ def test_price_only_flags_are_vetoed_on_the_eppg_bar():
     # Without the eppg bars (older callers, fixtures), nothing is vetoed.
     out2 = roster_needs.assess_positions(rosters, players, slots, thresholds)
     assert out2["artifact"]["QB"]["level"] != "ok"
+
+
+def _rows(team, pts_by_pid, opponent="X"):
+    return [{"player_id": pid, "team": team, "opponent": opponent,
+             "stats": {"pts": pts} if pts else {}} for pid, pts in pts_by_pid.items()]
+
+
+def test_rest_of_season_ppg_skips_byes_counts_injuries():
+    """In-season ePPG is rebuilt from the weekly lines (Sleeper freezes the season total
+    at preseason). A bye week is skipped; an injury week counts as the 0 it projects;
+    `healthy` is his rate when back, only for a player out NOW - a fill-in whose zeros
+    come after his starts has no healthy story, and IR (no games at all) falls back to
+    the preseason rate."""
+    from analysis.league import rest_of_season_ppg
+    scoring = {"pts": 1.0}
+    weekly = {
+        # "star": playing 20s, then his team's bye in week 2
+        # "hurt": out week 1, back at 12   "fillin": starts week 1, then 0   "ir": nothing
+        1: _rows("AAA", {"star": 20, "hurt": 0, "fillin": 15, "ir": 0}),
+        2: _rows("AAA", {"star": 0, "hurt": 12, "fillin": 0, "ir": 0}, opponent=None),
+        3: _rows("AAA", {"star": 20, "hurt": 12, "fillin": 0, "ir": 0}),
+    }
+    byes = {1: set(), 2: {"AAA"}, 3: set()}
+    out = rest_of_season_ppg(weekly, byes, scoring, preseason={"ir": 9.0})
+    assert out["star"] == (20.0, 20.0)            # the bye did not drag him to 13.3
+    assert out["hurt"] == (6.0, 12.0)             # 0 and 12 over two games; 12 when back
+    assert out["fillin"] == (7.5, 7.5)            # starts now: no healthy story
+    assert out["ir"] == (0.0, 9.0)                # no games left: the preseason rate

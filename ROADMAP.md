@@ -488,7 +488,10 @@ at current usage - recorded so the numbers survive.
   over" sketch, which the owner rejected: "ePPG should always be a more accurate future
   predictor than PPG - it factors PPG in"). The instrument NEVER changes: ePPG stays
   the lens all season. Four pieces, in build order:
-  1. **Verify ePPG is a living number** - first empirical question of September: does
+  1. **Verify ePPG is a living number - CHECKED 2026-09-28, it was NOT** (season total
+     frozen at preseason); FIXED by rebuilding ePPG from the weekly lines, byes skipped,
+     injuries as 0, plus a `healthy starter` tag (LOGIC.md "In-season ePPG"). Original -
+     **Verify ePPG is a living number** - first empirical question of September: does
      Sleeper re-issue season projections weekly? If yes, near-zero work; if static,
      compute rest-of-season ePPG from their weekly projections (`get_projections` takes
      a week already).

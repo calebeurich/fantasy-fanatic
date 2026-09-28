@@ -775,6 +775,13 @@ def _team_detail(ctx, roster: dict) -> dict:
     from analysis import roster_needs as _rn
     slot_of = {pid: slot for slot, pid in _rn.fill_lineup(roster, ctx.players,
                                                           ctx.lineup_dedicated, ctx.lineup_flex)}
+    # The same fill at everyone's HEALTHY rate: a player it starts and the real fill
+    # doesn't is out now but a starter when back (owner: injuries count as 0 in ePPG,
+    # "but maybe a tag showing they would be a starter" on uninjured projections).
+    healthy = {pid: {**p, "projected_ppg": p["healthy_ppg"]} if p.get("healthy_ppg") is not None else p
+               for pid, p in ctx.players.items() if pid in (roster["players"] or [])}
+    healthy_starters = {pid for _, pid in _rn.fill_lineup(roster, healthy, ctx.lineup_dedicated,
+                                                          ctx.lineup_flex)}
     states = team_state.classify_league(league_id)
     t = next(t for t in states
              if t["owner"] == owner_name)
@@ -789,6 +796,9 @@ def _team_detail(ctx, roster: dict) -> dict:
             "name": info["name"], "value": info["value"],
             "redraft_value": info.get("redraft_value"), "age": info["age"],
             "projected_ppg": team_values.eppg(info),
+            "healthy_ppg": info.get("healthy_ppg"),
+            "starts_when_healthy": (pid in healthy_starters and pid not in starters
+                                    and (info.get("healthy_ppg") or 0) > team_values.eppg(info)),
             "bucket": age_bucket(info["position"], info["age"], info.get("usage_role")),
             "starter": pid in starters,
             "flex_slot": (slot_of.get(pid) if pid in starters

@@ -94,17 +94,36 @@ PROJECTION_POSITIONS = ("QB", "RB", "WR", "TE")
 
 
 @ttl_cache(MARKET_TTL)
-@ttl_cache(MARKET_TTL)
-def get_projections(season: str, week: int | None = None) -> dict[str, dict]:
-    """Sleeper's projections (undocumented, but the same numbers the app shows):
-    player_id -> raw projected stat line (pass_yd, rec, rush_td, ...). Season totals by
-    default; a week gives that week's line. Raw stats rather than Sleeper's pts_ppr so
-    each league's own scoring_settings can price them - see `score`."""
+def projection_rows(season: str, week: int | None = None) -> list[dict]:
+    """Sleeper's projection rows (undocumented, but the same numbers the app shows): one
+    per player with `team`, `opponent` and a raw stat line. Season totals by default; a
+    week gives that week's lines. Shared by every league - the pricing happens per league
+    in `score`."""
     path = f"projections/nfl/{season}" + (f"/{week}" if week else "")
     query = "season_type=regular&" + "&".join(f"position[]={p}" for p in PROJECTION_POSITIONS)
     resp = _http.get(f"https://api.sleeper.app/{path}?{query}")
     resp.raise_for_status()
-    return {r["player_id"]: r["stats"] for r in resp.json() if r.get("stats")}
+    return resp.json()
+
+
+def get_projections(season: str, week: int | None = None) -> dict[str, dict]:
+    """player_id -> raw projected stat line (pass_yd, rec, rush_td, ...). Raw stats rather
+    than Sleeper's pts_ppr so each league's own scoring_settings can price them."""
+    return {r["player_id"]: r["stats"] for r in projection_rows(season, week) if r.get("stats")}
+
+
+def bye_teams(season: str, week: int) -> set[str]:
+    """NFL teams on bye that week. A bye is a TEAM fact: per player, a bye and an IR stint
+    look identical (no opponent either way), but in a bye week nobody on the team has an
+    opponent, while an injured player's teammates do."""
+    rows = projection_rows(season, week)
+    return {r["team"] for r in rows if r.get("team")} - {r["team"] for r in rows if r.get("opponent")}
+
+
+@ttl_cache(LEAGUE_CONFIG_TTL)
+def get_nfl_state() -> dict:
+    """The NFL calendar as Sleeper sees it: `season`, `season_type`, current `week`."""
+    return _get("state/nfl")
 
 
 def score(stats: dict, scoring_settings: dict) -> float:

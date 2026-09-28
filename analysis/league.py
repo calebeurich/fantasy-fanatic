@@ -21,13 +21,14 @@ whole lineup. LOGIC.md, "Production is projected points".
 
 from dataclasses import dataclass, field
 
-from sources import sleeper
+from sources import sleeper, degraded
 from sources.cache import ttl_cache, LEAGUE_CONFIG_TTL
 
 from . import roster_needs
 from .team_values import get_players_with_roles
 
 GAMES_PER_SEASON = 17
+REGULAR_SEASON_WEEKS = 18   # NFL weeks, the bye included
 
 
 @dataclass
@@ -95,6 +96,53 @@ def _normalize(name: str) -> str:
     return "".join(c for c in name.lower() if c.isalnum())
 
 
+def rest_of_season_ppg(weekly: dict[int, list[dict]], byes: dict[int, set[str]],
+                       scoring: dict, preseason: dict[str, float]) -> dict[str, tuple[float, float]]:
+    """player_id -> (expected, healthy) points a game over the weeks left. In-season the
+    season-total projection goes stale (Sleeper froze it at preseason - verified week 3,
+    2026: Lamar still exactly August's 18.7) while the weekly lines move, so ePPG is
+    rebuilt from them. A bye is skipped (owner: "don't count bye weeks"); an injury week
+    counts as the 0 it projects ("injuries are real"). `healthy` is his rate when back,
+    only for a player OUT NOW (his next game projects 0 - A.J. Brown's five zeros, then
+    back in week 8): the weeks he is projected to play, or the preseason rate when there
+    are none (Sleeper projects IR with no games at all). A fill-in whose zeros come AFTER
+    his starts (Kirk Cousins, 14 14 16 then 0s) has no healthy story: healthy = expected."""
+    pts: dict[str, list[float]] = {}
+    for week, rows in weekly.items():
+        for r in rows:
+            if r.get("team") and r["team"] not in byes.get(week, set()):
+                pts.setdefault(r["player_id"], []).append(sleeper.score(r.get("stats") or {}, scoring))
+    out = {}
+    for pid, weeks in pts.items():
+        expected = sum(weeks) / len(weeks)
+        playing = [p for p in weeks if p > 0]
+        if weeks[0] > 0:
+            healthy = expected
+        else:
+            healthy = sum(playing) / len(playing) if playing else preseason.get(pid, 0)
+        out[pid] = (round(expected, 1), round(healthy, 1))
+    return out
+
+
+def _projected_ppg(league: dict) -> dict[str, tuple[float, float | None]]:
+    """player_id -> (projected_ppg, healthy_ppg). Preseason: the season total over 17
+    games, and no healthy number. In-season: `rest_of_season_ppg`."""
+    season, scoring = league["season"], league["scoring_settings"]
+    preseason = {pid: round(sleeper.score(stats, scoring) / GAMES_PER_SEASON, 1)
+                 for pid, stats in sleeper.get_projections(season).items()}
+    try:
+        state = sleeper.get_nfl_state()
+        if state.get("season_type") != "regular" or str(state.get("season")) != str(season):
+            return {pid: (v, None) for pid, v in preseason.items()}
+        weeks = range(max(int(state.get("week") or 1), 1), REGULAR_SEASON_WEEKS + 1)
+        return rest_of_season_ppg({w: sleeper.projection_rows(season, w) for w in weeks},
+                                  {w: sleeper.bye_teams(season, w) for w in weeks},
+                                  scoring, preseason)
+    except Exception as e:
+        degraded.record("weekly projections", f"ePPG fell back to the preseason projection ({type(e).__name__})")
+        return {pid: (v, None) for pid, v in preseason.items()}
+
+
 @ttl_cache(LEAGUE_CONFIG_TTL)
 def context(league_id: str) -> LeagueContext:
     league = sleeper.get_league(league_id)
@@ -103,10 +151,10 @@ def context(league_id: str) -> LeagueContext:
                                      fmt["ppr"], fmt["is_dynasty"], fmt["tep_tier"])
     # A copy per league: the market dict is shared across formats, the projection is
     # priced by THIS league's scoring.
-    projections = sleeper.get_projections(league["season"])
-    players = {pid: {**info, "projected_ppg": round(
-        sleeper.score(projections.get(pid, {}), league["scoring_settings"]) / GAMES_PER_SEASON, 1)}
-        for pid, info in players.items()}
+    ppg = _projected_ppg(league)
+    players = {pid: {**info, "projected_ppg": ppg.get(pid, (0.0, None))[0],
+                     "healthy_ppg": ppg.get(pid, (0.0, None))[1]}
+               for pid, info in players.items()}
     needs_slots = roster_needs.dedicated_slots(league["roster_positions"])
     lineup_dedicated, lineup_flex = roster_needs.lineup_slots(league["roster_positions"])
     rosters = sleeper.get_rosters(league_id)

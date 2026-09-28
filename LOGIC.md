@@ -1269,6 +1269,37 @@ PPG"), so a fourth grounding guard (`_unit_violations`) joins the retry loop - a
 digit number wearing a per-game unit is deterministically a price narrated as points
 (real ppg is two digits) and triggers the same silent redo as the other guards.
 
+## In-season ePPG: rebuilt from the weekly lines (2026-09-28)
+
+The September check from the in-season v1 scope ("verify ePPG is a living number") FAILED:
+Sleeper froze the season-total projection at preseason - week 3, 2026, Lamar still read
+exactly August's 18.7, and Jonathan Taylor's season total gave 16.0 a game while his
+remaining weekly lines averaged ~20. Only playoff pace read the weekly lines; the table,
+ranks, needs, lineups and trade ideas were all running on preseason numbers.
+
+`league.rest_of_season_ppg` now rebuilds ePPG in-season from the weeks left (NFL state
+week through week 18), priced by the league's own scoring, with the owner's rule: **byes
+are skipped, injuries count as the 0 they project.** A bye is a TEAM fact - per player a
+bye and an IR stint look identical (no opponent either way), but in a bye week nobody on
+the team has an opponent (`sleeper.bye_teams`). Preseason, and on any weekly-feed
+failure (disclosed via `degraded`), it stays the season total over 17.
+
+A second number rides along: `healthy_ppg`, his rate when back - only for a player OUT
+NOW (next game projects 0). A.J. Brown (0 0 0 0 0, back week 8 at ~15) gets the weeks
+he plays; IR players get no games at all from Sleeper, so they fall back to the preseason
+rate; a FILL-IN whose zeros come after his starts (Kirk Cousins: 14 14 16, then 0s) has
+no healthy story at all - he was the first tag candidate and the reason for the out-now
+rule. The roster view marks a player the lineup would START at his healthy rate but
+doesn't today with a `healthy starter` chip (owner: "a tag showing they would be a
+starter once they are using uninjured projections").
+
+What it moved in XFL 2: lineup totals rose across the board (the weekly lines run hotter
+than the frozen totals), rebuilds that sold their backfield fell hard (bigbuttboi starting
+Kaleb Johnson at 1.3 and Kendre Miller at 0.2), and the contention tiers re-cut on the new
+spread - dezdroppedit27 moved contend -> decide, leading the pack under a top three that
+pulled away. Pace now also prints `<1%` / `>99%` rather than 0 or 100: the backtest's
+lowest decile still made the playoffs 3.2% of the time.
+
 ## Playoff pace (`team_state.playoff_pace`, 2026-08-21)
 
 The first in-season piece (v1 scope in ROADMAP): a soft playoff-contention percentage,
@@ -1908,6 +1939,16 @@ still 0.43 on the centerpiece against 0.64-0.84 - the owner's gut said "Jefferso
 be worth more" and the study agrees). Never a price verdict: click one and
 the framer's impact appears, the assistant judges on Ask. Deterministic and ~0.3s once
 the board is warm.
+
+### Chip layout: names truncate, chips never do (2026-09-28)
+
+The roster rows styled `.prow span:first-child` as the NAME - and the `sflx` chip, being
+the first span inside the name, matched too: clipped along with the name and handed the
+starter's arrow ("Dak Prescott ▸ sflx", owner's screenshot). Child selectors now
+(`.prow>span:first-child`); the name cell is a wrapping flex row where the name alone
+ellipsizes, a short chip sits inline, and a long one (`healthy starter`) drops to its
+own line rather than truncating the name - phones have no hover, so a chip's words must
+fit whole.
 
 ### Flex occupants named (2026-08-21)
 
