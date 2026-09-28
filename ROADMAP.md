@@ -456,6 +456,20 @@ and the overview's needs take the same parameter; withContext pins it. ~half a d
 the XFL eye-test; needs-on-ePPG (below) should land first or alongside, since the chips
 this surfaces are the ones that over-flag in 1QB.
 
+**TODO soon (owner, 2026-09-28): GCP billing before the free trial ends (~2026-11-08).**
+Both services scale to zero and fit Cloud Run's always-free tier - expected cost after
+the trial is ~$0-2/month (2.6GB of images is the only standing charge). Two actions:
+(1) upgrade the billing account to paid in the console - owner-only, or the services
+pause when the trial ends; (2) a $10/month budget alert (needs billingbudgets API).
+Also: this machine's gcloud CA bundle (`windows_roots.pem`, Aug 13) went stale - a
+fresh certifi + Windows-store bundle via CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE works.
+
+**Declined (owner, 2026-09-28): IR = out for the season.** Achane (ACL, IR) still
+projects 15-20 a week because Sleeper's projection feed lags its own IR status; zeroing
+IR players was proposed and rejected - "players like A.J. Brown are on IR and play more
+later in the season." The lag is the feed's; the market already reads it (Achane's
+redraft value is gone), which is the parked ePPG-vs-market disagreement flag's case.
+
 **Scaling economics (owner asked 2026-08-21: "no good path to 1000 active users/day
 without hurting my wallet?"):** the deterministic layer (table, ideas, composer, pace)
 is ~free and fully LLM-less - a free tier is 90% of the product at full quality, only
