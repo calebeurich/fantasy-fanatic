@@ -66,7 +66,6 @@ INJURY_CODES = {"R01", "R48", "R04", "R05", "I01"}
 # smuggling it in under an injury label.
 NON_INJURY_ABSENCE_CODES = {"R40", "R30", "R06"}
 
-RESERVE_STATUS = "RES"
 
 # The report's own word for "will not play". "Questionable" and "Doubtful" are deliberately
 # not counted - they describe uncertainty, not absence, and plenty of questionable players

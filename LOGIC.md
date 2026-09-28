@@ -1859,6 +1859,17 @@ starter, so you spend fewer of them.
 
 ### Trade ideas: the door into the composer (2026-08-17)
 
+*Where it lives (2026-09-28 review):* `analysis/trade_ideas.py` - `suggest` (one pair),
+`ideas` (one team across the league), `pick_ideas` (ranking and selection), `fits` (the
+composer's tags). It grew as a 292-line function of twelve closures inside the web
+layer (`agent/api.py`), calling one of the API's own routes; the move to analysis was
+proven behavior-identical (old and new in one process on the same data: 322 checks -
+every team's ideas in three leagues, XFL under all three stances, and every XFL pair's
+suggestions and tags - zero differences) and every rule below now has a named test in `tests/test_trade_ideas.py`. One family the
+text below doesn't spell out: production a seller is moving (`production_adds` - see
+"Production adds") becomes a picks-only buy ("a 2nd for Evans" - owner), alone or two at
+once as a consolidation.
+
 Owner: "a lot of info burying the agent to auto open the league table and the trade
 thing at once ... populate 1-3 trade suggestions to the right of picks for the team you
 click on, click to open the trade helper with that loaded." So the composer is collapsed
@@ -1959,6 +1970,32 @@ already says it. Sits beside the a_schoell-league read that prompted it: Adams a
 "weak WR2" was checked against BOTH instruments (market WR22, ePPG WR31, bar = 20 in a
 10-team league) and held - when the two currencies agree, the chip is a fact about the
 roster, not the calibration bug.
+
+### Composer tags (`trade_ideas.fits`)
+
+The tag on each piece the other team would move says why YOU would want him, from one
+test - your lineup with him added:
+- **"starts for them (+X)"** - he makes the lineup and it gains at least 0.1 a game (a
+  wash is depth, not a start; "Burrow ain't depth" - owner, he started for dez by +0.3
+  over Dak). The why names who he displaces and both season prices, because projections
+  flatten some gaps the market doesn't (Burrow 17.4 vs Dak 17.1 a game, 8,226 vs 4,403
+  in season price); "· market says much more" when his price is 1.5x+ the displaced
+  starter's and the gain is under a point.
+- **"level with their X"** - he'd sit within 5% of the weakest starter at his position:
+  a wash, not a backup (Purdy 17.1 vs Dak 17.1), with the market's opinion attached
+  either way at the same 1.5x.
+- **"depth for them"** - he wouldn't start, but he's within 85% of the weakest starter
+  in any slot his position can fill (DJ Moore at 10.5 behind Metcalf's 10.8 flex is one
+  spot from play), or would start if exactly one starter were out.
+- **"on their rebuild wish list"** - for a rebuild, whose interest is young value, not
+  its lineup (so it gets no lineup tags at all: a sell team "not making a starting
+  lineup" shouldn't tag your starters as upgrades). Only above the position's trade bar
+  - a 748-value QB3 is a roster clogger, not a wish.
+- **"beats their X"** - an efficiency swap from your own value_upgrades whose return
+  sits on that roster.
+
+The same tags feed the ideas generator's consolidations: "starts / level / beats" count
+as starting for the receiver, "depth" as cover.
 
 ### The trade composer (staging only, 2026-08-17 v2)
 

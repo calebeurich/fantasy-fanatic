@@ -138,6 +138,8 @@ SELL_FRICTION = ("cornerstone", "costs_you_production")
 
 
 def _friction(flavor: str, why: str) -> dict:
+    if flavor not in BUY_FRICTION + SELL_FRICTION:   # a typo'd flavor fails loudly, not silently
+        raise ValueError(f"unknown friction flavor {flavor!r}")
     return {"flavor": flavor, "why": why}
 
 

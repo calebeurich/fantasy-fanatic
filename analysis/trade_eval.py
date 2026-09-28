@@ -62,14 +62,14 @@ RETURN_SHAPES = [
 ]
 
 
-def _shape_for(pct: float):
+def shape_for(pct: float):
     for bound, *rest in RETURN_SHAPES:
         if pct < bound:
             return rest
     return RETURN_SHAPES[-1][1:]
 
 
-def _value_percentile(value: int, players: dict) -> float:
+def value_percentile(value: int, players: dict) -> float:
     """Where a piece sits in this league's valued player pool, 0.0 = the top."""
     vals = sorted((i.get("value") or 0 for i in players.values() if i.get("value")), reverse=True)
     if not vals:
@@ -198,7 +198,7 @@ def _package_read(receives: list[dict], best: dict, receives_best: bool, pct: fl
     is a single player (a plain swap - the shape table has nothing to add)."""
     if receives_best or best["position"] == "PICK":
         return None  # the shape table describes players; a pick-for-pick swap has no comp here
-    label, pieces, (q1, med, q3), summed, has_first, no_picks = _shape_for(pct)
+    label, pieces, (q1, med, q3), summed, has_first, no_picks = shape_for(pct)
     throw_ins = [p for p in receives
                  if trade_bars and start_bars and _throw_in(p, trade_bars, start_bars)]
     real = [p for p in receives if p not in throw_ins]
@@ -390,7 +390,7 @@ def evaluate_from_board(board, owner_a: str, sends_a: list[str],
 
     best = max(pieces_a + pieces_b, key=lambda p: p["value"])
     best_to = b["owner"] if best in pieces_a else a["owner"]
-    best_pct = _value_percentile(best["value"], ctx.players) if best["position"] != "PICK" else 1.0
+    best_pct = value_percentile(best["value"], ctx.players) if best["position"] != "PICK" else 1.0
 
     sides = []
     for state, sends, receives, changes_key, stance in (

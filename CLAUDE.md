@@ -64,12 +64,13 @@ Packages split by role, each with an `__init__.py`:
   `cache.py`, `degraded.py`, `dp_values.py`, `fc_trades.py`, `sleeper_crawl.py`
 - **`analysis/`** (built on top of the data sources): `team_values.py`, `team_state.py`,
   `roster_needs.py`, `roster_detail.py`, `trade_activity.py`, `trade_eval.py`,
-  `waiver_wire.py`, `format_support.py`, `prior_season.py`, `league.py` (the shared
+  `waiver_wire.py`, `format_support.py`, `prior_season.py`, `trade_ideas.py` (the
+  deterministic trade-ideas generator), `league.py` (the shared
   per-league context), `audit.py` (the defect-family guards), `market_drift.py`,
   `warm.py`, and the `trade_targets/` subpackage
 - **`agent/`** (the served product): `mcp_server.py` + `test_mcp_server.py`,
-  `agent.py` (SDK agent + grounding guards), `api.py` (FastAPI + the deterministic
-  trade-ideas generator), `sessions.py`, `budget.py`, `observability.py`,
+  `agent.py` (SDK agent + grounding guards), `api.py` (FastAPI routes - thin; the
+  analysis they serve lives in `analysis/`), `sessions.py`, `budget.py`, `observability.py`,
   `log_summary.py`, `evals.py`, `langgraph_client.py`, `static/` (the UI)
 - **`research/`** (offline studies that test intuitions against data before they
   become constants - deterministic, free to re-run, findings summarized in its
