@@ -685,9 +685,7 @@ WEEKLY_MARGIN_SD = 36.0
 # the pace is lopsided enough to change what the trade market means for this team.
 # Symmetric at the owner's call (the first cut was 20/85 on a hunch that "sell the
 # season" deserved a higher bar than "buy" - a taste, not a measurement).
-PACE_MIN_WEEKS = 4
 PACE_SELLER_MAX, PACE_BUYER_MIN = 25, 75
-DEADLINE_WINDOW = 4   # the sentence speaks only in the last weeks before the league's deadline
 
 
 def pace_text(pace: int) -> str:
@@ -758,7 +756,8 @@ def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None,
         played = rec["wins"] + rec["losses"] + rec["ties"]
         to_deadline = deadline - (played + 1)   # weeks until the league's trade deadline
         r["pace_note"] = None
-        if played >= PACE_MIN_WEEKS and 0 <= to_deadline <= DEADLINE_WINDOW:
+        # The pivot window: midseason (enough games to choose on) through the deadline.
+        if played >= season_weeks / 2 and to_deadline >= 0:
             when = "this week" if to_deadline == 0 else f"in {to_deadline} week{'s' if to_deadline > 1 else ''}"
             lead = f"{pace_text(r['playoff_pace'])} playoff pace with the trade deadline {when}"
             if r["playoff_pace"] <= PACE_SELLER_MAX:

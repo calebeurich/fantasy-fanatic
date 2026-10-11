@@ -393,6 +393,13 @@ number would be quietly wrong.
   league-scored - LOGIC.md "Production is projected points"). Still open: WEEKLY
   projections as an in-season consumer (same endpoint with `week=`; start/sit, "he's
   on bye", the Track 4 questions) - deliberately not wired until there is a week.
+- **Market-implied fantasy points from player props** (owner, 2026-10-11: "ePPG are not
+  ground truth - they are kind of bad-ish projections; better would be live
+  sportsbook-driven implied fantasy point totals impacted by market pressure"). Props
+  (pass/rush/rec yards, receptions, anytime-TD) price THIS week; converting them to
+  implied points under each league's scoring would sharpen the near term (weekly
+  lineups, pace's next weeks). Rest-of-season ePPG still needs projections - props
+  rarely price beyond the coming week. Same feed and budget-cap rule as below.
 - **Sportsbook lines / news-flow value arb** (ordering decided 2026-08-14:
   SEASON-LONG lines first - player season totals and futures for calibration and
   draft-season/dynasty-valuation use - before any week-by-week props; weekly is an
