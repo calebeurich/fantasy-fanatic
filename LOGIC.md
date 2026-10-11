@@ -1302,6 +1302,12 @@ lowest decile still made the playoffs 3.2% of the time.
 
 ## Playoff pace (`team_state.playoff_pace`, 2026-08-21)
 
+*In-season default (2026-10-11):* once any games are played the league table opens sorted
+by playoff pace (the Record column's sort; ePPG breaks ties) - the owner's August call
+("rank people default by their playoff pct throughout the season"). A SORT only: the #
+column stays the roster's contention rank, because paths, tiers and the trade lenses key
+off it and a slow start must not cascade into rebuild reads.
+
 The first in-season piece (v1 scope in ROADMAP): a soft playoff-contention percentage,
 never a gate - the owner's spec was "non hard cutoff mathematical playoff contention",
 after rejecting a record-takes-over design ("ePPG should always be a more accurate
@@ -1322,8 +1328,14 @@ sides' binomial noise. Preseason (zero games) it is purely projection-based - XF
 reads 78% down to 14% across ranks 1-12 under the real schedule, boundary teams ~50%,
 nobody at the poles. Slots >= teams -> None (everyone makes it; not worth printing).
 
-Deadline flavor is a SENTENCE, not a flip: with 4+ weeks played and pace <= 25 or
->= 75 (PACE_SELLER_MAX / PACE_BUYER_MIN, symmetric at the owner's call), `pace_note` lands in path_reason ("~12%
+Deadline flavor is a SENTENCE, not a flip: with 4+ weeks played, pace <= 25 or >= 75
+(PACE_SELLER_MAX / PACE_BUYER_MIN, symmetric at the owner's call), AND the league's own
+trade deadline (Sleeper `settings.trade_deadline`; none set = the last regular-season
+week) within DEADLINE_WINDOW = 4 weeks - added 2026-10-11 after week 4, when the
+ungated sentence fired for 7 of 12 XFL teams and 6 of 10 in n0duh's league with ten
+weeks left: a 2-2 team at 75% being told "this season is live" is noise, not a deadline
+signal. The sentence prints pace the way the table does (`pace_text`: `<1%` / `>99%`,
+never 0 or 100), `pace_note` lands in path_reason ("~12%
 playoff pace with 5 regular-season weeks left - ... the rental market reads differently
 for a team that can sell it"). The path chip itself never moves on pace - paths stay
 roster-driven, the season is context.

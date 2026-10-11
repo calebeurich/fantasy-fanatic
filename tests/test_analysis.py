@@ -2708,18 +2708,25 @@ def test_playoff_pace_record_dominates_late():
 
 
 def test_playoff_pace_deadline_note_only_when_lopsided_and_started():
-    """The deadline sentence needs 4+ weeks played AND an extreme pace; a preseason
-    long shot and a mid-pace team both stay silent, and the note lands in path_reason."""
+    """The deadline sentence needs 4+ weeks played, an extreme pace, AND the league's
+    trade deadline within DEADLINE_WINDOW weeks - at week 4 with ten weeks left it fired
+    for 7 of 12 XFL teams, which is noise, not a deadline signal. It lands in
+    path_reason, and prints pace the way the table does (never 0 or 100)."""
     from analysis.team_state import playoff_pace
-    rows = _pace_rows([(150, 7, 0), (135, 4, 3), (136, 3, 4), (134, 4, 3),
-                       (120, 0, 7), (118, 0, 7)])
-    playoff_pace(rows, {"playoff_teams": 2, "playoff_week_start": 15})
-    assert rows[0]["pace_note"] and "live" in rows[0]["pace_note"]
-    assert rows[0]["pace_note"] in rows[0]["path_reason"] or rows[0]["path_reason"]
-    assert rows[1]["pace_note"] is None
-    assert rows[4]["pace_note"] and "sell" in rows[4]["pace_note"]
+    specs = [(150, 7, 0), (135, 4, 3), (136, 3, 4), (134, 4, 3), (120, 0, 7), (118, 0, 7)]
+    near = _pace_rows(specs)   # 7 played -> week 8; deadline week 10 is 2 weeks out
+    playoff_pace(near, {"playoff_teams": 2, "playoff_week_start": 15, "trade_deadline": 10})
+    assert near[0]["pace_note"] and "live" in near[0]["pace_note"] and "in 2 weeks" in near[0]["pace_note"]
+    assert near[0]["pace_note"][0:3] in (">99", "~99") or near[0]["pace_note"].startswith("~")
+    assert near[0]["pace_note"] in near[0]["path_reason"].lower() or near[0]["path_reason"]
+    assert near[1]["pace_note"] is None
+    assert near[4]["pace_note"] and "sell" in near[4]["pace_note"]
+    assert "~0%" not in near[4]["pace_note"] and "~100%" not in near[0]["pace_note"]
+    far = _pace_rows(specs)    # no deadline set -> the last regular-season week, 6 weeks out
+    playoff_pace(far, {"playoff_teams": 2, "playoff_week_start": 15})
+    assert all(r["pace_note"] is None for r in far)
     pre = _pace_rows([(150, 0, 0), (140, 0, 0), (120, 0, 0)])
-    playoff_pace(pre, {"playoff_teams": 2, "playoff_week_start": 15})
+    playoff_pace(pre, {"playoff_teams": 2, "playoff_week_start": 15, "trade_deadline": 3})
     assert all(r["pace_note"] is None for r in pre)
 
 

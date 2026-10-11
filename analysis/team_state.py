@@ -687,6 +687,12 @@ WEEKLY_MARGIN_SD = 36.0
 # season" deserved a higher bar than "buy" - a taste, not a measurement).
 PACE_MIN_WEEKS = 4
 PACE_SELLER_MAX, PACE_BUYER_MIN = 25, 75
+DEADLINE_WINDOW = 4   # the sentence speaks only in the last weeks before the league's deadline
+
+
+def pace_text(pace: int) -> str:
+    """Pace as printed: never 0 or 100 - the backtest's lowest decile still made it 3.2%."""
+    return "<1%" if pace < 1 else ">99%" if pace > 99 else f"~{pace}%"
 
 
 def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None,
@@ -712,6 +718,10 @@ def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None,
     falls back to the season ePPG."""
     slots = settings.get("playoff_teams") or 0
     season_weeks = (settings.get("playoff_week_start") or 15) - 1
+    # Sleeper's trade_deadline is a week number; none set (0, or past the regular season)
+    # means trades run to the end, so the sentence keys off the last regular-season week.
+    deadline = settings.get("trade_deadline") or 0
+    deadline = deadline if 0 < deadline <= season_weeks else season_weeks
     if not slots or slots >= len(rows) or season_weeks <= 0:
         for row in rows:
             row["playoff_pace"] = None
@@ -746,18 +756,16 @@ def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None,
         r["playoff_pace"] = round(100 * pace)
         rec = r["record"]
         played = rec["wins"] + rec["losses"] + rec["ties"]
-        remaining = season_weeks - played
+        to_deadline = deadline - (played + 1)   # weeks until the league's trade deadline
         r["pace_note"] = None
-        if played >= PACE_MIN_WEEKS and remaining > 0:
+        if played >= PACE_MIN_WEEKS and 0 <= to_deadline <= DEADLINE_WINDOW:
+            when = "this week" if to_deadline == 0 else f"in {to_deadline} week{'s' if to_deadline > 1 else ''}"
+            lead = f"{pace_text(r['playoff_pace'])} playoff pace with the trade deadline {when}"
             if r["playoff_pace"] <= PACE_SELLER_MAX:
-                r["pace_note"] = (f"~{r['playoff_pace']}% playoff pace with {remaining} "
-                                  "regular-season weeks left - this season is a long shot, "
-                                  "and the rental market reads differently for a team "
-                                  "that can sell it")
+                r["pace_note"] = (f"{lead} - this season is a long shot, and the rental market "
+                                  "reads differently for a team that can sell it")
             elif r["playoff_pace"] >= PACE_BUYER_MIN:
-                r["pace_note"] = (f"~{r['playoff_pace']}% playoff pace with {remaining} "
-                                  "regular-season weeks left - this season is live, and "
-                                  "production bought now gets used")
+                r["pace_note"] = f"{lead} - this season is live, and production bought now gets used"
         if r["pace_note"]:
             r["path_reason"] += ". " + r["pace_note"][0].upper() + r["pace_note"][1:]
 
