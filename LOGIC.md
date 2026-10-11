@@ -1265,9 +1265,12 @@ is unchanged - a higher season price IS the market's read on who produces more -
 fix is that the number is quoted as the price it is. Real points-per-game claims
 (`projected_ppg`, lineup deltas) were already in ppg and stay untouched. The notes fix
 alone was not enough: the very next answer invented the unit itself ("scores 2,984
-PPG"), so a fourth grounding guard (`_unit_violations`) joins the retry loop - any 3+
-digit number wearing a per-game unit is deterministically a price narrated as points
-(real ppg is two digits) and triggers the same silent redo as the other guards.
+PPG"), so a fourth grounding guard (`_unit_violations`) joins the retry loop - a number
+wearing a per-game unit that is in the thousands, or at least LINEUP_PPG_MAX = 250, is
+deterministically a price narrated as points and triggers the same silent redo as the
+other guards. (First cut flagged ANY 3+ digit per-game number - "real ppg is two digits" -
+which is true of a player but not a lineup: on 2026-10-11 it forced a retry on a correct
+"projects to score 149.3 PPG", a whole lineup's total. A lineup tops out near 200.)
 
 ## In-season ePPG: rebuilt from the weekly lines (2026-09-28)
 

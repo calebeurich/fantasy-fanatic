@@ -516,15 +516,19 @@ def _ballpark_violation(text: str, tool_calls: list[dict], tool_results: list[di
     return not any("BALLPARK" in _content_text(r.get("content")) for r in tool_results)
 
 
-# Real per-game numbers in fantasy football are two digits; a 3+ digit number wearing a
-# per-game unit is a season market PRICE narrated as points ("Shough scores 2,984 PPG").
+# A player's per-game number is two digits and a lineup's is under ~250; a bigger number
+# wearing a per-game unit is a season market PRICE narrated as points ("Shough scores 2,984 PPG").
 # The tool notes were fixed to say "season price" (2026-08-19) and the model then invented
 # the unit itself, so the guard is on the ANSWER: deterministic, no tool context needed.
-_PPG_LIE = re.compile(r"\b(?:\d{1,3}(?:,\d{3})+|\d{3,})(?:\.\d+)?\s*(?:ppg\b|points?\s+(?:per|a)\s+game)", re.I)
+_PPG_LIE = re.compile(r"\b(\d{1,3}(?:,\d{3})+|\d{3,})(?:\.\d+)?\s*(?:ppg\b|points?\s+(?:per|a)\s+game)", re.I)
+LINEUP_PPG_MAX = 250   # a whole starting lineup scores ~90-200 a game; no price is that small
 
 
 def _unit_violations(text: str) -> list[str]:
-    return _PPG_LIE.findall(text or "")
+    """A season price narrated as points: thousands ("2,984 PPG") or a 3+ digit number
+    past what a whole lineup scores ("590 ppg"). A lineup total ("149.3 PPG") is real."""
+    return [m.group(0) for m in _PPG_LIE.finditer(text or "")
+            if "," in m.group(1) or int(m.group(1)) >= LINEUP_PPG_MAX]
 
 
 def _content_text(content) -> str:

@@ -229,3 +229,6 @@ def test_ppg_guard_flags_prices_wearing_pergame_units():
     assert _unit_violations("costs 1,611 points a game")
     assert not _unit_violations("gains 2.4 points a game; Lamar projects 18.1 ppg")
     assert not _unit_violations("priced at 2,984 for the season")
+    # A whole lineup's total IS three digits a game - live on Haiku 5.5, 2026-10-11, the
+    # guard forced a retry on a correct "projects to score 149.3 PPG".
+    assert not _unit_violations("the lineup projects to score 149.3 PPG, 172 points a game at best")
