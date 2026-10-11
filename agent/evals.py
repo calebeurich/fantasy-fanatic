@@ -337,59 +337,51 @@ async def case_never_builds_a_package() -> None:
 
 async def case_sells_on_runway_not_age() -> None:
     """The failure that cost this roster the right answer twice - once from the agent and
-    once from a human reading the same tools. Goff is 31.8 with 6.2 years to decline (pocket
-    passer); Hurts is 28.0 with 4.0 (running quarterback). Both recommended trading Goff,
-    the OLDER man, because age is the intuitive proxy and `years_to_decline` is the real one.
+    once from a human reading the same tools: both recommended trading the OLDER
+    quarterback, because age is the intuitive proxy and `years_to_decline` is the real one
+    (a pocket passer ages on a longer curve than a runner).
 
-    Asserted as a relationship rather than a required name: if the answer names Goff as
-    something to move, it has to have considered Hurts too, since that is the comparison the
-    numbers force."""
+    The pair is found LIVE, not hard-coded: the original Goff/Hurts pair died when Hurts
+    was traded (2026-10, roster drift - ROADMAP "Eval premises drift"). Among jwall567's
+    sellable QBs, the trap is an older man with MORE runway than a younger one. If the
+    answer names the older one to move, it must have weighed the shorter-runway one as a
+    sale - asserted as a relationship, not a required name."""
     from analysis import team_state
+    from analysis.league import context
+    age = {p["name"]: p["age"] for p in context(FRIENDS_LEAGUE).players.values()}
     row = next(t for t in team_state.classify_league(FRIENDS_LEAGUE) if t["owner"] == "jwall567")
-    runway = {e["name"]: e["years_to_decline"] for e in row["sellable"]}
-    # **The premise is entirely dependent on nflverse role tags, and it used to guard the wrong
-    # pair** - Hurts against Herbert, while asserting something about Hurts against GOFF. Goff
-    # only out-runways Hurts because `pocket_passer` moves him to a (26, 38) curve while
-    # `dual_threat_qb` moves Hurts to (26, 34). With roles unreachable both fall back to the
-    # position default and the comparison INVERTS - Goff 2.1 against Hurts 6.0 - at which point
-    # recommending Goff is the correct runway answer and this case fails the agent for being
-    # right. Checked before spending an API call, and named for what it almost always is.
-    for shorter, longer in (("Jalen Hurts", "Justin Herbert"), ("Jalen Hurts", "Jared Goff")):
-        assert runway.get(shorter, 99) < runway.get(longer, 0), (
-            f"PREMISE GONE, not an agent regression: this case needs {shorter} to have LESS "
-            f"runway than {longer}, and he has {runway.get(shorter)} against "
-            f"{runway.get(longer)}. Almost always means the nflverse role tags were "
-            f"unreachable, so every age curve fell back to its position default - look for "
-            f"'WARNING: usage roles unavailable' on stderr and re-run. If roles ARE available, "
-            f"it is real fixture drift and the case needs rewriting around the new numbers.")
+    qbs = [(e["name"], age.get(e["name"]), e["years_to_decline"]) for e in row["sellable"]
+           if e["position"] == "QB" and age.get(e["name"]) and e["years_to_decline"] is not None]
+    traps = [(older, shorter) for older in qbs for shorter in qbs
+             if older[1] > shorter[1] and older[2] > shorter[2]]
+    # Checked before spending an API call, and the two causes are told apart: a trade
+    # empties the trap; a role-data outage flattens every curve to the position default.
+    assert traps, (
+        f"PREMISE GONE, not an agent regression: no older-but-longer-runway QB pair on "
+        f"jwall567's roster now ({qbs}). If 'WARNING: usage roles unavailable' is on stderr, "
+        f"the curves fell back to their defaults - re-run. Otherwise the roster changed and "
+        f"there is no trap left to test here.")
+    (older, _, _), (shorter, _, _) = max(traps, key=lambda t: t[0][1] - t[1][1])
 
     question = (f"For Sleeper league {FRIENDS_LEAGUE}, jwall567 is rebuilding and has too "
                 "many quarterbacks. Which one should he trade and why?")
     result = await _ask(question)
-    # The premise can also die INSIDE the run, where the pre-check above cannot see it: the
-    # agent's own MCP subprocess hits the nflverse outage, discloses the data gap (as told
-    # to), and Goff on the default curve drops to 2.1 years - at which point recommending
-    # him IS the right runway answer. One retry; a second gap is the feed being down.
+    # The premise can also die INSIDE the run (the agent's own tool server hits the
+    # nflverse outage and discloses the gap): one retry, then call it the feed.
     if "data gap" in result["text"].lower() or "usage roles" in result["text"].lower():
         result = await _ask(question)
         assert not ("data gap" in result["text"].lower()
                     or "usage roles" in result["text"].lower()), (
             "PREMISE GONE at runtime, not an agent regression: the agent's own run "
-            "disclosed a usage-roles gap twice, so its runway numbers are the default-curve "
-            "ones this case's premise check exists to reject. Re-run when nflverse recovers.")
-    # "Hurts appears anywhere in the text" is too weak an assertion, and a live run proved
-    # it: the answer led with "Trade 1: Ship Jared Goff" and mentioned Hurts only in a list
-    # of the roster's QBs and again among the keepers, never weighing him as the sale.
-    # `_trade_violations` is too NARROW for the Hurts side, in exactly the opposite way: its
-    # negation skip (right for the runtime safety net) discards "you'd actually sell Hurts
-    # and keep Goff - but he's a cornerstone", which is this case's PASSING answer. Weighing
-    # a sale and pricing it above market is consideration, not negation.
-    if _trade_violations(result["text"], {"Jared Goff"}):
-        assert _weighs_as_sale(result["text"], "Hurts"), (
-            "recommended moving the older QB without weighing the one with less runway "
-            f"as a sale at all: {result['text']}")
-    print(f"case_sells_on_runway_not_age: PASS (${(result['cost_usd'] or 0):.4f}, "
-          f"{result['num_turns']} turns)")
+            "disclosed a usage-roles gap twice. Re-run when nflverse recovers.")
+    # Sentence-scoped weighing (`_weighs_as_sale`), not "named anywhere": a live answer once
+    # led with the older man and mentioned the shorter-runway one only among the keepers.
+    if _trade_violations(result["text"], {older}):
+        assert _weighs_as_sale(result["text"], shorter.split()[-1]), (
+            f"recommended moving {older} (older, more runway) without weighing {shorter} "
+            f"(younger, less runway) as a sale at all: {result['text']}")
+    print(f"case_sells_on_runway_not_age: PASS ({older} vs {shorter}; "
+          f"${(result['cost_usd'] or 0):.4f}, {result['num_turns']} turns)")
 
 
 CASES = [

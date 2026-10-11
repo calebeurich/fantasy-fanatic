@@ -496,6 +496,10 @@ at current usage - recorded so the numbers survive.
   and names the failure "PREMISE GONE". The pattern to spread when a third case
   drifts: every roster-dependent assertion either derives its expectation live or
   pre-checks the premise and fails loudly as drift, never as an agent regression.
+  SECOND instance 2026-10-11: Hurts traded to FitzmagicsEMUs killed the runway case's
+  hard-coded Goff/Hurts pair, and its error message blamed an nflverse outage. Rewritten
+  to find the trap LIVE (an older QB with more runway than a younger one - now Goff 31.9
+  vs Darnold 29.3) and to tell a trade from a role outage. Suite back to 12/12.
 - **`redraft_value` misread as points - RESOLVED 2026-08-19, same day.** It recurred
   pervasively on the second live answer, and the source turned out to be our own note
   prose ("Produces X this season") plus keys named `production_gained`/`production_per_cost`.
