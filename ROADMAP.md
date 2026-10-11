@@ -480,7 +480,8 @@ redraft value is gone), which is the parked ePPG-vs-market disagreement flag's c
 **Scaling economics (owner asked 2026-08-21: "no good path to 1000 active users/day
 without hurting my wallet?"):** the deterministic layer (table, ideas, composer, pace)
 is ~free and fully LLM-less - a free tier is 90% of the product at full quality, only
-the Ask/counterparty cost money (~$0.05/ask, ~$0.10 for a two-agent trade question).
+the Ask/counterparty cost money (~$0.05/ask on Haiku 4.5, ~$0.005-0.01 on Haiku 5.5
+since 2026-10-11; a two-agent trade question is two asks).
 1000 DAU x 3 asks = ~$150/day uncapped; the levers, in order: (1) per-visitor ask caps
 for everyone (built for demo, make default), (2) trim tool payloads + skip counterparty
 unless asked (halves trade questions), (3) BYO Anthropic key, (4) paid tier. Throughput

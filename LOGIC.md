@@ -1744,7 +1744,20 @@ dropping the Agent SDK for the raw API would save ~a hundred tokens - if it is e
 replaced it should be for control, not cost. Tool results are small once
 `get_team_state` takes `owner_name` (unfiltered was ~7,846 tokens and made the model
 fall back to re-deriving windows from roster_detail - the fix was a filter, not a
-prompt). Haiku needs a 4,096+ token cacheable block before caching activates at all.
+prompt). Haiku 4.5 needed a 4,096+ token cacheable block before caching activated at all.
+
+**Model: Haiku 4.5 -> 5.5 (2026-10-11).** Haiku 5.5 shipped 2026-10-07 at a tenth of
+4.5's price for prompts under 100K tokens ($0.10 / $0.50 per M in/out, cache reads $0.01;
+this agent's prompts run ~30-45K) and a 1M context. Same 12-case suite, same day: 12/12 on
+both; median tool-using answer 43s vs 60s; the whole suite $0.05 vs $0.29; grounding
+retries 2 vs 4. It also reached for `evaluate_trade` to check an idea before proposing it.
+**The trap on the way:** the first run returned empty answers, because the pinned Agent
+SDK (0.2.134) prices every answer from its own model table, did not know Haiku 5.5, and
+priced it like old Opus - ~$0.60 for a question that really cost ~$0.004. That tripped
+the per-call `max_budget_usd`, which ends the run and discards the text, and would have
+charged the app's daily budget ~140x high. Fixed by moving the pin to 0.2.165 (`mcp`
+held at 1.29.0 - see the pin's own comment) - so a model upgrade here is never a one-line
+change: the SDK release must know the model's price, and the evals are the check.
 
 **Payload diet (2026-08)**: model quality is NOT the cost gate - Haiku follows every
 note it is given, so scaling is a token problem, and the tokens were duplication. A

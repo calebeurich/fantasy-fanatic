@@ -51,7 +51,7 @@ from . import observability
 # no-ops harmlessly on a missing file).
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-MODEL = "claude-haiku-4-5-20251001"  # cheapest capable model - see LOGIC.md's cost notes
+MODEL = "claude-haiku-5-5"  # cheapest capable model - LOGIC.md "Model: Haiku 4.5 -> 5.5"
 
 SERVER_KEY = "fantasy_fanatic"
 TOOL_NAMES = [

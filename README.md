@@ -129,7 +129,7 @@ python -m pytest tests/ -q
 Mutation-tested: deliberately breaking a threshold fails tests rather than passing
 quietly.
 
-**Evals — 12 cases, real API calls (~$0.40/run).** These test *agent behavior*: tool
+**Evals — 12 cases, real API calls (~$0.05/run on Haiku 5.5).** These test *agent behavior*: tool
 selection, non-dynasty refusal, resistance to instruction overrides, off-topic scope
 refusal, trade-suggestion grounding, lineup-format awareness, sell-on-runway-not-age
 reasoning, path-vocabulary coherence (the read the tool returns is the read the answer
@@ -204,8 +204,9 @@ thumbs-down comments from league mates have been the richest source of real bugs
   question from live data; there is no corpus to search.
 - **No fine-tuning.** The reasoning lives in deterministic Python plus a prompt; the
   evals carry the quality story.
-- **One orchestrator, one model** — the Claude Agent SDK on Haiku, chosen after
-  measuring cost and quality — with a small LangGraph client (`agent/langgraph_client.py`,
+- **One orchestrator, one model** — the Claude Agent SDK on Claude Haiku 5.5, chosen after
+  measuring cost and quality (the move from Haiku 4.5, 2026-10-11: 12/12 on both, median
+  answer 43s vs 60s, ~6x cheaper per eval run, half the grounding retries) — with a small LangGraph client (`agent/langgraph_client.py`,
   Qwen2.5-72B via HuggingFace) driving the identical MCP tools, to show the tool layer is
   the asset and the orchestrator is swappable. Measured 2026-08-19 by running the full
   eval suite through it (`EVAL_ORCHESTRATOR=langgraph python -m agent.evals <case>`):
