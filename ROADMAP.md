@@ -361,7 +361,7 @@ not by preference:
   3's measured manager scores (lineup efficiency, waiver capture) become an
   execution parameter, which also tests whether good managers are more predictable.
 - **One box at a time**: every model component is a separate module with a frozen
-  interface and versioned measured constants (the market_drift.py pattern - table +
+  interface and versioned measured constants (the research/market_drift.py pattern - table +
   provenance + regeneration command). Tune one box against its own tests; no
   component reads another's internals. The alternative is the cascading refactor
   this project has avoided for a month by catching label drift early.

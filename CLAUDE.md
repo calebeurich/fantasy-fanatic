@@ -66,7 +66,7 @@ Packages split by role, each with an `__init__.py`:
   `roster_needs.py`, `roster_detail.py`, `trade_activity.py`, `trade_eval.py`,
   `waiver_wire.py`, `format_support.py`, `prior_season.py`, `trade_ideas.py` (the
   deterministic trade-ideas generator), `league.py` (the shared
-  per-league context), `audit.py` (the defect-family guards), `market_drift.py`,
+  per-league context), `audit.py` (the defect-family guards),
   `warm.py`, and the `trade_targets/` subpackage
 - **`agent/`** (the served product): `mcp_server.py` + `test_mcp_server.py`,
   `agent.py` (SDK agent + grounding guards), `api.py` (FastAPI routes - thin; the

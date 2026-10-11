@@ -120,11 +120,12 @@ players at time t hold dramatically better than the rest of their position in ev
 age band, era-stable: elite QBs ~0.9-1.0 vs ~0.5, elite RBs ~2x their cohort, elite
 WRs 28+ 0.68 vs 0.35. The all-timer-TE pattern (finding: top-3 TEs 29+ hold 0.72 vs
 0.34) is one instance of this. Consequence already applied: the measured holding-
-cost table (analysis/market_drift.py) is tier-conditioned, because a cohort median
+cost table (research/market_drift.py) is tier-conditioned, because a cohort median
 without tier tells an elite player's owner a fate that mostly belongs to the
 non-elite - the exact bleed into projections-arbitrage territory the owner flagged.
 
-**What changed in the product so far:** one artifact - analysis/market_drift.py, the
+**What changed in the product so far:** nothing wired yet - research/market_drift.py (moved
+out of analysis/ 2026-10-11, since nothing in the product imports it) holds the
 tier-conditioned holding-cost table (measured constants with provenance; note-only
 by doctrine, not yet wired into payloads). Everything else is recorded and waiting:
 constants graduate when findings survive a re-run after more data accumulates.
