@@ -8,7 +8,8 @@ checks that recompute the model's claims after it makes them, and hard cost guar
 opens on the author's own 12-team superflex dynasty league — the one it was built for
 and is used in. The league table, rosters and the
 trade composer are free to use; the assistant answers a few questions a day per
-visitor from a small shared budget. Or look up your own Sleeper username.
+visitor from a small shared budget. Or look up your own Sleeper username. (It scales
+to zero when idle, so the first load after a quiet spell takes a few extra seconds.)
 
 It is used, every week, by the author's actual league mates. Every heuristic in it was
 validated against real rosters and real trades rather than synthetic fixtures, and the
@@ -112,7 +113,7 @@ written. Two daily budgets (friends, public demo) fail closed to a free static m
 
 Two layers, deliberately, because they catch opposite failures.
 
-**Unit tests — free, offline, instant.** 144 tests over the analysis heuristics and
+**Unit tests — free, offline, instant.** 163 tests over the analysis heuristics and
 the agent infrastructure. Almost every rule in `analysis/` is a pure function over
 plain data, so they need no fixtures and no network. They assert the *boundaries* the
 heuristics turn on — exact runway cutoffs, tier lines, the noise band — plus
