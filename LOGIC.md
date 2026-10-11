@@ -1545,8 +1545,11 @@ keeps bots off the friends' budget and rotates by changing one secret. It cannot
 public link: anyone holding it can burn the friends' day. So the bare URL is a second
 tier, DEMO, that exists only when `DEMO_BUDGET_USD > 0`: the league table, rosters and
 composer are free (they cost nothing but Sleeper/FantasyCalc fetches); model questions
-are allowed but per-visitor capped (`DEMO_ASKS_PER_VISITOR`, by X-Forwarded-For) from
-a separate small `budget.demo` ledger with its own friendly over-message. Sessions
+are allowed but per-visitor capped (`DEMO_ASKS_PER_VISITOR`, by X-Forwarded-For - an
+IP, so one office or cafe network shares it - per UTC day) from a separate small
+`budget.demo` ledger ($3/day) with its own friendly over-message. The cap went 3 -> 10 on
+2026-10-11 with the move to Haiku 5.5 (~$0.005-0.01 a question): ten questions is ~10
+cents, and the $3 ledger still bounds the day at a few hundred. Sessions
 carry a tier: a friend evicts the least-recently-used session of any kind, a demo
 visitor may only evict other demo sessions and is told "busy" if the slots are all
 friends - a stranger never kills a friend's live conversation. `/sessions`,
