@@ -463,6 +463,16 @@ and the overview's needs take the same parameter; withContext pins it. ~half a d
 the XFL eye-test; needs-on-ePPG (below) should land first or alongside, since the chips
 this surfaces are the ones that over-flag in 1QB.
 
+**HIGH PRIORITY (owner, 2026-10-14): sorting and categorizing by playoff pace and real
+record.** Owner wants to "play around" with it - the default sort was built and reverted on
+2026-10-11 because there was no clear moment to switch it; revisit with more weeks of
+data: when (if ever) pace or record should lead the table, and whether pace/record should
+shape categories (e.g. the path chip, or a separate season tag) without letting a slow start
+override the roster read. Starting points: LOGIC.md "Playoff pace" (sorting note), the
+in-season v2 notes below (pace as default sort, the injured-contender read).
+
+**DONE 2026-10-11: GCP billing** upgraded (paid account, $5/month budget, spend cap
+configured). Original todo kept below -
 **TODO soon (owner, 2026-09-28): GCP billing before the free trial ends (~2026-11-08).**
 Both services scale to zero and fit Cloud Run's always-free tier - expected cost after
 the trial is ~$0-2/month (2.6GB of images is the only standing charge). Two actions:
