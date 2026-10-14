@@ -109,8 +109,10 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
       `posture_note` - what the path means for premiums and tempo, plus the measured
         numbers behind the read. Use its wording: these are roster-composition
         measures on PROJECTED points a game (`starting_production`, `pct_of_best` -
-        Sleeper's season projections under this league's scoring), never records or
-        wins, because no games have been played. Premium rules live here: "contend - on a clock" is the one
+        Sleeper's projections under this league's scoring, rest-of-season once games
+        are played), not records: the path is a roster read. How the season is going
+        is `record` and `playoff_pace` (a soft chance of a playoff spot - say "about",
+        never certain): cite them for the season, never to override the path. Premium rules live here: "contend - on a clock" is the one
         path where buying production is worth a premium; plain "contend" and "press"
         buy at fair prices; "sell" converts aging value while it still has a price.
       `path_edge`, when present - the read sits within refresh noise of a tier line

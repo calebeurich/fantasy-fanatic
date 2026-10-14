@@ -1309,7 +1309,10 @@ lowest decile still made the playoffs 3.2% of the time.
 lens the reader opts into. Making it the in-season DEFAULT was built and reverted the
 same day: there is no clean moment to switch (owner: "not sure when we would need to
 choose to swap it"), and at week 4 a 1-3 record is mostly noise. Rows still open by
-ePPG; the # column is the roster's contention rank either way.
+ePPG; the # column is the roster's contention rank either way. Two preseason claims
+outlived the preseason and were fixed 2026-10-14: the get_team_state tool told the model
+"no games have been played" (it now says record and playoff_pace describe the season but
+never override the path), and the page's intro promised "preseason math".
 
 The first in-season piece (v1 scope in ROADMAP): a soft playoff-contention percentage,
 never a gate - the owner's spec was "non hard cutoff mathematical playoff contention",
