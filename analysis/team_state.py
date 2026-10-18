@@ -24,10 +24,9 @@ Smoke test: python -m analysis.team_state <league_id>
 
 import statistics
 import sys
-from statistics import NormalDist
 
 from sources import sleeper, fantasycalc
-from . import trade_activity
+from . import season_sim, trade_activity
 from .team_values import (age_bucket, years_to_decline, MIN_MEANINGFUL_RUNWAY,
                           INSIDE_FINAL_YEAR, NOISE_BAND, eppg,
                           get_players_with_roles, rank_map,
@@ -667,104 +666,83 @@ def path_edge(row: dict, contention_edges: dict) -> str | None:
     return PATH_EDGE.format(gap_pct=round(100 * gap / ref, 1) if ref else 0, alt_path=alt_path)
 
 
-def _season_ppg(settings: dict) -> float:
-    games = sum(settings.get(k, 0) for k in ("wins", "losses", "ties"))
-    points = settings.get("fpts", 0) + settings.get("fpts_decimal", 0) / 100
-    return round(points / games, 1) if games else 0.0
+def _points_for(settings: dict) -> float:
+    return settings.get("fpts", 0) + settings.get("fpts_decimal", 0) / 100
 
 
-# How much two lineups' weekly totals differ by luck alone. MEASURED (2026-08-21) on
-# XFL 2's completed 2025 season: 168 team-weeks, weekly SD around each team's own mean
-# = 25.6, so the MARGIN between two teams swings sqrt(2) x that = 36.2. One league's
-# number applied to all - deriving it per league from its own prior season is the
-# "real math on win pct" upgrade, backlogged. It sets how fast a projection gap turns
-# into win probability, and the pace number is deliberately soft either way.
-WEEKLY_MARGIN_SD = 36.0
+def _season_ppg(settings: dict, per_week: int = 1) -> float:
+    games = sum(settings.get(k, 0) for k in ("wins", "losses", "ties")) / per_week
+    return round(_points_for(settings) / games, 1) if games else 0.0
 
-# The deadline sentence fires only when the season has said something (4+ weeks) and
-# the pace is lopsided enough to change what the trade market means for this team.
+
+# The deadline sentence fires only in the pivot window (midseason through the deadline) and
+# when the pace is lopsided enough to change what the trade market means for this team.
 # Symmetric at the owner's call (the first cut was 20/85 on a hunch that "sell the
 # season" deserved a higher bar than "buy" - a taste, not a measurement).
 PACE_SELLER_MAX, PACE_BUYER_MIN = 25, 75
 
 
 def pace_text(pace: int) -> str:
-    """Pace as printed: never 0 or 100 - the backtest's lowest decile still made it 3.2%."""
+    """Pace as printed: never 0 or 100 - the backtest's lowest decile still made it 2.4%."""
     return "<1%" if pace < 1 else ">99%" if pace > 99 else f"~{pace}%"
+
+
+def games_per_week(settings: dict) -> int:
+    """A median league (`league_average_match`) also plays the week's median - two
+    results a week in every record Sleeper reports."""
+    return 2 if settings.get("league_average_match") else 1
+
+
+_odds_memo: dict = {}
+
+
+def _odds(teams, settings, weeks_played, schedule, strengths) -> dict:
+    """season_sim takes ~0.5s and classify_league runs several times a request; the same
+    inputs always give the same odds, so they are kept by their inputs."""
+    key = repr((teams, sorted(settings.items()), weeks_played, schedule, strengths))
+    if key not in _odds_memo:
+        if len(_odds_memo) > 64:
+            _odds_memo.clear()
+        _odds_memo[key] = season_sim.simulate(teams, settings, weeks_played, schedule, strengths)
+    return _odds_memo[key]
 
 
 def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None,
                  strengths: dict | None = None) -> None:
-    """A soft playoff-contention percentage per team - a pace, never a gate (owner:
-    "non hard cutoff mathematical playoff contention"). If the season played out per
-    the projections: each team's weekly win probability is its average head-to-head
-    edge in ePPG (a normal over WEEKLY_MARGIN_SD), expected final wins = wins so far
-    + remaining weeks x that probability, and the pace is the probability of finishing
-    above the playoff line (the midpoint between the last team in and the first team
-    out, by expected wins). Preseason it is purely projection-based; as games accrue
-    the real record dominates through the wins term - ePPG itself stays the lens
-    (it already factors real scoring in; PPG never overrides it). Deterministic,
-    no simulation. Deadline flavor: extreme pace mid-season sets `pace_note`, a
-    sentence for path_reason - the path itself never flips on it.
+    """A soft playoff percentage per team - a pace, never a gate (owner: "non hard cutoff
+    mathematical playoff contention"): `season_sim` plays the rest of the season out
+    under the league's own rules (tiebreakers, divisions, median games). The record banks
+    the past; ePPG - or that week's optimal lineup where `strengths` has one - prices the
+    future. Deadline flavor: an extreme pace mid-season sets `pace_note`, a sentence for
+    path_reason - the path itself never flips on it.
 
-    `schedule` is owner_id -> {week: opponent_owner_id} for the ACTUAL remaining
-    pairings (Sleeper posts the whole season's assignments up front); a week with no
-    entry, or no schedule at all, falls back to the league-average opponent.
-    `strengths` is owner_id -> {week: that week's optimal-lineup projection}
-    (_weekly_strengths) - a week where both sides have one is priced on it, so byes
-    and injury timing move the odds of the specific matchups they touch; any gap
-    falls back to the season ePPG."""
-    slots = settings.get("playoff_teams") or 0
+    `schedule` is owner_id -> {week: opponent_owner_id} (Sleeper posts the season's
+    pairings up front); `strengths` is owner_id -> {week: optimal-lineup projection}
+    (_weekly_strengths), through the playoff weeks."""
     season_weeks = (settings.get("playoff_week_start") or 15) - 1
     # Sleeper's trade_deadline is a week number; none set (0, or past the regular season)
     # means trades run to the end, so the sentence keys off the last regular-season week.
     deadline = settings.get("trade_deadline") or 0
     deadline = deadline if 0 < deadline <= season_weeks else season_weeks
-    if not slots or slots >= len(rows) or season_weeks <= 0:
-        for row in rows:
-            row["playoff_pace"] = None
-        return
-    eppg = {r["owner_id"]: r["starting_production"] for r in rows}
-    phi = NormalDist().cdf
-    win_p = lambda me, them: phi((eppg[me] - eppg[them]) / WEEKLY_MARGIN_SD)
-    def week_p(me, them, w):
-        sm, st = (strengths or {}).get(me, {}).get(w), (strengths or {}).get(them, {}).get(w)
-        if sm is not None and st is not None:
-            return phi((sm - st) / WEEKLY_MARGIN_SD)
-        return win_p(me, them)
-    exp, var = {}, {}
+    played = min(max(sum(r["record"].values()) for r in rows) // games_per_week(settings),
+                 season_weeks)
+    teams = [{"owner_id": r["owner_id"], **r["record"], "points_for": r.get("points_for", 0),
+              "eppg": r["starting_production"], "division": r.get("division")} for r in rows]
+    odds = _odds(teams, settings, played, schedule, strengths)
+    to_deadline = deadline - (played + 1)   # weeks until the league's trade deadline
     for r in rows:
-        me = r["owner_id"]
-        field = statistics.mean(win_p(me, o) for o in eppg if o != me)
-        rec = r["record"]
-        played = min(rec["wins"] + rec["losses"] + rec["ties"], season_weeks)
-        mine = (schedule or {}).get(me, {})
-        probs = [week_p(me, mine[w], w) if mine.get(w) in eppg else field
-                 for w in range(played + 1, season_weeks + 1)]
-        exp[me] = rec["wins"] + 0.5 * rec["ties"] + sum(probs)
-        var[me] = sum(pw * (1 - pw) for pw in probs)
-    ordered = sorted(exp, key=exp.get, reverse=True)
-    last_in, first_out = ordered[slots - 1], ordered[slots]
-    cut = (exp[last_in] + exp[first_out]) / 2
-    cut_var = (var[last_in] + var[first_out]) / 2
-    for r in rows:
-        me = r["owner_id"]
-        sd = (var[me] + cut_var) ** 0.5
-        pace = phi((exp[me] - cut) / sd) if sd > 0 else float(exp[me] > cut)
-        r["playoff_pace"] = round(100 * pace)
-        rec = r["record"]
-        played = rec["wins"] + rec["losses"] + rec["ties"]
-        to_deadline = deadline - (played + 1)   # weeks until the league's trade deadline
+        r["playoff_pace"] = round(100 * odds[r["owner_id"]]["playoffs"]) if odds else None
         r["pace_note"] = None
         # The pivot window: midseason (enough games to choose on) through the deadline.
-        if played >= season_weeks / 2 and to_deadline >= 0:
-            when = "this week" if to_deadline == 0 else f"in {to_deadline} week{'s' if to_deadline > 1 else ''}"
-            lead = f"{pace_text(r['playoff_pace'])} playoff pace with the trade deadline {when}"
-            if r["playoff_pace"] <= PACE_SELLER_MAX:
-                r["pace_note"] = (f"{lead} - this season is a long shot, and the rental market "
-                                  "reads differently for a team that can sell it")
-            elif r["playoff_pace"] >= PACE_BUYER_MIN:
-                r["pace_note"] = f"{lead} - this season is live, and production bought now gets used"
+        if r["playoff_pace"] is None or played < season_weeks / 2 or to_deadline < 0:
+            continue
+        when = "this week" if to_deadline == 0 else f"in {to_deadline} week{'s' if to_deadline > 1 else ''}"
+        lead = f"{pace_text(r['playoff_pace'])} playoff pace with the trade deadline {when}"
+        if r["playoff_pace"] <= PACE_SELLER_MAX:
+            r["pace_note"] = (f"{lead} - this season is a long shot, and the rental market "
+                              "reads differently for a team that can sell it")
+        elif r["playoff_pace"] >= PACE_BUYER_MIN:
+            r["pace_note"] = f"{lead} - this season is live, and production bought now gets used"
         if r["pace_note"]:
             r["path_reason"] += ". " + r["pace_note"][0].upper() + r["pace_note"][1:]
 
@@ -773,17 +751,19 @@ def _weekly_strengths(league_id: str, league: dict, rows: list[dict]) -> dict:
     """owner_id -> {week: that week's OPTIMAL-lineup projected points}, the per-week
     re-fill the owner asked pace to run on: byes fall out naturally (a bye week
     projects 0 and the fill routes around it), and an injury's timing gets shape
-    instead of being smeared across the season average. Best effort - any gap falls
-    back to season ePPG inside playoff_pace."""
+    instead of being smeared across the season average. Runs through the playoff weeks
+    the bracket plays. Best effort - any gap falls back to season ePPG."""
     from sources import sleeper as _s
     from .league import context
     from . import roster_needs
     ctx = context(league_id)
-    season_weeks = ((league.get("settings") or {}).get("playoff_week_start") or 15) - 1
+    settings = league.get("settings") or {}
+    season_weeks = (settings.get("playoff_week_start") or 15) - 1
+    playoff_rounds = max((settings.get("playoff_teams") or 1) - 1, 0).bit_length()
     scoring = league["scoring_settings"]
     out = {}
     try:
-        for wk in range(1, season_weeks + 1):
+        for wk in range(1, season_weeks + playoff_rounds + 1):
             proj = _s.get_projections(league["season"], wk)
             week_players = {pid: {**info, "projected_ppg": _s.score(proj.get(pid, {}), scoring)}
                             for pid, info in ctx.players.items()}
@@ -890,7 +870,9 @@ def classify_league(league_id: str) -> list[dict]:
             # games are played. `ppg` is REAL points per game played; `starting_production`
             # is the projection (ePPG in the UI).
             "record": {k: (roster.get("settings") or {}).get(k, 0) for k in ("wins", "losses", "ties")},
-            "ppg": _season_ppg(roster.get("settings") or {}),
+            "ppg": _season_ppg(roster.get("settings") or {}, games_per_week(league["settings"])),
+            "points_for": _points_for(roster.get("settings") or {}),
+            "division": (roster.get("settings") or {}).get("division"),
             **result,
         })
 

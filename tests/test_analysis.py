@@ -2734,6 +2734,18 @@ def test_playoff_pace_deadline_note_only_when_lopsided_and_started():
     assert all(r["pace_note"] is None for r in pre)
 
 
+def test_a_median_league_record_counts_two_games_a_week():
+    """`league_average_match` adds a game against the week's median: a 6-4 record is five
+    weeks, so real PPG is points over 5 (God Bless The Plug read ~50 instead of ~140), and
+    pace knows nine weeks are left, not four."""
+    from analysis.team_state import _season_ppg, games_per_week, playoff_pace
+    assert _season_ppg({"wins": 6, "losses": 4, "fpts": 1410}, 2) == 282.0
+    assert games_per_week({"league_average_match": 1}) == 2 and games_per_week({}) == 1
+    rows = _pace_rows([(150, 10, 0), (120, 0, 10), (135, 5, 5), (135, 5, 5)])
+    playoff_pace(rows, {"playoff_teams": 2, "playoff_week_start": 15, "league_average_match": 1})
+    assert 0 < rows[1]["playoff_pace"] < 50   # 0-10 with nine weeks left is alive
+
+
 def test_playoff_pace_none_when_uncontested():
     """Every team makes the playoffs -> pace is not a meaningful number."""
     from analysis.team_state import playoff_pace

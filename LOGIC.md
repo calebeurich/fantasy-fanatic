@@ -1305,6 +1305,11 @@ lowest decile still made the playoffs 3.2% of the time.
 
 ## Playoff pace (`team_state.playoff_pace`, 2026-08-21)
 
+*Method replaced 2026-10-18 by the Monte Carlo season simulator (next section); the
+field, the sort, the 25/75 deadline sentence and the pivot window below are unchanged.
+The closed-form math described here is history - kept because the backtest and the
+reasoning behind softness still hold.*
+
 *Sorting (2026-10-11):* the Record column sorts by playoff pace (ePPG breaks ties) - a
 lens the reader opts into. Making it the in-season DEFAULT was built and reverted the
 same day: there is no clean moment to switch (owner: "not sure when we would need to
@@ -1413,7 +1418,16 @@ standings, seeds 1-2 split 58.6% of titles vs 57.3% actual, so the bracket math 
 131 champions is just too few). Owner: titles are not shown, and odd formats get no
 special handling.
 
-Not yet wired: the table and agent still run the closed form (the swap is ROADMAP).
+**Wired 2026-10-18**, replacing the closed form: `playoff_pace` keeps its name and
+field, so the table, sort and deadline sentence read it unchanged; `_weekly_strengths`
+now runs through the playoff weeks the bracket plays; rows carry `points_for` and
+`division`. The simulation is memoized by its inputs (~0.5s, and classify_league runs
+several times a request). On the live leagues it showed the closed form's last flaw:
+its percentages didn't add up - 488 across XFL 2's twelve teams for six spots (600) -
+because a fixed playoff line undercounts the middle; the simulator sums to the slots by
+construction. Same change, same root cause: a median league's record counts two games a
+week, so real PPG read half (God Bless The Plug: ~50 for ~140) and the closed form
+thought ten weeks of fourteen were gone after five - `games_per_week` fixes both.
 
 ## Recurring defect families, and the guards (`analysis/audit.py`)
 

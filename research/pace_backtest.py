@@ -4,12 +4,13 @@ if it was last year and check it on that."
 Replay every completed crawled season week by week - at each week k, feed only what a
 live system would have known (record to date with median games, points per game to date
 as the strength input, points for, the remaining posted schedule, the league's playoff
-settings) - through BOTH the closed-form `team_state.playoff_pace` and the Monte Carlo
-`season_sim.simulate`, and score them against the real winners bracket: who made it,
-who got a bye, who won it.
+settings) - through `season_sim.simulate` (what `team_state.playoff_pace` serves),
+and score it against the real winners bracket: who made it, who got a bye, who won it.
+The closed form it replaced scored 0.107 here (research/README.md).
 
-The one substitution: historical projections are not retrievable, so ppg-to-date stands
-in for ePPG. That validates the MATH (record + schedule + rules + the noise model), not
+The one substitution: ppg-to-date stands in for ePPG. Sleeper keeps each past week's
+final line, but not what it projected for later weeks at the time - ePPG's view, which
+`research/save_projections.py` saves from 2026 on. That validates the MATH (record + schedule + rules + the noise model), not
 projection quality.
 
 Run: python -m research.pace_backtest
@@ -22,7 +23,6 @@ from collections import defaultdict
 from pathlib import Path
 
 from analysis.season_sim import STRENGTH_SD_SHARE, WEEKLY_SD_SHARE, simulate
-from analysis.team_state import playoff_pace
 
 CRAWL_DIR = Path("data/crawl")
 FROM_WEEK = 3   # before this, ppg-to-date is too noisy to call a strength input
@@ -86,14 +86,6 @@ def season_frames(d: dict) -> list[dict]:
     return frames
 
 
-def _pace(frame: dict) -> dict:
-    rows = [{"owner_id": t["owner_id"], "starting_production": t["eppg"], "path_reason": "",
-             "record": {k: t[k] for k in ("wins", "losses", "ties")}}
-            for t in frame["teams"]]
-    playoff_pace(rows, frame["settings"], frame["schedule"])
-    return {r["owner_id"]: r["playoff_pace"] / 100 for r in rows}
-
-
 def _sim(frame: dict) -> dict:
     """The live drift, plus how wrong ppg-to-date is as a strength after k games - the
     live input (ePPG) doesn't carry that second term."""
@@ -119,14 +111,13 @@ def main():
         frames = season_frames(json.load(open(f, encoding="utf-8")))
         seasons += bool(frames)
         for fr in frames:
-            pace, sim = _pace(fr), _sim(fr)
+            sim = _sim(fr)
             n, slots = len(fr["teams"]), fr["settings"]["playoff_teams"]
             in_now = {t["owner_id"] for t in sorted(
                 fr["teams"], key=lambda t: (-t["wins"], -t["points_for"]))[:slots]}
             for t in fr["teams"]:
                 me = t["owner_id"]
                 made = me in fr["field"]
-                scores["pace"].append((pace[me], made))
                 scores["sim"].append((sim[me]["playoffs"], made))
                 scores["top-k today"].append((float(me in in_now), made))
                 scores["base rate"].append((slots / n, made))
@@ -137,9 +128,8 @@ def main():
                     scores["title: sim"].append((sim[me]["title"], me == fr["champ"]))
                     scores["title: base"].append((1 / n, me == fr["champ"]))
     brier = lambda xs: sum((p - h) ** 2 for p, h in xs) / len(xs)
-    print(f"{seasons} seasons, {len(scores['pace'])} team-week predictions (weeks {FROM_WEEK}+)\n")
-    for name in ("pace", "sim"):
-        print(f"made the playoffs - {name} said / observed / n\n{_deciles(scores[name])}\n")
+    print(f"{seasons} seasons, {len(scores['sim'])} team-week predictions (weeks {FROM_WEEK}+)\n")
+    print(f"made the playoffs - sim said / observed / n\n{_deciles(scores['sim'])}\n")
     print(f"title - sim said / observed / n\n{_deciles(scores['title: sim'])}\n")
     print("Brier (lower is better):")
     for name, xs in scores.items():

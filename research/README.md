@@ -241,14 +241,15 @@ Jefferson <- St. Brown + Hockenson; Bijan <- Breece + a 1st; Lamb <- three 1sts 
 ## Pace backtest (`pace_backtest.py`, 2026-08-21; simulator added 2026-10-18)
 
 Replays 131 completed crawled seasons week by week (weeks 3+, 16,344 team-week
-predictions), feeding only what a live system would have known, through both the
-closed-form `team_state.playoff_pace` and the Monte Carlo `season_sim.simulate`, against
-the actual winners brackets. Brier, lower is better:
+predictions), feeding only what a live system would have known, through the Monte Carlo
+`season_sim.simulate` (live as `playoff_pace` since 2026-10-18), against the actual
+winners brackets. The closed-form row is from the run before it was replaced. Brier,
+lower is better:
 
 | | made playoffs | bye | title |
 |---|---|---|---|
 | season_sim | **0.102** | **0.072** | 0.075 |
-| playoff_pace | 0.107 | - | - |
+| closed form (retired) | 0.107 | - | - |
 | top-k today | 0.158 | - | - |
 | base rate | 0.246 | 0.144 | 0.080 |
 
@@ -259,3 +260,11 @@ quality - ppg-to-date stood in for ePPG, which history does not keep. (Corrected
 2026-10-18: the first run also counted 60 unplayed 2026 seasons - every score 0, a
 placeholder bracket - and printed 0.153 vs 0.253 across 191 seasons; it also ignored
 median-league games.)
+
+## Projection snapshots (`save_projections.py`, from 2026-10-18)
+
+Run weekly in season: saves Sleeper's rest-of-season weekly lines as they stand that day
+to `data/projections/<season>/` (~0.5 MB, not committed). Why: Sleeper keeps each past
+week's final projection (2025 week 5 is still served), but never what it projected for
+week 12 as of week 6 - and that view is exactly what ePPG and the playoff odds run on.
+With a season of snapshots, the pace replay can feed real ePPG instead of ppg-to-date.

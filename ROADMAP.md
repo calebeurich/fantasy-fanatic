@@ -471,7 +471,8 @@ shape categories (e.g. the path chip, or a separate season tag) without letting 
 override the roster read. Starting points: LOGIC.md "Playoff pace" (sorting note), the
 in-season v2 notes below (pace as default sort, the injured-contender read).
 
-**NEXT (2026-10-18): wire the season simulator in place of `playoff_pace`.** Built and
+**DONE 2026-10-18 (local, not deployed): the season simulator replaced `playoff_pace`'s
+closed form.** Was: built and
 backtested, not wired (LOGIC.md "Season simulator"): it knows tiebreakers, divisions,
 seeding and median leagues, beats the closed form on the replay (0.102 vs 0.107) and
 predicts byes. The swap: `classify_league` calls `season_sim.simulate` with the posted
@@ -479,8 +480,10 @@ schedule, `_weekly_strengths` extended through the playoff weeks, banked points 
 divisions and the NFL-state week; `playoff_pace` keeps its field name (now the simulated
 playoff %) so the table, sort and deadline sentence don't change; bye % can ride along
 for the agent. Title % stays internal (owner, 2026-10-18). Then delete the closed form.
-Save each week's projections from now on, so next year's replay tests real ePPG instead
-of ppg-to-date.
+Projection snapshots STARTED 2026-10-18 (`research/save_projections.py`, run weekly -
+week 6 saved) so next year's replay tests real ePPG instead of ppg-to-date. Sleeper also
+keeps each past week's FINAL line, so a 2025 replay on next-week projections (rosters per
+week are in the crawl's matchups) is possible now - not built.
 
 **DONE 2026-10-11: GCP billing** upgraded (paid account, $5/month budget, spend cap
 configured). Original todo kept below -
