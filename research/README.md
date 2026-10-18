@@ -238,11 +238,24 @@ applies (re-check outside any single ecosystem before promoting a threshold).
 Anchors for the eye: Josh Allen <- Jayden Daniels; Allen <- three 1sts + a 2nd;
 Jefferson <- St. Brown + Hockenson; Bijan <- Breece + a 1st; Lamb <- three 1sts + change.
 
-## Pace backtest (`pace_backtest.py`, 2026-08-21)
+## Pace backtest (`pace_backtest.py`, 2026-08-21; simulator added 2026-10-18)
 
-Replays 191 crawled seasons through the real `team_state.playoff_pace` week by week,
-feeding only what a live system would have known, against the actual winners brackets.
-23,824 team-week predictions: calibrated within a few points in every decile (0-10%
-said -> 3.2% made it; 90-100% -> 97.0%). Brier 0.153 vs 0.253 for a hard top-k-today
-cutoff. Validates the math (record + schedule + soft margin), not projection quality -
-ppg-to-date stood in for ePPG, which history does not keep.
+Replays 131 completed crawled seasons week by week (weeks 3+, 16,344 team-week
+predictions), feeding only what a live system would have known, through both the
+closed-form `team_state.playoff_pace` and the Monte Carlo `season_sim.simulate`, against
+the actual winners brackets. Brier, lower is better:
+
+| | made playoffs | bye | title |
+|---|---|---|---|
+| season_sim | **0.102** | **0.072** | 0.075 |
+| playoff_pace | 0.107 | - | - |
+| top-k today | 0.158 | - | - |
+| base rate | 0.246 | 0.144 | 0.080 |
+
+Both playoff numbers are calibrated within a few points per decile. Title odds barely
+beat the base rate and run hot at 30%+ (131 champions is too few to pin them) - computed,
+never shown. Validates the math (record + schedule + rules + noise model), not projection
+quality - ppg-to-date stood in for ePPG, which history does not keep. (Corrected
+2026-10-18: the first run also counted 60 unplayed 2026 seasons - every score 0, a
+placeholder bracket - and printed 0.153 vs 0.253 across 191 seasons; it also ignored
+median-league games.)

@@ -64,7 +64,7 @@ Packages split by role, each with an `__init__.py`:
   `cache.py`, `degraded.py`, `dp_values.py`, `fc_trades.py`, `sleeper_crawl.py`
 - **`analysis/`** (built on top of the data sources): `team_values.py`, `team_state.py`,
   `roster_needs.py`, `roster_detail.py`, `trade_activity.py`, `trade_eval.py`,
-  `waiver_wire.py`, `format_support.py`, `prior_season.py`, `trade_ideas.py` (the
+  `waiver_wire.py`, `format_support.py`, `prior_season.py`, `season_sim.py` (Monte Carlo playoff odds), `trade_ideas.py` (the
   deterministic trade-ideas generator), `league.py` (the shared
   per-league context), `audit.py` (the defect-family guards),
   `warm.py`, and the `trade_targets/` subpackage

@@ -471,6 +471,19 @@ shape categories (e.g. the path chip, or a separate season tag) without letting 
 override the roster read. Starting points: LOGIC.md "Playoff pace" (sorting note), the
 in-season v2 notes below (pace as default sort, the injured-contender read).
 
+**NEXT (2026-10-18): wire the season simulator in place of `playoff_pace`.** Built and
+backtested, not wired (LOGIC.md "Season simulator"): it knows tiebreakers, divisions,
+seeding and median leagues, beats the closed form on the replay (0.102 vs 0.107) and
+predicts byes. The swap: `classify_league` calls `season_sim.simulate` with the posted
+schedule, `_weekly_strengths` extended through the playoff weeks, banked points for,
+divisions and the NFL-state week; `playoff_pace` keeps its field name (now the simulated
+playoff %) so the table, sort and deadline sentence don't change; bye % can ride along
+for the agent. Title % stays internal (owner, 2026-10-18). Then delete the closed form.
+Open before wiring: IR players with no weekly lines project 0 for every week in
+`_weekly_strengths` while ePPG falls back to their preseason rate - one rule, not two.
+Save each week's projections from now on, so next year's replay tests real ePPG instead
+of ppg-to-date.
+
 **DONE 2026-10-11: GCP billing** upgraded (paid account, $5/month budget, spend cap
 configured). Original todo kept below -
 **TODO soon (owner, 2026-09-28): GCP billing before the free trial ends (~2026-11-08).**

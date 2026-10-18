@@ -1354,14 +1354,17 @@ always top-6 by record anyway, which is why this waits for the "real math" pass 
 than complicating v1).
 
 VALIDATED by replay (2026-08-21, `research/pace_backtest.py` - the owner's "do this
-in-season stuff as if it was last year and check it"): 191 crawled seasons, 23,824
-team-week predictions from week 3 on, fed only what a live system would have known
+in-season stuff as if it was last year and check it"): 131 completed crawled seasons,
+16,344 team-week predictions from week 3 on, fed only what a live system would have known
 (record to date, ppg-to-date standing in for ePPG, the remaining posted schedule)
 through the REAL playoff_pace function, against the actual winners brackets. Every
-decile is calibrated within a few points (pace said 0-10% -> 3.2% made it; 40-50% ->
-43.2%; 90-100% -> 97.0%). Brier 0.153 vs 0.253 for the hard "top-k today are in"
-cutoff - the cliff we refused is ~65% worse as a predictor, which is what the softness
-buys. What this does NOT validate: projection quality (ppg-to-date stood in for ePPG)
+decile is calibrated within a few points (pace said 0-10% -> 4.1% made it; 40-50% ->
+43.4%; 90-100% -> 96.5%). Brier 0.107 vs 0.158 for the hard "top-k today are in"
+cutoff and 0.246 for the base rate - the cliff we refused is ~50% worse as a predictor,
+which is what the softness buys. (Corrected 2026-10-18: the first run also replayed 60
+unplayed 2026 seasons - all-zero scores with a placeholder bracket - and reported 0.153
+vs 0.253 over 191 seasons; the decile table was unchanged.) Superseded as the method by
+the season simulator below, which beats it on the same replay. What this does NOT validate: projection quality (ppg-to-date stood in for ePPG)
 and the note thresholds - knobs to revisit with real 2026 weeks. The weekly re-fill SHIPPED same day
 (owner: "can we implement that now tho? I think sleeper has weekly eppg already" - it
 does, and the byes are in it: Lamar projects 0 in week 13, CeeDee in week 14):
@@ -1372,6 +1375,45 @@ fallback. Structurally better than Sleeper's own win probs, which assume the
 currently-set lineup persists into future weeks. It moved the read: rjl22 edges shivvv
 once byes count. Cost: 14 weekly projection fetches, cached an hour PER SEASON (shared
 across leagues). Still backlogged from that sketch: per-league margin SD, divisions.
+
+## Season simulator (`analysis/season_sim.py`, 2026-10-18)
+
+Owner: walk through the playoff odds - does it know the league's format, byes, divisions,
+seeding, who's coming back from injury? The closed form above knew the format, the
+schedule and NFL byes; it did not know tiebreakers, divisions, seeding, median games, or
+that a projection wrong in week 9 is wrong in week 12 too. The simulator plays the rest
+of the season out 5,000 times (fixed seed: same inputs, same odds) and then the bracket.
+
+**The rules, read off 131 completed crawled brackets, not assumed:**
+- Field = most wins, then points for (126/131; the other 5 took a points wildcard no
+  setting marks - an outlier, skipped). Median leagues (`league_average_match`) add a
+  win for beating the week's median - in the record, so weeks played is passed in, never
+  read off a record that counts two games a week.
+- Division leaders take the top seeds (17/17 division brackets; in 7 that differs from
+  the top two by record). The one division leader who'd have missed on record got in.
+- Round one is 3v6, 4v5, top seeds on bye (122/122). `playoff_seed_type` 0 is a fixed
+  bracket (1 meets the 4/5 winner), 1 re-seeds (1 meets the lowest seed left) - every
+  bracket matched one or the other.
+
+**The noise, measured on the same seasons as shares of the league's average weekly
+score** (spread tracks scoring level at r = 0.9, so a share carries across formats where
+a points constant can't): a team's week swings 18% (10-90th: 15-22%; XFL 2's 25.6 was
+the low end), and its true level drifts 6.5% over the rest of a season beyond weekly luck
+(injuries, trades) - drawn once per run, so a team that is really worse is worse every
+week together. Week by week each team scores its optimal-lineup projection for that week
+(byes and returns included) + its drift + the week's noise; the bracket plays the
+playoff weeks the same way.
+
+**What it fixed that the closed form missed:** the points-for tiebreaker (a coin-flip
+tiebreak in the simulator reproduces the closed form within a few points; the real one
+moved a high-scoring 2-4 team from 45% to 59%), division seeding, re-seeding, and median
+leagues. The backtest above: playoffs 0.102 vs 0.107, byes 0.072 vs the base rate's
+0.144. Title odds 0.075 vs 0.080 - real but thin, and hot above 30% (given final
+standings, seeds 1-2 split 58.6% of titles vs 57.3% actual, so the bracket math holds;
+131 champions is just too few). Owner: titles are not shown, and odd formats get no
+special handling.
+
+Not yet wired: the table and agent still run the closed form (the swap is ROADMAP).
 
 ## Recurring defect families, and the guards (`analysis/audit.py`)
 
