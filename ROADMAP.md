@@ -479,8 +479,6 @@ schedule, `_weekly_strengths` extended through the playoff weeks, banked points 
 divisions and the NFL-state week; `playoff_pace` keeps its field name (now the simulated
 playoff %) so the table, sort and deadline sentence don't change; bye % can ride along
 for the agent. Title % stays internal (owner, 2026-10-18). Then delete the closed form.
-Open before wiring: IR players with no weekly lines project 0 for every week in
-`_weekly_strengths` while ePPG falls back to their preseason rate - one rule, not two.
 Save each week's projections from now on, so next year's replay tests real ePPG instead
 of ppg-to-date.
 
