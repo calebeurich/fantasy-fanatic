@@ -82,7 +82,7 @@ jobs:
             --memory 4Gi \
             --cpu 1 \
             --timeout 600 \
-            --concurrency 2 \
+            --concurrency 5 \
             --max-instances 1 \
             --execution-environment gen2 \
             --service-account "fantasy-fanatic-run@fantasy-fanatic.iam.gserviceaccount.com" \
@@ -94,9 +94,12 @@ jobs:
       #   max-instances 1             - budget.py's daily cap is an in-process counter,
       #                                 exact only while every request lands in ONE
       #                                 process
-      #   concurrency 2               - two friends can ask at once instead of queueing
-      #                                 behind a 60-90s answer; still one instance, one
-      #                                 event loop, so the budget counter stays exact
+      #   concurrency 5               - two friends can ask at once instead of queueing
+      #                                 behind a 60-90s answer, and a page load's burst
+      #                                 of table requests queues through a cold start
+      #                                 instead of being turned away (2 rejected both of
+      #                                 the owner's asks, 2026-10-21); still one instance,
+      #                                 one event loop, so the budget counter stays exact
       #   memory 4Gi                  - each concurrent session holds a claude CLI + MCP
       #                                 subprocess pair (pandas/nflverse in the MCP one);
       #                                 two lanes of that plus the parent outgrows 2Gi
