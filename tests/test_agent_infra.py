@@ -70,6 +70,27 @@ def test_cache_expires_after_its_ttl(monkeypatch):
     assert len(calls) == 2, "entry should have expired and refetched"
 
 
+def test_concurrent_misses_compute_once():
+    """A cold page load fires ~10 requests at once; each used to rebuild the same league
+    context, so all ten took 10x as long and the requests queued behind them timed out."""
+    import threading, time as _time
+    calls = []
+
+    @ttl_cache(60)
+    def build(league_id):
+        calls.append(league_id)
+        _time.sleep(0.2)
+        return league_id
+
+    threads = [threading.Thread(target=build, args=("A",)) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert calls == ["A"]
+    assert build("B") == "B" and calls == ["A", "B"]   # other keys are not blocked by A's lock
+
+
 # --------------------------------------------------------------------- daily budget
 
 def test_budget_trips_on_the_dollar_ceiling():

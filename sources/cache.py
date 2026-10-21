@@ -20,6 +20,7 @@ leagues at once, it would need an eviction policy.
 """
 
 import functools
+import threading
 import time
 
 # Live league state - changes the moment anyone trades or claims a player. Short
@@ -45,17 +46,27 @@ def ttl_cache(seconds: float):
     """Memoize on arguments, expiring entries after `seconds`."""
     def decorator(fn):
         store: dict = {}
+        locks: dict = {}
+        guard = threading.Lock()
 
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             key = (args, tuple(sorted(kwargs.items())))
-            now = time.monotonic()
             entry = store.get(key)
-            if entry is not None and now - entry[0] < seconds:
+            if entry is not None and time.monotonic() - entry[0] < seconds:
                 return entry[1]
-            value = fn(*args, **kwargs)
-            store[key] = (now, value)
-            return value
+            with guard:
+                lock = locks.setdefault(key, threading.Lock())
+            # One caller fills a missing entry, the rest wait and reuse it: a cold page load's
+            # parallel requests each rebuilt the same league context on one CPU (2026-10-21).
+            with lock:
+                now = time.monotonic()
+                entry = store.get(key)
+                if entry is not None and now - entry[0] < seconds:
+                    return entry[1]
+                value = fn(*args, **kwargs)
+                store[key] = (now, value)
+                return value
 
         wrapper.cache_clear = store.clear
         wrapper.cache_info = lambda: {"entries": len(store), "ttl_seconds": seconds}
