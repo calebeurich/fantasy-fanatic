@@ -77,7 +77,7 @@ jobs:
             --memory 4Gi \
             --cpu 1 \
             --timeout 600 \
-            --concurrency 2 \
+            --concurrency 12 \
             --max-instances 1 \
             --execution-environment gen2 \
             --service-account "fantasy-fanatic-run@fantasy-fanatic.iam.gserviceaccount.com" \
@@ -89,9 +89,14 @@ jobs:
       #   max-instances 1             - budget.py's daily cap is an in-process counter,
       #                                 exact only while every request lands in ONE
       #                                 process
-      #   concurrency 2               - two friends can ask at once instead of queueing
-      #                                 behind a 60-90s answer; still one instance, one
-      #                                 event loop, so the budget counter stays exact
+      #   concurrency 12              - a cold page load fires 8-12 requests at once and
+      #                                 Cloud Run holds only this many while the instance
+      #                                 boots; at 2 (and at 5) the rest were turned away,
+      #                                 owner's asks included (staging test, 2026-10-21:
+      #                                 2 -> 2-4 of 12 through, 5 -> 5, 12 -> 12). Five
+      #                                 asks at once peaked at 2.6Gi (~0.45Gi per run);
+      #                                 the 1 CPU, not this, is the next ceiling. Still
+      #                                 one instance, one event loop: budget stays exact
       #   memory 4Gi                  - each concurrent session holds a claude CLI + MCP
       #                                 subprocess pair (pandas/nflverse in the MCP one);
       #                                 two lanes of that plus the parent outgrows 2Gi
