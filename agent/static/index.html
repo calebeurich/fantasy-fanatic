@@ -1331,15 +1331,22 @@ async function askCounterparty(owner, proposal) {
 // failing (owner: "when I reconnected it was still hanging"), so a failure-only reclaim
 // never fired. The server keeps writing the answer either way; the watcher also wakes on
 // the `online` event so a reconnect picks it up within seconds, for up to 5 minutes.
+// A REPLY with an error status is different: the server refused the question (2026-10-21,
+// staging waking from idle turned both of the owner's asks away with a 500), so nothing is
+// being written and waiting five minutes for it is a hang - fail at once instead.
 async function askAndWatch(body, id, seconds = 300) {
   const started = Date.now();
   const ctl = new AbortController();
   const send = fetch("/ask", {method: "POST", headers: hdrs({"Content-Type": "application/json"}),
-                              body: JSON.stringify(body), signal: ctl.signal}).then(r => r.json());
+                              body: JSON.stringify(body), signal: ctl.signal}).then(r => {
+    if (!r.ok) throw Object.assign(new Error("refused " + r.status), {refused: true});
+    return r.json();
+  });
   const watch = reclaim(started, seconds, id);
   try {
     const giveUp = new Promise((_, rej) => setTimeout(() => rej(new Error("no answer within " + seconds + "s")), (seconds + 10) * 1000));
-    const d = await Promise.race([send.catch(() => watch), watch.then(a => a || send), giveUp]);
+    const d = await Promise.race([send.catch(e => e.refused ? Promise.reject(e) : watch),
+                                  watch.then(a => a || send), giveUp]);
     if (!d) throw new Error("no answer within " + seconds + "s");
     return d;
   } finally { ctl.abort(); }
@@ -1404,12 +1411,15 @@ $("f").onsubmit = async e => {
     remember({typed, question, answer: d});
     localStorage.removeItem("ff_pending");
   } catch (err) {
+    if (err.refused) localStorage.removeItem("ff_pending");   // nothing to reclaim on reload
     // "TypeError: Load failed" is Safari for "the connection died" - meaningless to the
     // reader, and it is never their fault. Say what happened and give them the button.
-    pending.innerHTML =
-      "<p>That connection dropped before the answer came back — usually a network blip, "
-      + "a sleeping tab, or the app being updated mid-question. Nothing is broken on your "
-      + "end.</p>";
+    pending.innerHTML = err.refused
+      ? "<p>The app was busy waking up and couldn't take that question — nothing was "
+        + "charged or lost. Ask it again; it should go through now.</p>"
+      : "<p>That connection dropped before the answer came back — usually a network blip, "
+        + "a sleeping tab, or the app being updated mid-question. Nothing is broken on your "
+        + "end.</p>";
     const again = document.createElement("button");
     again.type = "button"; again.className = "ghost"; again.textContent = "ask it again";
     again.onclick = () => {
