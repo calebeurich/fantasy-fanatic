@@ -670,6 +670,10 @@ def _points_for(settings: dict) -> float:
     return settings.get("fpts", 0) + settings.get("fpts_decimal", 0) / 100
 
 
+def _max_pf(settings: dict) -> float:
+    return settings.get("ppts", 0) + settings.get("ppts_decimal", 0) / 100
+
+
 def _season_ppg(settings: dict, per_week: int = 1) -> float:
     games = sum(settings.get(k, 0) for k in ("wins", "losses", "ties")) / per_week
     return round(_points_for(settings) / games, 1) if games else 0.0
@@ -685,6 +689,21 @@ PACE_SELLER_MAX, PACE_BUYER_MIN = 25, 75
 def pace_text(pace: int) -> str:
     """Pace as printed: never 0 or 100 - the backtest's lowest decile still made it 2.4%."""
     return "<1%" if pace < 1 else ">99%" if pace > 99 else f"~{pace}%"
+
+
+def pick_text(odds: list) -> str:
+    """A team's own next 1st as printed: the likeliest slot and the range holding the
+    middle 80% of runs ("~#3 (#2-5)"), "~#1" when that range is one slot, and the slot
+    alone only once it is settled."""
+    cum, lo, hi = 0.0, None, None
+    for slot, p in enumerate(odds, 1):
+        cum += p
+        lo = lo or (slot if cum >= 0.1 else None)
+        hi = hi or (slot if cum >= 0.9 - 1e-9 else None)
+    likeliest = max(range(len(odds)), key=odds.__getitem__) + 1
+    if lo != hi:
+        return f"~#{likeliest} (#{lo}-{hi})"
+    return f"#{likeliest}" if max(odds) > 0.995 else f"~#{likeliest}"
 
 
 def games_per_week(settings: dict) -> int:
@@ -727,11 +746,14 @@ def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None,
     played = min(max(sum(r["record"].values()) for r in rows) // games_per_week(settings),
                  season_weeks)
     teams = [{"owner_id": r["owner_id"], **r["record"], "points_for": r.get("points_for", 0),
-              "eppg": r["starting_production"], "division": r.get("division")} for r in rows]
+              "max_pf": r.get("max_pf", 0), "eppg": r["starting_production"],
+              "division": r.get("division")} for r in rows]
     odds = _odds(teams, settings, played, schedule, strengths)
     to_deadline = deadline - (played + 1)   # weeks until the league's trade deadline
     for r in rows:
         r["playoff_pace"] = round(100 * odds[r["owner_id"]]["playoffs"]) if odds else None
+        r["pick_odds"] = odds[r["owner_id"]]["pick"] if odds else None
+        r["projected_pick"] = pick_text(r["pick_odds"]) if odds else None
         r["pace_note"] = None
         # The pivot window: midseason (enough games to choose on) through the deadline.
         if r["playoff_pace"] is None or played < season_weeks / 2 or to_deadline < 0:
@@ -820,10 +842,10 @@ def classify_league(league_id: str) -> list[dict]:
     # Tanking only pays if the team still owns its own next 1st.
     next_season = int(league["season"]) + 1
     traded_picks = sleeper.get_traded_picks(league_id)
-    lost_own_first = {
-        p["roster_id"] for p in traded_picks
-        if p["round"] == 1 and int(p["season"]) == next_season and p["owner_id"] != p["roster_id"]
-    }
+    next_first_holder = {p["roster_id"]: p["owner_id"] for p in traded_picks
+                         if p["round"] == 1 and int(p["season"]) == next_season}
+    lost_own_first = {r for r, holder in next_first_holder.items() if holder != r}
+    owner_of_roster = {r["roster_id"]: owner_names.get(r["owner_id"], "Unknown") for r in rosters}
 
     # Pick capital priced WITHOUT `strategy_by_roster`: that argument prices a pick by the
     # originating team's window, and the window is what this measure helps produce -
@@ -860,6 +882,9 @@ def classify_league(league_id: str) -> list[dict]:
                                 / (roster_value + capital.get(roster["roster_id"], 0)))
             if roster_value + capital.get(roster["roster_id"], 0) else 0,
             "owns_next_first": roster["roster_id"] not in lost_own_first,
+            # Who drafts with this team's next 1st, when it isn't this team.
+            "next_first_held_by": owner_of_roster.get(next_first_holder[roster["roster_id"]])
+            if roster["roster_id"] in lost_own_first else None,
             # Which future 1sts this team actually holds, by season - the detail behind
             # pick_capital's number. First-round only: that is the pick people track.
             "firsts": sorted(int(p["season"]) for p in
@@ -872,6 +897,9 @@ def classify_league(league_id: str) -> list[dict]:
             "record": {k: (roster.get("settings") or {}).get(k, 0) for k in ("wins", "losses", "ties")},
             "ppg": _season_ppg(roster.get("settings") or {}, games_per_week(league["settings"])),
             "points_for": _points_for(roster.get("settings") or {}),
+            # Max PF: the season's best-ball total (Sleeper's "potential points") - what
+            # XFL 2's constitution orders the non-playoff picks by.
+            "max_pf": round(_max_pf(roster.get("settings") or {}), 1),
             "division": (roster.get("settings") or {}).get("division"),
             **result,
         })

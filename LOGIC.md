@@ -1429,6 +1429,42 @@ construction. Same change, same root cause: a median league's record counts two 
 week, so real PPG read half (God Bless The Plug: ~50 for ~140) and the closed form
 thought ten weeks of fourteen were gone after five - `games_per_week` fixes both.
 
+## Max PF and the projected draft order (`season_sim.draft_order`, 2026-10-23)
+
+Owner: "my leagues do use [max PF] for pick ordering" - and it is the tank read that
+matters there, "sort of like playoff pace and ePPG but for tanking teams." Max PF is
+Sleeper's `ppts` ("potential points"): the season's best-ball total, every week's optimal
+lineup. Efficiency (points scored / max PF) was offered and declined - start/sit is an
+overrated slice of manager skill (owner), so it isn't shown.
+
+**The rule is XFL 2's constitution (Article III), checked against real drafts:** picks 1-6
+go to playoff misses by lowest max PF ("established to prevent tanking" - benching your
+starters doesn't lower it); 7-8 to the first-round losers, worse record first, max PF
+breaking ties; 9 and 10 to the 3rd-place game's loser and winner; 11 runner-up; 12
+champion. All three default leagues' 2026 rookie drafts ordered their 2025 playoff misses
+exactly by inverse max PF (inverse record would have differed in every one) and put the
+champion last; XFL 2 and the Insert league also matched 7-10. God Bless The Plug put its
+3rd-place team ahead of its 4th - a league with other rules. It is the default for every
+league until one needs its own; the card says whose rule it is.
+
+**Projected, not guessed:** the season simulator already plays each team's optimal lineup
+every week - a best-ball week - so the same simulated score that decides the game adds to
+max PF, and every run ends in a full draft order (the bracket now records each round's
+losers, and plays a 3rd-place game in the final's week). Over 5,000 runs each team's own
+next 1st gets a slot distribution; `pick_text` prints the likeliest slot and the middle
+80% ("~#3 (#2-5)"), drops to "~#1" when that range is one slot, and loses the "~" only past
+99.5%. Known bias: real max PF is hindsight-optimal, so it runs above the projected
+optimal lineup's score - roughly evenly across teams, so the ORDER holds better than the
+totals would. Who drafts with each pick comes from Sleeper's traded picks
+(`next_first_held_by`).
+
+**Layout (owner: "not information overload"):** a Max PF column after PPG, sortable lowest
+first (the 1.01 end), with the team's own projected pick riding under it the way pace
+rides under the record; on a phone it joins the dynasty-value line. Who holds which pick
+lives in a collapsed "Next year's 1st round" card under the table whose one closed line is
+the 1.01. The agent gets `max_pf`, `projected_pick` and `next_first_held_by`, not the raw
+slot odds. Out of scope: XFL 2's 2.13 compensatory pick (round 2, consolation bracket).
+
 ## Recurring defect families, and the guards (`analysis/audit.py`)
 
 Every real bug here was a wrong recommendation produced by correct arithmetic. The

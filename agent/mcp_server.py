@@ -112,7 +112,11 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
         Sleeper's projections under this league's scoring, rest-of-season once games
         are played), not records: the path is a roster read. How the season is going
         is `record` and `playoff_pace` (a soft chance of a playoff spot - say "about",
-        never certain): cite them for the season, never to override the path. Premium rules live here: "contend - on a clock" is the one
+        never certain): cite them for the season, never to override the path.
+        `max_pf` (best-ball points so far) and `projected_pick` (where this team's OWN
+        next 1st projects, "~#3 (#2-5)") answer draft-order questions - playoff misses
+        pick by lowest max PF, so benching starters doesn't move a pick;
+        `next_first_held_by` names who drafts with it when it was traded. Premium rules live here: "contend - on a clock" is the one
         path where buying production is worth a premium; plain "contend" and "press"
         buy at fair prices; "sell" converts aging value while it still has a price.
       `path_edge`, when present - the read sits within refresh noise of a tier line
@@ -176,7 +180,7 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
     # about a team whose chip says decide (LOGIC.md, "The window-label retirement").
     teams = [{k: v for k, v in t.items()
               if k not in ("window", "state", "flavor", "flavor_note", "trajectory",
-                           "trajectory_rank")} for t in teams]
+                           "trajectory_rank", "pick_odds")} for t in teams]
     # Wrapped in a dict rather than returned as a bare list - this MCP SDK version
     # splits a top-level list return into one content block per item instead of one
     # JSON array, which is fragile to rely on. A dict always serializes as one block.
