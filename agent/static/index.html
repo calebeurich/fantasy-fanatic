@@ -936,7 +936,7 @@ async function toggleDetail(tr, leagueId) {
   document.querySelectorAll("tr.detail").forEach(x => x.remove());
   const row = document.createElement("tr");
   row.className = "detail";
-  row.innerHTML = `<td colspan="9" class="cs">loading roster…</td>`;
+  row.innerHTML = `<td colspan="100" class="cs">loading roster…</td>`;
   tr.after(row);
   const owner = tr.dataset.owner;
   try {
@@ -1018,7 +1018,7 @@ async function toggleDetail(tr, leagueId) {
     // why, and nuance is the agent's job. The data speaks - an aging Etienne sticks
     // out by his orange age without a sentence saying so.
     const ideasHtml = `<div class="pgroup ideas"><div class="ptitle">Trade ideas</div><div id="ideas-${owner.replace(/[^a-z0-9]/gi, "_")}" class="cs"><span class="spin"></span>looking across the league for starting points</div></div>`;
-    row.innerHTML = `<td colspan="9"><div class="pcont">` +
+    row.innerHTML = `<td colspan="100"><div class="pcont">` +
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}<div class="plast">${picksHtml}${ideasHtml}</div></div>` +
       `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--ok)">▸</span> starter · ` +
@@ -1030,7 +1030,7 @@ async function toggleDetail(tr, leagueId) {
       `(shade = how deep; each position falls at its own speed)</div></div></td>`;
     fillIdeas(leagueId, owner);
   } catch (e) {
-    row.innerHTML = `<td colspan="9" class="cs warn">Couldn't load roster: ${e}</td>`;
+    row.innerHTML = `<td colspan="100" class="cs warn">Couldn't load roster: ${e}</td>`;
   }
 }
 
