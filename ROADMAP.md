@@ -431,8 +431,9 @@ number would be quietly wrong.
 3. Manager scores v1 on our own leagues. Re-ordered 2026-10-24 (owner: "start sit
    decisions are overrated" - lineups dropped as a channel, kept only as a candidate
    feature for the regression to accept or reject): schedule luck (DONE 2026-10-24,
-   research/schedule_luck.py - all four pre-registered hypotheses held), then drafting,
-   waivers, trades with the DP join.
+   research/schedule_luck.py - all four pre-registered hypotheses held), rookie drafting
+   (DONE 2026-10-24, research/draft_skill.py - no persistent skill beyond consensus at this
+   n; a returns line, not a skill score), then waivers, trades with the DP join.
 4. League report card as a product surface for the friends test.
 5. Sleeper crawler at pilot scope (one hop), then scale; re-run everything at n.
 6. "What converts to wins" regression; only then talk about learned models.

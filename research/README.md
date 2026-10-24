@@ -296,3 +296,34 @@ luckiest was dezdroppedit27 (11-3 on 8.9 earned, +2.1) and its unluckiest kieran
 (5 W on 7.5 earned, -2.5); this season bergenjay is 5-2 on a 42% all-play (+2.1) and rjl22
 3-4 on 65% (-1.5).
 
+## Rookie drafting (`draft_skill.py`, 2026-10-24) - manager scores, channel 2
+
+Each rookie pick is scored twice against its slot, inside the same rookie class and QB
+format (expected value = the mean at pick number +/-2 across every crawled draft that
+year): **outcome** = DynastyProcess value 12 months after the draft minus that slot
+expectation; **draft-day edge** = the player's value on draft day minus the draft-day slot
+expectation (did the manager take someone the market already rated above the slot?).
+Rookie drafts 2021-2025 (a full 12 months has to have passed); startups are a later, separate
+channel. Players DP stops carrying are worth 0 - busting off the file is an outcome.
+
+**Pre-registered before the first run (2026-10-24):**
+- D1: rookie-draft OUTCOME barely persists for a manager - year-over-year r between 0 and
+  0.15. Rookie hits are mostly luck at this sample size.
+- D2: draft-day EDGE persists more (r > 0.2) - it is a process (following or fading
+  consensus), and a process repeats.
+- D3: draft-day edge predicts outcome positively - taking the player the market rates
+  higher at a slot pays off on average, i.e. reaching costs.
+
+**Result (2026-10-24; 90 rookie drafts 2021-2025, 3,534 scored picks, 311 back-to-back
+manager pairs - mostly 2024-25, so read the r's as +/-0.06):** D1 HELD weakly - outcome per
+pick, year-over-year r +0.13. D2 REJECTED - draft-day edge r +0.06: taking the player the
+market rates above the slot is not a repeatable trait; it mostly records who fell to you.
+D3 HELD - edge predicts outcome (r +0.34; each point of draft-day edge is still ~0.85 a year
+later, so draft-day consensus is well calibrated). Exploratory, not pre-registered: the
+outcome BEYOND what consensus predicted persists at r +0.06 and flips sign by year (-0.18,
+-0.07, +0.14) - no detectable scouting skill. **Rookie drafting, at this n, is consensus plus
+luck.** For the report card it is a "returns" line like schedule luck, never called skill;
+for the what-wins model it is still a feature (value gained helps win, skill or not).
+Crosswalk: nflverse ff_playerids sleeper_id -> fantasypros_id (16 of 3,748 picks valued 0 on
+draft day). Startups are a separate, later channel.
+
