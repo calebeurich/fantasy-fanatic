@@ -327,3 +327,23 @@ for the what-wins model it is still a feature (value gained helps win, skill or 
 Crosswalk: nflverse ff_playerids sleeper_id -> fantasypros_id (16 of 3,748 picks valued 0 on
 draft day). Startups are a separate, later channel.
 
+## Waivers (`waiver_skill.py`, 2026-10-24) - manager scores, channel 3
+
+Waiver share = the starter points a manager got from players he added in-season (waiver or
+free agent, regular-season weeks), counted only in weeks they were in his starting lineup,
+as a share of all his starter points that season.
+
+**Pre-registered before the first run (2026-10-24):**
+- W1: waiver share persists for a manager year over year (r > 0.2) - working the wire is a
+  habit.
+- W2: waiver share is NEGATIVELY correlated with the same season's all-play win% - teams
+  with holes start more pickups, so raw share is need as much as skill.
+- W3: waiver share does not predict NEXT season's all-play win% (|r| < 0.1) - in-season
+  pickups patch a season, they don't build lasting strength.
+
+**Result (2026-10-24; 131 seasons, 1,468 manager-seasons, 709 pairs) - all three held:**
+median waiver share 4.7% (10th-90th 0-17.6%). W1 r +0.41: working the wire is as stable a
+trait as all-play skill. W2 r -0.18: it tracks need. W3 r -0.06: it patches a season and
+does not carry into the next one's strength. So raw waiver share is a habit, not a skill
+score; "share given need" (the residual after all-play) is the candidate feature.
+

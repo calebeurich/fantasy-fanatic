@@ -433,7 +433,9 @@ number would be quietly wrong.
    feature for the regression to accept or reject): schedule luck (DONE 2026-10-24,
    research/schedule_luck.py - all four pre-registered hypotheses held), rookie drafting
    (DONE 2026-10-24, research/draft_skill.py - no persistent skill beyond consensus at this
-   n; a returns line, not a skill score), then waivers, trades with the DP join.
+   n; a returns line, not a skill score), waivers (DONE 2026-10-24,
+   research/waiver_skill.py - a stable habit that tracks need, not lasting strength), then
+   trades with the DP join.
 4. League report card as a product surface for the friends test.
 5. Sleeper crawler at pilot scope (one hop), then scale; re-run everything at n.
 6. "What converts to wins" regression; only then talk about learned models.
