@@ -268,3 +268,31 @@ to `data/projections/<season>/` (~0.5 MB, not committed). Why: Sleeper keeps eac
 week's final projection (2025 week 5 is still served), but never what it projected for
 week 12 as of week 6 - and that view is exactly what ePPG and the playoff odds run on.
 With a season of snapshots, the pace replay can feed real ePPG instead of ppg-to-date.
+
+## Schedule luck (`schedule_luck.py`, 2026-10-24) - manager scores, channel 1
+
+Track 3's first channel (ROADMAP; lineups dropped by the owner - "start sit decisions are
+overrated"). Luck = actual head-to-head wins minus all-play expected wins (each week, the
+share of the league you outscored). Median-league games are left out of both sides: they
+are an all-play game already.
+
+**Pre-registered before the first run (2026-10-24):**
+- H1: luck spreads about +/-1 to 1.5 wins (SD) over a 14-week season.
+- H2: luck does not persist - year-over-year correlation for the same manager in the same
+  league is near zero (|r| < 0.1).
+- H3: all-play win% DOES persist (r > 0.3) - it is the skill-carrying half.
+- H4: next season's win% is predicted better by this season's all-play win% than by its
+  actual win% - the record regresses toward all-play.
+
+**Result (2026-10-24, 131 seasons, 1,468 manager-seasons, 709 back-to-back pairs) - all four
+held:** H1 luck SD 1.36 wins a season (10th-90th: -1.8 to +1.8) - often the playoff line.
+H2 year-over-year r = -0.07 (SE ~0.04): it does not follow the manager. H3 all-play win%
+r = +0.41: it does. H4 next season's win% tracks this season's all-play win% (r 0.39) better
+than its record (0.31). So all-play is the skill-carrying half of a record and the rest is
+schedule - the first feature for the "what converts to wins" model.
+
+Gut check on the owner's leagues (live Sleeper data through `luck_by_owner`): XFL 2's 2025
+luckiest was dezdroppedit27 (11-3 on 8.9 earned, +2.1) and its unluckiest kierankieran
+(5 W on 7.5 earned, -2.5); this season bergenjay is 5-2 on a 42% all-play (+2.1) and rjl22
+3-4 on 65% (-1.5).
+

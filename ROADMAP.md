@@ -428,8 +428,11 @@ number would be quietly wrong.
 1. Finish trade_eval to Caleb's taste; wire as MCP tool behind the doctrine.
 2. (Optional, cheap) FC poller as a small cron for the market pulse — demoted,
    nothing depends on it; the crawl + DP archive is the primary trade dataset.
-3. Manager scores v1 on our own leagues (lineups + schedule luck first — zero
-   new data needed — then waivers, drafts, trades with the DP join).
+3. Manager scores v1 on our own leagues. Re-ordered 2026-10-24 (owner: "start sit
+   decisions are overrated" - lineups dropped as a channel, kept only as a candidate
+   feature for the regression to accept or reject): schedule luck (DONE 2026-10-24,
+   research/schedule_luck.py - all four pre-registered hypotheses held), then drafting,
+   waivers, trades with the DP join.
 4. League report card as a product surface for the friends test.
 5. Sleeper crawler at pilot scope (one hop), then scale; re-run everything at n.
 6. "What converts to wins" regression; only then talk about learned models.
