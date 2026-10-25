@@ -607,3 +607,43 @@ more engaged than average; the alignment LABEL misreads pivots (use the title gr
 a trade, the label only to describe one); picks two+ drafts out are still priced at the
 round's mean; DynastyProcess values are consensus 1QB/2QB, not each league's scoring.
 
+## More skills (`more_skills.py`, 2026-10-25) - claims from a second literature sweep
+
+Owner: "there have to be more things we could evaluate and score managers on." A second sweep
+found analyst claims, not studies: no published test of whether start/sit skill matters;
+neglect (starting players on bye or out) named as a common league-killer (RotoStreetJournal);
+"sell RBs by 27" and buy-low-after-a-down-year market timing (RotoStreetJournal,
+PlayerProfiler, FantasyPros); offseason tinkering causes mistakes, patience is underrated
+(FantraxHQ).
+
+Measures, per manager-season: lineup efficiency = starter points / that week's hindsight-
+optimal lineup from the same roster (the owner holds start/sit is overrated - the data
+decides); dead-start rate = starts (including empty slots) scoring 0; timing edge = a
+manager's trades' value margin 12 months later minus the margin on trade day (players only);
+offseason trades = trades filed before week 2.
+
+**Pre-registered before the first run (2026-10-25):**
+- L1: lineup efficiency persists (year-over-year r > 0.2) - it is a habit.
+- L2: but it is worth little beyond the roster - its weight on NEXT season's all-play, with
+  all-play and starter value held fixed, is under 0.01 per SD (the owner's "overrated").
+- N1: dead-start rate persists (r > 0.2) and predicts a worse next season beyond roster
+  (negative weight) - neglect is a trait that costs.
+- S1: market timing is not a skill - the timing edge does not persist (|r| < 0.1).
+- O1 (FantraxHQ's claim, registered as theirs): more offseason trades predict a worse next
+  season beyond roster (negative weight).
+
+**Result (2026-10-25; 2,280 manager-seasons, 1,326 pairs).** First run read lineup efficiency
+persisting at r 0.81 - a confound: league setup moves everyone's efficiency together (SD of
+league averages 7.1 pts vs 3.7 within a league), so every habit is now measured against its
+league that season (the ROADMAP's within-league rule, skipped on the first pass). Then: L1
+HELD - efficiency persists r 0.37 (25th-75th spread 2.7 pts of the best lineup). L2 HELD - its
+weight on next season with roster held is +0.002 per SD: no carryover (the owner's
+"overrated", for dynasty). But inside the season it is real: holding starter value fixed,
++0.061 all-play per SD = +0.85 wins over 14 games; a 25th-to-75th percentile lineup setter
+gains ~+0.6 wins THIS season (about half of luck's spread; part of it is hindsight - whose
+bench boomed). N1 HELD weakly - dead-start rate persists (r 0.31), next-season weight -0.003:
+real, tiny. S1 HELD - market timing (12-month value change beyond the deal) does not persist
+(r -0.02): nobody consistently sells before the decline. O1 REJECTED - FantraxHQ's "offseason
+tinkering causes mistakes" has the sign wrong here: offseason trades persist (r 0.40) and
+predict a BETTER next season beyond roster (+0.019 per SD) - consistent with activity.
+
