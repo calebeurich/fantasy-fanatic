@@ -526,4 +526,9 @@ to re-test this at size.
 - A2: for rebuilds the payoff is late - their alignment's weight on t+2 all-play exceeds its
   weight on t+1.
 - A3: for contenders the payoff is now - their alignment's weight on t+1 all-play is positive.
+- A0 (owner: "we also care about positive effect in current season... that's where you see
+  trade impact most for contenders", added before any run): for contenders' IN-SEASON trades,
+  (a) an aligned trade raises the team's rest-of-season all-play over its pre-trade all-play
+  by more than contenders' non-aligned trades do, and (b) trading contenders win titles at a
+  rate above their pre-trade simulated odds - closer to their post-trade odds.
 

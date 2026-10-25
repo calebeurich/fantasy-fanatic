@@ -183,6 +183,7 @@ def grade_trade(t, d, ctx, leg, day, in_season, weeks, sf, slots, owner, divisio
             "now_titles": sim[me]["title"] if sim else 0.0,
             "now_playoffs": sim[me]["playoffs"] if sim else 0.0,
             "now_lineup": sim[me]["lineup"] if sim else 0.0,
+            "title_before": sim[me]["title_before"] if sim else None,
             "next_titles": next_titles,
             "titles": (sim[me]["title"] if sim else 0.0) + next_titles,
         })
@@ -244,9 +245,10 @@ def this_season(d, leg, weeks, slots, owner, division, mu, rosters, before, afte
     new_lineups = {**base_lineups, **{r: lineup_ppg(after[r], ppg, position, slots) for r in after}}
     o0, o1 = odds(base_lineups), odds(new_lineups)
     if not o0:
-        return {r: {"title": 0.0, "playoffs": 0.0, "lineup": 0.0} for r in before}
+        return {r: {"title": 0.0, "playoffs": 0.0, "lineup": 0.0, "title_before": 0.0} for r in before}
     return {r: {"title": o1[r]["title"] - o0[r]["title"], "playoffs": o1[r]["playoffs"] - o0[r]["playoffs"],
-                "lineup": new_lineups[r] - base_lineups[r]} for r in before}
+                "lineup": new_lineups[r] - base_lineups[r], "title_before": o0[r]["title"]}
+            for r in before}
 
 
 def build_context() -> tuple[dict, list]:
