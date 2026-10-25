@@ -36,12 +36,21 @@ class Values:
         self.dates = [s["scrape_date"] for s in snaps]
         self.rows = [{r["fp_id"]: r for r in s["rows"]} for s in snaps]
 
-    def at(self, fp_id, date: str, superflex: bool):
+    def rows_at(self, fp_id, date: str):
+        """The player's DP row in that snapshot, None if he isn't in it."""
         i = bisect.bisect_left(self.dates, date)
-        if i == len(self.dates):
+        return self.rows[i].get(fp_id) if fp_id and i < len(self.dates) else None
+
+    def at(self, fp_id, date: str, superflex: bool):
+        if bisect.bisect_left(self.dates, date) == len(self.dates):
             return None                       # past the end of the archive
-        row = self.rows[i].get(fp_id) if fp_id else None
+        row = self.rows_at(fp_id, date)
         return float(row["value_2qb" if superflex else "value_1qb"] or 0) if row else 0.0
+
+
+def is_superflex(league: dict) -> bool:
+    positions = league.get("roster_positions") or []
+    return "SUPER_FLEX" in positions or positions.count("QB") >= 2
 
 
 def sleeper_to_fp() -> dict:
@@ -54,8 +63,7 @@ def rookie_picks(values: Values, xwalk: dict) -> list[dict]:
     for f in sorted(CRAWL_DIR.glob("*.json")):
         d = json.load(open(f, encoding="utf-8"))
         lg = d["league"]
-        positions = lg.get("roster_positions") or []
-        superflex = "SUPER_FLEX" in positions or positions.count("QB") >= 2
+        superflex = is_superflex(lg)
         for dr in d.get("drafts") or []:
             rounds = (dr.get("settings") or {}).get("rounds") or 99
             if (dr.get("status") != "complete" or not dr.get("picks") or rounds > MAX_ROOKIE_ROUNDS

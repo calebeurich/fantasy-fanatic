@@ -347,3 +347,38 @@ trait as all-play skill. W2 r -0.18: it tracks need. W3 r -0.06: it patches a se
 does not carry into the next one's strength. So raw waiver share is a habit, not a skill
 score; "share given need" (the residual after all-play) is the candidate feature.
 
+## Roster strength -> next season (`roster_strength.py`, 2026-10-24) - the future half of championship equity
+
+Owner: a trade's currency is titles, not linear value - "you could be losing value on paper
+but making your lineup way better," and a rebuild "taking shots on players who turn into
+stars is good." Step 1 of grading trades in expected titles: learn how a roster at the end
+of season t turns into all-play win% in t+1. Each roster is rebuilt from the last regular-
+season week's lineup record and valued with DynastyProcess on Dec 10 of that season (1QB or
+2QB value by format); features are league-relative (1.0 = the league's average team).
+Known gap: future picks are not valued (the crawl's pick ownership is today's, not
+historical) - they enter once drafted.
+
+Features: all-play win% in t; total value; star value (top 3 players); starter value (top
+N by value, N = starting slots) vs bench; share of value in players 28+.
+Fit on target seasons through 2024, tested on 2025 (never seen in fitting).
+
+**Pre-registered before the first fit (2026-10-24):**
+- C1: end-of-season roster value predicts next season's all-play win% better than this
+  season's all-play does (out-of-sample r higher).
+- C2: shape adds to total value out of sample - holding total fixed, star value carries a
+  positive weight and bench value the smallest (stars matter more than linear value).
+- C3: holding total value fixed, a bigger share in players 28+ predicts a WORSE next season.
+
+**Result (2026-10-24; 709 team pairs, target seasons 2021-25 - 413 of them 2025).** Held-out
+2025: all-play alone r 0.36, roster value alone 0.45, value + all-play 0.44, + shape 0.44.
+Re-checked leave-one-season-out (more robust with this skew): all-play 0.40, total value
+0.47, starter value 0.45, all-play + starter + bench 0.48 (best). **C1 HELD** - roster value
+predicts next season better than this season's results. **C2 REJECTED** - no star premium
+for regular-season wins: holding starter value fixed, value in the top 3 counts LESS per
+unit (0.29) than the rest of the lineup (0.39), a squared term doesn't help, and bench
+value carries little. **C3 REJECTED at one season** - old share is ~0 (-0.03 pooled); age
+should bite at t+2+, not t+1. Reading: roster -> strength is close to linear in starter
+value; the non-linearity the owner expects belongs to strength -> TITLES (a 1 seed wins far
+more than a 5 seed), which the season simulator already models. Next: map all-play to
+title odds through the simulator, then grade trades as change in expected titles.
+
