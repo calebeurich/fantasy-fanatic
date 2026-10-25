@@ -462,3 +462,38 @@ thesis, measured. T-D HELD - the side receiving fewer pieces gains +1.17 title p
 trade quality is not a stable trait. By situation, in-season: contenders +1.41 this-season
 title points a trade, middle +0.42, rebuilds ~0.
 
+## What converts to wins (`what_wins.py`, 2026-10-24) - the model over every channel
+
+One linear model per target, every channel as a feature of season t, predicting season t+1;
+every target season held out in turn (leave-one-season-out), weights read per SD. Features:
+results (all-play, luck), roster (starter, bench, 28+ share), behavior (moves, trades, waiver
+share), trade grades (this-season titles gained, next-season titles gained, pick value
+bought). Draft outcomes are excluded - they are measured 12 months on, a leak.
+
+**Pre-registered before the first fit (2026-10-24):**
+- M1: behavior + trade grades improve held-out prediction of next season's all-play over
+  the results + roster baseline (r up by at least 0.01).
+- M2: luck carries ~zero weight (|weight per SD| < 0.005) - it is already out of all-play
+  and nothing about it repeats.
+- M3: of the behaviors, total moves carries the largest weight per SD.
+- M4: the same model predicts next season's TITLE better than all-play alone does (held-out
+  AUC up by at least 0.02).
+
+**Result (2026-10-24; 709 manager pairs, 62 next-season champions).** Held-out next-season
+all-play: all-play alone r 0.397, results + roster 0.478, + behavior + trade grades 0.494.
+Title AUC: 0.691 / 0.723 / 0.720. **M1 HELD** (+0.016 r from behavior). **M2 REJECTED** - luck
+carries -0.011 per SD: teams the schedule flattered do worse next season than their all-play
+and roster predict. Checked and rejected: lucky teams standing pat (luck vs next season's
+moves r 0.02). Open hypothesis: the draft - a flattering record buys a worse slot. **M3
+HELD** - per SD: starter +0.052, all-play +0.036, MOVES +0.029, bench +0.016, next-season
+trade titles +0.011, luck -0.011, picks bought +0.009, this-season trade titles +0.006;
+waiver share, trades and age ~0 once moves is in. **M4 HELD as written** (+0.03 AUC over
+all-play) but behavior adds nothing to TITLE prediction beyond roster + results - 62
+champions is too few to see effects this size.
+
+**The manager-score story, all channels together:** a dynasty team's next season is starter
+value first, real (all-play) results second, and the manager's ACTIVITY third - the one
+behavior that keeps paying. Luck, rookie drafting and trade quality do not persist; the
+right trade depends on the team (contenders converting value to lineup gain title odds,
+consolidators gain, pick value pays off - if at all - beyond the next season).
+
