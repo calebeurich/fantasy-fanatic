@@ -17,7 +17,7 @@ STRENGTH_SD_SHARE = 0.065  # how far a team's true level drifts over the rest of
 def simulate(teams: list[dict], settings: dict, weeks_played: int, schedule: dict | None = None,
              strengths: dict | None = None, strength_sd: float | None = None,
              runs: int = RUNS, seed: int = 0) -> dict:
-    """owner_id -> {"playoffs", "bye", "title"} as probabilities, plus "pick": the chance
+    """owner_id -> {"playoffs", "bye", "title", "top3"} as probabilities, plus "pick": the chance
     of each draft slot (index 0 = the 1.01) for that team's OWN next 1st.
 
     `teams`: owner_id, wins (median games included), ties, points_for, max_pf (best-ball
@@ -37,7 +37,7 @@ def simulate(teams: list[dict], settings: dict, weeks_played: int, schedule: dic
     drift_sd = STRENGTH_SD_SHARE * level if strength_sd is None else strength_sd
     expect = lambda me, w: (strengths or {}).get(me, {}).get(w, eppg[me])
     rng = random.Random(seed)
-    counts = {me: {"playoffs": 0, "bye": 0, "title": 0} for me in ids}
+    counts = {me: {"playoffs": 0, "bye": 0, "title": 0, "top3": 0} for me in ids}
     picks = {me: [0] * len(ids) for me in ids}
 
     for _ in range(runs):
@@ -71,6 +71,8 @@ def simulate(teams: list[dict], settings: dict, weeks_played: int, schedule: dic
         order = draft_order([me for me in ids if me not in seeds], champ, losers, wins, mpf, play)
         for slot, me in enumerate(order):
             picks[me][slot] += 1
+        for me in order[-3:]:    # the draft order ends 3rd-place winner, runner-up, champion
+            counts[me]["top3"] += 1
     return {me: {**{k: n / runs for k, n in c.items()}, "pick": [n / runs for n in picks[me]]}
             for me, c in counts.items()}
 

@@ -557,3 +557,53 @@ next-season prediction, under M1's +0.01 bar); rookie-draft outcome persistence 
 +0.05 (the first run's +0.13 was noise); the 28+ share now carries -0.014 per SD - age shows
 up with more seasons.
 
+## Bias checks (`bias_checks.py`, 2026-10-24) - the owner's critiques, and our own
+
+Owner: byes are confounded with being the better team; some good trades are deliberately
+unaligned (a pivot - BenSimonds trading for Chase in XFL 2 this year); and top 3 pays, so
+top-3 finishes are the point too and less noisy than titles. Our own: A0a's two groups may
+start at different all-play (regression to the mean differs); picks priced at the round's
+mean undervalue a rebuild's early pick and overvalue a contender's late one; the deep crawl
+kept only leagues that lasted 5+ seasons (survivorship - stated, not fixable here); a team
+handed to a new manager breaks "same manager, next season".
+
+**Pre-registered before the first run (2026-10-24):**
+- B1: holding regular-season all-play fixed, a bye still raises title odds (positive bye
+  weight in a logistic of title on all-play + bye) - the bye is not only strength.
+- B2: seed 2 (bye) wins titles at more than 1.3x seed 3 (no bye).
+- B3: pivot buys - in-season trades NOT aligned that raised this-season title odds by 2+
+  points - lift rest-of-season all-play no less than aligned trades do (within 2 points).
+- B4: top-3 is the steadier target - predicting next season's top-3 finish reaches a
+  higher AUC than predicting the title with the same model.
+- B5: A0a survives a control for pre-trade all-play (aligned contenders' rest-of-season
+  lift stays above non-aligned contenders').
+
+**Result (2026-10-24; 202 seasons, 1,204 playoff team-seasons, 4,092 trades re-graded with
+slot-aware pick prices - the next draft's picks priced at their projected slot from
+standings at trade time, picks two+ drafts out at the round's mean).** B1 HELD, smaller -
+holding all-play fixed, a bye takes title odds from 14.5% to 21.6% at a .650 all-play: 1.5x,
+not the raw 2.3x; about half the raw effect was the bye teams being better (owner's critique,
+confirmed). B2 HELD as run - bye teams 27.0% vs the equally many strongest non-bye teams
+16.6% (deviation: exact seeds aren't in the bracket; the non-bye group is still a bit weaker,
+.672 vs .707, so B1 is the clean number). B3 HELD - pivot buys (not aligned, graded +2 title
+points this season) lifted rest-of-season all-play +3.8 pts vs -1.6 for aligned trades and
+-0.2 for the rest; caveat: "pivot" is defined by the grade, so this validates the grader
+crediting pivots more than pivoting as a strategy. Live: BenSimonds' week-2 buy of Chase for
+picks grades +1.0 title / +3.8 top-3 points this season and +1.1 next, while the alignment
+label calls it misaligned (his last-season all-play was .31) - the label looks backward; a
+pivot changes the team's situation. B4 HELD - next season from all-play: top-3 AUC 0.697 vs
+title 0.671. B5 HELD - contenders' aligned lift with pre-trade all-play controlled: +5.3 pts.
+A0b on top 3 (top 3 pays in the owner's leagues): trading contenders finished top 3 56.5% vs
+52.1% pre-trade odds (~2.5 SE above) - where titles were too rare to see it, top 3 shows the
+trades working. Same roster under a new owner_id next season: 6.5% - small.
+
+After slot-aware pick prices, the earlier trade findings stand: lineup half slope 1.06;
+contenders losing on value +1.45 vs +1.29 title points (gap narrowed - contenders' own picks
+were overpriced at the round mean); consolidation +1.19 vs +0.11; trade quality r 0.04;
+pick value never helps next season; rebuild alignment at t+2 +0.023 [+0.008, +0.037].
+
+**Known, not fixed:** survivorship - the deep crawl kept leagues that lasted 5+ seasons, likely
+more engaged than average; the alignment LABEL misreads pivots (use the title grade to judge
+a trade, the label only to describe one); picks two+ drafts out are still priced at the
+round's mean; DynastyProcess values are consensus 1QB/2QB, not each league's scoring.
+

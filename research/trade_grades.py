@@ -79,7 +79,8 @@ def title_curve(seasons: list) -> tuple:
 
 
 def pick_prices(seasons: list, values: Values, xwalk: dict) -> dict:
-    """(draft season, superflex, round) -> mean draft-day value of that round's picks."""
+    """Mean draft-day value by (draft season, superflex, round) AND by (draft season,
+    superflex, "pick", overall pick number) - a slot is priced once it can be projected."""
     sums = defaultdict(list)
     for d in seasons:
         sf = is_superflex(d["league"])
@@ -92,12 +93,21 @@ def pick_prices(seasons: list, values: Values, xwalk: dict) -> dict:
                 v = values.at(xwalk.get(str(p.get("player_id"))), day, sf)
                 if v is not None:
                     sums[(int(dr["season"]), sf, p["round"])].append(v)
+                    sums[(int(dr["season"]), sf, "pick", p["pick_no"])].append(v)
     return {k: statistics.mean(v) for k, v in sums.items()}
 
 
-def pick_price(prices: dict, season: int, sf: bool, rnd: int) -> float:
-    """A future pick's price: its own class if drafted, else the latest class we have."""
-    known = sorted(s for s, f, r in prices if f == sf and r == rnd)
+def pick_price(prices: dict, season: int, sf: bool, rnd: int, slot: int | None = None) -> float:
+    """A future pick's price: its own class if drafted, else the latest class we have; at its
+    projected overall slot (+/-1 pick) when one is given, else the round's mean."""
+    if slot is not None:
+        known = sorted({k[0] for k in prices if len(k) == 4 and k[1] == sf})
+        if known:
+            year = season if season in known else known[-1]
+            near = [prices[k] for k in ((year, sf, "pick", slot + i) for i in (-1, 0, 1)) if k in prices]
+            if near:
+                return statistics.mean(near)
+    known = sorted(k[0] for k in prices if len(k) == 3 and k[1] == sf and k[2] == rnd)
     if not known:
         return 0.0
     return prices[(season if season in known else known[-1], sf, rnd)]
@@ -145,7 +155,18 @@ def grade_trade(t, d, ctx, leg, day, in_season, weeks, sf, slots, owner, divisio
         known = [(v, float(a)) for v, a in weighted if v > 0 and a not in (None, "", "NA")]
         total = sum(v for v, _ in known)
         return sum(v * a for v, a in known) / total if total else None
-    price = lambda pk: pick_price(ctx["prices"], int(pk["season"]), sf, pk["round"])
+    # The next draft's slots are projectable from today's standings (worst all-play picks
+    # first); a pick two+ drafts out is priced at its round's mean. Owner-flagged bias: a
+    # round mean undervalues a rebuild's early pick and overvalues a contender's late one.
+    standing = sorted(rosters, key=lambda r: ctx["allplay_now"](d, owner[r], leg))
+    league_season = int(d["league"]["season"])
+
+    def price(pk):
+        out = int(pk["season"]) - league_season
+        projectable = out == 0 or (out == 1 and in_season)
+        slot = ((pk["round"] - 1) * len(rosters) + standing.index(pk["roster_id"]) + 1
+                if projectable and pk.get("roster_id") in standing else None)
+        return pick_price(ctx["prices"], int(pk["season"]), sf, pk["round"], slot)
     league_mean = statistics.mean(sum(val(p) for p in r) for r in rosters.values())
     if league_mean < MIN_ROSTER_VALUE:
         return []   # rosters this far back barely map to DP ids - no honest price
@@ -182,6 +203,8 @@ def grade_trade(t, d, ctx, leg, day, in_season, weeks, sf, slots, owner, divisio
             "allplay_now": ap_now, "value_rank_before": total_before / league_mean,
             "now_titles": sim[me]["title"] if sim else 0.0,
             "now_playoffs": sim[me]["playoffs"] if sim else 0.0,
+            "now_top3": sim[me]["top3"] if sim else 0.0,
+            "top3_before": sim[me]["top3_before"] if sim else None,
             "now_lineup": sim[me]["lineup"] if sim else 0.0,
             "title_before": sim[me]["title_before"] if sim else None,
             "next_titles": next_titles,
@@ -245,9 +268,11 @@ def this_season(d, leg, weeks, slots, owner, division, mu, rosters, before, afte
     new_lineups = {**base_lineups, **{r: lineup_ppg(after[r], ppg, position, slots) for r in after}}
     o0, o1 = odds(base_lineups), odds(new_lineups)
     if not o0:
-        return {r: {"title": 0.0, "playoffs": 0.0, "lineup": 0.0, "title_before": 0.0} for r in before}
+        return {r: {"title": 0.0, "playoffs": 0.0, "lineup": 0.0, "title_before": 0.0,
+                    "top3": 0.0, "top3_before": 0.0} for r in before}
     return {r: {"title": o1[r]["title"] - o0[r]["title"], "playoffs": o1[r]["playoffs"] - o0[r]["playoffs"],
-                "lineup": new_lineups[r] - base_lineups[r], "title_before": o0[r]["title"]}
+                "lineup": new_lineups[r] - base_lineups[r], "title_before": o0[r]["title"],
+                "top3": o1[r]["top3"] - o0[r]["top3"], "top3_before": o0[r]["top3"]}
             for r in before}
 
 
