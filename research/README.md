@@ -293,8 +293,9 @@ schedule - the first feature for the "what converts to wins" model.
 
 Gut check on the owner's leagues (live Sleeper data through `luck_by_owner`): XFL 2's 2025
 luckiest was dezdroppedit27 (11-3 on 8.9 earned, +2.1) and its unluckiest kierankieran
-(5 W on 7.5 earned, -2.5); this season bergenjay is 5-2 on a 42% all-play (+2.1) and rjl22
-3-4 on 65% (-1.5).
+(5 W on 7.5 earned, -2.5); through 2026 week 6 bergenjay is 4-2 on a 44% all-play (+1.4) and
+rjl22 3-3 on 76% (-1.5). (First run counted a half-played week 7 - corrected; the report
+card counts only weeks before the NFL's current one.)
 
 ## Rookie drafting (`draft_skill.py`, 2026-10-24) - manager scores, channel 2
 
@@ -496,4 +497,11 @@ value first, real (all-play) results second, and the manager's ACTIVITY third - 
 behavior that keeps paying. Luck, rookie drafting and trade quality do not persist; the
 right trade depends on the team (contenders converting value to lineup gain title odds,
 consolidators gain, pick value pays off - if at all - beyond the next season).
+
+## Report card (`report_card.py`, 2026-10-24)
+
+`python -m research.report_card <league_id>`: every channel for a live league, completed
+weeks only - record vs earned (all-play) wins and the luck between them, all-play %, moves,
+trades, trade grades summed in title odds (ex-ante, this season + next), and pick value
+bought. Research output for now; the product form (a league report card) is ROADMAP Track 3.
 
