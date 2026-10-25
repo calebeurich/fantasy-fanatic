@@ -382,3 +382,39 @@ value; the non-linearity the owner expects belongs to strength -> TITLES (a 1 se
 more than a 5 seed), which the season simulator already models. Next: map all-play to
 title odds through the simulator, then grade trades as change in expected titles.
 
+## Manager habits (`manager_habits.py`, 2026-10-24) - claims from the literature, tested
+
+The owner asked for a sweep of what people think makes a good manager, tested against our
+data. Sources: the Fantasy Premier League skill study (O'Brien et al., PLOS One 2021 - ranks
+persist across seasons; "long-term planning and consistently good decision-making"), the MIT
+fantasy skill study (Hosoi et al.), Harstad's Footballguys "Dynasty, in Theory" columns (half
+skill / half luck; the best team wins ~30-36% of titles WITH a bye and 16-20% without;
+win-now buying adds ~4% title odds), and an FFToday reader survey (top seeds are more active
+on the wire, maybe just engagement). No published study links trade volume to winning.
+
+**Pre-registered before the first run (2026-10-24):**
+- H5 (byes): in our 131 brackets, the two bye seeds win at least half of all titles, and a
+  bye seed's title rate is at least 1.5x a non-bye playoff seed's.
+- H6 (how long to know a manager): from the year-over-year all-play r, Spearman-Brown says
+  ~3-4 seasons of all-play are needed for 0.7 reliability; checked directly, two seasons'
+  average all-play predicts a third better than one season does.
+- H7 (trading): trade volume is a stable habit (year-over-year r > 0.3), and holding this
+  season's all-play and starter value fixed, more trades predict a slightly BETTER next
+  season (positive partial weight) - action beats inaction.
+- H8 (engagement): total moves (adds + trades) predict next season's all-play beyond roster
+  and results less well than trades alone do - engagement isn't the same as dealing.
+
+**Result (2026-10-24).** H5 HELD - 128 brackets with byes: bye seeds won 53% of titles, 26.6%
+per bye team vs 11.7% per other playoff team (2.3x), in line with Harstad's ~30%; seeding is
+where regular-season strength turns into titles. H6 HALF - Spearman-Brown says 3.3 seasons,
+but directly (268 managers, three straight seasons) the latest season predicts the third
+BETTER (r 0.45) than a two-season average (0.37): in dynasty a team's level moves too fast to
+be a fixed manager trait - we are scoring team state plus behavior, not a permanent talent
+number. H7 HELD - trades are a habit (median 3 a season, year-over-year r 0.39) with a small
+positive partial weight on next season. H8 REJECTED, the interesting way: TOTAL moves (adds +
+trades) predict next season better than trades alone (leave-one-season-out r 0.503 vs 0.488
+vs 0.477 base) - positive in every held-out season (+0.011 to +0.034 all-play per SD), robust
+to log(moves), adds weighing more than trades. One SD (13 moves; median 15) ~ +0.4 wins the
+next season beyond roster value and results: the first behavior that predicts improvement.
+Engagement, not cleverness, is the measurable edge so far.
+

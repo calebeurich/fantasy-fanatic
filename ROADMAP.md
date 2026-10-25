@@ -435,7 +435,13 @@ number would be quietly wrong.
    (DONE 2026-10-24, research/draft_skill.py - no persistent skill beyond consensus at this
    n; a returns line, not a skill score), waivers (DONE 2026-10-24,
    research/waiver_skill.py - a stable habit that tracks need, not lasting strength), then
-   trades with the DP join.
+   trades with the DP join. Also done 2026-10-24: roster strength -> next season
+   (research/roster_strength.py - starter value, no star premium for regular-season wins)
+   and literature claims (research/manager_habits.py - byes 2.3x title rate; ACTIVITY is the
+   first behavior predicting next-season improvement beyond roster, ~+0.4 wins per SD).
+   Trade grading = change in expected titles (simulator for this season, roster-strength
+   curve for the future, both ex-ante; outcome/injury shown separately - owner: the Achane
+   ACL and the Hurts-to-Goff/Kittle replacement trades must grade on what was known).
 4. League report card as a product surface for the friends test.
 5. Sleeper crawler at pilot scope (one hop), then scale; re-run everything at n.
 6. "What converts to wins" regression; only then talk about learned models.
