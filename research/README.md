@@ -694,3 +694,23 @@ season out: age bites on the two-season clock, about half a win per SD. A2 REJEC
 spread carries -0.006, not positive: a "balanced" roster isn't rewarded beyond its average
 age.
 
+## Depth, redone on real injuries (`depth_injury.py`, 2026-10-25)
+
+D1 was inconclusive because most inferred "missed weeks" were byes. Redone with nflverse's
+history: a regular starter's absence counts only when his NFL team PLAYED that week
+(schedules) and he was injured - on injured reserve or inactive in that week's NFL roster
+(`load_rosters_weekly`, carries Sleeper ids), or reported Out/Doubtful (`load_injuries`).
+
+**Pre-registered before the first run (2026-10-25):**
+- D1b: in confirmed-injury weeks, a better backup at the missing starter's position shrinks
+  the team's drop from its season average (positive backup slope), with the missing
+  starter's PPG and the team's season average held fixed.
+
+**Result (2026-10-25; 11,635 confirmed-injury starter absences, 2020-2025, byes excluded).**
+D1b HELD - with the missing starter's PPG and the team's average held, each point of backup
+PPG recovers +0.43 points that week (the missing starter costs -0.60 per PPG). A first cut
+read -0.31: it took the best player left on the BENCH as the backup, and a good backup is
+never on the bench in that week - he starts. The original D1 (strategy_tests.py) carried the
+same flaw; D1b supersedes it. Size: ~5 confirmed-injury starter absences per team-season, so
+a 12-PPG backup over a 6-PPG one is worth ~13 points a season - real, a fraction of a win.
+
