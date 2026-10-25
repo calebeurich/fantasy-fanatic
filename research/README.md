@@ -418,3 +418,47 @@ to log(moves), adds weighing more than trades. One SD (13 moves; median 15) ~ +0
 next season beyond roster value and results: the first behavior that predicts improvement.
 Engagement, not cleverness, is the measurable edge so far.
 
+## Trade grades (`trade_grades.py`, `trade_analysis.py`, 2026-10-24) - manager scores, channel 4
+
+Every crawled two-team trade (2,513; 735 in-season) graded per side as the change in
+expected titles, ex-ante: this season by re-running the season simulator before/after
+(lineups at points per game to date, shrunk toward the position's typical starter by 3
+games so a week-2 trade isn't priced on one Sunday; rostered-and-scoreless two weeks =
+out), next season through the roster-strength curve (all-play + league-relative value ->
+next all-play) and a title curve fitted on the crawl's brackets (P(title) = logistic(-7.57 +
+8.80 x all-play): 4.0% at .500, 19.7% at .700 - the non-linearity lives here). Picks: their
+round's draft-day mean in that class and format. Out of scope: 3+ team trades. Known
+limit: the next-season half is linear in value margin by construction.
+
+Owner gut check (live, `python -m research.trade_grades <league_id>`): Goff + Kittle after
+Hurts' injury +10.1 lineup PPG, +9.8 title points this season; Cook for an injured Achane +
+a 2nd +5.7 PPG, +3.8 titles, +11.5 playoff points; the Achane buy itself ~0 - not punished
+for an ACL that came later. All three as the owner reads them.
+
+**Pre-registered before the analysis (2026-10-24):**
+- T-A (the lineup half is real): a side's predicted lineup gain shows up in its actual
+  weekly scoring after the trade - slope between 0.3 and 1.2, r > 0.1.
+- T-B (the value half is real): holding all-play and roster value fixed, value margin
+  predicts next season's all-play with a positive weight.
+- T-C (the owner's thesis): contenders (all-play to date >= .600) who LOSE on value in-season
+  still gain this-season title odds on average.
+- T-D (consolidation): in-season, the side receiving fewer pieces (the 2-for-1 buyer) gains
+  more this-season title odds than the side receiving more.
+- T-E (is trading a skill): a manager's average trade grade in titles persists year over
+  year, r > 0.1.
+
+**Result (2026-10-24).** T-A HELD - over 1,372 in-season sides, every predicted lineup point
+shows up as ~1.05 real points a week after the trade (r 0.26): the this-season half is real.
+T-B REJECTED as specified, and the miss rebuilt the grader: value won predicted a WORSE next
+season (league bootstrap 95% -0.25 to -0.02). Split apart, PLAYER value won helps exactly as
+the curve says (offseason +0.29 [0.17, 0.39], in-season +0.43 [0.19, 0.68]) while PICK value
+won never helps the next season (in-season ~0, offseason -0.40 [-0.51, -0.31] - mostly who
+buys picks: rebuilds making themselves worse). So the next-season half now prices player
+value only, and picks ride along as `pick_margin` in value, unpriced in titles until a 2+
+season horizon can be validated. T-C HELD - contenders who LOST on value in-season gained
++1.50 title points on average, more than contenders who won on value (+1.30): the owner's
+thesis, measured. T-D HELD - the side receiving fewer pieces gains +1.17 title points vs
++0.23. T-E REJECTED - a manager's trade grade does not persist (r 0.02 over 455 pairs):
+trade quality is not a stable trait. By situation, in-season: contenders +1.41 this-season
+title points a trade, middle +0.42, rebuilds ~0.
+
