@@ -714,3 +714,21 @@ never on the bench in that week - he starts. The original D1 (strategy_tests.py)
 same flaw; D1b supersedes it. Size: ~5 confirmed-injury starter absences per team-season, so
 a 12-PPG backup over a 6-PPG one is worth ~13 points a season - real, a fraction of a win.
 
+## Picks two seasons out, and folded leagues (2026-10-25, pre-registered before the hop-3
+## crawl lands)
+
+Picks were left unpriced in titles because pick value never helped the NEXT season. With a
+third crawl hop for more long histories, the horizon a pick can actually pay on is testable.
+Separately, a comparison set of dynasty leagues that folded after 2022-2024 sits in
+data/crawl_short/ - never mixed into the main corpus (owner: "we don't really want to cater to
+dead dynasty leagues, though good to know if they act different").
+
+**Pre-registered (2026-10-25):**
+- P2: pick value bought (trade sides' `pick_margin`, summed per manager-season) carries a
+  POSITIVE weight on all-play two seasons out, with all-play and roster value held fixed - the
+  horizon picks pay on. (Next season it was negative: -0.40 offseason.)
+- F1: in its final season, a folded league is less active than a living league's average
+  season - fewer moves and trades per team - and has a higher dead-start rate.
+- F2: folded leagues decline before they fold - moves per team fall from their first season
+  to their last.
+
