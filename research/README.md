@@ -649,3 +649,48 @@ predict a BETTER next season beyond roster (+0.019 per SD) - consistent with act
 
 
 Check after the within-league fix: total activity, re-measured relative to its league, keeps its next-season weight (+0.020 per SD vs +0.018 raw) - all-play averages .500 in every league, so league-wide activity could not fake it, and it did not.
+
+## Strategy tests (`strategy_tests.py`, 2026-10-25) - the owner's "test all of that"
+
+Five more, every roster measure relative to its league that season. Season-end rosters are
+rebuilt from the last regular-season week and valued (DynastyProcess, Dec 10) by position
+and age.
+
+- QB investment: share of roster value in QBs.
+- Depth: when a regular starter (started 60%+ of his rostered weeks) misses a week (not in
+  the lineup or scoring 0), the team's points that week vs its season average, against the
+  season PPG of its best bench player at that position.
+- Waiver timing: starter points per add, by the week the add was made (weeks 1-4 vs 5+).
+- Trade partners: value margin vs the gap between the two managers' all-play.
+- Age: value-weighted roster age and its spread.
+
+**Pre-registered before the first run (2026-10-25):**
+- P1: in superflex leagues, QB share carries a positive weight on next season's all-play with
+  starter value held; in 1QB leagues it doesn't (weight <= 0).
+- D1: depth pays when it's needed - a better bench player at the missing starter's position
+  shrinks that week's drop (positive slope on the backup's PPG).
+- E1: early adds bank more - an add made in weeks 1-4 yields more starter points than one made
+  later (the "spend early" claim).
+- T1: managers win value off weaker partners - value margin rises with the partner's all-play
+  deficit (positive correlation).
+- A1: an older value-weighted roster predicts a worse season two out (t+2), roster value held.
+- A2: a balanced roster (wider age spread) carries a positive weight at t+1, average age and
+  value held.
+
+**Result (2026-10-25).** P1 REJECTED - QB share adds nothing beyond starter value in either
+format (superflex +0.001 per SD, n=796; 1QB +0.003, n=467): in superflex QBs matter because
+they START, which starter value already prices. D1 INCONCLUSIVE - design flaw, not a finding:
+the backup's slope stays negative (-0.25) with the missing starter's PPG held; most of the
+53,000 "missed-starter weeks" are routine byes, and teams with good backups are stronger
+teams with higher averages to fall from. Depth needs real injury data (sources/injuries.py
+is current-only), not inferred absences. E1 HELD as written, with a twist - an add in weeks
+1-4 banks 13.7 starter points vs 10.0 later, but per week LEFT, later adds produce more (1.87
+vs 1.03): the early edge is more weeks on the calendar, and late adds are better-targeted
+(more information). The "breakouts decay at the same rate" claim doesn't hold here. T1
+REJECTED - value margin doesn't track the partner's all-play deficit (r -0.02): nobody
+systematically fleeces weaker managers. A1 HELD strongly - an older value-weighted roster
+costs -0.038 all-play per SD two seasons out (league bootstrap 90% [-0.054, -0.022]), ~0 one
+season out: age bites on the two-season clock, about half a win per SD. A2 REJECTED - age
+spread carries -0.006, not positive: a "balanced" roster isn't rewarded beyond its average
+age.
+
