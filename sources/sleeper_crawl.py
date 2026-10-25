@@ -51,16 +51,19 @@ def crawl_season(league_id: str) -> dict:
     return season
 
 
-def crawl_chain(league_id: str) -> list[Path]:
-    """Walk the season chain and archive every season not already on disk."""
-    CRAWL_DIR.mkdir(parents=True, exist_ok=True)
+def crawl_chain(league_id: str, out_dir: Path = CRAWL_DIR) -> list[Path]:
+    """Walk the season chain and archive every season not already on disk. Written to a
+    temp file and renamed, so an analysis reading the folder mid-crawl never sees half a file."""
+    out_dir.mkdir(parents=True, exist_ok=True)
     written = []
     for season_id in get_season_chain(league_id):
-        out = CRAWL_DIR / f"{season_id}.json"
+        out = out_dir / f"{season_id}.json"
         if out.exists():
             continue
         season = crawl_season(season_id)
-        out.write_text(json.dumps(season), encoding="utf-8")
+        tmp = out.with_suffix(".tmp")
+        tmp.write_text(json.dumps(season), encoding="utf-8")
+        tmp.replace(out)
         written.append(out)
         lg = season["league"]
         n_trades = sum(1 for wk in season["transactions"].values()
@@ -99,14 +102,14 @@ def snowball(seed_league_ids: list[str], max_chains: int = 60) -> None:
                   f"{len(list(CRAWL_DIR.glob('*.json')))} season files on disk")
 
 
-def deep(seed_league_ids: list[str], min_seasons: int = 5, max_chains: int = 150,
-         max_users: int = 600) -> None:
+def deep(seed_league_ids: list[str], min_seasons: int = 5, max_chains: int = 400,
+         max_users: int = 600, hops: int = 2) -> None:
     """Two hops out, keeping only dynasty leagues with min_seasons+ seasons of history: a
     rebuild pays off over 2-3 seasons, and the one-hop corpus had 13 leagues with four
     straight completed seasons (owner, 2026-10-24: "deeper seasoned leagues so true rebuilds
     and picks have enough time to convert into wins")."""
     leagues, users = list(seed_league_ids), []
-    for hop in range(2):
+    for hop in range(hops):
         for lid in list(leagues):
             for u in _get(f"/league/{lid}/users") or []:
                 if u["user_id"] not in users and len(users) < max_users:
@@ -131,9 +134,47 @@ def deep(seed_league_ids: list[str], min_seasons: int = 5, max_chains: int = 150
             print(f"  ...{crawled} deep chains, {len(list(CRAWL_DIR.glob('*.json')))} season files")
 
 
+SHORT_DIR = Path("data/crawl_short")
+
+
+def folded(seed_league_ids: list[str], max_chains: int = 80, max_users: int = 300) -> None:
+    """A COMPARISON set, kept out of the main corpus in data/crawl_short/: dynasty leagues
+    that stopped after 2022-2024 (owner: "we don't really want to cater to dead dynasty
+    leagues, though good to know if they act different"). Sleeper links seasons backward
+    only, so a league counts as folded when no member's 2025 league traces back to it."""
+    users = []
+    for lid in seed_league_ids:
+        for u in _get(f"/league/{lid}/users") or []:
+            if u["user_id"] not in users:
+                users.append(u["user_id"])
+    for lid in [lg["league_id"] for uid in list(users)[:60]
+                for lg in _get(f"/user/{uid}/leagues/nfl/2026") or [] if lg["settings"]["type"] == 2]:
+        for u in _get(f"/league/{lid}/users") or []:
+            if u["user_id"] not in users and len(users) < max_users:
+                users.append(u["user_id"])
+    continued, candidates = set(), []
+    for uid in users:
+        for lg in _get(f"/user/{uid}/leagues/nfl/2025") or []:
+            continued.update(get_season_chain(lg["league_id"]))
+        for year in ("2022", "2023", "2024"):
+            for lg in _get(f"/user/{uid}/leagues/nfl/{year}") or []:
+                if lg["settings"]["type"] == 2 and lg["league_id"] not in candidates:
+                    candidates.append(lg["league_id"])
+    dead = [lid for lid in candidates if lid not in continued]
+    print(f"{len(users)} managers, {len(candidates)} older dynasty leagues, {len(dead)} folded")
+    for lid in dead[:max_chains]:
+        try:
+            crawl_chain(lid, SHORT_DIR)
+        except requests.HTTPError as e:
+            print(f"  skipped {lid}: {e}")
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "deep":
-        deep(sys.argv[2].split(","), int(sys.argv[3]) if len(sys.argv) > 3 else 5)
+        deep(sys.argv[2].split(","), int(sys.argv[3]) if len(sys.argv) > 3 else 5,
+             hops=int(sys.argv[4]) if len(sys.argv) > 4 else 2)
+    elif sys.argv[1] == "folded":
+        folded(sys.argv[2].split(","))
     elif sys.argv[1] == "snowball":
         snowball(sys.argv[2].split(","),
                  int(sys.argv[3]) if len(sys.argv) > 3 else 60)
