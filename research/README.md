@@ -647,3 +647,5 @@ real, tiny. S1 HELD - market timing (12-month value change beyond the deal) does
 tinkering causes mistakes" has the sign wrong here: offseason trades persist (r 0.40) and
 predict a BETTER next season beyond roster (+0.019 per SD) - consistent with activity.
 
+
+Check after the within-league fix: total activity, re-measured relative to its league, keeps its next-season weight (+0.020 per SD vs +0.018 raw) - all-play averages .500 in every league, so league-wide activity could not fake it, and it did not.
