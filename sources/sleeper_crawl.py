@@ -99,8 +99,42 @@ def snowball(seed_league_ids: list[str], max_chains: int = 60) -> None:
                   f"{len(list(CRAWL_DIR.glob('*.json')))} season files on disk")
 
 
+def deep(seed_league_ids: list[str], min_seasons: int = 5, max_chains: int = 150,
+         max_users: int = 600) -> None:
+    """Two hops out, keeping only dynasty leagues with min_seasons+ seasons of history: a
+    rebuild pays off over 2-3 seasons, and the one-hop corpus had 13 leagues with four
+    straight completed seasons (owner, 2026-10-24: "deeper seasoned leagues so true rebuilds
+    and picks have enough time to convert into wins")."""
+    leagues, users = list(seed_league_ids), []
+    for hop in range(2):
+        for lid in list(leagues):
+            for u in _get(f"/league/{lid}/users") or []:
+                if u["user_id"] not in users and len(users) < max_users:
+                    users.append(u["user_id"])
+        for uid in users:
+            for lg in _get(f"/user/{uid}/leagues/nfl/2026") or []:
+                if lg["settings"]["type"] == 2 and lg["league_id"] not in leagues:
+                    leagues.append(lg["league_id"])
+        print(f"hop {hop + 1}: {len(users)} managers, {len(leagues)} dynasty leagues")
+    crawled = 0
+    for lid in leagues:
+        if crawled >= max_chains:
+            break
+        try:
+            if len(get_season_chain(lid)) < min_seasons:
+                continue
+            crawl_chain(lid)
+            crawled += 1
+        except requests.HTTPError as e:
+            print(f"  skipped {lid}: {e}")
+        if crawled and crawled % 10 == 0:
+            print(f"  ...{crawled} deep chains, {len(list(CRAWL_DIR.glob('*.json')))} season files")
+
+
 if __name__ == "__main__":
-    if sys.argv[1] == "snowball":
+    if sys.argv[1] == "deep":
+        deep(sys.argv[2].split(","), int(sys.argv[3]) if len(sys.argv) > 3 else 5)
+    elif sys.argv[1] == "snowball":
         snowball(sys.argv[2].split(","),
                  int(sys.argv[3]) if len(sys.argv) > 3 else 60)
     else:

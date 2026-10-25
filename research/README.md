@@ -505,3 +505,25 @@ weeks only - record vs earned (all-play) wins and the luck between them, all-pla
 trades, trade grades summed in title odds (ex-ante, this season + next), and pick value
 bought. Research output for now; the product form (a league report card) is ROADMAP Track 3.
 
+## Aligned trading (`alignment.py`, 2026-10-24) - the owner's thesis over two seasons
+
+Owner: "managers actively making trades must have better results, especially trades that
+align rosters into consistent value curves - contenders trading youth for production and
+rebuilders shipping aging production for ascending value. This stuff must matter season over
+season." Every finding above looked one season ahead; a rebuild is a 2-3 season plan.
+
+A trade side is ALIGNED when a contender (all-play >= .600 when it traded; last season's for
+offseason trades) gets at least a year older in value-weighted age, or a rebuild (< .400)
+gets at least a year younger; picks count as age-21.5 assets. MISALIGNED is the reverse. A
+manager-season's alignment = aligned minus misaligned trades. Controls: all-play, starter
+and bench value at season's end. Thin data warning: 27 leagues have 3+ straight completed
+seasons - a deeper crawl (`sources/sleeper_crawl.py deep`, 5+ season histories) is running
+to re-test this at size.
+
+**Pre-registered before the first run (2026-10-24):**
+- A1: alignment predicts HIGHER all-play two seasons out (t+2), holding results and roster
+  fixed.
+- A2: for rebuilds the payoff is late - their alignment's weight on t+2 all-play exceeds its
+  weight on t+1.
+- A3: for contenders the payoff is now - their alignment's weight on t+1 all-play is positive.
+

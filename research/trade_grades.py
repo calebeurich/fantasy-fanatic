@@ -35,6 +35,7 @@ from sources.nflverse_ids import sleeper_names
 CRAWL_DIR = Path("data/crawl")
 OUT = Path("data/research/trade_grades.jsonl")
 RUNS = 1000
+PICK_AGE = 21.5           # a rookie pick, for value-weighted age
 PRIOR_GAMES = 3          # how many games of 'typical starter' each player's average starts from
 MIN_ROSTER_VALUE = 5000   # an average roster priced below this is a mapping gap, not a league
 ELIGIBLE = {"QB": {"QB"}, "RB": {"RB"}, "WR": {"WR"}, "TE": {"TE"}, "K": {"K"}, "DEF": {"DEF"},
@@ -136,6 +137,14 @@ def grade_trade(t, d, ctx, leg, day, in_season, weeks, sf, slots, owner, divisio
     before = {r: (rosters[r] - gets[r]) | gives[r] for r in (a, b)}
     after = {r: (rosters[r] - gives[r]) | gets[r] for r in (a, b)}
     val = lambda p: ctx["values"].at(ctx["xwalk"].get(str(p)), day, sf) or 0.0
+
+    def age_of(players, picks):
+        """Value-weighted age of a side's haul; a pick is a PICK_AGE asset."""
+        weighted = [(val(p), (ctx["values"].rows_at(ctx["xwalk"].get(str(p)), day) or {}).get("age"))
+                    for p in players] + [(price(pk), PICK_AGE) for pk in picks]
+        known = [(v, float(a)) for v, a in weighted if v > 0 and a not in (None, "", "NA")]
+        total = sum(v for v, _ in known)
+        return sum(v * a for v, a in known) / total if total else None
     price = lambda pk: pick_price(ctx["prices"], int(pk["season"]), sf, pk["round"])
     league_mean = statistics.mean(sum(val(p) for p in r) for r in rosters.values())
     if league_mean < MIN_ROSTER_VALUE:
@@ -165,6 +174,7 @@ def grade_trade(t, d, ctx, leg, day, in_season, weeks, sf, slots, owner, divisio
             "superflex": sf, "got_value": got, "gave_value": gave,
             "value_margin": (got - gave) / league_mean,
             "pick_margin": picks,
+            "got_age": age_of(gets[me], picks_in[me]), "gave_age": age_of(gives[me], picks_out[me]),
             "n_got": len(gets[me]) + len(picks_in[me]),
             "n_gave": len(gives[me]) + len(picks_out[me]),
             "picks_got": [(int(p["season"]) - int(d["league"]["season"]), p["round"]) for p in picks_in[me]],
