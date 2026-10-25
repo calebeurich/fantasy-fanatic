@@ -532,3 +532,28 @@ to re-test this at size.
   by more than contenders' non-aligned trades do, and (b) trading contenders win titles at a
   rate above their pre-trade simulated odds - closer to their post-trade odds.
 
+**Result (2026-10-24, on the deep crawl: 202 completed seasons, 4,092 trades, 68 leagues with
+3+ straight completed seasons).** A0a HELD - contenders drift down after any trade (they were
+picked for a high all-play), but aligned buyers drop 4.0 all-play points rest-of-season vs
+8.9 for their other trades (90% intervals [-5.2, -2.5] and [-11.0, -6.8]). A0b UNDECIDED -
+trading contenders won 19.3% of titles vs 18.9% pre-trade and 20.3% post-trade odds; right
+direction, inside the noise. A1 HELD - alignment's weight on all-play two seasons out +0.010
+[+0.002, +0.018]. A2 HELD - rebuilds pay off late: t+1 +0.002, t+2 +0.022 [+0.008, +0.035],
+about +0.3 wins a season per aligned trade two seasons later. A3 REJECTED - contenders'
+alignment carries no t+1 weight (-0.006 [-0.016, +0.005]); their payoff is the SAME season
+(A0a), the production aged out by the next. **The owner was right, on the horizon he named:
+aligned trading pays - contenders now, rebuilds in two seasons - and one-season tests could
+not see the rebuild half.**
+
+## Replication on the deep crawl (2026-10-24)
+
+Every script re-run on 202 completed seasons (from 131). Held: luck (SD 1.33 wins, year-over-
+year r -0.05), all-play persists (0.43), waivers (habit 0.45, tracks need -0.21, no next-
+season effect -0.08), byes 2.3x, the lineup half of trade grades (slope 1.06), contenders
+losing on value still gain (+1.59 vs +1.11 title points), consolidation (+1.19 vs +0.11),
+trade quality doesn't persist (0.04), pick value never helps next season (offseason -0.42).
+Moved: activity's weight shrank (+0.018 per SD, from +0.029; behavior now adds +0.007 r to
+next-season prediction, under M1's +0.01 bar); rookie-draft outcome persistence fell to
++0.05 (the first run's +0.13 was noise); the 28+ share now carries -0.014 per SD - age shows
+up with more seasons.
+

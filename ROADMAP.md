@@ -442,6 +442,11 @@ number would be quietly wrong.
    Trade grading = change in expected titles (simulator for this season, roster-strength
    curve for the future, both ex-ante; outcome/injury shown separately - owner: the Achane
    ACL and the Hurts-to-Goff/Kittle replacement trades must grade on what was known).
+   Deep crawl 2026-10-24 (`sleeper_crawl deep`, 202 completed seasons) confirmed the owner's
+   aligned-trading thesis on the right horizons: contenders' production buys hold their
+   level THIS season, rebuilds' youth buys pay ~+0.3 wins a season TWO seasons later
+   (research/alignment.py). Next: price picks into titles at t+2 now that the data reaches;
+   a third crawl hop for more 4+ season histories; the report card as a product surface.
 4. League report card as a product surface for the friends test.
 5. Sleeper crawler at pilot scope (one hop), then scale; re-run everything at n.
 6. "What converts to wins" regression; only then talk about learned models.
