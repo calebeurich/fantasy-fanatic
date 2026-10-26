@@ -31,12 +31,12 @@ intervals):
   his next season (held-out r 0.551 -> 0.569); building value as a non-contender pays two
   seasons out.
 - Nobody consistently out-times the market or fleeces weaker managers.
+- **Expected dollars added by trades** (XFL 2's payout, graded before the outcome) behaves
+  like skill: reliable across a manager's seasons (split-half r 0.20 over 2,832 managers with
+  4+ seasons) and paid out later (+$5.26 next season per SD, [+$3.33, +$6.91]) - both with the
+  outcome curves refit WITHOUT the season being predicted (`heldout_ev.py`), so not a leak.
 
 **Promising, with a stated caveat:**
-- Expected dollars added by trades (XFL 2's payout) behaves like skill: reliable across a
-  manager's seasons and paid out later. Size: +$5.43 next season per SD and split-half r 0.20
-  with the next-season half included; +$2.45 and r 0.14 leak-free (this season's simulator
-  EV only). Truth is in between; refitting the curves with each season held out settles it.
 - Paying via trade for a contender's hole (+7 top-3 pts) and bubble teams buying at the
   deadline (~+8 playoff pts after removing selection) - buyers are partly selected for already
   trending up; the clean comparison against their own pre-trade odds is ~+4 top-3 pts.
@@ -68,12 +68,13 @@ intervals):
   managers' moves to the roster.
 - Still open: window-fit's rules were corrected after the owner's read of three managers (n=3 -
   tested corpus-wide since, but the labels didn't generalize); the outcome curves are fitted
-  in-sample; the dollar model is overconfident at the extremes; survivorship (5+ season leagues
+  in-sample (the dollar tests were re-run held-out and held); the dollar model is
+  overconfident at the extremes; survivorship (5+ season leagues
   are likely more engaged); 16.5% of rosters change owner season to season; DynastyProcess is
   consensus value, not each league's scoring.
 
-**Next, in order:** refit the outcome curves held-out per season and re-run the dollar tests;
-widen the strength uncertainty in grading and re-check dollar calibration; a contestable-slot
+**Next, in order:** widen the strength uncertainty in grading and re-check dollar calibration
+(the held-out refit is done - the dollars held); a contestable-slot
 start/sit measure; then a report card built only from the Solid and Promising rows (expected
 dollars added, injury responses, value built when out of the window, luck - each with what it
 means and how sure we are).
@@ -1018,4 +1019,11 @@ outcome, consistent across a manager's seasons, and paid out later.** XFL 2 by i
 2026 so far): kierankieran +$79, shivvv +$34, dezdroppedit27 +$32, rjl22 +$25, BenSimonds +$8
 (-$5 then +$13), bergenjay $0 (doesn't trade), BartolosHeroes -$9 (lowest) - matching the
 owner's reads where he gave them.
+
+**Leak check (`heldout_ev.py`, 2026-10-26).** A trade's next-season EV used curves fitted on
+the whole corpus, including the seasons E3 predicts. Refit per target season with that season
+held out, every trade's next-season EV recomputed from the grader's stored fields: E2 r 0.105,
+E3 +$5.26 per SD [+$3.33, +$6.91], E4 r 0.201 - unchanged from the in-sample run (0.105,
+$5.43, 0.204). The leak was negligible; the gap to the this-season-only version ($2.45, r
+0.143) is the legitimate next-season half of a trade's value.
 
