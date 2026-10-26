@@ -67,6 +67,8 @@ def test_same_inputs_same_odds_and_the_totals_add_up():
     assert round(sum(v["bye"] for v in one.values()), 6) == 2
     assert round(sum(v["title"] for v in one.values()), 6) == 1
     assert round(sum(v["top3"] for v in one.values()), 6) == 3
+    for k in ("second", "third", "pf_leader"):
+        assert round(sum(v[k] for v in one.values()), 6) == 1
     assert one["t11"]["playoffs"] > one["t0"]["playoffs"]
 
 

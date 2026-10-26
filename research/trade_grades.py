@@ -55,19 +55,14 @@ def lineup_ppg(roster: set, ppg: dict, position: dict, slots: list) -> float:
     return total
 
 
-def title_curve(seasons) -> tuple:
-    """Logistic P(title | regular-season all-play win%), fitted on completed brackets."""
-    xs, ys = [], []
-    for d in seasons:
-        luck = season_luck(d)
-        champ = next((m["w"] for m in d.get("winners_bracket") or [] if m.get("p") == 1), None)
-        owner = {r["roster_id"]: r.get("owner_id") for r in d["rosters"]}
-        if champ is None:
-            continue
-        for rid, o in owner.items():
-            if o in luck:
-                xs.append(luck[o]["allplay"])
-                ys.append(1.0 if rid == champ else 0.0)
+# XFL 2's constitution (Article II): $350 / $150 / $50 for the top three, $50 for the
+# regular-season points leader - the owner's yardstick: "you should be generally making money
+# overall in your dynasty league to be good". Other leagues pay differently; EV here is in
+# XFL 2's dollars (a $600 pot, $50 a team).
+PAYOUT = {"title": 350, "second": 150, "third": 50, "pf_leader": 50}
+
+
+def _logistic(xs: list, ys: list) -> tuple:
     x, y, w = np.array(xs), np.array(ys), np.zeros(2)
     for _ in range(50):   # Newton's method
         p = 1 / (1 + np.exp(-(w[0] + w[1] * x)))
@@ -76,6 +71,36 @@ def title_curve(seasons) -> tuple:
                       [np.sum(p * (1 - p) * x), np.sum(p * (1 - p) * x * x)]])
         w = w + np.linalg.solve(h, g)
     return tuple(w)
+
+
+def place_curves(seasons) -> dict:
+    """Logistic P(outcome | regular-season all-play win%) for each paid outcome - title,
+    runner-up, 3rd place, points leader - fitted on completed brackets in one pass."""
+    data = {k: ([], []) for k in PAYOUT}
+    for d in seasons:
+        luck = season_luck(d)
+        owner = {r["roster_id"]: r.get("owner_id") for r in d["rosters"]}
+        place = {}
+        for m in d.get("winners_bracket") or []:
+            if m.get("p") == 1:
+                place[m["w"]], place[m["l"]] = "title", "second"
+            elif m.get("p") == 3:
+                place[m["w"]] = "third"
+        if "title" not in place.values():
+            continue
+        fpts = {r["roster_id"]: (r.get("settings") or {}).get("fpts", 0) for r in d["rosters"]}
+        leader = max(fpts, key=fpts.get)
+        has3 = "third" in place.values()
+        for rid, o in owner.items():
+            if o not in luck:
+                continue
+            for k in PAYOUT:
+                if k == "third" and not has3:
+                    continue
+                hit = (rid == leader) if k == "pf_leader" else place.get(rid) == k
+                data[k][0].append(luck[o]["allplay"])
+                data[k][1].append(1.0 if hit else 0.0)
+    return {k: _logistic(*v) for k, v in data.items()}
 
 
 def pick_prices(seasons, values: Values, xwalk: dict) -> dict:
@@ -188,6 +213,7 @@ def grade_trade(t, d, ctx, leg, day, in_season, weeks, sf, slots, owner, divisio
         moved = min(max(base + ctx["curve"][2] * ((got - gave) / league_mean - picks), 0.0), 1.0)
         base = min(max(base, 0.0), 1.0)
         next_titles = ctx["p_title"](moved) - ctx["p_title"](base)
+        next_ev = ctx["ev"](moved) - ctx["ev"](base)
         rows.append({
             "league": d["league"]["league_id"], "season": int(d["league"]["season"]),
             "prev_league": d["league"].get("previous_league_id"), "trade": t["transaction_id"],
@@ -209,6 +235,8 @@ def grade_trade(t, d, ctx, leg, day, in_season, weeks, sf, slots, owner, divisio
             "title_before": sim[me]["title_before"] if sim else None,
             "next_titles": next_titles,
             "titles": (sim[me]["title"] if sim else 0.0) + next_titles,
+            "now_ev": sim[me]["ev"] if sim else 0.0, "ev_before": sim[me]["ev_before"] if sim else None,
+            "next_ev": next_ev, "ev": (sim[me]["ev"] if sim else 0.0) + next_ev,
         })
     return rows
 
@@ -269,10 +297,12 @@ def this_season(d, leg, weeks, slots, owner, division, mu, rosters, before, afte
     o0, o1 = odds(base_lineups), odds(new_lineups)
     if not o0:
         return {r: {"title": 0.0, "playoffs": 0.0, "lineup": 0.0, "title_before": 0.0,
-                    "top3": 0.0, "top3_before": 0.0} for r in before}
+                    "top3": 0.0, "top3_before": 0.0, "ev": 0.0, "ev_before": 0.0} for r in before}
+    ev = lambda o: sum(PAYOUT[k] * o[k] for k in PAYOUT)
     return {r: {"title": o1[r]["title"] - o0[r]["title"], "playoffs": o1[r]["playoffs"] - o0[r]["playoffs"],
                 "lineup": new_lineups[r] - base_lineups[r], "title_before": o0[r]["title"],
-                "top3": o1[r]["top3"] - o0[r]["top3"], "top3_before": o0[r]["top3"]}
+                "top3": o1[r]["top3"] - o0[r]["top3"], "top3_before": o0[r]["top3"],
+                "ev": ev(o1[r]) - ev(o0[r]), "ev_before": ev(o0[r])}
             for r in before}
 
 
@@ -296,7 +326,8 @@ def build_context() -> tuple[dict, callable]:
     pairs = [(by_id[prev][1][o], now[o]["allplay"]) for prev, now in by_id.values()
              if prev in by_id for o in now if o in by_id[prev][1]]
     curve = fit(pairs, ["allplay", "total"])
-    tc = title_curve(seasons())
+    curves = place_curves(seasons())
+    tc = curves["title"]
     luck_cache = {}
 
     def allplay_now(d, o, leg):
@@ -313,10 +344,12 @@ def build_context() -> tuple[dict, callable]:
 
     ctx = {"values": values, "xwalk": xwalk, "names": sleeper_names(), "curve": curve,
            "prices": pick_prices(seasons(), values, xwalk), "allplay_now": allplay_now,
-           "p_title": lambda ap: 1 / (1 + math.exp(-(tc[0] + tc[1] * ap)))}
+           "p_title": lambda ap: 1 / (1 + math.exp(-(tc[0] + tc[1] * ap))),
+           "ev": lambda ap: sum(PAYOUT[k] / (1 + math.exp(-(a + b * ap))) for k, (a, b) in curves.items())}
     print(f"future curve: next all-play = {curve[0]:+.3f} + {curve[1]:.3f} x all-play + "
           f"{curve[2]:.3f} x relative value; title curve: P = logistic({tc[0]:.2f} + {tc[1]:.2f} x all-play) "
-          f"-> {ctx['p_title'](0.5):.1%} at .500, {ctx['p_title'](0.7):.1%} at .700")
+          f"-> {ctx['p_title'](0.5):.1%} at .500, {ctx['p_title'](0.7):.1%} at .700; expected "
+          f"payout ${ctx['ev'](0.3):.0f} at .300, ${ctx['ev'](0.5):.0f} at .500, ${ctx['ev'](0.7):.0f} at .700")
     return ctx, seasons
 
 
