@@ -26,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 
-from analysis.season_sim import simulate
+from analysis.season_sim import STRENGTH_SD_SHARE, WEEKLY_SD_SHARE, simulate
 from research.draft_skill import Values, is_superflex, sleeper_to_fp
 from research.roster_strength import fit, season_rosters
 from research.schedule_luck import luck_by_owner, season_luck
@@ -289,7 +289,13 @@ def this_season(d, leg, weeks, slots, owner, division, mu, rosters, before, afte
     def odds(lineups):
         teams = [{"owner_id": r, "wins": wins[r], "losses": 0, "ties": 0, "points_for": pf[r],
                   "eppg": lineups[r], "division": division.get(r)} for r in rosters]
-        return simulate(teams, settings, leg - 1, dict(sched), runs=RUNS)
+        # The playoff backtest's uncertainty, not the live default: a strength read off k games
+        # (shrunk by PRIOR_GAMES) is itself uncertain on top of season drift. Drift alone left
+        # the dollar grades overconfident at the extremes (E1: $100+ expected realized $146 vs
+        # $159) - owner-approved fix, 2026-10-26.
+        level = statistics.mean(lineups.values()) or 1
+        sd = math.hypot(WEEKLY_SD_SHARE * level / math.sqrt(leg - 1 + PRIOR_GAMES), STRENGTH_SD_SHARE * level)
+        return simulate(teams, settings, leg - 1, dict(sched), strength_sd=sd, runs=RUNS)
 
     base_lineups = {r: lineup_ppg(rosters[r] if r not in before else before[r], ppg, position, slots)
                     for r in rosters}
