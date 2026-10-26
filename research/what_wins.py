@@ -29,8 +29,8 @@ def auc(scores: list, hits: list) -> float:
     return sum((p > n) + 0.5 * (p == n) for p in pos for n in neg) / (len(pos) * len(neg))
 
 
-def main():
-    values, xwalk = Values(), sleeper_to_fp()
+def load_grades() -> dict:
+    """(league, manager) -> summed trade grades for that league-season."""
     grades = defaultdict(lambda: {"trade_now": 0.0, "trade_next": 0.0, "picks_bought": 0.0})
     for line in open(GRADES, encoding="utf-8"):
         r = json.loads(line)
@@ -38,27 +38,40 @@ def main():
         g["trade_now"] += r["now_titles"]
         g["trade_next"] += r["next_titles"]
         g["picks_bought"] += r["pick_margin"]
+    return grades
+
+
+def season_features(d: dict, values, xwalk, grades: dict) -> dict:
+    """owner_id -> every channel for one completed season (BASE + BEHAVIOR + champion)."""
+    luck = season_luck(d)
+    if not luck:
+        return {}
+    lid = d["league"]["league_id"]
+    rosters, waiver = season_rosters(d, values, xwalk), waiver_shares(d)
+    trades, total = moves(d)
+    owner = {r["roster_id"]: r.get("owner_id") for r in d["rosters"]}
+    champ = owner.get(next((m["w"] for m in d.get("winners_bracket") or [] if m.get("p") == 1), None))
+    return {o: {**r, "luck": luck[o]["luck"], "moves": total[o], "trades": trades[o],
+                "waiver_share": waiver.get(o, {}).get("share", 0.0), **grades[(lid, o)],
+                "champion": o == champ} for o, r in rosters.items()}
+
+
+def all_pairs(values, xwalk, grades) -> list:
+    """(season t features, season t+1 features, season t+1) over the whole corpus."""
     seasons = {}
     for f in sorted(CRAWL_DIR.glob("*.json")):
         d = json.load(open(f, encoding="utf-8"))
-        luck = season_luck(d)
-        if not luck:
-            continue
-        lid = d["league"]["league_id"]
-        rosters, waiver = season_rosters(d, values, xwalk), waiver_shares(d)
-        trades, total = moves(d)
-        owner = {r["roster_id"]: r.get("owner_id") for r in d["rosters"]}
-        champ = owner.get(next((m["w"] for m in d.get("winners_bracket") or [] if m.get("p") == 1), None))
-        feats = {}
-        for o, r in rosters.items():
-            feats[o] = {**r, "luck": luck[o]["luck"], "moves": total[o], "trades": trades[o],
-                        "waiver_share": waiver.get(o, {}).get("share", 0.0), **grades[(lid, o)],
-                        "champion": o == champ}
-        seasons[lid] = (d["league"].get("previous_league_id"), int(d["league"]["season"]), feats)
+        feats = season_features(d, values, xwalk, grades)
+        if feats:
+            seasons[d["league"]["league_id"]] = (d["league"].get("previous_league_id"),
+                                                 int(d["league"]["season"]), feats)
+    return [(seasons[prev][2][o], now[o], season) for prev, season, now in seasons.values()
+            if prev in seasons for o in now if o in seasons[prev][2]]
 
-    # (season t features, season t+1 outcome, t+1 season)
-    pairs = [(seasons[prev][2][o], now[o], season) for prev, season, now in seasons.values()
-             if prev in seasons for o in now if o in seasons[prev][2]]
+
+def main():
+    values, xwalk = Values(), sleeper_to_fp()
+    pairs = all_pairs(values, xwalk, load_grades())
     print(f"{len(pairs)} manager pairs, {sum(n['champion'] for _, n, _ in pairs)} next-season champions\n")
     held_out = sorted({s for *_, s in pairs})
     rows = [(x, n["allplay"]) for x, n, _ in pairs]
