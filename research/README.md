@@ -782,3 +782,43 @@ team, first season to last). Disengagement shows before a league dies.
 (+ behavior); weights per SD: all-play +0.055, starter +0.050, bench +0.019, picks bought
 +0.013, moves +0.010, 28+ share -0.007, next-season trade grades +0.006.
 
+## Window fit, generalized (`window_generalize.py`, 2026-10-25)
+
+The owner's definition of skill: "did you do everything you could to compete well at the right
+time and not just let your team's value atrophy for no reason." `window_fit.py` scores it per
+team-season (window from weeks 1-3 scoring; push = this-season title points from trades;
+value change split into drift and moves; verdicts). Its rules were corrected AFTER the owner's
+read of three XFL 2 managers (a pick double-count, atrophy requiring inactivity, rebuilds
+credited for getting younger, spending future to push counted as a push) - fitted to n=3 in
+one league, so it has to earn its keep on the 1,876 other seasons. Verdict score: +1 pushed /
+pushed (pivot) / spent future to push / built / rebuilt younger; 0 held / stood pat; -1
+let value atrophy / lost value in moves / stuck in the middle.
+
+**Pre-registered before the first corpus run (2026-10-25):**
+- V1 (atrophy costs): "let value atrophy" predicts a worse NEXT season than other
+  non-contenders, all-play and roster value held (negative weight).
+- V2 (building pays later): for non-contenders, moves (value gained) carry a positive weight
+  on all-play two seasons out, all-play and roster value held.
+- V3 (pushing pays now): contenders who pushed finish top 3 THIS season more often than
+  contenders who stood pat, early-season strength held.
+- V4 (it's a trait): a manager's verdict score persists year over year, r > 0.1.
+- V5 (it adds): the verdict score raises held-out prediction of next season's all-play beyond
+  all-play + starter + bench (leave-one-season-out r up by at least 0.005).
+
+**Result (2026-10-25; 1,858 seasons, 21,784 team-seasons).** V1 REJECTED - the "let value
+atrophy" flag predicts nothing next season (+0.001 [-0.001, +0.003]). V2 HELD strongly -
+non-contenders' moves (value gained, picks included) carry +0.034 per SD on all-play two
+seasons out [+0.029, +0.039]: building pays on the two-season clock. V3 HELD as specified but
+confounded - contenders who pushed finished top 3 59.9% vs 42.8% (+15.5 pts with weeks 1-3
+strength held), but buyers are selected for winning beyond week 3; the clean size is A0b's
+comparison with their own pre-trade odds, +4 pts (55.6% vs 51.6%). V4 REJECTED narrowly - the
+verdict score persists at r 0.090. V5 REJECTED as designed (+0.0006 r) - and the design was the
+flaw: the baseline's END-of-season roster already holds the manager's moves, crediting the
+roster for the manager's work. V6 (exploratory, the corrected design): from the roster each team
+STARTED with plus all-play (held-out r 0.551), adding the season's moves and push raises it to
+0.569; per SD moves +0.026 (about half the starting roster's +0.060), push +0.005; drift adds
+more (0.583, +0.025 per SD) - part luck and market, part a manager's eye for whom to hold.
+**The owner's definition holds where it can be seen: what a manager does during the season,
+measured from the roster he started with, predicts his next season - the categorical verdicts
+don't add; the continuous moves do.**
+
