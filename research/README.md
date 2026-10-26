@@ -6,6 +6,78 @@ step before that - the studies that decide whether an intuition becomes a consta
 at all. Everything here is deterministic, offline, and free to re-run: no LLM
 anywhere in the loop.
 
+## Manager skill: where it stands (2026-10-26)
+
+A plain-English summary of the manager-score work below (sections "Schedule luck" through
+"Expected dollars"). Corpus: 1,876 completed non-IDP dynasty seasons from Sleeper (2020-2025),
+21,997 manager-seasons, 39,364 graded trades. About 60 pre-registered predictions so far: ~38
+held, ~19 failed, 4 inconclusive - at the intervals used, 2-3 false passes are expected by
+chance, so trust the strong ones and treat the barely-passing ones as leads.
+
+**Solid** (pre-registered, replicated as the corpus grew 131 -> 202 -> 1,876 seasons, tight
+intervals):
+- A record is about half luck: schedule luck runs +/-1.3 wins a season and never repeats;
+  all-play (share of the league outscored) is the half that does.
+- Next season is mostly the roster: starting-lineup value and bench depth; no extra premium
+  for stars, none for QB share in superflex.
+- Age bites on a two-season clock (~half a win per SD older, two seasons out).
+- Picks pay late: little the next season, ~3x more two and three seasons out.
+- Byes matter at equal strength (12.8% -> 23.2% title odds at a .650 all-play).
+- The trade grader's lineup half is real (predicted lineup points show up ~1:1); 2-for-1
+  consolidation pays the side getting fewer pieces.
+- Replacing an IR'd starter when there's no starter-caliber backup pays (+1.8 all-play pts),
+  most at QB in superflex; depth itself recovers +0.39 pts per backup PPG on real injuries.
+- What a manager does during a season - measured from the roster he STARTED with - predicts
+  his next season (held-out r 0.551 -> 0.569); building value as a non-contender pays two
+  seasons out.
+- Nobody consistently out-times the market or fleeces weaker managers.
+
+**Promising, with a stated caveat:**
+- Expected dollars added by trades (XFL 2's payout) behaves like skill: reliable across a
+  manager's seasons and paid out later. Size: +$5.43 next season per SD and split-half r 0.20
+  with the next-season half included; +$2.45 and r 0.14 leak-free (this season's simulator
+  EV only). Truth is in between; refitting the curves with each season held out settles it.
+- Paying via trade for a contender's hole (+7 top-3 pts) and bubble teams buying at the
+  deadline (~+8 playoff pts after removing selection) - buyers are partly selected for already
+  trending up; the clean comparison against their own pre-trade odds is ~+4 top-3 pts.
+- Rebuilds selling 27+ RBs (+4.4 pts two seasons out, n=495).
+- The market UNDERreacts to injury: IR'd players lose 17% vs matched peers over a year
+  (n=170) - "buy the injured star" is -EV.
+- Rookie drafting: taking the player the market rates above your slot is a repeatable trait
+  (r 0.22) - but no one out-scouts the market beyond that.
+
+**Discarded or demoted:**
+- All-play as "manager skill" - it measures roster strength; the owner's definition (did you
+  compete at the right time, protect value otherwise) is about decisions.
+- Window-fit verdict LABELS (pushed / held / atrophy) - descriptive only; they don't predict.
+  The continuous pieces (moves from the starting roster, push) do.
+- Lineup efficiency vs hindsight-best - it rewards thin benches; a real start/sit measure must
+  count only contestable slots.
+- Findings that flipped with scale (quote only full-corpus numbers): "contenders who lose on
+  value gain more" (noise), the early "no drafting skill" (noise), early alignment sizes.
+
+**How we kept from going off the deep end - and where the risk remains:**
+- Every test was written down before it ran; failures are logged as prominently as passes.
+- Every grade uses only information available at the time; outcomes are judged in aggregate,
+  never one decision at a time.
+- Selection inflated every "buyers win" result - each time, the clean comparison (vs the team's
+  own pre-trade odds, or the simulator's predicted gain) is quoted instead.
+- Measurement bugs caught by checking odd results instead of explaining them: byes counted
+  as injuries, the "backup" that was really the player left on the bench, picks double-counted
+  after the draft, league setup posing as lineup skill, the end-of-season roster crediting
+  managers' moves to the roster.
+- Still open: window-fit's rules were corrected after the owner's read of three managers (n=3 -
+  tested corpus-wide since, but the labels didn't generalize); the outcome curves are fitted
+  in-sample; the dollar model is overconfident at the extremes; survivorship (5+ season leagues
+  are likely more engaged); 16.5% of rosters change owner season to season; DynastyProcess is
+  consensus value, not each league's scoring.
+
+**Next, in order:** refit the outcome curves held-out per season and re-run the dollar tests;
+widen the strength uncertainty in grading and re-check dollar calibration; a contestable-slot
+start/sit measure; then a report card built only from the Solid and Promising rows (expected
+dollars added, injury responses, value built when out of the window, luck - each with what it
+means and how sure we are).
+
 ## The method, which is the point
 
 The product's aging logic was built from inspecting real league distributions and a
