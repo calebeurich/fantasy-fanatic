@@ -822,3 +822,46 @@ more (0.583, +0.025 per SD) - part luck and market, part a manager's eye for who
 measured from the roster he started with, predicts his next season - the categorical verdicts
 don't add; the continuous moves do.**
 
+## Situational heuristics (`heuristics.py`, 2026-10-25/26) - did managers respond well?
+
+Owner: "we want to know if managers consistently make good moves given the information they
+had at the time ... the idea is you should be generally making money overall in your dynasty
+league to be good. I am trying to turn things I understand as heuristics into testable
+pieces ... if a team is junk at RB but needs to contend right now a good manager will go pay
+for a win now RB. Or if your QB gets hurt you have to go get a new one."
+
+Each heuristic is a TRIGGER (a situation visible at the time), a RESPONSE (what a sharp manager
+does, and how fast) and a PAYOFF (responders vs non-responders in the same situation, with
+the situation's own strength held fixed). Every trigger and response uses only data dated
+before the decision; outcomes are rest-of-season all-play, playoffs and top 3. Luck is handled
+by comparing many responders with many non-responders, never by judging one.
+
+Definitions (fixed before any run):
+- Contender at week t: all-play to date >= .600, t >= 4.
+- Hole: a position (QB/RB/WR/TE) where the team's starters have produced, per week to date,
+  in the league's bottom quarter of teams at that position.
+- Injury: a regular starter (started 60%+ of 4+ rostered weeks) placed on injured reserve
+  (nflverse weekly roster status RES) while his NFL team played - known to be multi-week at
+  the time.
+- Response: within the trigger week and the next two, the team acquires (trade or add) a
+  player at that position who starts for it within those weeks.
+- Bubble team at the trade deadline: all-play rank within two of the playoff line in the
+  three weeks before the league's deadline (none set: week 11).
+
+**Pre-registered before the first run (2026-10-25):**
+- H1 (fill the hole): contenders with a hole who respond lift rest-of-season all-play more
+  than those who don't, all-play to date held fixed; and finish top 3 more often.
+- H2 (replace the injured starter): when a regular starter goes on IR and the team has no
+  starter-caliber backup at his position (best healthy backup below the league's median
+  starter there), responders lift rest-of-season all-play more than non-responders; the
+  effect is largest at QB in superflex.
+- H3 (bubble teams should commit): at the deadline, bubble teams that BUY (in-season trades
+  adding 1+ title point) make the playoffs more than bubble teams that stand still, all-play
+  to date held; bubble teams that SELL (picks bought) have a better season two out than
+  those that stand still.
+- H4 (a rebuild sells its aging RBs): rebuilds (final all-play < .400) that started the
+  season holding RBs aged 27+ and traded them away by its end have a better season two out
+  than rebuilds that held them, starting roster value held.
+- H5 (it's a skill): a manager's response rate to holes and injuries persists year over
+  year (r > 0.1).
+
