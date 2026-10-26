@@ -1027,3 +1027,39 @@ E3 +$5.26 per SD [+$3.33, +$6.91], E4 r 0.201 - unchanged from the in-sample run
 $5.43, 0.204). The leak was negligible; the gap to the this-season-only version ($2.45, r
 0.143) is the legitimate next-season half of a trade's value.
 
+## Beating the projections, opportunity pickups, and the EV ceiling (2026-10-26)
+
+Owner: "you could theoretically be smarter than projections but we don't track eppg vs ppg for
+past data anywhere"; "waivers also matter in dynasty for things like picking up Dameon Pierce
+to play after the Bigsby and Shipley injuries ... mostly an RB situational thing"; and "having
+high expected dollars makes it hard to add more expected dollars, which could make comparisons
+odd."
+
+**Data check first:** Sleeper still serves every week's projections back to 2020 (~3,100
+players a week). The 2025 timestamps run a month past the games, so they were checked for
+hindsight: Malik Nabers projects a normal 15.5 the week he tore his ACL in-game (2025 wk 4) and
+nothing the week after; Tua Tagovailoa the same around his 2024 wk 2 concussion - pre-game
+numbers. Caveat: a late scratch may or may not have been zeroed before kickoff.
+
+**Measures:** lineup edge = a team's actual starter points minus the actual points of the
+lineup the week's projections would have started (same roster, league scoring and slots) - a
+week with no real decision is 0, which fixes efficiency's thin-bench bias. Opportunity add =
+an in-season add of a player whose NFL teammate at his position was hurt that week or the
+week before (IR / inactive / Out / Doubtful). EV ceiling: expected dollars added vs expected
+dollars before the move.
+
+**Pre-registered before the first run (2026-10-26):**
+- L3: the average manager scores LESS than following the projections would (mean weekly lineup
+  edge < 0).
+- L4: beating the projections is a trait - a manager's mean lineup edge persists year over
+  year, r > 0.1, within league.
+- L5: it is worth something - the 75th-percentile manager out-scores the 25th by 1+ point a
+  week through lineup decisions alone.
+- W4: opportunity adds produce more starter points per add than other in-season adds.
+- W5: making them is a trait - a manager's share of adds that are opportunity adds persists,
+  r > 0.1.
+- C1: the ceiling is real - in-season EV added falls as EV before rises (negative slope across
+  EV-before bins among sides that traded to buy).
+- C2: compared within EV-before bins (EV added minus its bin's mean), EV added stays reliable
+  across a manager's seasons (split-half r > 0.15) and still predicts next season's payout.
+
