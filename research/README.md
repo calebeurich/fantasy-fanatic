@@ -865,3 +865,21 @@ Definitions (fixed before any run):
 - H5 (it's a skill): a manager's response rate to holes and injuries persists year over
   year (r > 0.1).
 
+**Result (2026-10-26; 1,858 seasons).** H1 REJECTED as specified - 12,818 contender holes, 16%
+"responded", rest-of-season lift -0.4 pts [-1.0, +0.2], top 3 +1.8 [-0.3, +3.9]. Exploratory
+(split after the first run, because the owner's heuristic is PAYING for a win-now player and
+"responded" also counted waiver fill-ins): paying via trade (6% of holes) lifts +2.4 pts
+[+1.5, +3.3] and top 3 +7.1 [+4.0, +10.2]; a waiver fill-in alone -2.3 [-3.2, -1.6], top 3
+-1.8 [-3.9, +0.6] - the fill-in marks a desperate team, the trade fixes it. Buyer selection
+inflates this the way it did V3; the clean comparison (A0b, own pre-trade odds) says ~+4 top-3
+pts. H2 HELD - 25,065 regular starters to IR; of 5,086 with no starter-caliber backup, 23%
+responded and gained +1.8 pts rest-of-season [+0.9, +2.8], while covered teams gained nothing
+from responding (-0.4) - the built-in control. QB in superflex the largest large group (+3.1,
+n=1,157; 1QB QB n=100 too small to read). H3 HELD, the buy half inflated - bubble teams that
+bought made the playoffs +16.0 pts more than those that stood still [+13.2, +18.5], but the
+simulator predicted +8.5 from those trades, so about half is selection (buyers already
+trending up) - quote ~+8; bubble teams that sold had +2.1 pts more all-play two seasons out
+[+0.3, +4.0]. H4 HELD - rebuilds that traded their 27+ RBs had +4.4 pts more all-play two
+seasons out [+1.6, +7.4] (n=495, 34% sold). H5 REJECTED - response rate persists at r 0.074:
+responding well is situational, not yet visible as a fixed trait.
+
