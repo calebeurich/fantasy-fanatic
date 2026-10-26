@@ -903,3 +903,31 @@ snapshot date) - so the market's general drift is netted out:
 - H6 (handcuff your RB): when a rostered regular-starter RB goes on IR, teams that also roster
   a teammate RB from his NFL team lose less rest-of-season all-play than teams that don't.
 
+**Result (2026-10-26).** M1 REJECTED, the other way - players placed on injured reserve LOST
+value vs matched healthy players over the next 12 months: log return -0.183 [-0.301, -0.024],
+about -17% (n=170; of 3,375 IR placements, 875 are players the market values at all and 211
+at 500+ - few valuable fantasy players hit IR a season, so the n is real). The market
+UNDERreacts to injury: "buy the injured star at a discount" is -EV here; selling promptly is
+the better default. M2 (breakouts, n=53: +3% [-14%, +28%]) and M3 (down years, n=23: -13%
+[-40%, +27%]) INCONCLUSIVE - too few players clear 8+ games both seasons and a full year of
+later value; widening the data, not loosening the definitions after seeing results, is the fix.
+H6 REJECTED - a handcuff (rostering the injured RB's NFL teammate) lifts rest-of-season all-play
++0.5 pts [-0.2, +1.2] over 7,221 RB IR placements: not distinguishable from zero.
+
+## Expected dollars (`manager_ev.py`, 2026-10-26)
+
+Trades graded in XFL 2's payout ($350 / $150 / $50 + $50 points leader; a $600 pot): this
+season from the simulator's place odds before vs after, next season through logistic curves of
+each paid outcome on all-play. A manager's EV added = the sum over his trades. Realized payout
+= what his finish actually paid at the same scale.
+
+**Pre-registered before the first run (2026-10-26):**
+- E1 (the dollars are honest): trading teams' realized payouts track their post-trade expected
+  payout - binned by expected payout, realized within ~15% of expected on average, and closer
+  to post-trade than pre-trade expectation.
+- E2 (a trait): EV added by trades persists year over year, r > 0.1.
+- E3 (it pays later): EV added this season predicts NEXT season's realized payout beyond
+  all-play and starting roster value (positive weight).
+- E4 (reliability): among managers with 4+ seasons in one league, EV added averaged over odd
+  seasons correlates with even seasons, r > 0.15.
+
