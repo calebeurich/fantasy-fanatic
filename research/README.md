@@ -1105,3 +1105,32 @@ raw EV added answers "did your moves make you money" (being in position to is pa
 owner's "compete at the right time"); within-band EV added answers "given where you started,
 were the decisions good" - the fair comparison between a contender's manager and a rebuild's.
 
+## Startup drafts, going all-in, and league survival (2026-10-26)
+
+Owner: "is it worth going all in immediately in the startup draft. People trade picks a lot. I
+went all in during the draft in XFL for example and I'd argue it paid off at least for now" -
+and "how many leagues collapse". The corpus has 443 completed startup drafts (15+ rounds, not
+auction; mostly 2020-22), 3,612 managers, 672 of whom drafted 2+ startups in different leagues.
+
+Measures, per startup team: drafting edge = mean draft-day value of its picks over the slot's
+expectation (same format, pick +/-3, startups within a year of it); all-in = value-weighted
+age of the drafted roster (older = win-now) plus future pick value SOLD in that first season
+before week 2 (`pick_margin`, sign flipped); outcomes = all-play and realized payout in seasons
+1-3 (XFL 2's payout scale).
+
+League survival can't come from the crawl (it was found through managers active in 2026, so
+its chains survived by construction): `league_survival.py` samples 400 startup drafters, lists
+their dynasty leagues every year 2019-2026 and follows each forward.
+
+**Pre-registered before the first run (2026-10-26):**
+- S1: startup drafting edge, like rookie drafting, predicts the drafted players' value a year
+  on (positive).
+- S2: it is a skill - managers with 2+ startups show correlated edge across their different
+  leagues, r > 0.1.
+- S3: edge pays - holding draft position, it predicts season-1 all-play (positive).
+- S4 (the owner's thesis): all-in startup teams earn MORE realized payout over seasons 1-2
+  than youth builds, and LESS all-play by season 3 (the two-season clock); over seasons 1-3
+  cumulative, all-in earns at least as much.
+- S5 (collapse): at least 20% of dynasty leagues fold within three seasons of their first, with
+  the highest fold rate after the first season.
+
