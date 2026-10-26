@@ -55,7 +55,7 @@ def lineup_ppg(roster: set, ppg: dict, position: dict, slots: list) -> float:
     return total
 
 
-def title_curve(seasons: list) -> tuple:
+def title_curve(seasons) -> tuple:
     """Logistic P(title | regular-season all-play win%), fitted on completed brackets."""
     xs, ys = [], []
     for d in seasons:
@@ -78,7 +78,7 @@ def title_curve(seasons: list) -> tuple:
     return tuple(w)
 
 
-def pick_prices(seasons: list, values: Values, xwalk: dict) -> dict:
+def pick_prices(seasons, values: Values, xwalk: dict) -> dict:
     """Mean draft-day value by (draft season, superflex, round) AND by (draft season,
     superflex, "pick", overall pick number) - a slot is priced once it can be projected."""
     sums = defaultdict(list)
@@ -276,22 +276,27 @@ def this_season(d, leg, weeks, slots, owner, division, mu, rosters, before, afte
             for r in before}
 
 
-def build_context() -> tuple[dict, list]:
-    """Everything grading needs that is learned from the crawl: the future curve, the title
-    curve, pick prices, values. Returns (ctx, completed seasons)."""
-    values, xwalk = Values(), sleeper_to_fp()
-    seasons = []
+def completed_seasons():
+    """Each completed season, one file at a time - the corpus (~1 GB of JSON) does not fit
+    in memory parsed all at once."""
     for f in sorted(CRAWL_DIR.glob("*.json")):
         d = json.load(open(f, encoding="utf-8"))
         if season_luck(d):
-            seasons.append(d)
+            yield d
+
+
+def build_context() -> tuple[dict, callable]:
+    """Everything grading needs that is learned from the crawl: the future curve, the title
+    curve, pick prices, values. Returns (ctx, a fresh iterator over completed seasons)."""
+    values, xwalk = Values(), sleeper_to_fp()
+    seasons = completed_seasons
     # The future curve: all-play + league-relative total value -> next season's all-play.
     by_id = {d["league"]["league_id"]: (d["league"].get("previous_league_id"),
-                                       season_rosters(d, values, xwalk)) for d in seasons}
+                                       season_rosters(d, values, xwalk)) for d in seasons()}
     pairs = [(by_id[prev][1][o], now[o]["allplay"]) for prev, now in by_id.values()
              if prev in by_id for o in now if o in by_id[prev][1]]
     curve = fit(pairs, ["allplay", "total"])
-    tc = title_curve(seasons)
+    tc = title_curve(seasons())
     luck_cache = {}
 
     def allplay_now(d, o, leg):
@@ -307,7 +312,7 @@ def build_context() -> tuple[dict, list]:
         return luck_cache[key].get(o, {}).get("allplay", 0.5)
 
     ctx = {"values": values, "xwalk": xwalk, "names": sleeper_names(), "curve": curve,
-           "prices": pick_prices(seasons, values, xwalk), "allplay_now": allplay_now,
+           "prices": pick_prices(seasons(), values, xwalk), "allplay_now": allplay_now,
            "p_title": lambda ap: 1 / (1 + math.exp(-(tc[0] + tc[1] * ap)))}
     print(f"future curve: next all-play = {curve[0]:+.3f} + {curve[1]:.3f} x all-play + "
           f"{curve[2]:.3f} x relative value; title curve: P = logistic({tc[0]:.2f} + {tc[1]:.2f} x all-play) "
@@ -333,7 +338,7 @@ def main(argv: list) -> None:
             print(json.dumps({k: (round(v, 4) if isinstance(v, float) else v) for k, v in r.items()}))
         return
     rows = []
-    for d in seasons:
+    for d in seasons():
         rows += grade_season(d, ctx)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:

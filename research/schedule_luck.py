@@ -17,6 +17,7 @@ from collections import defaultdict
 from pathlib import Path
 
 CRAWL_DIR = Path("data/crawl")
+IDP_SLOTS = {"DL", "LB", "DB", "IDP_FLEX", "DE", "DT", "CB", "S"}
 
 
 def season_luck(d: dict) -> dict:
@@ -29,6 +30,8 @@ def season_luck(d: dict) -> dict:
         return {}
     if any(not any(m.get("points") for m in matchups[w]) for w in range(1, weeks + 1)):
         return {}   # unplayed: every score 0 (the 2026 crawl)
+    if IDP_SLOTS & set((d.get("league") or {}).get("roster_positions") or []):
+        return {}   # defensive players have no DynastyProcess value: rosters can't be priced
     return luck_by_owner(matchups, d["rosters"], weeks)
 
 
