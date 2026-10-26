@@ -33,8 +33,12 @@ intervals):
 - Nobody consistently out-times the market or fleeces weaker managers.
 - **Expected dollars added by trades** (XFL 2's payout, graded before the outcome) behaves
   like skill: reliable across a manager's seasons (split-half r 0.20 over 2,832 managers with
-  4+ seasons) and paid out later (+$5.26 next season per SD, [+$3.33, +$6.91]) - both with the
+  4+ seasons) and paid out later (+$5.29 next season per SD, [+$3.37, +$6.94]) - with the
   outcome curves refit WITHOUT the season being predicted (`heldout_ev.py`), so not a leak.
+  Raw dollars favor contenders (a contender's buy is worth more dollars); compared within
+  starting-EV bands it still pays (+$3.98 per SD) at split-half r 0.14 (`ev_ceiling.py`).
+- **Beating the projections** is a real start/sit trait (r 0.20); the average manager trails
+  following the projections by 1 pt a week; the true good-vs-average gap is ~2 pts a week.
 
 **Promising, with a stated caveat:**
 - Paying via trade for a contender's hole (+7 top-3 pts) and bubble teams buying at the
@@ -73,8 +77,8 @@ intervals):
   are likely more engaged); 16.5% of rosters change owner season to season; DynastyProcess is
   consensus value, not each league's scoring.
 
-**Next, in order:** widen the strength uncertainty in grading and re-check dollar calibration
-(the held-out refit is done - the dollars held); a contestable-slot
+**Next, in order:** (the held-out refit and the calibration fix are done - the dollars held;
+calibration improved at both ends); a contestable-slot
 start/sit measure; then a report card built only from the Solid and Promising rows (expected
 dollars added, injury responses, value built when out of the window, luck - each with what it
 means and how sure we are).
@@ -1081,4 +1085,23 @@ they produce 5.5 starter points in the next four weeks vs 4.2 for other adds - R
 QB 11.6 vs 6.5, WR 3.9 vs 3.4, TE 4.9 vs 4.4. Still loose: "a teammate went down" includes
 adds who weren't the next man up (a depth chart would tighten it). W5 REJECTED - making them
 is not a trait (r 0.035): everyone grabs them when they see them.
+
+**Result (2026-10-26) - calibration fix and the EV ceiling.** Trade grades re-run with the
+playoff backtest's strength uncertainty (games-played noise + drift; previously drift only).
+E1 by bin, post-trade expected -> realized: $10-25 $17.0 -> $15.9 (was $16.9 -> $20.1); $25-50
+$37.0 -> $44.2 (was +31% under, now +19%); $50-100 $72.5 -> $82.5 (unchanged); $100+ $154.1 ->
+$148.2 (was -8%, now -4%) - better at both ends. The remaining mid-range gap has an innocent
+cause: buyers keep buying, and "post-trade expected" counts one trade while realized payout
+counts every later move. E2-E4 unchanged (r 0.107; held-out +$5.29 per SD [+$3.37, +$6.94];
+split-half r 0.204).
+
+C1 REJECTED, the other way - in DOLLARS there is no ceiling: a buy adds +$12.74 from $5-15
+expected, +$17.65 from $30-60, +$20.19 from $120+ (payouts concentrate at the top, so moving a
+contender up is worth more); in PERCENT of EV before it falls from 127% to 4% - the owner's
+ceiling exists in percent terms. Either way raw EV added favors teams already in position. C2
+HALF - compared within EV-before bins, EV added still pays next season (+$3.98 per SD [+$1.97,
++$5.78]) but its split-half reliability drops to r 0.142, just under the 0.15 bar. Use both:
+raw EV added answers "did your moves make you money" (being in position to is part of the
+owner's "compete at the right time"); within-band EV added answers "given where you started,
+were the decisions good" - the fair comparison between a contender's manager and a rebuild's.
 
