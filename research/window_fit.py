@@ -20,6 +20,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from research.draft_skill import Values, is_superflex, sleeper_to_fp
+from research.manager_habits import moves
 from research.trade_grades import OUT as GRADE_FILE, build_context, grade_season, live_season
 from sources import sleeper
 
@@ -28,6 +29,7 @@ PUSHED = 0.02      # 2+ title points added by this season's trades
 ATROPHY = -0.05    # drift worse than 5% of an average roster
 MOVED = 0.02       # net moves smaller than 2% of an average roster are no move at all
 WINDOW_WEEKS = 3
+YOUNGER = 1.0      # a year younger in value-weighted age, by trading, is a rebuild doing its job
 
 
 def window_rows(d: dict, push: dict, picks: dict, values: Values, xwalk: dict, end_week: int,
@@ -39,11 +41,13 @@ def window_rows(d: dict, push: dict, picks: dict, values: Values, xwalk: dict, e
     first = {m["roster_id"]: set(m.get("players") or []) for m in d["matchups"].get("1") or []}
     last = {m["roster_id"]: set(m.get("players") or []) for m in d["matchups"].get(str(end_week)) or []}
     val = lambda p, day: values.at(xwalk.get(str(p)), day, sf) or 0.0
+    n_trades, _ = moves(d)
     rows = {}
     for rid in first:
         if rid not in last:
             continue
         start = [val(p, start_day) for p in first[rid]]
+        age = lambda players, day: _weighted_age(players, day, values, xwalk, sf)
         early = statistics.mean(m.get("points") or 0 for w in range(1, WINDOW_WEEKS + 1)
                                 for m in d["matchups"].get(str(w)) or [] if m["roster_id"] == rid)
         held = first[rid] & last[rid]
@@ -51,7 +55,8 @@ def window_rows(d: dict, push: dict, picks: dict, values: Values, xwalk: dict, e
         total_end = sum(val(p, end_day) for p in last[rid])
         rows[owner[rid]] = {"early": early, "start": sum(start), "drift": drift,
                             "moves": total_end - sum(start) - drift, "push": push.get(owner[rid], 0.0),
-                            "picks": picks.get(owner[rid], 0.0)}
+                            "picks": picks.get(owner[rid], 0.0), "trades": n_trades[owner[rid]],
+                            "age_shift": age(last[rid], end_day) - age(first[rid], start_day)}
     mean_start = statistics.mean(r["start"] for r in rows.values())
     ranked = sorted(rows, key=lambda o: -rows[o]["early"])
     third = len(ranked) / 3
@@ -64,18 +69,39 @@ def window_rows(d: dict, push: dict, picks: dict, values: Values, xwalk: dict, e
     return rows
 
 
+def _weighted_age(players, day, values, xwalk, sf) -> float:
+    rows = [values.rows_at(xwalk.get(str(p)), day) for p in players]
+    known = [(float(r["value_2qb" if sf else "value_1qb"] or 0), float(r["age"])) for r in rows
+             if r and r["age"] not in ("", "NA", None)]
+    total = sum(v for v, _ in known)
+    return sum(v * a for v, a in known) / total if total else 0.0
+
+
 def verdict(r: dict) -> str:
     if r["window"] == "contend":
         return "pushed" if r["push"] >= PUSHED else "stood pat"
     if r["push"] >= PUSHED:
         return "pushed (pivot)"
+    if r["moves"] <= -MOVED and r["push"] > 0:
+        return "spent future to push"   # owner's 2025: a future pick for deadline production
     if r["moves"] >= MOVED and r["moves"] + r["drift"] > 0:
         return "built"
-    if r["drift"] < ATROPHY and r["moves"] < MOVED:
+    if r["age_shift"] <= -YOUNGER and r["trades"] >= 2:
+        return "rebuilt younger"
+    # Atrophy is value decaying while the manager does nothing - Ben's 2025 (7 trades,
+    # aging value sold for youth) read as atrophy on drift alone, owner: "not bad".
+    if r["drift"] < ATROPHY and r["moves"] < MOVED and r["trades"] <= 1:
         return "let value atrophy"
     if r["moves"] <= -MOVED:
         return "lost value in moves"
     return "held" if r["window"] == "rebuild" else "stuck in the middle"
+
+
+def _future_picks(r: dict) -> bool:
+    """An offseason trade's picks count only if some are for a FUTURE draft: this season's
+    draft happened before week 1, so those picks are already players in the starting roster
+    (counting them again read the owner's draft-day swaps as lost value)."""
+    return any(out >= 1 for out, _ in r["picks_got"] + r["picks_gave"])
 
 
 def main(league_id: str) -> None:
@@ -89,13 +115,15 @@ def main(league_id: str) -> None:
     for line in open(GRADE_FILE, encoding="utf-8"):
         r = json.loads(line)
         if r["league"] == prev_id:
-            picks_last[r["manager"]] += r["pick_margin"]
+            if r["in_season"] or _future_picks(r):
+                picks_last[r["manager"]] += r["pick_margin"]
             if r["in_season"]:
                 push_last[r["manager"]] += r["now_titles"]
     ctx, _ = build_context()
     push_now, picks_now = defaultdict(float), defaultdict(float)
     for r in grade_season(live, ctx):
-        picks_now[r["manager"]] += r["pick_margin"]
+        if r["in_season"] or _future_picks(r):
+            picks_now[r["manager"]] += r["pick_margin"]
         if r["in_season"]:
             push_now[r["manager"]] += r["now_titles"]
 
@@ -111,7 +139,7 @@ def main(league_id: str) -> None:
         for o in sorted(rows, key=lambda o: -rows[o]["early"]):
             r = rows[o]
             print(f"  {(names.get(o) or o)[:15]:15} {r['window']:8} drift {r['drift']:+.2f}  moves {r['moves']:+.2f}  "
-                  f"push {100 * r['push']:+5.1f} title pts  -> {r['verdict']}")
+                  f"push {100 * r['push']:+5.1f} title pts  trades {r['trades']:2}  age {r['age_shift']:+.1f}y  -> {r['verdict']}")
 
 
 if __name__ == "__main__":
