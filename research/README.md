@@ -883,3 +883,23 @@ trending up) - quote ~+8; bubble teams that sold had +2.1 pts more all-play two 
 seasons out [+1.6, +7.4] (n=495, 34% sold). H5 REJECTED - response rate persists at r 0.074:
 responding well is situational, not yet visible as a fixed trait.
 
+## Market reactions and handcuffs (`market_reactions.py`, 2026-10-26)
+
+"Good moves given the information at the time" are +EV moves wherever the market misprices a
+situation: then the move is right regardless of how one season's luck lands. Tests of the
+DynastyProcess consensus (the market the corpus's trades price against), each comparing a
+player's value 12 months on with MATCHED players (same position, same value decile, same
+snapshot date) - so the market's general drift is netted out:
+
+**Pre-registered before the first run (2026-10-26):**
+- M1 (buy injured stars): players on injured reserve during the season recover value over the
+  next 12 months better than matched healthy players - the market overreacts to injury
+  (positive excess log-return).
+- M2 (sell after a breakout): players whose fantasy points per game jumped 40%+ season over
+  season (8+ games each year) LOSE value over the next 12 months vs matched players - the market
+  overpays for a breakout (negative excess).
+- M3 (don't sell after a down year): players whose points per game fell 30%+ regain value vs
+  matched players (positive excess) - the market overreacts to a bad season.
+- H6 (handcuff your RB): when a rostered regular-starter RB goes on IR, teams that also roster
+  a teammate RB from his NFL team lose less rest-of-season all-play than teams that don't.
+
