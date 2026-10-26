@@ -480,6 +480,27 @@ and the overview's needs take the same parameter; withContext pins it. ~half a d
 the XFL eye-test; needs-on-ePPG (below) should land first or alongside, since the chips
 this surfaces are the ones that over-flag in 1QB.
 
+**HIGH PRIORITY (owner, 2026-10-26): per-league rules the user supplies - starting with the
+payout.** Several conclusions are only as right as rules Sleeper doesn't store, and today they
+silently default to XFL 2's constitution:
+- **Payout structure** - prize per place, points-leader prize, consolation prizes, entry fee.
+  Expected dollars (research/trade_grades.py `PAYOUT`) are in XFL 2's $350/$150/$50 + $50, and
+  the dollar grade of a trade depends on it (a winner-take-all league makes a contender's buy
+  worth far more than a top-3-pays league does).
+- **Draft-order rule** - max PF vs record for playoff misses, how playoff teams order (XFL 2:
+  first-round losers by record, then the 3rd-place game), compensatory picks (XFL 2's 2.13).
+  `season_sim.draft_order` is XFL 2's rule for every league today.
+- **Anything else a constitution adds** - dues owed when trading future picks (XFL 2), keeper
+  or taxi quirks Sleeper's settings don't express, division rules beyond Sleeper's.
+
+Shape when built: a small per-league settings record (defaults = what Sleeper says plus XFL
+2's constitution, clearly labelled as defaults), editable in the UI, and the natural AI
+feature on top - **paste your league constitution, the agent extracts the structured rules,
+the user confirms them** before anything uses them. Needs persistence the app doesn't have yet
+(today's sessions are in-memory; see the session-store item) - a JSON document per league_id
+in Cloud Storage is the smallest version. Every number that depends on these (expected
+dollars, draft order, pick projections) says which rules it used.
+
 **HIGH PRIORITY (owner, 2026-10-14): sorting and categorizing by playoff pace and real
 record.** Owner wants to "play around" with it - the default sort was built and reverted on
 2026-10-11 because there was no clear moment to switch it; revisit with more weeks of
