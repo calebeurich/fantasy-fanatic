@@ -1148,3 +1148,17 @@ leagues that fold early, front-loading looks better still (S5, the survival surv
 The owner's XFL 2 startup (2025): the most all-in of all 4,000+ startup teams (100th
 percentile; drafted age 28.2, future value sold) with a +113 drafting edge.
 
+**Result (2026-10-26) - league survival.** 400 sampled startup drafters' dynasty leagues,
+2019-2026: 30,734 league-seasons. Raw "didn't continue" ran 27.6% / 26.6% / 26.3% / 23.5% /
+21.0% / 14.0% for a league's seasons 1-6+. Checked before believing it: of 120 random apparent
+folds, all had genuinely completed their season, but 54 (45%) DID continue - the sampled
+manager had left - so the raw rate overstates folds by ~45% (+/-9%). Corrected: ~15% of
+dynasty leagues fold each year through season 3, ~13% in season 4, ~12% in season 5, ~8% after
+- ~39% fold within three seasons (61% reach season 4). S5 HELD on its 20% bar; its "highest
+after season 1" part only weakly - the hazard is flat for three seasons, then falls.
+
+Collapse-weighted all-in (quartile payouts weighted by the chance the league still runs: 1,
+0.85, 0.72): all-in $81 + $52 + $34 = $167 vs youth $32 + $46 + $52 = $130 over three seasons
+- all-in ahead ~$37 (vs ~$31 unweighted). Youth's edge arrives exactly when leagues are most
+likely gone. Front-loading at the startup is the better default, on these numbers.
+
