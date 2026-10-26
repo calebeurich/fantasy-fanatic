@@ -1134,3 +1134,17 @@ their dynasty leagues every year 2019-2026 and follows each forward.
 - S5 (collapse): at least 20% of dynasty leagues fold within three seasons of their first, with
   the highest fold rate after the first season.
 
+**Result (2026-10-26; 433 startups, 136,027 priced picks).** S1 HELD - draft-day edge predicts
+value a year on (r 0.272 per pick). S2 HELD, strongly - edge correlates across a manager's
+different startups, r 0.259 (632 managers, 5,434 pairs): startup drafting by consensus is the
+clearest repeatable skill measured so far. S3 HELD, small - +0.013 season-1 all-play per SD of
+edge, draft slot held. S4 HELD on all three - per SD of all-in (older drafted roster + future
+picks sold, within league), starting value held: +$12.80 payout over seasons 1-2 [+$9.75,
++$16.33], -0.017 all-play in season 3 [-0.021, -0.013], +$5.88 cumulative over seasons 1-3
+[+$1.28, +$10.32]. Quartiles: all-in $81 / $61 / $47 payout in seasons 1 / 2 / 3, youth $32
+/ $54 / $73 - all-in wins two years, youth passes it in year 3, all-in is still ahead over
+three. Survivorship works AGAINST all-in here: these are leagues that lasted three seasons; in
+leagues that fold early, front-loading looks better still (S5, the survival survey, sizes it).
+The owner's XFL 2 startup (2025): the most all-in of all 4,000+ startup teams (100th
+percentile; drafted age 28.2, future value sold) with a +113 drafting edge.
+

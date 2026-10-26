@@ -13,6 +13,8 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+import requests
+
 from sources import sleeper
 
 CRAWL_DIR = Path("data/crawl")
@@ -44,10 +46,14 @@ def main(n: int) -> None:
     # Walk every league back through its chain (a sampled manager may have left a league that
     # kept going; the chain of any later season it reached still links it).
     for lid in list(leagues):
-        for prev in sleeper.get_season_chain(lid)[1:]:
-            if prev not in leagues:
+        prev = leagues[lid][1]
+        while prev and prev not in leagues:
+            try:
                 lg = sleeper.get_league(prev)
-                leagues[prev] = (int(lg["season"]), lg.get("previous_league_id"))
+            except requests.HTTPError:
+                break          # a deleted league - the chain behind it is gone
+            leagues[prev] = (int(lg["season"]), lg.get("previous_league_id"))
+            prev = lg.get("previous_league_id")
     continued = {prev for _, prev in leagues.values() if prev}
     OUT.parent.mkdir(parents=True, exist_ok=True)
     json.dump({"leagues": {k: list(v) for k, v in leagues.items()}, "continued": sorted(continued)},
