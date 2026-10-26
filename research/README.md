@@ -732,3 +732,53 @@ dead dynasty leagues, though good to know if they act different").
 - F2: folded leagues decline before they fold - moves per team fall from their first season
   to their last.
 
+## Full-corpus replication (2026-10-25: 1,876 completed non-IDP seasons, 21,997 manager-seasons, 39,364 trades)
+
+The hop-3 crawl (`sleeper_crawl deep ... 5 3`, 400 long-history chains) took the corpus to
+2,009 completed seasons; 133 IDP seasons are now excluded at `season_luck` (defensive players
+have no DynastyProcess value). 1,038 leagues have 3+ straight completed seasons (from 68).
+Every script re-run. Caveat new at this scale: 16.5% of rosters change owner_id between
+seasons (6.5% before) - "same manager" persistence numbers are, if anything, conservative.
+
+**Held, with tighter intervals:** luck doesn't persist (r +0.003) while all-play does (0.49);
+the latest season beats a two-season average (0.51 vs 0.42); trading is a habit (0.52);
+activity predicts next season (+0.011 per SD - smaller each time the sample grew); the lineup
+half of trade grades (slope 1.11 over 22,836 sides); consolidation (+1.26 vs +0.05 title
+points); market timing isn't a skill (r -0.015); nobody fleeces weaker partners (r +0.015);
+age bites two seasons out (-0.028 per SD); depth on real injuries (+0.39 per backup PPG over
+129,971 absences); no star premium (holding starter value, star share -0.056); QB share adds
+nothing in superflex (-0.008); same-season contender alignment (A0a -3.9 vs -6.8 pts, B5
++3.4 pts with the pre-trade level held); top 3 shows contenders' trades working (55.6% vs
+51.6% pre-trade odds); top 3 is the steadier target (AUC 0.685 vs 0.652).
+
+**P2 HELD - picks pay, and later:** pick value bought, all-play per SD: t+1 +0.012 [+0.010,
++0.015], t+2 +0.035 [+0.031, +0.039], t+3 +0.042 [+0.033, +0.053]. The horizon the owner
+named, finally measurable: a pick's payoff roughly triples from one season out to two.
+
+**Changed at 10x:**
+- Byes: at equal strength 12.8% -> 23.2% (1.8x; 1.5x at 202 seasons).
+- Titles now track post-trade odds for contenders: won 20.0% vs 18.9% pre-trade, 20.2% post.
+- T-C REVERSED - contenders who lost on value gain +1.22 title points, those who won on value
+  +1.35: the value side doesn't decide the this-season gain either way. The earlier "losers
+  gain more" was noise; the robust point is that the lineup, not the paper value, moves it.
+- T-E: trade quality now persists a little (r +0.088 over 10,022 pairs) - weak, real.
+- Rookie drafting D2 now HELDS (r +0.217 over 11,121 pairs): taking the player the market
+  rates above the slot IS a repeatable trait - at 311 pairs it read +0.06. Outcome beyond that
+  still barely persists (D1 +0.077). Drafting skill = not reaching.
+- Alignment over two seasons shrank: all t+2 +0.0017 [-0.0002, +0.0039]; rebuilds t+2 +0.0073
+  [+0.0023, +0.0111] (was +0.023); contenders t+2 now -0.0054 [-0.0088, -0.0023] - they spent
+  the future and it shows two seasons on. Pivots: +5.0 rest-of-season pts.
+- Lineup efficiency's next-season weight turned negative (-0.014 per SD): the hindsight-optimal
+  measure rewards thin benches (no contestable choices) - the ROADMAP's warning, confirmed; a
+  real start/sit score must count only contestable slots.
+- Waiver share predicts a weaker next season (-0.12); dead starts now clearly cost (-0.009).
+
+**Folded leagues (comparison set, data/crawl_short/, 38 seasons):** F1 HELD - final seasons
+run 12.8 moves and 2.6 trades per team vs 17.7 and 3.7 in living leagues, with 6.4% dead
+starts vs 4.0%. F2 HELD - 9 of 11 folded chains lost activity before folding (-4.8 moves per
+team, first season to last). Disengagement shows before a league dies.
+
+**What-wins at scale:** next-season all-play r 0.484 (all-play) -> 0.559 (+ roster) -> 0.563
+(+ behavior); weights per SD: all-play +0.055, starter +0.050, bench +0.019, picks bought
++0.013, moves +0.010, 28+ share -0.007, next-season trade grades +0.006.
+
