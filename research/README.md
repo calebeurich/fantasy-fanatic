@@ -931,3 +931,19 @@ each paid outcome on all-play. A manager's EV added = the sum over his trades. R
 - E4 (reliability): among managers with 4+ seasons in one league, EV added averaged over odd
   seasons correlates with even seasons, r > 0.15.
 
+**Result (2026-10-26; 78,728 trade sides, 24,652 in-season).** E1 HELD overall, with a known
+bias - trading teams: pre-trade expected $49.1, post-trade $51.7, realized $53.2 (closer to
+post). By bin the dollars are too SPREAD: expected $25-50 realized $48.3 (post $36.9), $50-100
+realized $82.6 (post $72.7), $100+ realized $146.3 (post $159.4) - the simulator is somewhat
+overconfident at the extremes in this ppg-to-date grading (the title-odds overconfidence seen
+in the pace backtest, again); a grading run with a wider strength uncertainty is the fix to try.
+E2 HELD barely - EV added persists r 0.105 (n=14,073). E3 HELD - per SD of EV added (SD $22 a
+manager-season; 10th-90th -$10 to +$28), next season's realized payout rises $5.43 [+$3.49,
++$7.07] with all-play and starting roster held. E4 HELD - over managers with 4+ seasons in one
+league, odd vs even seasons' EV added correlate r 0.204 (n=2,832). **Expected dollars added by
+trades is the first manager measure that behaves like skill on every check: graded before the
+outcome, consistent across a manager's seasons, and paid out later.** XFL 2 by it (2025 +
+2026 so far): kierankieran +$79, shivvv +$34, dezdroppedit27 +$32, rjl22 +$25, BenSimonds +$8
+(-$5 then +$13), bergenjay $0 (doesn't trade), BartolosHeroes -$9 (lowest) - matching the
+owner's reads where he gave them.
+
