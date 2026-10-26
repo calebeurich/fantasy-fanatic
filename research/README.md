@@ -1063,3 +1063,22 @@ dollars before the move.
 - C2: compared within EV-before bins (EV added minus its bin's mean), EV added stays reliable
   across a manager's seasons (split-half r > 0.15) and still predicts next season's payout.
 
+**Result (2026-10-26) - lineups and pickups.** L3 HELD - the average manager scores 1.0 pt a
+week LESS than following the projections would (median -1.6; only 32% beat them; 21,997
+manager-seasons). L4 HELD - beating the projections persists, r 0.202 (within league,
+n=14,249): the start/sit skill the owner suspected exists once it is measured against
+projections, not hindsight. L5 HELD, inflated - the 25th-to-75th percentile gap is 4.85 pts a
+week, but a 14-week mean of a noisy weekly difference spreads by chance; with r ~0.2 only about
+a fifth of that variance is the manager, so the true gap is closer to ~2.2 pts a week, about
+half a win a season. Known biases, opposite directions: the projection lineup may start a taxi
+rookie the manager couldn't (weekly taxi status isn't recorded), or a late scratch whose
+projection wasn't zeroed.
+
+W4 HELD, after a definition fix - the first cut counted ANY hurt teammate (game-day inactives
+and IR'd backups made 81% of adds "opportunities"); fixed to the heuristic's intent (a
+fantasy-relevant teammate, 10+ PPG to date or 15+ at QB, newly hurt): 22% of in-season adds;
+they produce 5.5 starter points in the next four weeks vs 4.2 for other adds - RB 5.3 vs 3.4,
+QB 11.6 vs 6.5, WR 3.9 vs 3.4, TE 4.9 vs 4.4. Still loose: "a teammate went down" includes
+adds who weren't the next man up (a depth chart would tighten it). W5 REJECTED - making them
+is not a trait (r 0.035): everyone grabs them when they see them.
+
