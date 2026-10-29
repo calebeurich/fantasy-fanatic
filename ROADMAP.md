@@ -480,6 +480,29 @@ and the overview's needs take the same parameter; withContext pins it. ~half a d
 the XFL eye-test; needs-on-ePPG (below) should land first or alongside, since the chips
 this surfaces are the ones that over-flag in 1QB.
 
+**NEXT BUILD (agreed 2026-10-29): a stateless chat backend, conversations in Supabase.**
+Owner: "many parts of this are not scalable to having even say like 10 active users at once."
+Each conversation today is a `claude` CLI process plus its own Python MCP server process, which
+loads pandas and every data cache again (staging, 2026-10-21: ~0.45Gi per concurrent ask), so
+the app caps at `MAX_SESSIONS=4` on one instance. The app already switches off everything the
+Agent SDK adds over the API (built-in tools, permissions, CLAUDE.md loading); what it uses -
+the tool loop, turn and budget caps, streaming - is a short loop on the Messages API.
+- **Plan:** measure the baseline (memory and latency per conversation) -> replace the SDK
+  session with a Messages API tool loop calling the analysis functions directly, one shared
+  cache per process -> conversation history, spend counters and visitor caps in Supabase
+  Postgres -> raise `max-instances` -> evals show answers unchanged -> load-test staging at
+  10-20 simultaneous asks. Staging only until the owner clears prod.
+- **Keep:** `agent/mcp_server.py` (the same tools over MCP for Claude Desktop / Claude Code),
+  the grounding checks, prompt caching (now set by hand - check the cache-read numbers match).
+- **Why not the SDK for this:** it is built for agents that act in an environment (files,
+  shell, long tasks). This agent is deliberately limited to curated tools so every number is
+  ours; it stays agentic (it picks the tools and order), it just doesn't need a computer.
+  Research stays in Claude Code with the owner in the loop - no custom research agent.
+- **Supabase notes:** the free tier pauses after ~a week idle and caps the database at 500MB,
+  so the research corpus stays local (DuckDB is the candidate if the stream-parsing gets
+  painful). Connection string in GitHub secrets only; staging reads main's workflow file.
+- **Also:** back up `data/` once (deleted leagues and projection snapshots can't be refetched).
+
 **HIGH PRIORITY (owner, 2026-10-26): per-league rules the user supplies - starting with the
 payout.** Several conclusions are only as right as rules Sleeper doesn't store, and today they
 silently default to XFL 2's constitution:
@@ -497,8 +520,8 @@ Shape when built: a small per-league settings record (defaults = what Sleeper sa
 2's constitution, clearly labelled as defaults), editable in the UI, and the natural AI
 feature on top - **paste your league constitution, the agent extracts the structured rules,
 the user confirms them** before anything uses them. Needs persistence the app doesn't have yet
-(today's sessions are in-memory; see the session-store item) - a JSON document per league_id
-in Cloud Storage is the smallest version. Every number that depends on these (expected
+(today's sessions are in-memory) - it goes in the Supabase Postgres from the stateless-chat
+item above, as its second use. Every number that depends on these (expected
 dollars, draft order, pick projections) says which rules it used.
 
 **HIGH PRIORITY (owner, 2026-10-14): sorting and categorizing by playoff pace and real
@@ -548,7 +571,7 @@ since 2026-10-11; a two-agent trade question is two asks).
 for everyone (built for demo, make default), (2) trim tool payloads + skip counterparty
 unless asked (halves trade questions), (3) BYO Anthropic key, (4) paid tier. Throughput
 is the other constraint: max-instances=1 exists because sessions are in-process; moving
-session state to Redis/Firestore (~a day) unlocks horizontal scale. None of it urgent
+session state out unlocks horizontal scale (plan: the stateless-chat NEXT BUILD item, 2026-10-29). None of it urgent
 at current usage - recorded so the numbers survive.
 
 **Backlog added 2026-08-19:**
