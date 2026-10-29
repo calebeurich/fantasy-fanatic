@@ -492,6 +492,11 @@ the tool loop, turn and budget caps, streaming - is a short loop on the Messages
   cache per process -> conversation history, spend counters and visitor caps in Supabase
   Postgres -> raise `max-instances` -> evals show answers unchanged -> load-test staging at
   10-20 simultaneous asks. Staging only until the owner clears prod.
+- **Baseline (local, Windows, 2026-10-29, one league question per session):** each
+  conversation holds ~225MB (`claude` CLI) + ~400MB (its MCP server once data loads) = ~630MB;
+  a second session loaded the same ~400MB again (806MB for two), the parent is 94MB. 33-41s
+  and ~$0.01 an ask; each fresh session paid 61-72K tokens of cache creation.
+  Target after the build: per-conversation memory in KB, one ~400MB data cache per instance.
 - **Keep:** `agent/mcp_server.py` (the same tools over MCP for Claude Desktop / Claude Code),
   the grounding checks, prompt caching (now set by hand - check the cache-read numbers match).
 - **Why not the SDK for this:** it is built for agents that act in an environment (files,
