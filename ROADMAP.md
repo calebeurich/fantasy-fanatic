@@ -480,6 +480,42 @@ and the overview's needs take the same parameter; withContext pins it. ~half a d
 the XFL eye-test; needs-on-ePPG (below) should land first or alongside, since the chips
 this surfaces are the ones that over-flag in 1QB.
 
+**CURRENT FOCUS (owner, 2026-11-03): edge cases, gaps and site experience, before anything
+that could be sold.** The owner uses the app, reports what's wrong, and each gap gets written
+down with a plan. Check whether a gap is an existing rule in new clothes before patching it.
+Fixed so far: the Shakir "cornerstone's price" tooltip; a player already out reading as a 0.0
+loss (`out_now`, `injury_cost`, `back_week`).
+
+Open gaps:
+- **Position labels in advice:** a live answer called Kirk Cousins (QB) "the WR fix".
+- **Claims with no tool behind them:** the same answer said an injury lowers Adams's trade
+  value. Nothing in the tool data says so.
+- **Dead-end advice:** it said to spend picks on a WR while "no WR target surfaced" for that
+  team. Find out whether the target search has a real gap, or none exist.
+- **Answers cut off in the logs:** `agent.py` logs 600 characters of each answer, so a bad
+  answer can't be fully read afterward.
+- **Cold starts:** usually 5-25s, but 58-91s every week or two. Try startup CPU boost on staging.
+- **Projection snapshots:** the weekly job isn't built, and week 8 of 2026 was missed.
+
+**Later, not now (owner, 2026-11-03): the sellable version.** Notes from the discussion, to
+pick up after the focus above:
+- **Injury research:** a capped API tool loop, no heavier agent. One shared record per injury
+  (return estimate, certainty, sources, checked when), so cost follows injuries rather than
+  users. The agent estimates; the season simulator turns that into each league's odds. Free
+  sources first; X last, limited to a short list of reporters with a hard spend cap (reportedly
+  ~$0.005 per post read, unverified against X's own pricing page).
+- **Subscription:** free tier = the deterministic product plus a few asks; paid = more asks,
+  injury research, dollar-valued trades. Caps per account (monthly asks, daily cost) plus a
+  global cutoff, in Postgres. Today's ask is ~$0.01 or less; confirm on real usage. Usage is
+  seasonal, so consider a season pass.
+- **Licensing, unresolved:** we own the code (PolyForm Noncommercial binds others, not us), so
+  outside contributions would need permission. nflverse is mostly CC-BY 4.0 (FTN is
+  share-alike). **Sleeper and FantasyCalc: no commercial terms found - get written permission
+  before building payments.** FantasyCalc is the biggest dependency. Confirm the DynastyProcess
+  GPL-3.0 values stay research-only. Get legal advice before charging.
+- **Workload identity federation:** move the server off a long-lived Anthropic key during the
+  stateless-chat build, which uses the Python SDK that supports it. Local runs keep a key.
+
 **NEXT BUILD (agreed 2026-10-29): a stateless chat backend, conversations in Supabase.**
 Owner: "many parts of this are not scalable to having even say like 10 active users at once."
 Each conversation today is a `claude` CLI process plus its own Python MCP server process, which
