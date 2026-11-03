@@ -2826,3 +2826,60 @@ def test_rest_of_season_ppg_skips_byes_counts_injuries():
     assert out["hurt"] == (6.0, 12.0)             # 0 and 12 over two games; 12 when back
     assert out["fillin"] == (7.5, 7.5)            # starts now: no healthy story
     assert out["ir"] == (0.0, 9.0)                # no games left: the preseason rate
+
+
+def _injured_context(monkeypatch):
+    from types import SimpleNamespace
+    from analysis import league, roster_detail
+    players = {"goff": {"name": "Goff", "position": "QB", "projected_ppg": 14.0, "healthy_ppg": 14.0},
+               "hurts": {"name": "Hurts", "position": "QB", "projected_ppg": 0.0, "healthy_ppg": 18.0},
+               "tua": {"name": "Tua", "position": "QB", "projected_ppg": 5.0, "healthy_ppg": 5.0}}
+    roster = {"owner_id": "o", "players": ["goff", "hurts", "tua"]}
+    ctx = SimpleNamespace(players=players, roster_for=lambda owner: roster, owner_names={"o": "me"},
+                          lineup_dedicated={"QB": 2}, lineup_flex=[],
+                          league={"season": "2026", "scoring_settings": {}})
+    monkeypatch.setattr(league, "context", lambda league_id: ctx)
+    return roster_detail, players
+
+
+def test_a_player_already_out_is_a_hole_not_a_free_loss(monkeypatch):
+    """Live miss: "I just lost Hurts" heard "costs 0.0", because his projected zeros had
+    already moved him out of the lineup. The cost is against the team at full health."""
+    rd, _ = _injured_context(monkeypatch)
+    monkeypatch.setattr(rd, "_back_week", lambda pid, league: None)
+    out = rd.optimal_lineup("L", "me", ["Hurts"])
+    assert out["production_lost"] == 0.0            # true of today's lineup, and not the answer
+    assert out["injury_cost"] == 13.0               # Hurts 18 back in, Tua 5 back out
+    assert out["out_now"] == [{"name": "Hurts", "position": "QB", "healthy_ppg": 18.0, "back_week": None}]
+    assert rd.optimal_lineup("L", "me")["injury_cost"] == 13.0
+
+
+def test_a_healthy_team_carries_no_injury_fields(monkeypatch):
+    rd, players = _injured_context(monkeypatch)
+    players["hurts"]["healthy_ppg"] = 0.0
+    assert "out_now" not in rd.optimal_lineup("L", "me")
+
+
+def test_back_week_is_the_first_week_he_projects_to_score(monkeypatch):
+    from analysis import roster_detail as rd
+    monkeypatch.setattr(rd.sleeper, "get_nfl_state", lambda: {"week": 9})
+    monkeypatch.setattr(rd.sleeper, "score", lambda stats, scoring: stats.get("pts", 0))
+    lines = {12: 15}
+    monkeypatch.setattr(rd.sleeper, "projection_rows", lambda season, week: [
+        {"player_id": "p", "stats": {"pts": lines.get(week, 0)}}])
+    league = {"season": "2026", "scoring_settings": {}}
+    assert rd._back_week("p", league) == 12
+    lines.clear()
+    assert rd._back_week("p", league) is None
+
+
+def test_only_tagged_cornerstones_read_as_a_cornerstones_price(monkeypatch):
+    """The composer called Shakir (1,410) a cornerstone: `priced` was every piece with runway."""
+    from agent import api
+    from analysis import trade_targets
+    monkeypatch.setattr(trade_targets, "find_targets", lambda *a, **k: {
+        "mode": "rebuild", "situational": [{"name": "Mahomes", "is_cornerstone": True}, {"name": "Shakir"}]})
+    monkeypatch.setattr(trade_targets, "offerable_names", lambda result: {"Mahomes", "Shakir", "Dell"})
+    out = api.movable("L", "me")
+    assert out["priced"] == ["Mahomes"]
+    assert out["players"] == ["Dell", "Shakir"]

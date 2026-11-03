@@ -36,7 +36,7 @@ from pydantic import BaseModel
 # loop before importing this module, so the policy applies too late (tried it).
 # Unaffected on Linux, which is why the container never hit this.
 
-from analysis import format_support, roster_needs, team_state, trade_activity, trade_ideas, warm
+from analysis import format_support, roster_detail, roster_needs, team_state, trade_activity, trade_ideas, warm
 
 from . import budget, observability
 from .agent import run_query, MCP_SERVER_PATH, ToolsUnavailable, _options
@@ -249,12 +249,12 @@ def movable(league_id: str, owner: str, stance: str | None = None) -> dict:
     from analysis import trade_targets
     result = trade_targets.find_targets(league_id, owner, stance=stance or None)
     picks = result.get("picks_to_trade_away") or (result.get("push") or {}).get("picks_to_trade_away") or []
-    # A rebuild's "situational" pieces (young cornerstones with years on them) are in
-    # the offerable set by doctrine - the hardest ask is a price, never a veto - but the
-    # page must not paint Loveland as if Ben were shopping him (owner: "I don't want him
-    # and can't afford him"). They come back separately as "priced".
+    # A rebuild's cornerstones are in the offerable set by doctrine - the hardest ask is a
+    # price, never a veto - but the page must not paint Loveland as if Ben were shopping
+    # him (owner: "I don't want him and can't afford him"). They come back as "priced".
+    # Only the tagged ones: the rest of "situational" is any piece with runway (Shakir).
     situational = result.get("situational") or (result.get("pivot") or {}).get("situational") or []
-    priced = {e["name"] for e in situational}
+    priced = {e["name"] for e in situational if e.get("is_cornerstone")}
     return {"owner": owner, "mode": result["mode"], "stance": stance or None,
             "players": sorted(trade_targets.offerable_names(result) - priced),
             "priced": sorted(priced),
@@ -339,10 +339,8 @@ def _team_detail(ctx, roster: dict) -> dict:
     # The same fill at everyone's HEALTHY rate: a player it starts and the real fill
     # doesn't is out now but a starter when back (owner: injuries count as 0 in ePPG,
     # "but maybe a tag showing they would be a starter" on uninjured projections).
-    healthy = {pid: {**p, "projected_ppg": p["healthy_ppg"]} if p.get("healthy_ppg") is not None else p
-               for pid, p in ctx.players.items() if pid in (roster["players"] or [])}
-    healthy_starters = {pid for _, pid in _rn.fill_lineup(roster, healthy, ctx.lineup_dedicated,
-                                                          ctx.lineup_flex)}
+    healthy_starters = {pid for _, pid in _rn.fill_lineup(roster, roster_detail.at_healthy_rates(ctx.players),
+                                                          ctx.lineup_dedicated, ctx.lineup_flex)}
     states = team_state.classify_league(league_id)
     t = next(t for t in states
              if t["owner"] == owner_name)

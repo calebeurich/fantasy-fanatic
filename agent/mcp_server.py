@@ -394,7 +394,13 @@ def get_optimal_lineup(league_id: str, owner_name: str, without: list[str] = Non
     enters the lineup) and "moved_slots" (who shifts slot). The cascade is the point: on a
     real roster, losing the RB2 slid the FLEX back into RB2 and pulled a TIGHT END into
     the vacated FLEX - not the backup WR the manager assumed - because FLEX accepts
-    RB/WR/TE and the bench TE simply produced more."""
+    RB/WR/TE and the bench TE simply produced more.
+
+    A player already out projects 0, so this lineup has already routed around him and
+    `production_lost` for him reads 0.0. When anyone who would start at full health is
+    out, the result adds `out_now` (`healthy_ppg`, `back_week`; null = no return projected
+    this regular season, though IR players can still come back), `full_health_total` and
+    `injury_cost`: the real size of the hole."""
     return roster_detail.optimal_lineup(league_id, owner_name, without)
 
 

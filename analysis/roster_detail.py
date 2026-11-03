@@ -4,7 +4,7 @@ this is what actually makes up that aggregate. Usage: python -m analysis.roster_
 
 import sys
 
-from sources import contracts, injuries, nflverse_ids
+from sources import contracts, injuries, nflverse_ids, sleeper
 from .team_values import age_bucket, eppg, years_to_decline
 
 
@@ -92,6 +92,43 @@ if __name__ == "__main__":
     main(sys.argv[1], sys.argv[2])
 
 
+def at_healthy_rates(players: dict) -> dict:
+    """Everyone at his rate when back, so a lineup can be filled as if the team were whole."""
+    return {pid: {**p, "projected_ppg": p["healthy_ppg"]} if p.get("healthy_ppg") is not None else p
+            for pid, p in players.items()}
+
+
+def _back_week(pid: str, league: dict) -> int | None:
+    """The first week left that projects him to score; None = no return projected."""
+    from .league import REGULAR_SEASON_WEEKS
+
+    now = max(int(sleeper.get_nfl_state().get("week") or 1), 1)
+    for week in range(now, REGULAR_SEASON_WEEKS + 1):
+        for row in sleeper.projection_rows(league["season"], week):
+            if row["player_id"] == pid and sleeper.score(row.get("stats") or {}, league["scoring_settings"]) > 0:
+                return week
+    return None
+
+
+def _injury_hole(ctx, roster: dict, total: float) -> dict:
+    """What injuries already cost this lineup. A player out projects 0, so today's lineup has
+    already routed around him and "without him" reads 0.0 - the cost is against full health."""
+    from . import roster_needs
+
+    current = {pid for _, pid in roster_needs.fill_lineup(roster, ctx.players, ctx.lineup_dedicated, ctx.lineup_flex)}
+    healthy = at_healthy_rates(ctx.players)
+    whole = roster_needs.fill_lineup(roster, healthy, ctx.lineup_dedicated, ctx.lineup_flex)
+    out = [pid for _, pid in whole if pid not in current]
+    if not out:
+        return {}
+    whole_total = sum(eppg(healthy[pid]) for _, pid in whole)
+    return {"out_now": [{"name": ctx.players[pid]["name"], "position": ctx.players[pid]["position"],
+                         "healthy_ppg": healthy[pid]["projected_ppg"],
+                         "back_week": _back_week(pid, ctx.league)} for pid in out],
+            "full_health_total": round(whole_total, 1),
+            "injury_cost": round(whole_total - total, 1)}
+
+
 def optimal_lineup(league_id: str, owner_name: str, without: list[str] | None = None) -> dict:
     """This team's best legal lineup, and what it becomes with `without` players removed.
 
@@ -128,9 +165,10 @@ def optimal_lineup(league_id: str, owner_name: str, without: list[str] | None = 
         return rows, round(sum(r["projected_ppg"] for r in rows), 1)
 
     before_rows, before_total = build(roster["players"] or [])
+    hole = _injury_hole(ctx, roster, before_total)
     if not dropped:
         return {"owner": ctx.owner_names.get(roster["owner_id"]), "lineup": before_rows,
-                "total_production": before_total}
+                "total_production": before_total, **hole}
 
     after_rows, after_total = build(keep)
     before_names = {r["name"] for r in before_rows}
@@ -146,6 +184,7 @@ def optimal_lineup(league_id: str, owner_name: str, without: list[str] | None = 
         "production_lost": round(before_total - after_total, 1),
         "promoted": [r for r in after_rows if r["name"] not in before_names],
         "moved_slots": moved,
+        **hole,
         "note": (f"Removing {', '.join(dropped)} costs {before_total - after_total:.1f} "
                  f"projected points a game. This is the league's real slot rules applied "
                  f"exactly - flex and superflex slots refill from every eligible position, "

@@ -1296,6 +1296,18 @@ rule. The roster view marks a player the lineup would START at his healthy rate 
 doesn't today with a `healthy starter` chip (owner: "a tag showing they would be a
 starter once they are using uninjured projections").
 
+The lineup tool sizes the same hole. Live miss (2026-10-19): a 5-0 manager said "I just lost
+Hurts for the season" and heard that losing him costs 0.0 projected points, true only because
+his zeros had already pushed him out of the lineup. The needs read flags that roster's QB room
+critical, and the manager bought Goff the next morning. So `get_optimal_lineup` compares
+against the same full-health fill: `out_now` (who, `healthy_ppg`, `back_week`), `injury_cost`.
+`back_week` is the first week he projects to score; null means none is projected, not that he
+is done (IR players can return - the owner declined "IR = out for the season"). The agent keeps
+the season's hole apart from the player's dynasty value.
+
+The composer's "only moves at a cornerstone's price" is for tagged cornerstones only. It once
+covered every piece with runway, so it called Khalil Shakir (1,410, 2.3 years) a cornerstone.
+
 What it moved in XFL 2: lineup totals rose across the board (the weekly lines run hotter
 than the frozen totals), rebuilds that sold their backfield fell hard (bigbuttboi starting
 Kaleb Johnson at 1.3 and Kendre Miller at 0.2), and the contention tiers re-cut on the new
