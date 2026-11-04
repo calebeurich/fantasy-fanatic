@@ -1162,3 +1162,35 @@ Collapse-weighted all-in (quartile payouts weighted by the chance the league sti
 - all-in ahead ~$37 (vs ~$31 unweighted). Youth's edge arrives exactly when leagues are most
 likely gone. Front-loading at the startup is the better default, on these numbers.
 
+
+## Tanking: does missing the playoffs pay? (`tank_ev.py`, 2026-11-03)
+
+Owner: a manager lost on purpose to miss the playoffs and get a better pick. Is that ever worth it,
+even over many seasons, and can the rules remove the incentive? Not pre-registered: the question came
+from one case and the study was run once, so read it as a strong lead.
+
+Design: 1,533 pairs from 1,876 completed seasons, the last team in against the first team out of the
+same league, at most one win apart, the gap read at equal all-play, in XFL 2's payout.
+
+| Made it minus missed | Gap | 90% interval | Pairs |
+|---|---|---|---|
+| Rookie slot next draft | +2.96 slots later | | 819 |
+| Dollars this season | +$40.28 | [+$35.96, +$44.61] | 1,533 |
+| Dollars, one season on | -$1.51 | [-$10.64, +$6.18] | 828 |
+| Dollars, two seasons on | +$4.76 | [-$9.91, +$19.83] | 435 |
+| Dollars, three seasons on | -$0.79 | [-$21.49, +$18.08] | 214 |
+| All-play, three seasons on | -0.030 | [-0.061, +0.004] | 214 |
+
+The three later gaps sum to about +$2.46 for the team that made it, so the better pick shows no dollars
+that repay this season's $40. Limits: three seasons is as far as the data reaches, the intervals are wide
+by then, and the all-play gap three seasons on hints at a late payoff for missing. These teams mostly
+finished there by accident; a deliberate tank buys the same slot. A weak team earns less from getting in:
+bergenjay's simulated value is about $17, against this $40 average, so his case is closer.
+
+Rules, XFL 2 mid-season: slots a team gains by benching out the rest of the regular season, averaged
+over the three teams with 10-90% playoff odds. Current rule 2.45; first-round losers join the max-PF
+order 1.24; straight reverse max PF with the finalists last 0.52; straight reverse max PF 0.00.
+
+Would straight max PF hand picks to the wrong teams? Across the corpus max PF tracks all-play at r 0.93
+within a league. The three lowest max PF teams have a .283 all-play, the three truly weakest .267. The
+champion was in the lower half of max PF 8.0% of the time, the bottom quarter 1.1% (n=1,869).
