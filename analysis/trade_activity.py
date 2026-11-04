@@ -30,6 +30,11 @@ def get_trade_counts(league_id: str) -> dict[str, int]:
     return dict(counts)
 
 
+def never_trades(counts: dict[str, int], owner_id: str) -> bool:
+    """A zero only means something when someone else in the league has traded."""
+    return any(counts.values()) and not counts.get(owner_id)
+
+
 def main(league_id: str) -> None:
     counts = get_trade_counts(league_id)
     users = {u["user_id"]: u["display_name"] for u in sleeper.get_users(league_id)}

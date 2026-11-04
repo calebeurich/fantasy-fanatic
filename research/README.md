@@ -211,6 +211,29 @@ into sell-window payloads; the contract-year signal as a second note; the declin
 tails from eye-test to measured; the rushing-QB override review once the EPA split
 is reconstructed.
 
+## Study: 3rds and 4ths as currency (2026-11-04)
+
+`research/pick_premium.py` again, for later rounds, on the larger crawl (47,721 trades). Owner: "how confident are
+we in the 3rd or 4th pick additions?" The premium had only been measured on 1sts and 2nds, then applied to every round.
+
+| pick | a lone one fetches (quartiles) | FC value there today | 2027 pick in FC | premium |
+|---|---|---|---|---|
+| 1st | top-12% (8-17%) | ~3,750 | 2,872 | x1.3 |
+| 2nd | top-23% (18-31%) | ~2,288 | 1,539 | x1.5 |
+| 3rd | top-36% (28-46%) | ~1,432 | 1,070 | x1.3 |
+| 4th | top-41% (33-55%) | ~1,268 | 817 | x1.6 |
+
+- **The premium holds, so late picks are priced about right.** Round 3 n=1,947, round 4 n=919.
+- **They are real currency in real deals:** 10,016 sides carried a 3rd or later beside a 1st or 2nd.
+- **A 3rd and a 4th overlap heavily** (value quartiles 1,151-1,840 and 791-1,505), so the app's choice between them
+  is falser precision than its price. What they buy is mostly fringe veterans, not starters.
+
+Caveats: as above, a lone pick as a whole side is not the same as one stapled on. Mixed league quality.
+
+A separate question, same day: top-5% players alone on a side (3,068) went for picks only 17% of the time. In those
+508, one 1st was the most common price (297), and 169 had one 1st with only 3rds or later beside it. So "a 1st + a
+3rd for a star" is a real shape but not a usual one, and it doesn't separate an early 1st from a late one.
+
 ## Study: the pick premium - what a lone 1st actually buys (2026-08-18)
 
 `research/pick_premium.py`. Owner: "we may just be undervaluing 1sts - in reality they

@@ -2846,7 +2846,7 @@ def test_a_player_already_out_is_a_hole_not_a_free_loss(monkeypatch):
     """Live miss: "I just lost Hurts" heard "costs 0.0", because his projected zeros had
     already moved him out of the lineup. The cost is against the team at full health."""
     rd, _ = _injured_context(monkeypatch)
-    monkeypatch.setattr(rd, "_back_week", lambda pid, league: None)
+    monkeypatch.setattr(rd, "back_week", lambda pid, league: None)
     out = rd.optimal_lineup("L", "me", ["Hurts"])
     assert out["production_lost"] == 0.0            # true of today's lineup, and not the answer
     assert out["injury_cost"] == 13.0               # Hurts 18 back in, Tua 5 back out
@@ -2868,9 +2868,9 @@ def test_back_week_is_the_first_week_he_projects_to_score(monkeypatch):
     monkeypatch.setattr(rd.sleeper, "projection_rows", lambda season, week: [
         {"player_id": "p", "stats": {"pts": lines.get(week, 0)}}])
     league = {"season": "2026", "scoring_settings": {}}
-    assert rd._back_week("p", league) == 12
+    assert rd.back_week("p", league) == 12
     lines.clear()
-    assert rd._back_week("p", league) is None
+    assert rd.back_week("p", league) is None
 
 
 def test_only_tagged_cornerstones_read_as_a_cornerstones_price(monkeypatch):

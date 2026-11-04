@@ -6,6 +6,9 @@ from types import SimpleNamespace
 from analysis import trade_ideas as ti
 
 
+POS = {"Taylor": "RB", "Kyren": "RB"}
+
+
 def _pair(**over):
     base = dict(league_id="L", owners={"a": "A", "b": "B"}, stances={"a": None, "b": None},
                 results={"a": {"mode": "buy"}, "b": {"mode": "buy"}},
@@ -108,7 +111,7 @@ def test_ideas_rank_buys_by_lineup_gain_and_dips_last():
     cands = [_idea("Vic", ["Shough"], ["Waddle"], delta=1.2),
              _idea("Big", ["Fannin"], ["Etienne"], delta=2.8),
              _idea("Bart", ["Ward"], ["Hurts"], delta=-0.9)]
-    assert [c["partner"] for c in ti.pick_ideas(cands, value, 3)] == ["Big", "Vic", "Bart"]
+    assert [c["partner"] for c in ti.pick_ideas(cands, value, POS, 3)] == ["Big", "Vic", "Bart"]
 
 
 def test_one_idea_per_partner_the_rest_ride_along_as_also():
@@ -116,7 +119,7 @@ def test_one_idea_per_partner_the_rest_ride_along_as_also():
     value = {"Fannin": 3600, "Shough": 3000, "Taylor": 7000, "Kyren": 3200}
     cands = [_idea("kieran", ["Fannin"], ["Taylor"], delta=4.6),
              _idea("kieran", ["Shough"], ["Kyren"], delta=2.8)]
-    out = ti.pick_ideas(cands, value, 3)
+    out = ti.pick_ideas(cands, value, POS, 3)
     assert len(out) == 1 and out[0]["b_sends"] == ["Taylor"] and out[0]["also"] == ["Kyren"]
 
 
@@ -127,7 +130,7 @@ def test_a_thin_roster_refills_to_the_limit_by_repeating_pieces():
     cands = [_idea("Big", ["Shough"], ["Etienne"], delta=2.8),
              _idea("Vic", ["Shough"], ["Waddle"], delta=1.2),
              _idea("Kie", ["Shough"], ["Kyren"], delta=2.0)]
-    assert [c["partner"] for c in ti.pick_ideas(cands, value, 3)] == ["Big", "Kie", "Vic"]
+    assert [c["partner"] for c in ti.pick_ideas(cands, value, POS, 3)] == ["Big", "Kie", "Vic"]
 
 
 def test_a_pick_shape_shows_once():
@@ -135,7 +138,7 @@ def test_a_pick_shape_shows_once():
     value = {"Pickens": 6000, "Chase": 9000, "Nabers": 8800, "Ward": 3500}
     cands = [_idea("jq", ["Pickens", "2027 1st", "2028 1st"], ["Chase"], delta=3.0),
              _idea("rj", ["Ward", "2027 1st", "2028 1st"], ["Nabers"], delta=2.0)]
-    assert [c["partner"] for c in ti.pick_ideas(cands, value, 3)] == ["jq"]
+    assert [c["partner"] for c in ti.pick_ideas(cands, value, POS, 3)] == ["jq"]
 
 
 def _swap_pair(**over):
@@ -222,3 +225,30 @@ def test_the_no_help_tag_quotes_sleepers_injury_fields():
     assert injury_label({"injury": {"status": "IR", "body_part": "Knee - ACL", "note": "Surgery"}}) == "IR, Knee - ACL, Surgery"
     assert injury_label({"injury": {"status": "Out", "body_part": "Thumb", "note": None}}) == "Out, Thumb"
     assert injury_label({"injury": None}) is None
+
+
+def test_also_stays_at_the_same_spot_unless_any_flex_piece_would_do():
+    """Watson (WR) doesn't ride on a QB swap, but two flex pieces can on a flex upgrade."""
+    value = {"Mahomes": 5000, "Watson": 3800, "Smith": 3000, "Kincaid": 2500}
+    pos = {"Mahomes": "QB", "Watson": "WR", "Smith": "WR", "Kincaid": "TE"}
+    swap = _idea("kb", ["2029 1st"], ["Mahomes"], delta=7.8)
+    out = ti.pick_ideas([swap, _idea("kb", ["2029 2nd"], ["Watson"], delta=5.4)], value, pos, 3)
+    assert "also" not in out[0]
+    flex = {**_idea("kb", ["2029 1st"], ["Watson"], delta=5.4), "lineup_upgrade": True}
+    out = ti.pick_ideas([flex, _idea("kb", ["2028 1st"], ["Kincaid"], delta=3.0)], value, pos, 3)
+    assert out[0]["also"] == ["Kincaid"]
+    plain = _idea("kb", ["2029 1st"], ["Watson"], delta=5.4)
+    assert "also" not in ti.pick_ideas([plain, _idea("kb", ["2028 1st"], ["Kincaid"], delta=3.0)], value, pos, 3)[0]
+
+
+def test_a_buyer_with_full_better_qb_slots_is_not_pitched_a_qb():
+    """shivvv starts Burrow and Lawrence, so Goff won't start. An upgrade still counts."""
+    p = _pair(position={"Burrow": "QB", "Lawrence": "QB", "Goff": "QB", "Allen": "QB", "Odunze": "WR"}, qb_slots=2,
+              eppg={"Burrow": 18.4, "Lawrence": 21.4, "Goff": 18.2, "Allen": 24.2},
+              starters={"a": ["Burrow", "Lawrence"], "b": []})
+    goff = {"a_sends": ["Odunze"], "b_sends": ["Goff"], "lens": "buy"}
+    assert ti._spare_qb(p, goff)
+    assert not ti._spare_qb(p, {"a_sends": ["Burrow"], "b_sends": ["Allen"], "lens": "buy"})
+    assert not ti._spare_qb(p, {"a_sends": [], "b_sends": ["Allen"], "lens": "buy"})
+    p.qb_slots = 3
+    assert not ti._spare_qb(p, goff), "an open slot takes him"

@@ -14,7 +14,7 @@ import sys
 from dataclasses import dataclass
 
 from sources.cache import ttl_cache, LEAGUE_CONFIG_TTL
-from . import roster_needs, team_state, trade_eval, trade_targets
+from . import roster_needs, team_state, trade_activity, trade_eval, trade_targets
 from .league import context
 from .team_values import age_bucket, eppg, injury_label, years_to_decline
 from .trade_targets.board import build_board
@@ -30,6 +30,7 @@ CONSOLIDATION_POOL = 4        # names considered for two-piece consolidations
 HURT_SHARE = 0.65             # a season swap's hurt piece projects at most this share of his healthy rate
 SWAP_AGE_SLACK = 1.0          # ...and is at most this many years older than the healthy one
 LINEUP_GAIN_MIN = 1.0         # a swap or upgrade adds at least this many points a game to the buyer's lineup
+FLEX_POSITIONS = {"RB", "WR", "TE"}
 NO_FIT_RUNWAY = 1             # a rebuild isn't collecting a piece this close to his decline
 
 
@@ -379,6 +380,16 @@ def qb_stockpile(p: _Pair, prop: dict) -> str | None:
     return None
 
 
+def _spare_qb(p: _Pair, prop: dict) -> bool:
+    """A QB for a buyer whose QB slots are full of better ones: he wouldn't start, and a
+    backup QB is slow to resell."""
+    buyer, incoming, outgoing = (("a", prop["b_sends"], prop["a_sends"]) if prop["lens"] == "buy"
+                                 else ("b", prop["a_sends"], prop["b_sends"]))
+    keeps = [p.eppg.get(n, 0) for n in p.starters[buyer] if p.position.get(n) == "QB" and n not in outgoing]
+    return len(keeps) >= p.qb_slots and any(
+        p.position.get(n) == "QB" and p.eppg.get(n, 0) <= min(keeps) for n in incoming)
+
+
 def suggest(league_id: str, a: str, b: str, stance_a: str | None = None,
             stance_b: str | None = None, limit: int = 3) -> list[dict]:
     """Up to `limit` ideas between two teams, lens from `a`'s side."""
@@ -399,7 +410,7 @@ def suggest(league_id: str, a: str, b: str, stance_a: str | None = None,
         used_b |= {n for n in c["b_sends"] if n in p.position}
     for prop in filter(None, (_balance(p, c) for c in cands if _available(p, c))):
         key = (tuple(prop["a_sends"]), tuple(prop["b_sends"]))
-        if key in seen or (set(prop["a_sends"]) & used_a) or (set(prop["b_sends"]) & used_b):
+        if key in seen or (set(prop["a_sends"]) & used_a) or (set(prop["b_sends"]) & used_b) or _spare_qb(p, prop):
             continue
         delta = _buyer_delta(p, prop)
         if delta < -BUYER_DIP_OK or (prop.get("lineup_upgrade") and delta < LINEUP_GAIN_MIN):
@@ -423,11 +434,18 @@ def _order(c: dict, value: dict) -> tuple:
     return (c.get("buyer_delta", 0) <= 0, bool(c.get("qb_stockpile")), -c.get("buyer_delta", 0), -vin)
 
 
-def pick_ideas(cands: list[dict], value: dict, limit: int) -> list[dict]:
+def _same_conversation(first: dict, c: dict, position: dict, lens: str) -> bool:
+    """The same position, or a flex upgrade where any flex piece would do the job."""
+    key = "b_sends" if lens == "buy" else "a_sends"
+    lead, other = ({position[n] for n in x[key] if n in position} for x in (first, c))
+    return bool(lead & other) or bool(first.get("lineup_upgrade") and lead and other and lead | other <= FLEX_POSITIONS)
+
+
+def pick_ideas(cands: list[dict], value: dict, position: dict, limit: int) -> list[dict]:
     """Up to `limit` per lens. Strict pass: a new partner and no repeated outgoing piece.
     Refill pass (a thin roster runs out of pieces): repeats allowed, unseen partners
     first. A pick shape ("starter + two 1sts") shows once. Each partner keeps ONE idea;
-    its other deals ride on it as `also`."""
+    its other deals at the same spot ride on it as `also`."""
     cands = sorted(cands, key=lambda c: _order(c, value))
     out = []
     for lens in ("buy", "sell"):
@@ -451,7 +469,8 @@ def pick_ideas(cands: list[dict], value: dict, limit: int) -> list[dict]:
         for c in pool:
             first = firsts.get(c["partner"])
             landed = " + ".join(c["b_sends"] if lens == "buy" else c["a_sends"])
-            if first is not None and c is not first and landed != " + ".join(first["b_sends"] if lens == "buy" else first["a_sends"]):
+            if (first is not None and c is not first and _same_conversation(first, c, position, lens)
+                    and landed != " + ".join(first["b_sends"] if lens == "buy" else first["a_sends"])):
                 first.setdefault("also", []).append(landed)
         out += [c for c in picked if firsts[c["partner"]] is c]
     return out
@@ -472,7 +491,10 @@ def ideas(league_id: str, owner: str, limit: int = 3, stance: str | None = None)
     path = next((t["path"] for t in team_state.classify_league(league_id) if t["owner"] == owner), "")
     if path.startswith("wait") and not stance:
         cands = [{**c, "framing": "if you decided to push"} for c in cands if c.get("lens") == "buy"]
-    return pick_ideas(cands, value, limit)
+    position = {p["name"]: p["position"] for p in ctx.players.values()}
+    counts = trade_activity.get_trade_counts(league_id)
+    return [{**c, "partner_never_trades": trade_activity.never_trades(counts, ctx.roster_for(c["partner"])["owner_id"])}
+            for c in pick_ideas(cands, value, position, limit)]
 
 
 def fits(league_id: str, owner: str, seller: str, stance: str | None = None,

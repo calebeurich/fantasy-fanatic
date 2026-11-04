@@ -68,7 +68,7 @@ def main():
                 "desc": " + ".join(f"{g[0]}({g[1]:,}, {g[2]})" for g in sorted(got, key=lambda g: -g[1])),
             })
 
-    for rnd, label in ((1, "a lone 1st"), (2, "a lone 2nd")):
+    for rnd, label in ((1, "a lone 1st"), (2, "a lone 2nd"), (3, "a lone 3rd"), (4, "a lone 4th")):
         grp = [r for r in rows if r["round"] == rnd]
         print(f"\n{label.upper()} as one whole side: {len(grp)} trades")
         if not grp:
@@ -87,11 +87,11 @@ def main():
             print(f"    {r['date']} {r['league'][:22]:22} {pk_desc(r)} -> {r['desc']}  [top-{100 * r['best_pct']:.0f}%]")
 
     # Where FantasyCalc prices a 1st today, in FC's own ranking (12-team superflex).
-    print("\nFANTASYCALC TODAY (12-team superflex): where a 1st / 2nd sits among players")
+    print("\nFANTASYCALC TODAY (12-team superflex): where each round sits among players")
     players = fantasycalc.get_players(num_qbs=2, num_teams=12, ppr=1.0)
     vals = sorted((p["value"] for p in players.values()), reverse=True)
     picks = fantasycalc.get_pick_values(num_qbs=2, num_teams=12, ppr=1.0)
-    for name in ("2027 1st", "2028 1st", "2027 2nd", "2028 2nd"):
+    for name in ("2027 1st", "2028 1st", "2027 2nd", "2028 2nd", "2027 3rd", "2028 3rd", "2027 4th", "2028 4th"):
         v = next((val for pk, val in picks.items() if pk.startswith(name)), None)
         if v is None:
             continue
@@ -100,7 +100,7 @@ def main():
 
 
 def pk_desc(r):
-    return f"{r['years_out']}y-out {'1st' if r['round'] == 1 else '2nd'}"
+    return f"{r['years_out']}y-out {('1st', '2nd', '3rd', '4th')[r['round'] - 1]}"
 
 
 if __name__ == "__main__":

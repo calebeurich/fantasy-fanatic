@@ -1167,7 +1167,8 @@ async function fillIdeas(leagueId, owner) {
   const card = (s, i) => `<div class="idea" data-i="${i}" title="${(s.why || "").replace(/"/g, "&quot;")}">` +
     `<div style="flex:1;min-width:0">send <b>${s.a_sends.join(" + ")}</b> to <b>${s.partner}</b> for <b>${s.b_sends.join(" + ")}</b>` +
     `<span class="cs">${(s.why || "").split(";")[0]}</span>` +
-    (s.also ? `<span class="cs">same conversation could land ${s.also.join(" or ")} instead</span>` : "") + `</div>` +
+    (s.also ? `<span class="cs">same conversation could land ${s.also.join(" or ")} instead</span>` : "") +
+    (s.partner_never_trades ? `<span class="cs">${s.partner} has never made a trade in this league</span>` : "") + `</div>` +
     `<span class="iacts"><button type="button" class="ask" data-i="${i}">ask</button><button type="button" class="tweak" data-i="${i}">tweak</button></span></div>`;
   const buys = list.map((s, i) => [s, i]).filter(([s]) => s.lens !== "sell");
   const sells = list.map((s, i) => [s, i]).filter(([s]) => s.lens === "sell");
@@ -1248,9 +1249,9 @@ async function toggleDetail(tr, leagueId) {
       rows.map(p => `<div class="prow ${mark(p, (d.start_bars || {})[title])}">` +
         `<span><span class="nm">${p.cornerstone ? "★ " : ""}${p.name}</span>` +
         (p.flex_slot ? `<span class="flexchip">${p.flex_slot === "SUPER_FLEX" ? "sflx" : "flex"}</span>` : "") +
-        (p.starts_when_healthy ? `<span class="flexchip hurt" title="projected out for part of the season - ePPG counts those weeks as 0 (${p.projected_ppg.toFixed(1)}), but at his healthy rate (${p.healthy_ppg.toFixed(1)} a game) he starts for this lineup">healthy starter</span>` : "") +
+        (p.starts_when_healthy ? `<span class="flexchip hurt" title="ePPG here is his rate when back (${p.healthy_ppg.toFixed(1)} a game), and he starts for this lineup at it. ${p.back_week ? `Sleeper projects him back in week ${p.back_week}.` : "Sleeper projects no return this regular season, though IR players can come back."} Team totals count his missed weeks as 0, which averages ${p.projected_ppg.toFixed(1)} over the weeks left.">healthy starter · ${p.back_week ? `back wk ${p.back_week}` : "no return projected"}</span>` : "") +
         `</span>` +
-        `<span class="pv">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
+        `<span class="pv">${p.starts_when_healthy ? p.healthy_ppg.toFixed(1) : p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
         `<span class="pv">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
         `<span class="pv">${(p.value || 0).toLocaleString()}</span>` +
         `<span class="pa" style="color:${runwayColor(p, title)}">` +

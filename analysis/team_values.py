@@ -279,7 +279,7 @@ PICK_TIER_REASON = {"Early": "bottom third", "Mid": "middle third", "Late": "top
 # payloads all price a pick the same. Every pick carries BOTH numbers: `value` is the raw
 # FantasyCalc price (what the page shows - owner: "leave the raw pick value numbers alone
 # in the UI"), `market_value` is what it buys; the trade board swaps market in for
-# everything that prices a deal.
+# everything that prices a deal. Later rounds carry about the same premium (research/README).
 PICK_PREMIUM_THIS_YEAR = 1.25
 PICK_PREMIUM_LATER = 1.6
 

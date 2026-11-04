@@ -99,7 +99,7 @@ def at_healthy_rates(players: dict) -> dict:
             for pid, p in players.items()}
 
 
-def _back_week(pid: str, league: dict) -> int | None:
+def back_week(pid: str, league: dict) -> int | None:
     """The first week left that projects him to score; None = no return projected."""
     from .league import REGULAR_SEASON_WEEKS
 
@@ -126,7 +126,7 @@ def _injury_hole(ctx, roster: dict, total: float) -> dict:
     return {"out_now": [{"name": ctx.players[pid]["name"], "position": ctx.players[pid]["position"],
                          "healthy_ppg": healthy[pid]["projected_ppg"],
                          "injury": ctx.players[pid].get("injury"),
-                         "back_week": _back_week(pid, ctx.league)} for pid in out],
+                         "back_week": back_week(pid, ctx.league)} for pid in out],
             "full_health_total": round(whole_total, 1),
             "injury_cost": round(whole_total - total, 1)}
 

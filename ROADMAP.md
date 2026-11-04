@@ -490,6 +490,8 @@ Also fixed 2026-11-04 (LOGIC.md has the why): capacity under simultaneous chats,
 owner's leagues never showed, and a pass over loading, error and refresh states.
 
 Open gaps:
+- **A seller's QB with no QB back:** ideas will send kbmckenna's Mahomes to kierankieran for picks, though QB friction
+  makes a swap more likely. Owner isn't sure it's wrong: in a liquid league, selling and buying a QB later can win.
 - **Position labels in advice:** a live answer called Kirk Cousins (QB) "the WR fix".
 - **Injury and trade value:** injuries do lower value (owner), but the tools can't show by how
   much, so the same answer asserted it with no number. Needs value over time around the injury;

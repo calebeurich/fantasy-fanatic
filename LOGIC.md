@@ -1294,7 +1294,10 @@ rate; a FILL-IN whose zeros come after his starts (Kirk Cousins: 14 14 16, then 
 no healthy story at all - he was the first tag candidate and the reason for the out-now
 rule. The roster view marks a player the lineup would START at his healthy rate but
 doesn't today with a `healthy starter` chip (owner: "a tag showing they would be a
-starter once they are using uninjured projections").
+starter once they are using uninjured projections"). On that row ePPG shows his rate when
+back and the chip says when Sleeper projects his first game: Davante Adams reads 14.7 and
+"back wk 12", not the 11.5 that averages in his zeros (owner: "more the number when they are
+back and when they are expected to be back"). Team totals still count the zeros.
 
 The lineup tool sizes the same hole. Live miss (2026-10-19): a 5-0 manager said "I just lost
 Hurts for the season" and heard that losing him costs 0.0 projected points, true only because
@@ -2169,6 +2172,19 @@ The throw-in test only looked at the league's bars: Jadarian Price (2,527) misse
 startable bar, so a real offer of Price for Hurts (3,318) read "0 pieces, 0.00x". Owner: he's close in value in
 reality. A piece at or above the low end of the measured centerpiece band for the best piece's tier (`RETURN_SHAPES`
 q1) now always counts. Quinn Ewers at 254 still doesn't.
+
+### Spare QBs, "same conversation", and partners who don't trade (`trade_ideas`, 2026-11-04)
+
+Owner, reading XFL 2: "I don't think shivv would trade for Goff since he has 2 good QBs who are healthy already."
+A buyer whose QB slots are full of better QBs is no longer pitched a QB (`_spare_qb`). QBs have friction, and a
+backup is slow to resell. It compares against the QBs he keeps, so an upgrade that sends his starter back still counts.
+
+"Same conversation could land X" now needs the same position as the deal on the card, or both to be flex pieces on a
+flex-type upgrade (owner: fine "unless it is based around getting value at a flex position"). Watson (WR) no longer
+rides on Lamar for Mahomes.
+
+A card names a partner who has never traded (`partner_never_trades`, the table's flag) instead of hiding him: owner,
+"we probably would want to note that spugz does not trade". Same rule as "Trade activity": a flag, never a ranking.
 
 ### Season swaps (`trade_ideas.season_swaps`, 2026-11-03)
 

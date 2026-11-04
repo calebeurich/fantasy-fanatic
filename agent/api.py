@@ -209,11 +209,9 @@ def league_overview(league_id: str) -> dict:
 
     teams = team_state.classify_league(league_id)
     needs = roster_needs.league_needs(league_id)
-    # Realized trades per manager - the first manager attribute the table shows. A zero
-    # only means "never trades" when someone else in the league has (LOGIC.md "Trade
-    # activity"); the page gets both the count and the flag.
+    # Realized trades per manager - the first manager attribute the table shows. The page
+    # gets both the count and the flag (LOGIC.md "Trade activity").
     trade_counts = trade_activity.get_trade_counts(league_id)
-    anyone_traded = any(trade_counts.values())
 
     return {
         "league_id": league_id,
@@ -249,7 +247,7 @@ def league_overview(league_id: str) -> dict:
                 "pick_share": t["pick_share"],
                 "firsts": t["firsts"],
                 "trades": trade_counts.get(t["owner_id"], 0),
-                "never_trades": anyone_traded and not trade_counts.get(t["owner_id"]),
+                "never_trades": trade_activity.never_trades(trade_counts, t["owner_id"]),
                 # Cornerstones alone made the column lie by omission: a roster showed
                 # "Lamar" while holding CeeDee Lamb, because Lamb misses the tag on the
                 # CLOCK, not on value (he lives in win_now_core). The reader of this
@@ -387,13 +385,15 @@ def _team_detail(ctx, roster: dict) -> dict:
         info = ctx.players.get(pid)
         if info is None:
             continue
+        starts_when_healthy = (pid in healthy_starters and pid not in starters
+                               and (info.get("healthy_ppg") or 0) > team_values.eppg(info))
         by_pos.setdefault(info["position"], []).append({
             "name": info["name"], "value": info["value"],
             "redraft_value": info.get("redraft_value"), "age": info["age"],
             "projected_ppg": team_values.eppg(info),
             "healthy_ppg": info.get("healthy_ppg"),
-            "starts_when_healthy": (pid in healthy_starters and pid not in starters
-                                    and (info.get("healthy_ppg") or 0) > team_values.eppg(info)),
+            "starts_when_healthy": starts_when_healthy,
+            "back_week": roster_detail.back_week(pid, ctx.league) if starts_when_healthy else None,
             "bucket": age_bucket(info["position"], info["age"], info.get("usage_role")),
             "starter": pid in starters,
             "flex_slot": (slot_of.get(pid) if pid in starters
