@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from sources.cache import ttl_cache, LEAGUE_CONFIG_TTL
 from . import roster_needs, team_state, trade_eval, trade_targets
 from .league import context
-from .team_values import age_bucket, eppg, years_to_decline
+from .team_values import age_bucket, eppg, injury_label, years_to_decline
 from .trade_targets.board import build_board
 
 BAND_LO, BAND_HI = 0.9, 1.2   # the buyer sends 0.9x-1.2x of what he gets, in dynasty value
@@ -28,7 +28,6 @@ CENTERPIECE_TOP = 0.35        # value percentile under which sums lie - the cent
 MAX_PER_SIDE = 3              # candidate pieces considered per target / per sell list
 CONSOLIDATION_POOL = 4        # names considered for two-piece consolidations
 HURT_SHARE = 0.65             # a season swap's hurt piece projects at most this share of his healthy rate
-SWAP_BAND = 0.85              # ...and the lighter side holds at least this share of the heavier's value
 LINEUP_GAIN_MIN = 1.0         # a swap or upgrade adds at least this many points a game to the buyer's lineup
 NO_FIT_RUNWAY = 1             # a rebuild isn't collecting a piece this close to his decline
 
@@ -309,7 +308,7 @@ def _is_hurt(p: _Pair, name: str) -> bool:
 
 
 def _swap_in_band(x: float, y: float) -> bool:
-    return bool(x and y) and min(x, y) / max(x, y) >= SWAP_BAND
+    return bool(x and y) and min(x, y) / max(x, y) >= trade_eval.SWAP_BAND
 
 
 def _even_with_pick(p: _Pair, c: str, n: str, hurt: str, healthy: str) -> tuple[list, list] | None:
@@ -538,7 +537,9 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
                 out.append({"name": info["name"], "owner": seller, "tag": "depth for them",
                             "why": f"would start for {owner} if one {info['position']} were out"})
         elif result["mode"] == "buy" and _well_below_healthy(eppg(info), info.get("healthy_ppg")):
-            out.append({"name": info["name"], "owner": seller, "tag": "no help this season", "no_fit": True,
+            label = injury_label(info)
+            out.append({"name": info["name"], "owner": seller, "no_fit": True,
+                        "tag": f"no help this season · {label}" if label else "no help this season",
                         "why": f"{owner} is contending and he projects {eppg(info):.1f} a game, "
                                f"against {info['healthy_ppg']:.1f} at full health"})
         elif below_bar(info):

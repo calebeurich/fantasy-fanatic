@@ -134,6 +134,12 @@ def eppg(info: dict) -> float:
     return info.get("projected_ppg") or 0
 
 
+def injury_label(info: dict) -> str | None:
+    """Sleeper's injury fields as written, e.g. "IR, Knee - ACL, Surgery"."""
+    injury = info.get("injury")
+    return ", ".join(filter(None, (injury["status"], injury["body_part"], injury["note"]))) if injury else None
+
+
 # Two values inside this band are the same value, on either axis and in either direction -
 # a routine FantasyCalc refresh moves prices about this much, so any finding that needs a
 # finer difference flickers between runs. Born in trade matching (one-sided use called a

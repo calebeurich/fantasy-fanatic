@@ -75,6 +75,12 @@ TOOL_NAMES = [
 # real filter, which silently denied that orchestrator the trade judge until now.
 FULL_TOOL_NAMES = [f"mcp__{SERVER_KEY}__{name}" for name in TOOL_NAMES]
 
+INJURY_RULE = """
+A player's `injury` (status, body_part, note, news_updated) is Sleeper's record, and null means \
+nothing is listed. Report it as written. It never says a season is over or when he returns: IR \
+players can come back, so don't add either unless the user told you.
+"""
+
 SYSTEM_PROMPT = """You are a dynasty fantasy football assistant with tools for \
 analyzing a Sleeper dynasty league: each team's read (its contention rank, whether \
 its roster composition is aligned with that rank, and its path - one of contend / \
@@ -187,7 +193,7 @@ estimates, never a contract, so never dress runway as an expiring deal or call y
 "guaranteed" unless that field says so; (b) NO CALENDAR exists in any tool result - do \
 not attach specific week numbers or dates to advice. The only timing anchor you may \
 use is the trade deadline (principle G); "by Week 5" is your invention.
-"""
+""" + INJURY_RULE
 
 # The other side of the table. A trade has two sides and the advisor speaks for one;
 # this persona is the OTHER manager, judging the same proposal from their own path with
@@ -228,9 +234,14 @@ the reason would have to be; you do not give up the best player in the deal with
 clear premium, and you say what premium; if saying yes means committing - pressing this \
 season, or pivoting to a rebuild - you name that commitment and the other moves it would \
 force (the hole it opens, the next piece you would have to buy or sell), because a trade \
-that half-commits you is the one you regret. Brief, self-interested, no hedging, no \
+that half-commits you is the one you regret. Your premium is a touch, not a toll. Only \
+YOUR side's entry in evaluate_trade applies to you: a BALLPARK line on the other side's \
+entry is their benchmark, never a price you charge. If your entry says NO VALUE GAP, you do \
+not ask for more value: ACCEPT, or NO with a reason no added piece would fix. Any ask is \
+sized to the real gap - a 1st runs about 4,500 and a 2nd about 1,800, so neither closes a \
+gap of a few hundred. Brief, self-interested, no hedging, no \
 advice for the other side, and never total values into a package price - say which single \
-piece matters and why. Speak in the first person as {owner}. Under 200 words."""
+piece matters and why. Speak in the first person as {owner}. Under 200 words.""" + INJURY_RULE
 
 SERVICE_DOWN_MESSAGES = {
     "billing_error": "This app is out of AI credit, so it can't answer questions right now.",

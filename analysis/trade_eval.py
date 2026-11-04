@@ -62,6 +62,11 @@ RETURN_SHAPES = [
 ]
 
 
+# One player back at this share of the other's value or better is a swap of peers, not a
+# stud being sold: the shape table has nothing to say, and a season swap needs this close.
+SWAP_BAND = 0.85
+
+
 def shape_for(pct: float):
     for bound, *rest in RETURN_SHAPES:
         if pct < bound:
@@ -146,7 +151,8 @@ def _piece(ctx, pid):
             "redraft_value": info.get("redraft_value"), "age": info["age"],
             "bucket": age_bucket(info["position"], info["age"], info.get("usage_role")),
             "years_to_decline": years_to_decline(info["position"], info["age"],
-                                                 info.get("usage_role"))}
+                                                 info.get("usage_role")),
+            "injury": info.get("injury")}
 
 
 def _league_needs_with(ctx, replaced: dict[str, list]) -> dict:
@@ -194,8 +200,9 @@ def _package_read(receives: list[dict], best: dict, receives_best: bool, pct: fl
     """The shape ballpark for the side sending the deal's best piece: what pieces of his
     tier have actually fetched, held against what this return looks like. Sums appear
     here and nowhere else - the benchmark was measured that way. Silent when this side
-    holds the best piece (nothing to benchmark) or the piece is mid-tier and the return
-    is a single player (a plain swap - the shape table has nothing to add)."""
+    holds the best piece (nothing to benchmark), the piece is mid-tier and the return
+    is a single player, or the return is a single peer (plain swaps - the shape table has
+    nothing to add)."""
     if receives_best or best["position"] == "PICK":
         return None  # the shape table describes players; a pick-for-pick swap has no comp here
     label, pieces, (q1, med, q3), summed, has_first, no_picks = shape_for(pct)
@@ -208,6 +215,8 @@ def _package_read(receives: list[dict], best: dict, receives_best: bool, pct: fl
     picks = [p for p in real if p["position"] == "PICK"]
     firsts = [p for p in picks if "1st" in p["name"]]
     cp = max((p["value"] for p in real), default=0) / best["value"] if best["value"] else 0
+    if n == 1 and cp >= SWAP_BAND:
+        return None
     ratio = sum(p["value"] for p in real) / best["value"] if best["value"] else 0
     band = ("below the usual band" if cp < q1 else "above the usual band" if cp > q3
             else "in the low half of the usual band" if cp < med
@@ -259,6 +268,10 @@ def _side_read(state, receives, changes, lineup_delta, best, receives_best,
     if receives_best:
         read.append(f"gets the best single piece in the deal ({best['name']}, "
                     f"{best['value']:,}) - consolidation favors the side holding him")
+        value_in, value_out = sum(p["value"] for p in receives), sum(p["value"] for p in sends)
+        if value_in >= value_out:
+            read.append(f"NO VALUE GAP: takes in {value_in:,} for {value_out:,} and holds the best "
+                        f"piece, so there is nothing for an added pick or player to close")
     else:
         read.append(f"sends the best single piece ({best['name']}, {best['value']:,}) - "
                     f"the return has to buy something specific to be worth that")

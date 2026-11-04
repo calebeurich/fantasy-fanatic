@@ -1,9 +1,10 @@
 """Minimal Sleeper API client. Smoke test: python -m sources.sleeper <username> [year] [league_id]"""
 
 import sys
+import time
 import requests
 
-from .cache import ttl_cache, LIVE_TTL, LEAGUE_CONFIG_TTL, MARKET_TTL, REFERENCE_TTL
+from .cache import ttl_cache, LIVE_TTL, LEAGUE_CONFIG_TTL, MARKET_TTL, REFERENCE_TTL, DAILY_TTL
 
 BASE = "https://api.sleeper.app/v1"
 
@@ -115,6 +116,18 @@ def projection_rows(season: str, week: int | None = None) -> list[dict]:
     resp = _http.get(f"https://api.sleeper.app/{path}?{query}")
     resp.raise_for_status()
     return resp.json()
+
+
+@ttl_cache(DAILY_TTL)
+def get_injuries() -> dict[str, dict]:
+    """player_id -> Sleeper's injury fields, for anyone it lists as hurt. The fields, not the
+    written updates in Sleeper's app: nothing here says "out for the season". "NA" carries no
+    injury information, so it reads as nothing listed."""
+    return {pid: {"status": p["injury_status"], "body_part": p.get("injury_body_part"),
+                  "note": p.get("injury_notes"),
+                  "news_updated": time.strftime("%Y-%m-%d", time.gmtime(p["news_updated"] / 1000))
+                  if p.get("news_updated") else None}
+            for pid, p in _get("players/nfl").items() if p.get("injury_status") not in (None, "NA")}
 
 
 def get_projections(season: str, week: int | None = None) -> dict[str, dict]:

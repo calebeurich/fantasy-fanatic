@@ -1636,6 +1636,31 @@ best player in the deal without naming the premium; and if yes means committing 
 or pivot - it names the commitment and the moves it forces. Its job is to say what the
 real manager would say, so the asker walks in with the right expectations.
 
+### The counterparty asks only for a gap that exists (2026-11-04)
+
+Live: Lamar (5,479) for Mahomes (5,262). Keegan's side gets the best piece and more value, and its persona
+countered for a 1st, quoting "Studs of this tier usually bring back a 1st; this return has none" from the
+OTHER side's BALLPARK line. Owner: "a super dumb value gap." Three fixes:
+
+- BALLPARK is silent when the return is one peer (centerpiece at `SWAP_BAND`, 0.85x, or better). The shape
+  table measures a stud being sold for lesser pieces, not two peers swapping. Same band a season swap uses.
+- A side that gets the best piece and at least as much summed value reads `NO VALUE GAP`, and the persona then
+  accepts or refuses for a reason no added piece would fix. It no longer has a value argument to bargain with.
+- The persona reads only its own side's entry, and sizes any ask to the real gap. Its own-player premium stays,
+  as "a touch". The pick scale it is given (1st about 4,500, 2nd about 1,800) is the one `RETURN_SHAPES` uses.
+
+### Injury status comes from Sleeper's fields (2026-11-04)
+
+Owner: can we see "out for the season" and "we should know more soon"? No: Sleeper's public player file has
+`injury_status`, `injury_body_part`, `injury_notes` and `news_updated`, not the written updates. Those are now
+on each player as `injury`, for the composer tag and the agent. Pulled once a day, as Sleeper asks, so a status
+can be up to a day old. "NA" reads as nothing listed.
+
+The app reports these as written and never concludes a season is over. No field says so, and the owner already
+declined "IR = out for the season". Season production still comes from the projection, not the status: a player
+isn't greyed for being listed, only for projecting well below his healthy rate. Few listed players
+carry a note (129 in the 2026-11-04 pull, 664 listed), so a blank note doesn't mean no surgery.
+
 ### Grounding: no ballpark where the tool gave none (2026-08-18)
 
 The framer's BALLPARK is silent when the best piece is a pick or the trade is a plain
@@ -2202,7 +2227,7 @@ test - your lineup with him added:
   buyer's lineup: he wouldn't start or even cover. The second is a rebuild: he isn't on its wish list and is
   under a year from decline (`NO_FIT_RUNWAY`), the same runway logic behind what a rebuild takes in an idea.
   Both also need him below his position's trade bar: real dynasty value interests anyone. Still tappable.
-- **"no help this season"** - greyed for a contender (`mode` buy) whatever his dynasty value, when he wouldn't
+- **"no help this season"** - followed by Sleeper's injury fields when it lists any. Greyed for a contender (`mode` buy) whatever his dynasty value, when he wouldn't
   start and projects at most `HURT_SHARE` of his healthy rate, the same test a season swap uses. Owner: as a
   contender "I would not want to trade for them because they are out for the season" (Achane, Jaxson Dart). The
   tag doesn't say hurt or out: a backup also projects near zero, and IR players can return. A middling team or

@@ -213,3 +213,10 @@ def test_a_contender_has_no_use_for_real_value_that_cannot_help_this_season(monk
     assert [(f["name"], f["tag"]) for f in ti.fits("L", "buyer", "seller")] == [("Out", "no help this season")]
     mode["mode"] = "middling"
     assert ti.fits("L", "buyer", "seller") == []
+
+
+def test_the_no_help_tag_quotes_sleepers_injury_fields():
+    from analysis.team_values import injury_label
+    assert injury_label({"injury": {"status": "IR", "body_part": "Knee - ACL", "note": "Surgery"}}) == "IR, Knee - ACL, Surgery"
+    assert injury_label({"injury": {"status": "Out", "body_part": "Thumb", "note": None}}) == "Out, Thumb"
+    assert injury_label({"injury": None}) is None

@@ -147,6 +147,14 @@ def _projected_ppg(league: dict) -> dict[str, tuple[float, float | None]]:
         return {pid: (v, None) for pid, v in preseason.items()}
 
 
+def _injuries() -> dict[str, dict]:
+    try:
+        return sleeper.get_injuries()
+    except Exception as e:
+        degraded.record("Sleeper injury status", f"no player's injury status is available ({type(e).__name__})")
+        return {}
+
+
 @ttl_cache(LEAGUE_CONFIG_TTL)
 def context(league_id: str) -> LeagueContext:
     league = sleeper.get_league(league_id)
@@ -156,8 +164,10 @@ def context(league_id: str) -> LeagueContext:
     # A copy per league: the market dict is shared across formats, the projection is
     # priced by THIS league's scoring.
     ppg = _projected_ppg(league)
+    injuries = _injuries()
     players = {pid: {**info, "projected_ppg": ppg.get(pid, (0.0, None))[0],
-                     "healthy_ppg": ppg.get(pid, (0.0, None))[1]}
+                     "healthy_ppg": ppg.get(pid, (0.0, None))[1],
+                     "injury": injuries.get(pid)}
                for pid, info in players.items()}
     needs_slots = roster_needs.dedicated_slots(league["roster_positions"])
     lineup_dedicated, lineup_flex = roster_needs.lineup_slots(league["roster_positions"])

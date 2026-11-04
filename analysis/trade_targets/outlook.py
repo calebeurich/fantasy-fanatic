@@ -69,7 +69,8 @@ def outlook_from_board(board: Board, player_query: str,
               "redraft_value": info.get("redraft_value"), "age": info["age"],
               "bucket": bucket,
               "years_to_decline": years_to_decline(info["position"], info["age"],
-                                                   info.get("usage_role"))}
+                                                   info.get("usage_role")),
+              "injury": info.get("injury")}
 
     if owner_roster is None:
         return {"found": True, "player": player, "rostered": False,

@@ -41,6 +41,9 @@ MARKET_TTL = 3600
 # stats. Updates weekly at most, and these are the slowest pulls in the project.
 REFERENCE_TTL = 6 * 3600
 
+# Sleeper's full player file: about 5MB, and Sleeper asks for at most one pull a day.
+DAILY_TTL = 24 * 3600
+
 
 def ttl_cache(seconds: float):
     """Memoize on arguments, expiring entries after `seconds`."""

@@ -338,7 +338,8 @@ def evaluate_trade(league_id: str, owner_a: str, sends_a: list[str],
     closed; a selling path (sell, build) is judged on DYNASTY VALUE overall with package
     concerns; wait/decide sees both. `goal` is that judgment in one sentence - lead with
     it for each side. `read` carries the rest: who holds the best single piece, timeline
-    flags (a rebuild taking a rental; an aligned contender taking back futures), and
+    flags (a rebuild taking a rental; an aligned contender taking back futures), `NO VALUE
+    GAP` when a side already gets the best piece and more value, and
     `BALLPARK` lines - the measured consolidation premium for N-for-1 packages. Quote
     the ballpark as the tool's benchmark from real trades and STOP there: it is the one
     place this project sums values, and only because the benchmark was measured that

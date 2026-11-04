@@ -2850,7 +2850,7 @@ def test_a_player_already_out_is_a_hole_not_a_free_loss(monkeypatch):
     out = rd.optimal_lineup("L", "me", ["Hurts"])
     assert out["production_lost"] == 0.0            # true of today's lineup, and not the answer
     assert out["injury_cost"] == 13.0               # Hurts 18 back in, Tua 5 back out
-    assert out["out_now"] == [{"name": "Hurts", "position": "QB", "healthy_ppg": 18.0, "back_week": None}]
+    assert out["out_now"] == [{"name": "Hurts", "position": "QB", "healthy_ppg": 18.0, "injury": None, "back_week": None}]
     assert rd.optimal_lineup("L", "me")["injury_cost"] == 13.0
 
 
@@ -2907,3 +2907,17 @@ def test_a_starter_with_no_season_price_is_not_the_stranded_bar():
                "Bench": {"redraft_value": 1500, "position": "RB"}}
     assert roster_needs.weakest_starter(players, {"Hurt", "Low"}) == "Low"
     assert roster_needs.stranded_starters({"players": ["Hurt", "Low", "Bench"]}, players, {"Hurt", "Low"}) == []
+
+
+def test_a_peer_swap_has_no_ballpark_and_the_side_ahead_has_no_gap_to_charge_for():
+    """Lamar for Mahomes: the persona for the side getting the better player and more value
+    asked for a 1st, quoting the other side's "usually bring back a 1st" line."""
+    from analysis import trade_eval
+    lamar = {"name": "Lamar", "position": "QB", "value": 5479}
+    mahomes = {"name": "Mahomes", "position": "QB", "value": 5262}
+    assert trade_eval._package_read([mahomes], lamar, False, 0.03) is None
+    assert trade_eval._package_read([{**mahomes, "value": 3000}], lamar, False, 0.03) is not None
+    ahead = trade_eval._side_read({"path": "sell"}, [lamar], [], 0, lamar, True, sends=[mahomes])
+    assert any(r.startswith("NO VALUE GAP") for r in ahead)
+    giving = trade_eval._side_read({"path": "contend"}, [mahomes], [], 0, lamar, False, sends=[lamar])
+    assert not any(r.startswith("NO VALUE GAP") for r in giving)

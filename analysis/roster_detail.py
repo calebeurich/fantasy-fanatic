@@ -38,6 +38,7 @@ def build_rows(roster: dict, players: dict[str, dict], contract_data: dict[str, 
                          "weeks_suspended": (miss_rates or {}).get(player_id, {}).get("weeks_suspended")})
             continue
         rows.append({
+            "injury": info.get("injury"),
             "name": info["name"],
             "position": info["position"],
             "value": info["value"],
@@ -124,6 +125,7 @@ def _injury_hole(ctx, roster: dict, total: float) -> dict:
     whole_total = sum(eppg(healthy[pid]) for _, pid in whole)
     return {"out_now": [{"name": ctx.players[pid]["name"], "position": ctx.players[pid]["position"],
                          "healthy_ppg": healthy[pid]["projected_ppg"],
+                         "injury": ctx.players[pid].get("injury"),
                          "back_week": _back_week(pid, ctx.league)} for pid in out],
             "full_health_total": round(whole_total, 1),
             "injury_cost": round(whole_total - total, 1)}
