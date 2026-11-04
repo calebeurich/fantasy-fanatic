@@ -2163,6 +2163,13 @@ already says it. Sits beside the a_schoell-league read that prompted it: Adams a
 10-team league) and held - when the two currencies agree, the chip is a fact about the
 roster, not the calibration bug.
 
+### A real share of the best piece is never a throw-in (`trade_eval._package_read`, 2026-11-04)
+
+The throw-in test only looked at the league's bars: Jadarian Price (2,527) missed the RB trade bar (2,614) and the
+startable bar, so a real offer of Price for Hurts (3,318) read "0 pieces, 0.00x". Owner: he's close in value in
+reality. A piece at or above the low end of the measured centerpiece band for the best piece's tier (`RETURN_SHAPES`
+q1) now always counts. Quinn Ewers at 254 still doesn't.
+
 ### Season swaps (`trade_ideas.season_swaps`, 2026-11-03)
 
 Owner: "similar dynasty value player, but one is dead for this season. Perfect for a tanker who doesn't want
@@ -2183,10 +2190,12 @@ wanting picks. So it is its own rule, between a contender (`mode` buy) and a reb
   (owner: "it's still capital to even out value"). Other ways to land a close deal, like Mahomes + Aaron Jones
   or + a 3rd, aren't listed: owner, "straight up is probably great for now until we hash out the more detailed
   calculator."
-- **The hurt player is no older:** a rebuild won't hand over a younger player for an older one at the same
+- **The hurt player is about the same age or younger:** at most a year older (`SWAP_AGE_SLACK`). A rebuild won't hand over a younger player for an older one at the same
   price, so without this the list filled with Jayden Daniels and Drake Maye for Lamar. It reads actual age,
   not years to decline: that rejected Lamar for Mahomes (4.2 years vs 5.9) because Lamar's rushing shortens
-  his number, while the owner's example is the 29.8-year-old going to the rebuild for the 31.1-year-old.
+  his number, while the owner's example is the 29.8-year-old going to the rebuild for the 31.1-year-old. A strict
+  "no older" hid Hurts (28.2) + a 3rd for Jordan Love (28.0), the swap the owner wanted, over 0.2 years. A year
+  is still small enough to keep Daniels and Maye out.
 
 ### Lineup upgrades (`trade_ideas._proposals`, 2026-11-03)
 

@@ -28,6 +28,7 @@ CENTERPIECE_TOP = 0.35        # value percentile under which sums lie - the cent
 MAX_PER_SIDE = 3              # candidate pieces considered per target / per sell list
 CONSOLIDATION_POOL = 4        # names considered for two-piece consolidations
 HURT_SHARE = 0.65             # a season swap's hurt piece projects at most this share of his healthy rate
+SWAP_AGE_SLACK = 1.0          # ...and is at most this many years older than the healthy one
 LINEUP_GAIN_MIN = 1.0         # a swap or upgrade adds at least this many points a game to the buyer's lineup
 NO_FIT_RUNWAY = 1             # a rebuild isn't collecting a piece this close to his decline
 
@@ -326,7 +327,7 @@ def _even_with_pick(p: _Pair, c: str, n: str, hurt: str, healthy: str) -> tuple[
 
 def season_swaps(p: _Pair) -> list[dict]:
     """A contender's hurt player for a non-contender's healthy one at the same position,
-    close in dynasty value and no older: one side needs this season's points, the other doesn't.
+    close in dynasty value and about the same age or younger: one side needs this season's points, the other doesn't.
     LOGIC.md "Season swaps"."""
     modes = {s: p.results[s]["mode"] for s in "ab"}
     if sorted(modes.values()) != ["buy", "rebuild"]:
@@ -339,7 +340,7 @@ def season_swaps(p: _Pair) -> list[dict]:
         for healthy in p.rosters[n]:
             if (p.position[healthy] != p.position[hurt] or _is_hurt(p, healthy) or not _real_chip(p, healthy)
                     or p.eppg.get(healthy, 0) <= p.eppg.get(hurt, 0)
-                    or p.age[hurt] > p.age[healthy]):
+                    or p.age[hurt] > p.age[healthy] + SWAP_AGE_SLACK):
                 continue
             sends = _even_with_pick(p, c, n, hurt, healthy)
             if not sends:

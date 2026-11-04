@@ -2921,3 +2921,17 @@ def test_a_peer_swap_has_no_ballpark_and_the_side_ahead_has_no_gap_to_charge_for
     assert any(r.startswith("NO VALUE GAP") for r in ahead)
     giving = trade_eval._side_read({"path": "contend"}, [mahomes], [], 0, lamar, False, sends=[lamar])
     assert not any(r.startswith("NO VALUE GAP") for r in giving)
+
+
+def test_a_real_share_of_the_best_piece_is_not_a_throw_in():
+    """Price (2,527) sat just under the RB bar and read as a throw-in, scoring an offer for
+    Hurts (3,318) at 0.00x. Ewers at 254 is still one."""
+    from analysis import trade_eval
+    hurts = {"name": "Hurts", "position": "QB", "value": 3318}
+    bars, start = {"RB": 2614, "QB": 2343}, {"RB": 1422, "QB": 1484}
+    price = {"name": "Price", "position": "RB", "value": 2527, "redraft_value": 799}
+    ewers = {"name": "Ewers", "position": "QB", "value": 254, "redraft_value": 0}
+    read = trade_eval._package_read([price], hurts, False, 0.15, bars, start)
+    assert "THIS RETURN: 1 piece" in read and "0.76x" in read and "throw-in" not in read
+    read = trade_eval._package_read([price, ewers], hurts, False, 0.15, bars, start)
+    assert "1 throw-in (Ewers" in read

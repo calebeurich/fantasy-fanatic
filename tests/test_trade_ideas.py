@@ -179,6 +179,8 @@ def test_no_swap_without_a_real_season_gap_or_the_right_two_teams():
     assert not ti.season_swaps(_swap_pair(results={"a": {"mode": "buy"}, "b": {"mode": "buy"}}))
     assert not ti.season_swaps(_swap_pair(position={"Lamar": "QB", "Mahomes": "RB", "Jones": "RB"}))
     assert not ti.season_swaps(_swap_pair(age={"Lamar": 29.8, "Mahomes": 25.0, "Jones": 31.9}))
+    assert ti.season_swaps(_swap_pair(age={"Lamar": 28.2, "Mahomes": 28.0, "Jones": 31.9})), \
+        "Hurts is 0.2 years older than Love: that is the same age, not a younger player for an older one"
     assert not ti.season_swaps(_swap_pair(value={"Lamar": 9000, "Mahomes": 3000, "Jones": 1215},
                                           all_picks={"a": [], "b": []}))
 

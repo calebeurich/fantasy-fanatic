@@ -206,8 +206,10 @@ def _package_read(receives: list[dict], best: dict, receives_best: bool, pct: fl
     if receives_best or best["position"] == "PICK":
         return None  # the shape table describes players; a pick-for-pick swap has no comp here
     label, pieces, (q1, med, q3), summed, has_first, no_picks = shape_for(pct)
+    # A real share of the piece he's being traded for is never a throw-in, bars or not.
     throw_ins = [p for p in receives
-                 if trade_bars and start_bars and _throw_in(p, trade_bars, start_bars)]
+                 if trade_bars and start_bars and _throw_in(p, trade_bars, start_bars)
+                 and p["value"] < q1 * best["value"]]
     real = [p for p in receives if p not in throw_ins]
     if len(real) < 2 and label == "mid-tier":
         return None
