@@ -1658,7 +1658,7 @@ const markReset = d => {
 };
 
 function renderAnswer(el, d, question) {
-  el.innerHTML = md(d.text || d.detail || "(no answer)");
+  el.innerHTML = md(d.text || d.detail || "That answer came back empty. Please ask it again.");
   if (d.conversation_reset) {
     const w = document.createElement("div");
     w.className = "meta warn";

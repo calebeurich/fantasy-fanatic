@@ -355,3 +355,44 @@ def test_browser_errors_reach_the_logs_but_cannot_flood_them(monkeypatch):
 def test_the_page_is_never_cached_against_a_newer_api():
     from agent import api
     assert api.index().headers["cache-control"] == "no-cache"
+
+
+def test_a_session_mid_answer_is_never_evicted_and_a_new_question_waits(monkeypatch):
+    """Six asks at once killed two answers in a load test: they came back empty and still cost."""
+    import asyncio
+    from agent import sessions as s
+
+    class FakeClient:
+        def __init__(self, options=None):
+            self.closed = False
+
+        async def connect(self):
+            pass
+
+        async def disconnect(self):
+            self.closed = True
+
+    monkeypatch.setattr(s, "ClaudeSDKClient", FakeClient)
+    monkeypatch.setattr(s, "MAX_SESSIONS", 1)
+
+    async def scenario():
+        manager = s.SessionManager(lambda: None)
+        first, _ = await manager.acquire("first")
+        waits = []
+        async with first.lock:                     # answering
+            second = asyncio.create_task(manager.acquire("second", on_wait=lambda: waits.append(1)))
+            await asyncio.sleep(0.05)
+            assert not second.done() and not first.client.closed
+            assert waits == [1]
+        # The answer finished: now its idle session may give up the slot.
+        got, created = await asyncio.wait_for(second, 3)
+        assert created and first.client.closed and got.id == "second"
+
+        monkeypatch.setattr(s, "SLOT_WAIT_SECONDS", 0)
+        async with got.lock:
+            try:
+                await manager.acquire("third")
+                raise AssertionError("should have reported busy")
+            except s.SessionBusy:
+                pass
+    asyncio.run(scenario())

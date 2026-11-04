@@ -708,7 +708,8 @@ async def ask(request: AskRequest, http: Request) -> AskResponse:
             result = await run_query(question, verbose=False, on_progress=track, on_text=stream,
                                      persona=request.counterparty)
         elif request.session_id:
-            session, created = await sessions.acquire(request.session_id, t)
+            session, created = await sessions.acquire(
+                request.session_id, t, on_wait=lambda: track("waiting for a free spot, it's busy right now"))
             # Held for the whole turn: two concurrent requests on one session would
             # interleave on the same client and corrupt the conversation.
             async with session.lock:
@@ -746,8 +747,8 @@ async def ask(request: AskRequest, http: Request) -> AskResponse:
         _partial.pop(request.session_id, None)
         return AskResponse(text=e.message, service_down=True)
     except SessionBusy:
-        return AskResponse(text=("The public demo is busy right now - every conversation slot is in "
-                                 "use. The table, rosters and composer above still work; try the "
+        return AskResponse(text=("The assistant is at capacity right now, so this one wasn't answered "
+                                 "or charged. The table, rosters and trade tools still work; try the "
                                  "question again in a few minutes."))
     except Exception as e:
         # Log before swallowing. The detail is still withheld from the caller (internals

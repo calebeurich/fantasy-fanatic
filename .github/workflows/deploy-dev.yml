@@ -80,7 +80,7 @@ jobs:
             --region "$REGION" \
             --allow-unauthenticated \
             --memory 4Gi \
-            --cpu 1 \
+            --cpu 2 \
             --timeout 600 \
             --concurrency 12 \
             --max-instances 1 \
@@ -100,8 +100,10 @@ jobs:
       #                                 boots; at 2 (and at 5) the rest were turned away,
       #                                 owner's asks included (staging test, 2026-10-21:
       #                                 2 -> 2-4 of 12 through, 5 -> 5, 12 -> 12). Five
-      #                                 asks at once peaked at 2.6Gi (~0.45Gi per run);
-      #                                 the 1 CPU, not this, is the next ceiling. Still
+      #                                 asks at once peaked at 2.6Gi (~0.45Gi per run).
+      #   cpu 2                       - starting chat processes saturated 1 CPU: of six new
+      #                                 asks at once, Cloud Run turned four away (2026-11-04).
+      #                                 Billed only while active, so it costs very little. Still
       #                                 one instance, one event loop: budget stays exact
       #   memory 4Gi                  - each concurrent session holds a claude CLI + MCP
       #                                 subprocess pair (pandas/nflverse in the MCP one);

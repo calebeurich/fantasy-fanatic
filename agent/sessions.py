@@ -34,6 +34,10 @@ from claude_agent_sdk import ClaudeSDKClient
 # Raise only alongside the memory limit.
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "2"))
 
+# With every slot answering, a new question waits this long for one. An answer is rarely over
+# two minutes, so most of a queue clears inside it.
+SLOT_WAIT_SECONDS = float(os.environ.get("SLOT_WAIT_SECONDS", "120"))
+
 # Close a session after this long unused. Long enough to think between questions,
 # short enough that an abandoned tab frees its subprocesses reasonably soon.
 IDLE_TTL_SECONDS = float(os.environ.get("SESSION_IDLE_TTL", "900"))
@@ -76,28 +80,39 @@ class SessionManager:
         self._sessions: dict[str, Session] = {}
         self._guard = asyncio.Lock()  # protects the map itself, not individual turns
 
-    async def acquire(self, session_id: str, tier: str = "friend") -> tuple[Session, bool]:
+    async def acquire(self, session_id: str, tier: str = "friend", on_wait=None) -> tuple[Session, bool]:
         """Returns (session, created). `created` is how a silent reset becomes visible:
         when a client supplies an id it has used before and gets a fresh session back,
         the old conversation was evicted (idle TTL, LRU, or an instance recycle) and the
         model remembers none of it - the UI needs to say so rather than let the next
         answer quietly pretend otherwise. Tiers: a friend evicts the least-recently-used
-        session of any kind; a demo visitor may only evict other demo sessions, and if
-        the slots are all friends it is told the demo is busy - a stranger never kills a
-        friend's live conversation."""
-        async with self._guard:
-            await self._evict_idle()
-            session = self._sessions.get(session_id)
-            if session is not None:
-                session.last_used = time.monotonic()
-                return session, False
-
-            while len(self._sessions) >= MAX_SESSIONS:
-                evictable = [s for s in self._sessions.values() if tier == "friend" or s.tier == "demo"]
-                if not evictable:
-                    raise SessionBusy()
-                await self._close(min(evictable, key=lambda s: s.last_used))
-            return await self._open(session_id, tier), True
+        session of any kind; a demo visitor may only evict other demo sessions - a stranger
+        never kills a friend's live conversation. A session mid-answer is never evicted
+        (load test, 2026-11-04: six asks at once killed two, which came back empty and still
+        cost money); with no slot to take, this waits for one, calling `on_wait` once."""
+        deadline = time.monotonic() + SLOT_WAIT_SECONDS
+        told = False
+        while True:
+            async with self._guard:
+                await self._evict_idle()
+                session = self._sessions.get(session_id)
+                if session is not None:
+                    session.last_used = time.monotonic()
+                    return session, False
+                while len(self._sessions) >= MAX_SESSIONS:
+                    evictable = [s for s in self._sessions.values()
+                                 if not s.lock.locked() and (tier == "friend" or s.tier == "demo")]
+                    if not evictable:
+                        break
+                    await self._close(min(evictable, key=lambda s: s.last_used))
+                else:
+                    return await self._open(session_id, tier), True
+            if time.monotonic() > deadline:
+                raise SessionBusy()
+            if on_wait and not told:
+                on_wait()
+                told = True
+            await asyncio.sleep(1)
 
     async def prewarm(self, session_id: str, tier: str = "friend") -> bool:
         """Open a session ahead of its first question (the CLI + MCP subprocess take
@@ -127,7 +142,8 @@ class SessionManager:
 
     async def _evict_idle(self) -> None:
         now = time.monotonic()
-        for session in [s for s in self._sessions.values() if now - s.last_used > IDLE_TTL_SECONDS]:
+        for session in [s for s in self._sessions.values()
+                        if now - s.last_used > IDLE_TTL_SECONDS and not s.lock.locked()]:
             await self._close(session)
 
     async def _close(self, session: Session) -> None:

@@ -1316,6 +1316,12 @@ sessions, and long enough that rosters may have changed. Switching leagues also 
 sides: a partner carried over from XFL 2 (`shivvv`) made every trade request in the other league
 fail on 2026-10-30. An unknown owner or league is a 404, which the page doesn't retry.
 
+Capacity (load test on staging, 2026-11-04, six new chats at once with the table loading): on 1 CPU,
+Cloud Run turned four away; on 2 CPUs all six got in, but the fifth and sixth evicted two answers still
+being written. So services run 2 CPUs, and a session mid-answer is never evicted: a new question waits
+up to two minutes for a slot, and the page says so. Four slots stays the ceiling until the stateless
+rebuild (ROADMAP), because each one holds about 630MB.
+
 The page shows what it is doing: a thin moving line after 300ms of loading, so fast requests don't
 flicker, and plain words after 8 seconds, roughly past a normal wait and into a cold start. The chat
 session warms after the league table lands rather than at page load, because on one CPU its ~8s
