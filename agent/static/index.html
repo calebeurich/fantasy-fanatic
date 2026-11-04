@@ -1425,7 +1425,7 @@ async function loadLeague(id, {refresh = false} = {}) {
       <div class="lhead"><strong>${esc(currentLeagueName || "League " + id)}</strong>
         <span class="cs" id="freshness">updated just now</span>
         <span class="acts"><button type="button" class="ghost" id="refresh" title="Reload this table. A trade or roster move on Sleeper can take up to 10 minutes to show here.">Refresh</button>
-        <button type="button" class="ghost" id="changeleague">Change league</button></span></div>
+        <button type="button" class="ghost" id="changeleague">${pageTier === "demo" ? "Use my league" : "Change league"}</button></span></div>
       <table><thead><tr><th></th><th>Owner</th><th>Suggested move</th>
         <th class="sortable" tabindex="0" data-sort="rec" title="click to sort — playoff pace, then ePPG">Record <span class="cs">· pace</span> <span class="arrow"></span></th>
         <th class="sortable" tabindex="0" data-sort="ppg" title="click to sort — real points per game this season">PPG <span class="arrow"></span></th>
@@ -1917,9 +1917,10 @@ getJSON("/api/defaults", {headers: hdrs()}).then(d => {
   if (d.tier === "demo") {
     const n = $("demonote");
     n.style.display = "block";
+    $("intro").open = false;   // the note says enough, and the table is what sells it
     n.innerHTML = `<strong>Public demo.</strong> The league table, rosters and trade composer are free to use — ` +
-      `look up your own Sleeper username above, or explore the league below (the author's own 12-team superflex dynasty ` +
-      `league - the one this was built for and is used in). The assistant answers ` +
+      `explore the league below (the author's own 12-team superflex dynasty league, the one this was built for), ` +
+      `or press <strong>Use my league</strong> to look up yours. The assistant answers ` +
       `<strong>${d.asks_per_visitor} questions a day</strong> per visitor from a small shared budget; ` +
       `the code, evals and the reasoning behind every read are on ` +
       `<a href="https://github.com/calebeurich/fantasy-fanatic" style="color:var(--mid)">GitHub</a>.`;
