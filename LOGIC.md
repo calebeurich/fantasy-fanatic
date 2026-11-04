@@ -2186,6 +2186,9 @@ rides on Lamar for Mahomes.
 A card names a partner who has never traded (`partner_never_trades`, the table's flag) instead of hiding him: owner,
 "we probably would want to note that spugz does not trade". Same rule as "Trade activity": a flag, never a ranking.
 
+A card says "a late pick" for any 3rd or later (owner: "better than the 3rd 4th stuff"): what the two rounds buy
+overlaps too much for the name to mean anything (research/README). Tweak and ask still use the actual pick.
+
 ### Season swaps (`trade_ideas.season_swaps`, 2026-11-03)
 
 Owner: "similar dynasty value player, but one is dead for this season. Perfect for a tanker who doesn't want

@@ -1145,6 +1145,13 @@ async function showImpact(leagueId, a, pa, b, pb) {
 // per team). One click does the whole chain - loads the trade helper and asks - because
 // idea -> helper -> ask -> answer was "a lot of steps and a ton of info at once" (owner).
 const ideasCache = {};
+// 3rds and 4ths overlap too much in what they buy to name one over the other (research/README).
+function lumpLatePicks(names) {
+  const isLate = n => /^\d{4} ([3-9]|\d\d)(st|nd|rd|th)/.test(n);
+  const late = names.filter(isLate).length;
+  return [...names.filter(n => !isLate(n)), ...(late ? [late === 1 ? "a late pick" : `${late} late picks`] : [])].join(" + ");
+}
+
 function fetchIdeas(leagueId, owner, stance) {
   const key = `${leagueId}/${owner}/${stance}`;
   // The promise, so a click while the first is still out shares it. A failure isn't kept.
@@ -1165,9 +1172,9 @@ async function fillIdeas(leagueId, owner) {
   const framing = list[0] && list[0].framing ? `<div class="cs" style="margin-bottom:4px">${owner} is waiting — these are production moves <em>${list[0].framing}</em>:</div>`
                 : stance ? `<div class="cs" style="margin-bottom:4px">under your pinned stance — <em>${stanceWord(stance)}</em>:</div>` : "";
   const card = (s, i) => `<div class="idea" data-i="${i}" title="${(s.why || "").replace(/"/g, "&quot;")}">` +
-    `<div style="flex:1;min-width:0">send <b>${s.a_sends.join(" + ")}</b> to <b>${s.partner}</b> for <b>${s.b_sends.join(" + ")}</b>` +
+    `<div style="flex:1;min-width:0">send <b>${lumpLatePicks(s.a_sends)}</b> to <b>${s.partner}</b> for <b>${lumpLatePicks(s.b_sends)}</b>` +
     `<span class="cs">${(s.why || "").split(";")[0]}</span>` +
-    (s.also ? `<span class="cs">same conversation could land ${s.also.join(" or ")} instead</span>` : "") +
+    (s.also ? `<span class="cs">same conversation could land ${s.also.map(x => lumpLatePicks(x.split(" + "))).join(" or ")} instead</span>` : "") +
     (s.partner_never_trades ? `<span class="cs">${s.partner} has never made a trade in this league</span>` : "") + `</div>` +
     `<span class="iacts"><button type="button" class="ask" data-i="${i}">ask</button><button type="button" class="tweak" data-i="${i}">tweak</button></span></div>`;
   const buys = list.map((s, i) => [s, i]).filter(([s]) => s.lens !== "sell");

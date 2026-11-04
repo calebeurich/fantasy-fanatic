@@ -504,9 +504,9 @@ Open gaps:
   and retried, up to 24s. Answers are all delivered. Only the stateless build ends this.
 - **Row click re-pins "you":** clicking any team in the table makes it your team, and that is
   remembered. Comparing teams was the reason; it may surprise people. Owner's call.
-- **Cold starts:** usually 5-25s, but 58-91s every week or two. Startup CPU boost made no difference
-  on normal boots (5 each: 7.1s with, 6.4s without); on both services from 2026-11-03 to see whether
-  it helps the slow ones.
+- **Cold starts:** 5-30s, but 58-91s every week or two through October. Startup CPU boost on both services from
+  2026-11-03: the first day, 35 scale-ups, median 7.8s and none over 13.8s (before: 80, median 11-14s, 5 over 30s).
+  One day can't speak to a problem that came every week or two, so compare again around 2026-11-18.
 - **Projection snapshots:** the weekly job isn't built, and week 8 of 2026 was missed.
 
 **Later, not now (owner, 2026-11-03): the sellable version.** Notes from the discussion, to
