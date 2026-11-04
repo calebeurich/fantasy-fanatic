@@ -2137,6 +2137,31 @@ already says it. Sits beside the a_schoell-league read that prompted it: Adams a
 10-team league) and held - when the two currencies agree, the chip is a fact about the
 roster, not the calibration bug.
 
+### Season swaps (`trade_ideas.season_swaps`, 2026-11-03)
+
+Owner: "similar dynasty value player, but one is dead for this season. Perfect for a tanker who doesn't want
+points this season but wants to be better next season." His real trade: Achane + a 2nd for Cook. The XFL 2
+case the ideas missed: Lamar Jackson (out, thumb) for Patrick Mahomes. The normal rules can't find this shape.
+Lamar has no season price, each team's own lists protect both players, and a contender is treated as not
+wanting picks. So it is its own rule, between a contender (`mode` buy) and a rebuild (`mode` rebuild):
+
+- **Hurt:** projects at most 65% of his healthy rate. In XFL 2 hurt players sat at 0-60% and the next group,
+  a week or so out, started at 77%, so the line sits in that gap.
+- **Close in dynasty value:** the lighter side holds at least 85% of the heavier. Close enough for both to
+  call it even. Injuries do lower real trade value, and we can't
+  size that without value over time (ROADMAP), so this reads the market number as given.
+- **Same position, and the contender's lineup gains at least 1 point a game** on the framer's numbers. Anything
+  smaller isn't worth trading a real piece for.
+- **Evening it up:** straight if close. Otherwise the lighter side adds its cheapest pick that closes the gap,
+  any round. The usual "3rds aren't currency" rule doesn't apply, because here the pick only levels the deal
+  (owner: "it's still capital to even out value"). When the healthy side is lighter, the contender also sees
+  other ways to land it: the nearest pick, and the rebuild's best producer who is no younger than the hurt
+  player (Mahomes + Aaron Jones). He doesn't have to start for the contender; he is there to level the value.
+- **The hurt player is no older:** a rebuild won't hand over a younger player for an older one at the same
+  price, so without this the list filled with Jayden Daniels and Drake Maye for Lamar. It reads actual age,
+  not years to decline: that rejected Lamar for Mahomes (4.2 years vs 5.9) because Lamar's rushing shortens
+  his number, while the owner's example is the 29.8-year-old going to the rebuild for the 31.1-year-old.
+
 ### Composer tags (`trade_ideas.fits`)
 
 The tag on each piece the other team would move says why YOU would want him, from one

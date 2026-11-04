@@ -132,3 +132,51 @@ def test_a_pick_shape_shows_once():
     cands = [_idea("jq", ["Pickens", "2027 1st", "2028 1st"], ["Chase"], delta=3.0),
              _idea("rj", ["Ward", "2027 1st", "2028 1st"], ["Nabers"], delta=2.0)]
     assert [c["partner"] for c in ti.pick_ideas(cands, value, 3)] == ["jq"]
+
+
+def _swap_pair(**over):
+    base = dict(results={"a": {"mode": "buy"}, "b": {"mode": "rebuild"}},
+                rosters={"a": ["Lamar"], "b": ["Mahomes", "Jones"]},
+                value={"Lamar": 5469, "Mahomes": 5147, "Jones": 1215},
+                eppg={"Lamar": 11.7, "Mahomes": 19.5, "Jones": 10.1},
+                healthy={"Lamar": 21.0, "Mahomes": 19.5, "Jones": 10.1},
+                position={"Lamar": "QB", "Mahomes": "QB", "Jones": "RB"},
+                age={"Lamar": 29.8, "Mahomes": 31.1, "Jones": 31.9},
+                all_picks={"a": [], "b": [("2027 4th", 500), ("2027 1st", 3000)]})
+    return _pair(**{**base, **over})
+
+
+def test_a_contenders_hurt_player_swaps_for_a_rebuilds_healthy_one():
+    """Lamar for Mahomes, straight, with the closers on the side that's lighter (owner:
+    a pick is capital even if you wouldn't choose it). The rebuild's view flips the lens."""
+    swap = ti.season_swaps(_swap_pair())[0]
+    assert (swap["a_sends"], swap["b_sends"], swap["lens"]) == (["Lamar"], ["Mahomes"], "buy")
+    assert swap["also"] == ["Mahomes + 2027 4th", "Mahomes + Jones"]
+    flipped = _swap_pair(results={"a": {"mode": "rebuild"}, "b": {"mode": "buy"}},
+                         rosters={"a": ["Mahomes", "Jones"], "b": ["Lamar"]},
+                         all_picks={"a": [("2027 4th", 500)], "b": []})
+    swap = ti.season_swaps(flipped)[0]
+    assert (swap["a_sends"], swap["b_sends"], swap["lens"]) == (["Mahomes"], ["Lamar"], "sell")
+    assert "also" not in swap
+
+
+def test_a_swap_with_a_lighter_hurt_player_is_evened_by_his_side():
+    """Achane + a 2nd for Cook, the owner's real trade: the smallest pick that closes it."""
+    p = _swap_pair(rosters={"a": ["Achane"], "b": ["Cook"]}, value={"Achane": 3801, "Cook": 5169},
+                   eppg={"Achane": 0.0, "Cook": 16.9}, healthy={"Achane": 15.1, "Cook": 16.9},
+                   position={"Achane": "RB", "Cook": "RB"}, age={"Achane": 25.0, "Cook": 27.1},
+                   all_picks={"a": [("2028 5th", 100), ("2028 2nd", 1300)], "b": []})
+    swap = ti.season_swaps(p)[0]
+    assert swap["a_sends"] == ["Achane", "2028 2nd"] and swap["b_sends"] == ["Cook"]
+
+
+def test_no_swap_without_a_real_season_gap_or_the_right_two_teams():
+    """A short absence isn't hurt enough; two contenders both want the points; a different
+    position doesn't replace him; a rebuild won't take an older player for a younger one;
+    values too far apart with no pick to close them is no deal."""
+    assert not ti.season_swaps(_swap_pair(eppg={"Lamar": 15.0, "Mahomes": 19.5, "Jones": 10.1}))
+    assert not ti.season_swaps(_swap_pair(results={"a": {"mode": "buy"}, "b": {"mode": "buy"}}))
+    assert not ti.season_swaps(_swap_pair(position={"Lamar": "QB", "Mahomes": "RB", "Jones": "RB"}))
+    assert not ti.season_swaps(_swap_pair(age={"Lamar": 29.8, "Mahomes": 25.0, "Jones": 31.9}))
+    assert not ti.season_swaps(_swap_pair(value={"Lamar": 9000, "Mahomes": 3000, "Jones": 1215},
+                                          all_picks={"a": [], "b": []}))

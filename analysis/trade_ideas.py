@@ -27,6 +27,9 @@ UPGRADE_CHIP_GRACE = 0.9      # ...who may sit this far under the trade bar and 
 CENTERPIECE_TOP = 0.35        # value percentile under which sums lie - the centerpiece must hold
 MAX_PER_SIDE = 3              # candidate pieces considered per target / per sell list
 CONSOLIDATION_POOL = 4        # names considered for two-piece consolidations
+HURT_SHARE = 0.65             # a season swap's hurt piece projects at most this share of his healthy rate
+SWAP_BAND = 0.85              # ...and the lighter side holds at least this share of the heavier's value
+SWAP_MIN_GAIN = 1.0           # ...and the contender's lineup gains at least this many points a game
 
 
 @dataclass
@@ -51,6 +54,10 @@ class _Pair:
     qb_stock: dict          # rebuild owner -> young QB chips held
     qb_slots: int
     board: object = None    # trade_eval's board, for the buyer's lineup delta
+    rosters: dict = None    # side -> every valued name it holds
+    healthy: dict = None    # name -> points a game at full health
+    age: dict = None        # name -> age
+    all_picks: dict = None  # side -> [(pick name, value)] it owns, any round, cheapest first
 
 
 def _branches(result: dict) -> list[dict]:
@@ -77,6 +84,7 @@ def _young_qb_chips(ctx, owner: str, qb_bar: float) -> int:
 def _pair(league_id: str, a: str, b: str, stance_a: str | None, stance_b: str | None) -> _Pair:
     ctx = context(league_id)
     owners = {"a": a, "b": b}
+    board = build_board(league_id)
     results = {"a": trade_targets.find_targets(league_id, a, stance=stance_a or None),
                "b": trade_targets.find_targets(league_id, b, stance=stance_b or None)}
     bars = ctx.trade_thresholds
@@ -98,7 +106,14 @@ def _pair(league_id: str, a: str, b: str, stance_a: str | None, stance_b: str | 
         qb_stock={owners[s]: _young_qb_chips(ctx, owners[s], bars.get("QB", 0))
                   for s, r in results.items() if r.get("mode") == "rebuild"},
         qb_slots=ctx.needs_slots.get("QB", 1),
-        board=build_board(league_id))
+        board=board,
+        rosters={s: [ctx.players[pid]["name"] for pid in ctx.roster_for(o)["players"] or [] if pid in ctx.players]
+                 for s, o in owners.items()},
+        healthy={p["name"]: p.get("healthy_ppg") for p in ctx.players.values()},
+        age={p["name"]: p["age"] for p in ctx.players.values()},
+        all_picks={s: sorted(((pk["pick"].split(" (")[0], pk["value"])
+                              for pk in board.picks_by_owner[ctx.roster_for(o)["roster_id"]]), key=lambda x: x[1])
+                   for s, o in owners.items()})
 
 
 def consolidations(names: list[str], starts, is_depth) -> list[tuple[str, str]]:
@@ -276,6 +291,78 @@ def _available(p: _Pair, prop: dict) -> bool:
             and all(sender_ok(n, "b") and taker_ok(n, "a", prop["a_sends"]) for n in prop["b_sends"]))
 
 
+def _is_hurt(p: _Pair, name: str) -> bool:
+    return bool(p.healthy.get(name)) and p.eppg.get(name, 0) <= HURT_SHARE * p.healthy[name]
+
+
+def _swap_in_band(x: float, y: float) -> bool:
+    return bool(x and y) and min(x, y) / max(x, y) >= SWAP_BAND
+
+
+def _even_with_pick(p: _Pair, c: str, n: str, hurt: str, healthy: str) -> tuple[list, list] | None:
+    """What each side sends: straight if the values are close, else the lighter side's
+    cheapest pick that closes the gap. Any round: here a pick is only there to even it up."""
+    vh, vs = p.value[hurt], p.value[healthy]
+    if _swap_in_band(vh, vs):
+        return [hurt], [healthy]
+    if vh < vs:
+        add = next((name for name, v in p.all_picks[c] if _swap_in_band(vh + v, vs)), None)
+        return ([hurt, add], [healthy]) if add else None
+    add = next((name for name, v in p.all_picks[n] if _swap_in_band(vh, vs + v)), None)
+    return ([hurt], [healthy, add]) if add else None
+
+
+def _swap_extras(p: _Pair, n: str, hurt: str, healthy: str) -> list[str]:
+    """Other ways to land the same swap when the healthy side is the lighter one: the pick
+    nearest the gap, and its best-producing piece that's no younger than the hurt player."""
+    gap = p.value[hurt] - p.value[healthy]
+    if gap <= 0:
+        return []
+    out = []
+    pick = min(p.all_picks[n], key=lambda x: abs(x[1] - gap), default=None)
+    if pick and _swap_in_band(p.value[hurt], p.value[healthy] + pick[1]):
+        out.append(f"{healthy} + {pick[0]}")
+    pieces = [m for m in p.rosters[n] if m != healthy and not _is_hurt(p, m) and p.age[m] >= p.age[hurt]
+              and _swap_in_band(p.value[hurt], p.value[healthy] + p.value[m])]
+    if pieces:
+        out.append(f"{healthy} + {max(pieces, key=lambda m: p.eppg.get(m, 0))}")
+    return out
+
+
+def season_swaps(p: _Pair) -> list[dict]:
+    """A contender's hurt player for a non-contender's healthy one at the same position,
+    close in dynasty value and no older: one side needs this season's points, the other doesn't.
+    LOGIC.md "Season swaps"."""
+    modes = {s: p.results[s]["mode"] for s in "ab"}
+    if sorted(modes.values()) != ["buy", "rebuild"]:
+        return []
+    c, n = ("a", "b") if modes["a"] == "buy" else ("b", "a")
+    out = []
+    for hurt in p.rosters[c]:
+        if not _is_hurt(p, hurt) or not _real_chip(p, hurt):
+            continue
+        for healthy in p.rosters[n]:
+            if (p.position[healthy] != p.position[hurt] or _is_hurt(p, healthy) or not _real_chip(p, healthy)
+                    or p.eppg.get(healthy, 0) <= p.eppg.get(hurt, 0)
+                    or p.age[hurt] > p.age[healthy]):
+                continue
+            sends = _even_with_pick(p, c, n, hurt, healthy)
+            if not sends:
+                continue
+            why = (f"{p.owners[c]} gets {healthy}'s {p.eppg.get(healthy, 0):.1f} a game now for {hurt}, down to "
+                   f"{p.eppg.get(hurt, 0):.1f} from {p.healthy[hurt]:.1f} healthy - {p.owners[n]} doesn't need "
+                   f"this season's points and keeps the dynasty value")
+            sides = {c: sends[0], n: sends[1]}
+            prop = {"a_sends": sides["a"], "b_sends": sides["b"], "lens": "buy" if c == "a" else "sell",
+                    "season_swap": True, "why": why}
+            if c == "a" and sends == ([hurt], [healthy]):
+                extras = _swap_extras(p, n, hurt, healthy)
+                if extras:
+                    prop["also"] = extras
+            out.append(prop)
+    return out
+
+
 def _buyer_delta(p: _Pair, prop: dict) -> float:
     """The framer's lineup delta for the buyer (0.0 when the framer can't resolve it)."""
     buyer = p.owners["a"] if prop["lens"] == "buy" else p.owners["b"]
@@ -309,6 +396,13 @@ def suggest(league_id: str, a: str, b: str, stance_a: str | None = None,
     cands += [{**c, "a_sends": c["b_sends"], "b_sends": c["a_sends"],
                "lens": {"buy": "sell", "sell": "buy"}[c["lens"]]} for c in _proposals(p, b, a)]
     seen, used_a, used_b, out = set(), set(), set(), []
+    for prop in season_swaps(p):
+        delta = _buyer_delta(p, prop)
+        if delta >= SWAP_MIN_GAIN:
+            out.append({**prop, "partner": b, "buyer_delta": delta})
+    out = sorted(out, key=lambda c: -c["buyer_delta"])[:limit]
+    if len(out) == limit:
+        return out
     for prop in filter(None, (_balance(p, c) for c in cands if _available(p, c))):
         key = (tuple(prop["a_sends"]), tuple(prop["b_sends"]))
         if key in seen or (set(prop["a_sends"]) & used_a) or (set(prop["b_sends"]) & used_b):
@@ -362,8 +456,9 @@ def pick_ideas(cands: list[dict], value: dict, limit: int) -> list[dict]:
             firsts.setdefault(c["partner"], c)
         for c in pool:
             first = firsts.get(c["partner"])
-            if first is not None and c is not first:
-                first.setdefault("also", []).append(" + ".join(c["b_sends"] if lens == "buy" else c["a_sends"]))
+            landed = " + ".join(c["b_sends"] if lens == "buy" else c["a_sends"])
+            if first is not None and c is not first and landed != " + ".join(first["b_sends"] if lens == "buy" else first["a_sends"]):
+                first.setdefault("also", []).append(landed)
         out += [c for c in picked if firsts[c["partner"]] is c]
     return out
 
