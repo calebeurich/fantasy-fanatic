@@ -312,23 +312,6 @@ def _even_with_pick(p: _Pair, c: str, n: str, hurt: str, healthy: str) -> tuple[
     return ([hurt], [healthy, add]) if add else None
 
 
-def _swap_extras(p: _Pair, n: str, hurt: str, healthy: str) -> list[str]:
-    """Other ways to land the same swap when the healthy side is the lighter one: the pick
-    nearest the gap, and its best-producing piece that's no younger than the hurt player."""
-    gap = p.value[hurt] - p.value[healthy]
-    if gap <= 0:
-        return []
-    out = []
-    pick = min(p.all_picks[n], key=lambda x: abs(x[1] - gap), default=None)
-    if pick and _swap_in_band(p.value[hurt], p.value[healthy] + pick[1]):
-        out.append(f"{healthy} + {pick[0]}")
-    pieces = [m for m in p.rosters[n] if m != healthy and not _is_hurt(p, m) and p.age[m] >= p.age[hurt]
-              and _swap_in_band(p.value[hurt], p.value[healthy] + p.value[m])]
-    if pieces:
-        out.append(f"{healthy} + {max(pieces, key=lambda m: p.eppg.get(m, 0))}")
-    return out
-
-
 def season_swaps(p: _Pair) -> list[dict]:
     """A contender's hurt player for a non-contender's healthy one at the same position,
     close in dynasty value and no older: one side needs this season's points, the other doesn't.
@@ -353,13 +336,8 @@ def season_swaps(p: _Pair) -> list[dict]:
                    f"{p.eppg.get(hurt, 0):.1f} from {p.healthy[hurt]:.1f} healthy - {p.owners[n]} doesn't need "
                    f"this season's points and keeps the dynasty value")
             sides = {c: sends[0], n: sends[1]}
-            prop = {"a_sends": sides["a"], "b_sends": sides["b"], "lens": "buy" if c == "a" else "sell",
-                    "season_swap": True, "why": why}
-            if c == "a" and sends == ([hurt], [healthy]):
-                extras = _swap_extras(p, n, hurt, healthy)
-                if extras:
-                    prop["also"] = extras
-            out.append(prop)
+            out.append({"a_sends": sides["a"], "b_sends": sides["b"], "lens": "buy" if c == "a" else "sell",
+                        "season_swap": True, "why": why})
     return out
 
 

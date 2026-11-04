@@ -147,17 +147,14 @@ def _swap_pair(**over):
 
 
 def test_a_contenders_hurt_player_swaps_for_a_rebuilds_healthy_one():
-    """Lamar for Mahomes, straight, with the closers on the side that's lighter (owner:
-    a pick is capital even if you wouldn't choose it). The rebuild's view flips the lens."""
+    """Lamar for Mahomes, straight up. The rebuild's view flips the lens."""
     swap = ti.season_swaps(_swap_pair())[0]
     assert (swap["a_sends"], swap["b_sends"], swap["lens"]) == (["Lamar"], ["Mahomes"], "buy")
-    assert swap["also"] == ["Mahomes + 2027 4th", "Mahomes + Jones"]
     flipped = _swap_pair(results={"a": {"mode": "rebuild"}, "b": {"mode": "buy"}},
                          rosters={"a": ["Mahomes", "Jones"], "b": ["Lamar"]},
                          all_picks={"a": [("2027 4th", 500)], "b": []})
     swap = ti.season_swaps(flipped)[0]
     assert (swap["a_sends"], swap["b_sends"], swap["lens"]) == (["Mahomes"], ["Lamar"], "sell")
-    assert "also" not in swap
 
 
 def test_a_swap_with_a_lighter_hurt_player_is_evened_by_his_side():

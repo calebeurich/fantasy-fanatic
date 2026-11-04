@@ -2154,9 +2154,9 @@ wanting picks. So it is its own rule, between a contender (`mode` buy) and a reb
   smaller isn't worth trading a real piece for.
 - **Evening it up:** straight if close. Otherwise the lighter side adds its cheapest pick that closes the gap,
   any round. The usual "3rds aren't currency" rule doesn't apply, because here the pick only levels the deal
-  (owner: "it's still capital to even out value"). When the healthy side is lighter, the contender also sees
-  other ways to land it: the nearest pick, and the rebuild's best producer who is no younger than the hurt
-  player (Mahomes + Aaron Jones). He doesn't have to start for the contender; he is there to level the value.
+  (owner: "it's still capital to even out value"). Other ways to land a close deal, like Mahomes + Aaron Jones
+  or + a 3rd, aren't listed: owner, "straight up is probably great for now until we hash out the more detailed
+  calculator."
 - **The hurt player is no older:** a rebuild won't hand over a younger player for an older one at the same
   price, so without this the list filled with Jayden Daniels and Drake Maye for Lamar. It reads actual age,
   not years to decline: that rejected Lamar for Mahomes (4.2 years vs 5.9) because Lamar's rushing shortens
