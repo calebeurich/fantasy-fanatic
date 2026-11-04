@@ -2201,7 +2201,8 @@ test - your lineup with him added:
   his own team would move him (owner: Pollard and Metcalf lit up with a selling partner). The first is a
   buyer's lineup: he wouldn't start or even cover. The second is a rebuild: he isn't on its wish list and is
   under a year from decline (`NO_FIT_RUNWAY`), the same runway logic behind what a rebuild takes in an idea.
-  Still tappable.
+  Both also need him below his position's trade bar: Jaxson Dart or a hurt Achane may not make a contender's
+  lineup, but real dynasty value interests anyone. Still tappable.
 
 The same tags feed the ideas generator's consolidations: "starts / level / beats" count
 as starting for the receiver, "depth" as cover.

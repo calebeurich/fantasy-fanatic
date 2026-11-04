@@ -492,6 +492,10 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
             or slot == "SUPER_FLEX")]
         return min((eppg(q) for q in eligible), default=0)
 
+    def below_bar(info):
+        """Real dynasty value interests anyone, whatever the lineup: only the rest can read as no use."""
+        return info["value"] < ctx.trade_thresholds.get(info["position"], 0)
+
     result = trade_targets.find_targets(league_id, owner, stance=stance or None)
     buying = result["mode"] != "rebuild"   # a rebuild's interest is its wish list, not its lineup
     out = []
@@ -529,7 +533,7 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
             else:
                 out.append({"name": info["name"], "owner": seller, "tag": "depth for them",
                             "why": f"would start for {owner} if one {info['position']} were out"})
-        else:
+        elif below_bar(info):
             out.append({"name": info["name"], "owner": seller, "tag": "no spot in their lineup", "no_fit": True,
                         "why": f"wouldn't start for {owner} even with a starter out"})
     for r in _branches(result):
@@ -546,7 +550,7 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
         wished = {f["name"] for f in out}
         for pid in seller_roster["players"] or []:
             info = ctx.players.get(pid)
-            if (info and info["name"] in movable and info["name"] not in wished
+            if (info and info["name"] in movable and info["name"] not in wished and below_bar(info)
                     and years_to_decline(info["position"], info["age"], info.get("usage_role")) < NO_FIT_RUNWAY):
                 out.append({"name": info["name"], "owner": seller, "tag": "not what they're collecting", "no_fit": True,
                             "why": f"{owner} is rebuilding and {info['name']} is near or past his decline"})
