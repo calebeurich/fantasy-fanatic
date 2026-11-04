@@ -248,7 +248,10 @@
   .msg h3{font-size:14px;margin:12px 0 6px}
   .msg h3:first-child{margin-top:0}
   .msg p{margin:6px 0}
-  .msg ul{margin:6px 0;padding-left:20px}
+  .msg ul,.msg ol{margin:6px 0;padding-left:20px}
+  .msg hr{border:0;border-top:1px solid var(--line);margin:10px 0}
+  .msg code{background:var(--bg);padding:0 4px;border-radius:4px;font-size:.92em}
+  .msg .spin{margin-right:8px}
   .msg strong{color:#fff}
   .msg table{margin:8px 0;font-size:13px;width:100%}
   .msg th{font-size:11px;color:var(--dim);padding:5px 9px}
@@ -364,7 +367,8 @@
 </head>
 <body>
 <header>
-  <nav class="tabs" id="tabs">
+  <h1 style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)">fantasy-fanatic: dynasty fantasy football advice</h1>
+  <nav class="tabs" id="tabs" aria-label="Views">
     <button type="button" data-view="league" class="on">League</button>
     <button type="button" data-view="trade" disabled>Trade</button>
     <button type="button" data-view="ask">Ask</button>
@@ -406,14 +410,14 @@
     <h2 id="findhead">Find your league</h2>
     <div class="pad" id="findpad">
       <div class="row">
-        <input id="username" type="text" placeholder="Your Sleeper username" autocomplete="off">
+        <input id="username" type="text" aria-label="Your Sleeper username" placeholder="Your Sleeper username" autocomplete="off" autocapitalize="none" spellcheck="false">
         <button id="find" class="primary" type="button">Find my leagues</button>
       </div>
       <div id="leagues" class="row" style="margin-top:8px"></div>
       <details style="margin-top:10px">
         <summary class="cs" style="cursor:pointer">or paste a league ID</summary>
         <div class="row" style="margin-top:8px">
-          <input id="league" type="text" placeholder="Sleeper league ID" autocomplete="off">
+          <input id="league" type="text" aria-label="Sleeper league ID" placeholder="Sleeper league ID" autocomplete="off" inputmode="numeric">
           <button id="load" type="button">Load</button>
         </div>
       </details>
@@ -439,7 +443,7 @@
     <div class="pad" style="border-top:1px solid var(--line)">
       <div class="cs" id="askctx" style="margin-bottom:8px;display:none"></div>
       <form id="f" class="row">
-        <input id="q" type="text" autocomplete="off" placeholder="e.g. who should rjl22 target in a trade?" required>
+        <input id="q" type="text" aria-label="Your question" autocomplete="off" placeholder="Ask anything about your team or league…" required>
         <button id="send" class="primary" type="submit">Ask</button>
         <button type="button" class="ghost" id="reset">new conversation</button>
       </form>
@@ -728,7 +732,7 @@ function renderPin() {
   const row = leagueTeams[myTeam] || {};
   const word = (row.path || "").split(" - ")[0];
   const opts = ["", ...Object.keys(leagueTeams)].map(o => `<option value="${o}"${o === (myTeam || "") ? " selected" : ""}>${o || "pick your team"}</option>`).join("");
-  pin.innerHTML = `<span>you:</span><select id="pinsel">${opts}</select>` +
+  pin.innerHTML = `<span>you:</span><select id="pinsel" aria-label="Your team">${opts}</select>` +
     (myTeam ? `<span class="tag p-${word} ${row.alignment === "unaligned" ? "hot" : "cool"}" title="${(row.path_reason || "").replace(/"/g, "&quot;")}">${word}</span>` +
       `<span class="cstance" id="pinstance">${stanceOptions(row).map(([v, label]) =>
         `<button type="button" data-v="${v}" class="${myStance === v ? "on" + (v ? " dev" : "") : ""}">${label}</button>`).join("")}</span>` : "");
@@ -787,6 +791,7 @@ $("find").onclick = async () => {
       $("leagues").appendChild(b);
     });
     if (dynasty.length === 1) $("leagues").firstChild.click();
+    else if (!currentLeague) $("overview").innerHTML = `<div class="empty">${dynasty.length ? "Pick a league above." : "None of these are dynasty leagues, which is all this works with."}</div>`;
   } catch (e) {
     failed($("leagues"), "Couldn't reach Sleeper to look that up.", () => $("find").click());
   } finally {
@@ -807,10 +812,12 @@ const CHIPS = owner => [
   `Tell me about ${owner} and what they should do.`,
   `Who should ${owner} target in a trade, and with what?`,
 ];
+const LEAGUE_CHIPS = ["Which teams in this league should be buying, and which should be selling?",
+                     "Which team has the best long-term outlook, and why?"];
 function showChips(owner) {
   const box = $("chips");
   box.innerHTML = "";
-  CHIPS(owner).forEach(q => {
+  (owner ? CHIPS(owner) : LEAGUE_CHIPS).forEach(q => {
     const c = document.createElement("button");
     c.type = "button"; c.className = "chip"; c.textContent = q;
     // Just the question: withContext pins the league id on send, invisibly. Putting
@@ -887,7 +894,7 @@ function renderBuilder(leagueId, owners) {
   const side = k => `<div class="cside" id="cside${k}">
       <div class="chead">${k === "a"
         ? `<span class="cs">you:</span><b id="cnamea" style="font-size:14px">${esc(trade.a.owner)}</b><span class="cs">— change team or stance in the bar at the top</span><span id="cstancea" hidden></span>`
-        : `<span class="cs">them:</span><select id="cselb">${opts(trade.b.owner)}</select><div class="cstance" id="cstanceb"></div>`}</div>
+        : `<span class="cs">them:</span><select id="cselb" aria-label="Team to trade with">${opts(trade.b.owner)}</select><div class="cstance" id="cstanceb"></div>`}</div>
       <div class="cmeta" id="cmeta${k}"></div>
       <div id="croster${k}"><div class="cs"><span class="spin"></span>loading roster</div></div></div>`;
   box.innerHTML = `<details class="cs"${matchMedia("(max-width:760px)").matches ? "" : " open"}><summary style="cursor:pointer">How to read this</summary>Side A is you (set in the bar up top); pick who to trade with, tap pieces, ask. Bright = that team would move it <em>and</em> the other team has a use for it (the tag says what — hover or tap for the why) · ` +
@@ -1152,7 +1159,7 @@ async function fillIdeas(leagueId, owner) {
   try {
     list = await fetchIdeas(leagueId, owner, stance);
   } catch (_) { failed(el, "Couldn't look for trade ideas.", () => fillIdeas(leagueId, owner)); return; }
-  if (!list.length) { el.textContent = "nothing obvious — build one in the trade helper below"; return; }
+  if (!list.length) { el.textContent = "Nothing obvious from this roster right now. You can build your own in the Trade tab."; return; }
   const framing = list[0] && list[0].framing ? `<div class="cs" style="margin-bottom:4px">${owner} is waiting — these are production moves <em>${list[0].framing}</em>:</div>`
                 : stance ? `<div class="cs" style="margin-bottom:4px">under your pinned stance — <em>${stanceWord(stance)}</em>:</div>` : "";
   const card = (s, i) => `<div class="idea" data-i="${i}" title="${(s.why || "").replace(/"/g, "&quot;")}">` +
@@ -1314,6 +1321,7 @@ function clearLeague() {
   $("builder").innerHTML = '<div class="empty">Load a league first.</div>';
   document.querySelector('#tabs [data-view="trade"]').disabled = true;
   $("findhead").hidden = $("findpad").hidden = false;
+  $("chips").style.display = "none";
   pageTitle = document.title = "fantasy-fanatic";
 }
 const agoText = at => {
@@ -1488,6 +1496,10 @@ async function loadLeague(id, {refresh = false} = {}) {
     if (saved && leagueTeams[saved.team] && !myTeam) setYou(saved.team, saved.stance, {silent: true});
     else if (saved && saved.team === myTeam && saved.stance) setYou(myTeam, saved.stance, {silent: true});
     renderPin();
+    if (!myTeam) {
+      showChips(null);
+      if ($("hint")) $("hint").textContent = "Pick your team in the bar above for advice on your roster, or ask anything about the league.";
+    }
     // After the pin, because side A is the pin. On a refresh, only when no trade is half built:
     // rebuilding would clear the picks.
     if (!sameLeague || !(trade.a.picks.size || trade.b.picks.size || document.querySelector(".crow.on"))) {
@@ -1532,12 +1544,18 @@ function md(t) {
       out.push(`<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`);
       continue;
     }
+    if (/^\s*([-*_])\1{2,}\s*$/.test(block)) { out.push("<hr>"); continue; }
     const b = block
       .replace(/^#{1,4}\s*(.+)$/gm, "<h3>$1</h3>")
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/^\s*[-*]\s+(.+)$/gm, "<li>$1</li>")
-      .replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, "<ul>$1</ul>");
-    out.push(b.match(/^<(h3|ul)/) ? b : `<p>${b.replace(/\n/g, "<br>")}</p>`);
+      .replace(/^\s*\d+[.)]\s+(.+)$/gm, "<oli>$1</oli>")
+      .replace(/^\s*[-*]\s+(.+)$/gm, "<uli>$1</uli>")
+      .replace(/(^|[\s(>])\*([^*\n]+)\*(?=[\s).,;:!?<]|$)/gm, "$1<em>$2</em>")
+      .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+      .replace(/(<oli>[\s\S]*?<\/oli>)(?!\s*<oli>)/g, "<ol>$1</ol>")
+      .replace(/(<uli>[\s\S]*?<\/uli>)(?!\s*<uli>)/g, "<ul>$1</ul>")
+      .replace(/<(\/?)[ou]li>/g, "<$1li>");
+    out.push(b.match(/^<(h3|ul|ol)/) ? b : `<p>${b.replace(/\n/g, "<br>")}</p>`);
   }
   return out.join("");
 }
