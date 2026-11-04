@@ -211,6 +211,15 @@ into sell-window payloads; the contract-year signal as a second note; the declin
 tails from eye-test to measured; the rushing-QB override review once the EPA split
 is reconstructed.
 
+## Open: straight max PF can be gamed by roster shape (2026-11-04)
+
+Owner: a tanking team could hold a ton of WRs and no TE or RBs, or no QBs, and hurt its best-ball score while still
+collecting dynasty value. Not tested. Rough size: two QB slots at 15-20 a game is about 30-40 points a week against a
+median 65-point season gap between neighbours in the bottom six, so it could beat the 24% bench conversion measured
+above by a lot. That reverses the earlier "no extra rule needed" for this case. Candidates to test with
+`research/tank_ev.py`: a legal-roster floor (checkable from the roster, not a lineup rule), and a weighted lottery
+that shrinks what one slot is worth. A floor alone only limits it: a bad QB still fills the slot.
+
 ## Study: 3rds and 4ths as currency (2026-11-04)
 
 `research/pick_premium.py` again, for later rounds, on the larger crawl (47,721 trades). Owner: "how confident are
