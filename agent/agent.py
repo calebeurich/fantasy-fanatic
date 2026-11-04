@@ -712,7 +712,7 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
             "question": question[:300],
             # Enough of the answer to audit a bad claim after the fact - the Spoto
             # incident was undiagnosable because only the question survived.
-            "answer": answer_text[:600] if answer_text else None,
+            "answer": answer_text,
             "outcome": outcome,
             "error": error_message,
             "latency_seconds": round(time.monotonic() - start, 2),

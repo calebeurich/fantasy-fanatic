@@ -488,13 +488,13 @@ loss (`out_now`, `injury_cost`, `back_week`).
 
 Open gaps:
 - **Position labels in advice:** a live answer called Kirk Cousins (QB) "the WR fix".
-- **Claims with no tool behind them:** the same answer said an injury lowers Adams's trade
-  value. Nothing in the tool data says so.
+- **Injury and trade value:** injuries do lower value (owner), but the tools can't show by how
+  much, so the same answer asserted it with no number. Needs value over time around the injury;
+  `sources/dp_values.py` and research/market_reactions.py are the starting point.
 - **Dead-end advice:** it said to spend picks on a WR while "no WR target surfaced" for that
   team. Find out whether the target search has a real gap, or none exist.
-- **Answers cut off in the logs:** `agent.py` logs 600 characters of each answer, so a bad
-  answer can't be fully read afterward.
-- **Cold starts:** usually 5-25s, but 58-91s every week or two. Try startup CPU boost on staging.
+- **Cold starts:** usually 5-25s, but 58-91s every week or two. Startup CPU boost on staging from
+  2026-11-03; compare the next few, then decide on prod.
 - **Projection snapshots:** the weekly job isn't built, and week 8 of 2026 was missed.
 
 **Later, not now (owner, 2026-11-03): the sellable version.** Notes from the discussion, to
