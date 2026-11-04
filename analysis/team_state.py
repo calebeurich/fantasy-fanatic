@@ -26,6 +26,7 @@ import statistics
 import sys
 
 from sources import sleeper, fantasycalc
+from sources.cache import ttl_cache, LEAGUE_CONFIG_TTL
 from . import season_sim, trade_activity
 from .team_values import (age_bucket, years_to_decline, MIN_MEANINGFUL_RUNWAY,
                           INSIDE_FINAL_YEAR, NOISE_BAND, eppg,
@@ -769,35 +770,38 @@ def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None,
             r["path_reason"] += ". " + r["pace_note"][0].upper() + r["pace_note"][1:]
 
 
-def _weekly_strengths(league_id: str, league: dict, rows: list[dict]) -> dict:
-    """owner_id -> {week: that week's OPTIMAL-lineup projected points}, the per-week
-    re-fill the owner asked pace to run on: byes fall out naturally (a bye week
-    projects 0 and the fill routes around it), and an injury's timing gets shape
-    instead of being smeared across the season average. Runs through the playoff weeks
-    the bracket plays. Best effort - any gap falls back to season ePPG."""
-    from sources import sleeper as _s
+@ttl_cache(LEAGUE_CONFIG_TTL)   # same lifetime as `context`, which it reads; one idea list asks 175 times
+def _strengths_by_week(league_id: str) -> dict:
     from .league import context
     from . import roster_needs
     ctx = context(league_id)
+    league = ctx.league
     settings = league.get("settings") or {}
     season_weeks = (settings.get("playoff_week_start") or 15) - 1
     playoff_rounds = max((settings.get("playoff_teams") or 1) - 1, 0).bit_length()
     scoring = league["scoring_settings"]
     out = {}
+    for wk in range(1, season_weeks + playoff_rounds + 1):
+        proj = sleeper.get_projections(league["season"], wk)
+        week_players = {pid: {**info, "projected_ppg": sleeper.score(proj.get(pid, {}), scoring)}
+                        for pid, info in ctx.players.items()}
+        for roster in ctx.rosters:
+            filled = roster_needs.fill_lineup(roster, week_players, ctx.lineup_dedicated, ctx.lineup_flex)
+            out.setdefault(roster["owner_id"], {})[wk] = round(
+                sum(week_players[pid]["projected_ppg"] for _, pid in filled), 1)
+    return out
+
+
+def _weekly_strengths(league_id: str) -> dict:
+    """owner_id -> {week: that week's OPTIMAL-lineup projected points}, the per-week
+    re-fill the owner asked pace to run on: byes fall out naturally (a bye week
+    projects 0 and the fill routes around it), and an injury's timing gets shape
+    instead of being smeared across the season average. Runs through the playoff weeks
+    the bracket plays. Best effort - any gap falls back to season ePPG."""
     try:
-        for wk in range(1, season_weeks + playoff_rounds + 1):
-            proj = _s.get_projections(league["season"], wk)
-            week_players = {pid: {**info, "projected_ppg": _s.score(proj.get(pid, {}), scoring)}
-                            for pid, info in ctx.players.items()}
-            for row in rows:
-                roster = next(r for r in ctx.rosters if r["roster_id"] == row["roster_id"])
-                filled = roster_needs.fill_lineup(roster, week_players,
-                                                  ctx.lineup_dedicated, ctx.lineup_flex)
-                out.setdefault(row["owner_id"], {})[wk] = round(
-                    sum(week_players[pid]["projected_ppg"] for _, pid in filled), 1)
+        return _strengths_by_week(league_id)
     except Exception:
         return {}
-    return out
 
 
 def _season_schedule(league_id: str, league: dict, rows: list[dict]) -> dict:
@@ -989,7 +993,7 @@ def classify_league(league_id: str) -> list[dict]:
             if row["leverage"] else None)
 
     playoff_pace(rows, league.get("settings") or {}, _season_schedule(league_id, league, rows),
-                 _weekly_strengths(league_id, league, rows))
+                 _weekly_strengths(league_id))
     rows.sort(key=lambda r: r["contention_rank"])
     return rows
 
