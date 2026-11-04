@@ -1,6 +1,6 @@
 """Does missing the playoffs pay? The last team in vs the first team out of the same league:
-near-identical seasons, split by the cliff in the pick order. Follows both for three seasons
-in XFL 2's payout. Findings in research/README.md "Tanking".
+near-identical seasons, split by the cliff in the pick order. Follows both as long as the
+league and both managers last, in XFL 2's payout. Findings in research/README.md "Tanking".
 
 Run: python -m research.tank_ev
 """
@@ -20,6 +20,7 @@ PAYOUT = {"title": 350, "second": 150, "third": 50, "pf_leader": 50}
 MAX_WIN_GAP = 1   # further apart than this and they weren't really on the same bubble
 MAX_ROOKIE_ROUNDS = 6
 BOOT = 500
+HORIZON = 5   # the corpus runs 2020-2025
 
 
 def points(settings: dict, key: str) -> float:
@@ -87,7 +88,7 @@ def main():
         a, b = pair     # a made it, b didn't
         row = {"allplay": s["allplay"][a] - s["allplay"][b], "d0": s["dollars"][a] - s["dollars"][b]}
         later = lid
-        for h in (1, 2, 3):
+        for h in range(1, HORIZON + 1):
             later = next_of.get(later)
             if not later or a not in seasons[later]["settings"] or b not in seasons[later]["settings"]:
                 break
@@ -111,16 +112,25 @@ def main():
         x = np.column_stack([np.ones(len(rows)), [r["allplay"] for r in rows]])
         return float(np.linalg.lstsq(x, np.array([r[y] for r in rows]), rcond=None)[0][0]), len(rows)
 
-    for y in ("d0", "d1", "d2", "d3", "ap1", "ap2", "ap3"):
+    for y in [f"d{h}" for h in range(HORIZON + 1)] + [f"ap{h}" for h in range(1, HORIZON + 1)]:
         est, n = effect(flat, y)
         boot = sorted(effect([r for k in (rng.choice(keys) for _ in keys) for r in pairs[k]], y)[0]
                       for _ in range(BOOT))
         print(f"{y}: made-it minus missed {est:+8.3f} n={n:5} 90% [{boot[int(.05 * BOOT)]:+.3f}, {boot[int(.95 * BOOT)]:+.3f}]")
 
-    # Same chain only: the running total can't mix leagues that lasted with ones that didn't.
-    full = [r for r in flat if "d3" in r]
-    print(f"seasons 0-3 together (n={len(full)}):", " ".join(f"d{h} {effect(full, f'd{h}')[0]:+.2f}" for h in range(4)),
-          f"sum {sum(effect(full, f'd{h}')[0] for h in range(4)):+.2f}")
+    # Same pairs only: a running total can't mix leagues that lasted with ones that didn't.
+    for far in range(1, HORIZON + 1):
+        later = [f"d{h}" for h in range(1, far + 1)]
+        def total(rows):
+            rows = [{**r, "sum": sum(r[y] for y in later)} for r in rows if f"d{far}" in r]
+            return effect(rows, "sum")
+        kept = {k: [r for r in v if f"d{far}" in r] for k, v in pairs.items()}
+        kept = {k: v for k, v in kept.items() if v}
+        est, n = total(flat)
+        ks = list(kept)
+        boot = sorted(total([r for k in (rng.choice(ks) for _ in ks) for r in kept[k]])[0] for _ in range(BOOT))
+        print(f"later seasons 1-{far} together: made-it minus missed {est:+8.2f} n={n:5} 90% "
+              f"[{boot[int(.05 * BOOT)]:+.2f}, {boot[int(.95 * BOOT)]:+.2f}]")
 
     # What straight max PF would do: who it would hand the top of the draft to.
     corr, champ_rank, top3_ap, worst3_ap = [], [], [], []

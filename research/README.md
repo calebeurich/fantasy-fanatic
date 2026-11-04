@@ -1179,12 +1179,18 @@ same league, at most one win apart, the gap read at equal all-play, in XFL 2's p
 | Dollars, one season on | -$1.51 | [-$10.64, +$6.18] | 828 |
 | Dollars, two seasons on | +$4.76 | [-$9.91, +$19.83] | 435 |
 | Dollars, three seasons on | -$0.79 | [-$21.49, +$18.08] | 214 |
-| All-play, three seasons on | -0.030 | [-0.061, +0.004] | 214 |
+| Dollars, four seasons on | +$19.43 | [-$13.65, +$54.23] | 78 |
+| Dollars, five seasons on | +$59.04 | [-$30.35, +$127.31] | 23 |
+| All-play, three seasons on | -0.030 | [-0.062, +0.003] | 214 |
+| All-play, four seasons on | -0.017 | [-0.081, +0.039] | 78 |
+| All-play, five seasons on | +0.020 | [-0.129, +0.113] | 23 |
 
-The three later gaps sum to about +$2.46 for the team that made it, so the better pick shows no dollars
-that repay this season's $40. Limits: three seasons is as far as the data reaches, the intervals are wide
-by then, and the all-play gap three seasons on hints at a late payoff for missing. These teams mostly
-finished there by accident; a deliberate tank buys the same slot. A weak team earns less from getting in:
+Dollars over the later seasons, same pairs throughout: seasons 1-3 -$8.42 [-$50.84, +$29.78], n=214;
+seasons 1-4 +$73.71 [-$4.02, +$152.14], n=78; seasons 1-5 +$232.99 [+$43.02, +$374.69], n=23. The better
+pick shows no dollars that repay this season's $40, at any distance. Limits: the corpus ends five seasons
+out, the last two rest on few pairs (one $350 title moves them), and both managers have to stay, so ten
+seasons can't be observed. All-play three seasons on hints at a late payoff for missing, and it doesn't
+carry on. These teams mostly finished there by accident; a deliberate tank buys the same slot. A weak team earns less from getting in:
 bergenjay's simulated value is about $17, against this $40 average, so his case is closer.
 
 Rules, XFL 2 mid-season: slots a team gains by benching out the rest of the regular season, averaged
@@ -1194,3 +1200,7 @@ order 1.24; straight reverse max PF with the finalists last 0.52; straight rever
 Would straight max PF hand picks to the wrong teams? Across the corpus max PF tracks all-play at r 0.93
 within a league. The three lowest max PF teams have a .283 all-play, the three truly weakest .267. The
 champion was in the lower half of max PF 8.0% of the time, the bottom quarter 1.1% (n=1,869).
+
+Taxi squads don't hide points from max PF. Recomputing best-ball totals for live 2026 leagues through
+week 8, on the 416 teams where it changes the total: Sleeper's number matched exactly counting taxi
+players on 352 and leaving them out on 0. The other 64 matched neither. Benching and taxi are both closed.
