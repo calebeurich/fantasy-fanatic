@@ -486,6 +486,9 @@ down with a plan. Check whether a gap is an existing rule in new clothes before 
 Fixed so far: the Shakir "cornerstone's price" tooltip; a player already out reading as a 0.0
 loss (`out_now`, `injury_cost`, `back_week`).
 
+Also fixed 2026-11-04 (LOGIC.md has the why): capacity under simultaneous chats, league shapes the
+owner's leagues never showed, and a pass over loading, error and refresh states.
+
 Open gaps:
 - **Position labels in advice:** a live answer called Kirk Cousins (QB) "the WR fix".
 - **Injury and trade value:** injuries do lower value (owner), but the tools can't show by how
@@ -493,8 +496,15 @@ Open gaps:
   `sources/dp_values.py` and research/market_reactions.py are the starting point.
 - **Dead-end advice:** it said to spend picks on a WR while "no WR target surfaced" for that
   team. Find out whether the target search has a real gap, or none exist.
-- **Cold starts:** usually 5-25s, but 58-91s every week or two. Startup CPU boost on both
-  services from 2026-11-03; compare the next several against that baseline.
+- **Empty trade ideas:** 17 of 93 teams checked across 47 real leagues got none (2026-11-04),
+  including rjl22, a contender in XFL 2 that the agent had trades for. Same question as above.
+- **Reads stall during a burst of new chats:** six at once, 4 of 24 table reads were refused
+  and retried, up to 24s. Answers are all delivered. Only the stateless build ends this.
+- **Row click re-pins "you":** clicking any team in the table makes it your team, and that is
+  remembered. Comparing teams was the reason; it may surprise people. Owner's call.
+- **Cold starts:** usually 5-25s, but 58-91s every week or two. Startup CPU boost made no difference
+  on normal boots (5 each: 7.1s with, 6.4s without); on both services from 2026-11-03 to see whether
+  it helps the slow ones.
 - **Projection snapshots:** the weekly job isn't built, and week 8 of 2026 was missed.
 
 **Later, not now (owner, 2026-11-03): the sellable version.** Notes from the discussion, to

@@ -39,12 +39,23 @@ def get_league(league_id: str) -> dict:
 
 @ttl_cache(LIVE_TTL)
 def get_rosters(league_id: str) -> list[dict]:
-    return _get(f"league/{league_id}/rosters")
+    """A team with no manager has a null owner_id. It gets its own stable id here, so every
+    module sees a normal team: all sharing null made them one "Unknown" team that couldn't be
+    opened, and crashed the league's team details."""
+    rosters = _get(f"league/{league_id}/rosters") or []
+    return [{**r, "owner_id": r.get("owner_id") or _open_team_id(r)} for r in rosters]
+
+
+def _open_team_id(roster: dict) -> str:
+    return f"open-{roster['roster_id']}"
 
 
 @ttl_cache(LEAGUE_CONFIG_TTL)
 def get_users(league_id: str) -> list[dict]:
-    return _get(f"league/{league_id}/users")
+    users = _get(f"league/{league_id}/users") or []
+    open_teams = [{"user_id": r["owner_id"], "display_name": f"Open team {r['roster_id']}", "metadata": {}}
+                  for r in get_rosters(league_id) if r["owner_id"] == _open_team_id(r)]
+    return users + open_teams
 
 
 @ttl_cache(LEAGUE_CONFIG_TTL)

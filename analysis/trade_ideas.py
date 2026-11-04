@@ -375,7 +375,9 @@ def ideas(league_id: str, owner: str, limit: int = 3, stance: str | None = None)
     ctx = context(league_id)
     value = {p["name"]: p["value"] for p in ctx.players.values()}
     cands = []
-    for other in ctx.owner_names.values():
+    # Rosters, not league members: Sleeper also lists members with no team, and asking about
+    # one failed every team's ideas in about one league in five.
+    for other in (ctx.owner_names[r["owner_id"]] for r in ctx.rosters):
         if other != owner:
             cands += suggest(league_id, owner, other, stance_a=stance or None, limit=3)
     path = next((t["path"] for t in team_state.classify_league(league_id) if t["owner"] == owner), "")

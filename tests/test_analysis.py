@@ -2883,3 +2883,19 @@ def test_only_tagged_cornerstones_read_as_a_cornerstones_price(monkeypatch):
     out = api.movable("L", "me")
     assert out["priced"] == ["Mahomes"]
     assert out["players"] == ["Dell", "Shakir"]
+
+
+def test_a_team_with_no_manager_is_its_own_team(monkeypatch):
+    """They all had a null owner: one "Unknown" team that couldn't be opened."""
+    from sources import sleeper
+    calls = {"league/L/rosters": [{"roster_id": 1, "owner_id": "u1"}, {"roster_id": 2, "owner_id": None},
+                                  {"roster_id": 3, "owner_id": None}],
+             "league/L/users": [{"user_id": "u1", "display_name": "dez", "metadata": {}}]}
+    monkeypatch.setattr(sleeper, "_get", lambda path: calls[path])
+    sleeper.get_rosters.cache_clear()
+    sleeper.get_users.cache_clear()
+    assert [r["owner_id"] for r in sleeper.get_rosters("L")] == ["u1", "open-2", "open-3"]
+    names = {u["user_id"]: u["display_name"] for u in sleeper.get_users("L")}
+    assert names == {"u1": "dez", "open-2": "Open team 2", "open-3": "Open team 3"}
+    sleeper.get_rosters.cache_clear()
+    sleeper.get_users.cache_clear()

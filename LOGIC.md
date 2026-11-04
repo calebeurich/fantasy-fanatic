@@ -1322,6 +1322,11 @@ being written. So services run 2 CPUs, and a session mid-answer is never evicted
 up to two minutes for a slot, and the page says so. Four slots stays the ceiling until the stateless
 rebuild (ROADMAP), because each one holds about 630MB.
 
+Two league shapes the owner's own leagues never showed, found by running every read endpoint across 47
+real leagues (2026-11-04): a member with no team made trade ideas fail for the whole league, in about one
+league in five; and teams with no manager all shared one "Unknown" name, so they couldn't be opened. Such a
+team now reads as "Open team N" everywhere.
+
 The page shows what it is doing: a thin moving line after 300ms of loading, so fast requests don't
 flicker, and plain words after 8 seconds, roughly past a normal wait and into a cold start. The chat
 session warms after the league table lands rather than at page load, because on one CPU its ~8s
