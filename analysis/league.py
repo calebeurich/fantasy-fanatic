@@ -81,7 +81,11 @@ class LeagueContext:
             if any(query in _normalize(a) for a in self.aliases_for(owner_id)):
                 return i
         options = [" / ".join(self.aliases_for(o)) for o in owner_ids]
-        raise ValueError(f"no owner matching '{owner_query}' - options: {options}")
+        raise UnknownOwner(f"no owner matching '{owner_query}' - options: {options}")
+
+
+class UnknownOwner(ValueError):
+    """Nobody in this league matches the name."""
 
 
 def _normalize(name: str) -> str:

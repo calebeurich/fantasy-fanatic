@@ -232,6 +232,34 @@ that half-commits you is the one you regret. Brief, self-interested, no hedging,
 advice for the other side, and never total values into a package price - say which single \
 piece matters and why. Speak in the first person as {owner}. Under 200 words."""
 
+SERVICE_DOWN_MESSAGES = {
+    "billing_error": "This app is out of AI credit, so it can't answer questions right now.",
+    "authentication_failed": "This app's AI service key isn't working, so it can't answer questions right now.",
+    "rate_limit": "The AI service is rate limiting this app right now. Try again in a minute or two.",
+    "server_error": "The AI service is having trouble right now. Try again in a few minutes.",
+}
+SERVICE_DOWN_FALLBACK = "The AI service refused that question, so it wasn't answered. Try again in a few minutes."
+STILL_WORKS = " The table, rosters and trade tools still work."
+
+
+class AIServiceDown(Exception):
+    """Anthropic refused the call itself, so there is no answer to check or show: the SDK
+    delivers the refusal as ordinary assistant text, which would otherwise read as the answer."""
+
+    def __init__(self, kind: str):
+        super().__init__(kind)
+        self.kind = kind
+        self.message = SERVICE_DOWN_MESSAGES.get(kind, SERVICE_DOWN_FALLBACK) + STILL_WORKS
+
+
+def _service_error(msg: AssistantMessage) -> str | None:
+    """The refusal's kind, or None. The API sends low credit as a 400, so read the text too."""
+    if msg.error is None:
+        return None
+    text = " ".join(b.text for b in msg.content if isinstance(b, TextBlock)).lower()
+    return "billing_error" if "credit balance" in text else msg.error
+
+
 class ToolsUnavailable(Exception):
     """The session had no tools: the model wrote tool-call XML as TEXT and confabulated
     from memory (Cloud Run's first deploy did this when the MCP server never registered;
@@ -327,6 +355,8 @@ async def _run_turn(client: ClaudeSDKClient, message: str, verbose: bool,
             elif msg.event.get("type") == "content_block_stop" and streamed:
                 streamed += "\n"  # mirrors the "\n".join over finished text blocks below
         elif isinstance(msg, AssistantMessage):
+            if kind := _service_error(msg):
+                raise AIServiceDown(kind)
             for block in msg.content:
                 if isinstance(block, TextBlock):
                     text_parts.append(block.text)

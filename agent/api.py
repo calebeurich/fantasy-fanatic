@@ -24,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 # NOTE (Windows dev only): do not run this app under `uvicorn --reload`. Reload puts the
@@ -38,8 +38,9 @@ from pydantic import BaseModel
 
 from analysis import format_support, roster_detail, roster_needs, team_state, trade_activity, trade_ideas, warm
 
+from analysis.league import UnknownOwner
 from . import budget, observability
-from .agent import run_query, MCP_SERVER_PATH, ToolsUnavailable, _options
+from .agent import AIServiceDown, run_query, MCP_SERVER_PATH, ToolsUnavailable, _options
 from .sessions import SessionBusy, SessionManager
 
 
@@ -119,6 +120,7 @@ class AskResponse(BaseModel):
     # tells the user so - the alternative is the model confidently answering "as we
     # discussed" questions it never saw, which is exactly the jwall failure mode.
     conversation_reset: bool = False
+    service_down: bool = False
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -612,6 +614,11 @@ def last_answer(session_id: str) -> dict:
     return _answers.get(session_id) or {}
 
 
+@app.exception_handler(UnknownOwner)
+def unknown_owner(request: Request, e: UnknownOwner) -> JSONResponse:
+    return JSONResponse({"detail": str(e)}, status_code=404)
+
+
 @app.post("/ask", response_model=AskResponse)
 async def ask(request: AskRequest, http: Request) -> AskResponse:
     t = tier(http)
@@ -666,6 +673,14 @@ async def ask(request: AskRequest, http: Request) -> AskResponse:
             _progress.pop(request.session_id, None); _partial.pop(request.session_id, None)
             return AskResponse(text=("The analysis tools didn't load for that one - nothing was answered, "
                                      "and no verdict was invented. Ask again in a moment."))
+    except AIServiceDown as e:
+        # run_query already logged it. A refused call costs nothing, so no ledger charge; the
+        # session goes because its client still holds whatever key was just refused.
+        if request.session_id:
+            await sessions.drop(request.session_id)
+        _progress.pop(request.session_id, None)
+        _partial.pop(request.session_id, None)
+        return AskResponse(text=e.message, service_down=True)
     except SessionBusy:
         return AskResponse(text=("The public demo is busy right now - every conversation slot is in "
                                  "use. The table, rosters and composer above still work; try the "

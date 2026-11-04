@@ -1305,6 +1305,17 @@ against the same full-health fill: `out_now` (who, `healthy_ppg`, `back_week`), 
 is done (IR players can return - the owner declined "IR = out for the season"). The agent keeps
 the season's hole apart from the player's dynasty value.
 
+When Anthropic refuses a call (out of credit, bad key, rate limit, outage) the SDK delivers the
+refusal as ordinary assistant text. `AIServiceDown` catches it first, so the page says what
+happened and that the table still works, and the day's budget isn't charged.
+
+A tab left open reloads when you return after 30 minutes away, unless a question is in flight,
+text is typed or trade pieces are picked. 30 minutes: past the 15-minute idle limit on chat
+sessions and long enough that rosters and the deployed app may have changed. Switching leagues
+now also clears both trade sides: a partner carried over from XFL 2 (`shivvv`) made every trade
+request in the other league fail on 2026-10-30. An unknown owner is a 404, which the page doesn't
+retry, rather than a 500, which it retries four times.
+
 The composer's "only moves at a cornerstone's price" is for tagged cornerstones only. It once
 covered every piece with runway, so it called Khalil Shakir (1,410, 2.3 years) a cornerstone.
 

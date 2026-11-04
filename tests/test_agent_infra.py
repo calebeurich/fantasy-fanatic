@@ -253,3 +253,64 @@ def test_ppg_guard_flags_prices_wearing_pergame_units():
     # A whole lineup's total IS three digits a game - live on Haiku 5.5, 2026-10-11, the
     # guard forced a retry on a correct "projects to score 149.3 PPG".
     assert not _unit_violations("the lineup projects to score 149.3 PPG, 172 points a game at best")
+
+
+def _refusal(kind, text):
+    from claude_agent_sdk import AssistantMessage, TextBlock
+    return AssistantMessage(content=[TextBlock(text=text)], model="m", error=kind)
+
+
+class _RefusingClient:
+    def __init__(self, message):
+        self.message = message
+
+    async def query(self, question):
+        pass
+
+    async def receive_response(self):
+        yield self.message
+
+
+def test_a_refused_call_is_never_shown_as_the_answer():
+    """The SDK delivers "Credit balance is too low" as ordinary assistant text."""
+    import asyncio
+    import pytest
+    from agent.agent import AIServiceDown, _run_turn
+    with pytest.raises(AIServiceDown) as e:
+        asyncio.run(_run_turn(_RefusingClient(_refusal("billing_error", "x")), "q", False))
+    assert "out of AI credit" in e.value.message and "still work" in e.value.message
+
+
+def test_low_credit_reads_as_billing_even_when_sent_as_a_bad_request():
+    from agent.agent import _service_error
+    assert _service_error(_refusal("invalid_request", "Credit balance is too low")) == "billing_error"
+    assert _service_error(_refusal("rate_limit", "slow down")) == "rate_limit"
+    assert _service_error(_refusal(None, "a normal answer")) is None
+
+
+def test_ask_says_the_service_is_down_and_charges_nothing(monkeypatch):
+    import asyncio
+    from agent import api
+    from agent.agent import AIServiceDown
+
+    async def refuse(*a, **k):
+        raise AIServiceDown("billing_error")
+    charged = []
+    monkeypatch.setattr(api, "run_query", refuse)
+    monkeypatch.setattr(api, "tier", lambda request: "friend")
+    monkeypatch.setattr(api.budget.friends, "is_exhausted", lambda: False)
+    monkeypatch.setattr(api.budget.friends, "record", charged.append)
+    out = asyncio.run(api.ask(api.AskRequest(question="q"), None))
+    assert out.service_down and "out of AI credit" in out.text
+    assert charged == []
+
+
+def test_an_unknown_owner_is_a_404_the_page_will_not_retry():
+    """A trade partner carried over from another league caused a burst of retried 500s."""
+    import json
+    from agent import api
+    from analysis.league import UnknownOwner
+    assert issubclass(UnknownOwner, ValueError)            # tools that catch ValueError still do
+    response = api.unknown_owner(None, UnknownOwner("no owner matching 'shivvv'"))
+    assert response.status_code == 404
+    assert "shivvv" in json.loads(response.body)["detail"]

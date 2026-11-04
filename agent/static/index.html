@@ -473,6 +473,22 @@ function showView(name) {
 document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => showView(b.dataset.view));
 if (matchMedia("(max-width:600px)").matches) $("intro").open = false;   // a screen of text before the table, on a phone
 showView(["trade", "ask"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "league");
+
+// Back after a long time away: the rosters on screen may have changed and the app may have
+// been updated, so reload - unless that would throw away something in progress.
+const STALE_TAB_MS = 30 * 60 * 1000;
+let leftAt = null;
+const tabLeft = () => { leftAt = leftAt || Date.now(); };
+const tabBack = () => {
+  const away = leftAt ? Date.now() - leftAt : 0;
+  leftAt = null;
+  const working = localStorage.getItem("ff_pending") || $("q").value.trim()
+                  || trade.a.picks.size || trade.b.picks.size || document.querySelector(".crow.on");
+  if (away > STALE_TAB_MS && !working) location.reload();
+};
+addEventListener("blur", tabLeft);
+addEventListener("focus", tabBack);
+document.addEventListener("visibilitychange", () => document.hidden ? tabLeft() : tabBack());
 let currentLeague = null;
 let currentLeagueName = null;
 let lastCounterparty = null;   // the composer's last "both sides" ask, so a retry re-runs the other manager too
@@ -634,7 +650,8 @@ let leagueTeams = {};        // owner -> overview row (path, ePPG, needs) for th
 let pageTier = "friend";     // from /api/defaults; the demo skips the counterparty (it costs an ask)
 const movableCache = {};     // league/owner/stance -> {players:Set, picks:Set}
 const fitsCache = {};        // league/owner/stance -> [{name, owner, tag, why}] pieces elsewhere that fit him
-const trade = {a: {owner: null, stance: "", picks: new Set()}, b: {owner: null, stance: "", picks: new Set()}};
+const freshSide = () => ({owner: null, stance: "", picks: new Set()});
+const trade = {a: freshSide(), b: freshSide()};
 let evalTimer = null;
 let trayMoreOpen = !matchMedia("(max-width:760px)").matches;   // desktop shows the impact; phone folds it
 
@@ -1049,7 +1066,7 @@ async function loadLeague(id) {
     if (currentLeague && currentLeague !== id) {
       startNewConversation(`Switched leagues — started a new conversation for ${currentLeagueName || "this league"}.`);
     }
-    if (currentLeague !== id) { myTeam = null; myStance = ""; }
+    if (currentLeague !== id) { myTeam = null; myStance = ""; trade.a = freshSide(); trade.b = freshSide(); }
     currentLeague = id;
     localStorage.setItem("ff_last_league", id);
     leagueTeams = Object.fromEntries(d.teams.map(t => [t.owner, t]));
@@ -1306,15 +1323,16 @@ function renderAnswer(el, d, question) {
   if (d.num_turns != null) bits.push(d.num_turns + " turns");
   if (d.grounding_retries) bits.push(d.grounding_retries + " grounding retry");
   if (d.budget_exhausted) bits.push("daily budget reached");
+  if (d.service_down) bits.push("AI service unavailable");
   if (bits.length) {
     const m = document.createElement("div");
-    m.className = "meta" + (d.budget_exhausted ? " warn" : "");
+    m.className = "meta" + (d.budget_exhausted || d.service_down ? " warn" : "");
     m.textContent = bits.join(" · ");
     el.appendChild(m);
   }
   // One thumbs-click per answer - "that doesn't make sense" is the single richest
   // bug source this project has, and this is that sentence with a button.
-  if (!d.budget_exhausted && d.text) {
+  if (!d.budget_exhausted && !d.service_down && d.text) {
     const fb = document.createElement("div");
     fb.className = "meta";
     ["👍", "👎"].forEach(v => {
