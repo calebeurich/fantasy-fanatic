@@ -493,8 +493,8 @@ Open gaps:
   `sources/dp_values.py` and research/market_reactions.py are the starting point.
 - **Dead-end advice:** it said to spend picks on a WR while "no WR target surfaced" for that
   team. Find out whether the target search has a real gap, or none exist.
-- **Cold starts:** usually 5-25s, but 58-91s every week or two. Startup CPU boost on staging from
-  2026-11-03; compare the next few, then decide on prod.
+- **Cold starts:** usually 5-25s, but 58-91s every week or two. Startup CPU boost on both
+  services from 2026-11-03; compare the next several against that baseline.
 - **Projection snapshots:** the weekly job isn't built, and week 8 of 2026 was missed.
 
 **Later, not now (owner, 2026-11-03): the sellable version.** Notes from the discussion, to
