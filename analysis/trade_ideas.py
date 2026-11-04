@@ -300,8 +300,12 @@ def _available(p: _Pair, prop: dict) -> bool:
             and all(sender_ok(n, "b") and taker_ok(n, "a", prop["a_sends"]) for n in prop["b_sends"]))
 
 
+def _well_below_healthy(now: float, healthy: float | None) -> bool:
+    return bool(healthy) and now <= HURT_SHARE * healthy
+
+
 def _is_hurt(p: _Pair, name: str) -> bool:
-    return bool(p.healthy.get(name)) and p.eppg.get(name, 0) <= HURT_SHARE * p.healthy[name]
+    return _well_below_healthy(p.eppg.get(name, 0), p.healthy.get(name))
 
 
 def _swap_in_band(x: float, y: float) -> bool:
@@ -533,6 +537,10 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
             else:
                 out.append({"name": info["name"], "owner": seller, "tag": "depth for them",
                             "why": f"would start for {owner} if one {info['position']} were out"})
+        elif result["mode"] == "buy" and _well_below_healthy(eppg(info), info.get("healthy_ppg")):
+            out.append({"name": info["name"], "owner": seller, "tag": "no help this season", "no_fit": True,
+                        "why": f"{owner} is contending and he projects {eppg(info):.1f} a game, "
+                               f"against {info['healthy_ppg']:.1f} at full health"})
         elif below_bar(info):
             out.append({"name": info["name"], "owner": seller, "tag": "no spot in their lineup", "no_fit": True,
                         "why": f"wouldn't start for {owner} even with a starter out"})

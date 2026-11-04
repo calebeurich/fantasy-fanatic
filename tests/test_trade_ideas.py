@@ -1,6 +1,8 @@
 """The trade-ideas rules (analysis/trade_ideas.py), each pinned by name. Plain-dict
 fixtures, no network. The owner quotes behind every rule: LOGIC.md "Trade ideas"."""
 
+from types import SimpleNamespace
+
 from analysis import trade_ideas as ti
 
 
@@ -188,3 +190,26 @@ def test_a_starter_they_would_move_is_an_upgrade_even_without_a_need(monkeypatch
     p = _pair(results={"a": {"mode": "buy", "my_offers": []}, "b": {"mode": "rebuild"}}, value={"Watson": 3856}, position={"Watson": "WR"})
     props = [c for c in ti._proposals(p, "A", "B") if c.get("lineup_upgrade")]
     assert [(c["a_sends"], c["b_sends"], c["lens"]) for c in props] == [([], ["Watson"], "buy")]
+
+
+def test_a_contender_has_no_use_for_real_value_that_cannot_help_this_season(monkeypatch):
+    """Achane and Dart clear the trade bar, but out this season they do nothing for a contender.
+    A healthy piece of the same value stays lit, and a middling team can look past this year."""
+    players = {
+        "out": {"name": "Out", "position": "RB", "value": 3735, "projected_ppg": 0, "healthy_ppg": 15.1, "age": 25},
+        "fit": {"name": "Fit", "position": "RB", "value": 3735, "projected_ppg": 5, "healthy_ppg": 5, "age": 25},
+        "starter": {"name": "Starter", "position": "RB", "value": 5000, "projected_ppg": 20, "healthy_ppg": 20, "age": 25},
+    }
+    ctx = SimpleNamespace(
+        players=players, trade_thresholds={"RB": 2595}, lineup_dedicated={}, lineup_flex=[],
+        roster_for=lambda o: {"players": ["out", "fit"] if o == "seller" else []}, starters_for=lambda r: set())
+    monkeypatch.setattr(ti, "context", lambda _: ctx)
+    monkeypatch.setattr(ti.trade_targets, "offerable_names", lambda _: {"Out", "Fit"})
+    monkeypatch.setattr(ti.roster_needs, "fill_lineup", lambda *a: [("RB", "starter")])
+    monkeypatch.setattr(ti.roster_needs, "projected_starters", lambda *a: set())
+    monkeypatch.setattr(ti.roster_needs, "would_start_if_one_out", lambda *a: False)
+    mode = {"mode": "buy"}
+    monkeypatch.setattr(ti.trade_targets, "find_targets", lambda *a, **k: mode)
+    assert [(f["name"], f["tag"]) for f in ti.fits("L", "buyer", "seller")] == [("Out", "no help this season")]
+    mode["mode"] = "middling"
+    assert ti.fits("L", "buyer", "seller") == []

@@ -2201,8 +2201,12 @@ test - your lineup with him added:
   his own team would move him (owner: Pollard and Metcalf lit up with a selling partner). The first is a
   buyer's lineup: he wouldn't start or even cover. The second is a rebuild: he isn't on its wish list and is
   under a year from decline (`NO_FIT_RUNWAY`), the same runway logic behind what a rebuild takes in an idea.
-  Both also need him below his position's trade bar: Jaxson Dart or a hurt Achane may not make a contender's
-  lineup, but real dynasty value interests anyone. Still tappable.
+  Both also need him below his position's trade bar: real dynasty value interests anyone. Still tappable.
+- **"no help this season"** - greyed for a contender (`mode` buy) whatever his dynasty value, when he wouldn't
+  start and projects at most `HURT_SHARE` of his healthy rate, the same test a season swap uses. Owner: as a
+  contender "I would not want to trade for them because they are out for the season" (Achane, Jaxson Dart). The
+  tag doesn't say hurt or out: a backup also projects near zero, and IR players can return. A middling team or
+  a rebuild can still look past this year, so neither gets it.
 
 The same tags feed the ideas generator's consolidations: "starts / level / beats" count
 as starting for the receiver, "depth" as cover.
