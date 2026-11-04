@@ -29,7 +29,8 @@ MAX_PER_SIDE = 3              # candidate pieces considered per target / per sel
 CONSOLIDATION_POOL = 4        # names considered for two-piece consolidations
 HURT_SHARE = 0.65             # a season swap's hurt piece projects at most this share of his healthy rate
 SWAP_BAND = 0.85              # ...and the lighter side holds at least this share of the heavier's value
-SWAP_MIN_GAIN = 1.0           # ...and the contender's lineup gains at least this many points a game
+LINEUP_GAIN_MIN = 1.0         # a swap or upgrade adds at least this many points a game to the buyer's lineup
+NO_FIT_RUNWAY = 1             # a rebuild isn't collecting a piece this close to his decline
 
 
 @dataclass
@@ -133,6 +134,11 @@ def _proposals(p: _Pair, me: str, them: str) -> list[dict]:
     result = p.results[side]
     offerable = trade_targets.offerable_names(result)
     out = []
+    # Anything they'd move that starts for me: a flex or weak starter is no "need", but it's still an upgrade.
+    for f in fits(p.league_id, me, them):
+        if f["tag"].startswith("starts"):
+            out.append({"a_sends": [], "b_sends": [f["name"]], "lens": "buy", "lineup_upgrade": True,
+                        "why": f"{f['name']} would start for {me}: {f['why']}"})
     for r in _branches(result):
         for t in (r.get("targets") or []) + (r.get("long_shots") or []):
             if t.get("from_owner") != them:
@@ -217,14 +223,17 @@ def _centerpiece_ok(p: _Pair, prop: dict) -> bool:
 
 def sweeteners(p: _Pair, light: str, already: list[str], light_is_buyer: bool) -> list[list[tuple]]:
     """What the light side can add, cheapest first, singles then pairs. Picks only if
-    the other side takes picks - 1sts and 2nds, nearest year first; a seller may instead
-    add a smaller piece it is moving anyway, never one bigger than what it started with."""
+    the other side takes picks - 1sts and 2nds, nearest year first, and a later round only
+    alongside one of those to close the gap; a seller may instead add a smaller piece it
+    is moving anyway, never one bigger than what it started with."""
     other = "b" if light == "a" else "a"
     picks = p.picks[light] if p.wants_picks[other] else []
     nearest = {}
     for n, v in picks:
         nearest.setdefault(n.split(" ", 1)[1], v)   # sorted by round, then season
-    opts = [(n, v, nearest[n.split(" ", 1)[1]], int(n[:4])) for n, v in picks if " 1st" in n or " 2nd" in n]
+    priced = [(n, v, nearest[n.split(" ", 1)[1]], int(n[:4])) for n, v in picks]
+    opts = [o for o in priced if " 1st" in o[0] or " 2nd" in o[0]]
+    closers = [o for o in priced if o not in opts]
     if not light_is_buyer:
         cap = min((p.value[n] for n in already if n in p.value), default=0)
         opts += [(n, p.value[n], p.value[n], 0) for n in p.movable[light]
@@ -232,7 +241,7 @@ def sweeteners(p: _Pair, light: str, already: list[str], light_is_buyer: bool) -
     opts.sort(key=lambda o: (o[2], o[3]))
     singles = [[(n, v)] for n, v, *_ in opts]
     pairs = [[(x[0], x[1]), (y[0], y[1])] for x, y in
-             sorted(((x, y) for i, x in enumerate(opts) for y in opts[i + 1:]),
+             sorted(((x, y) for i, x in enumerate(opts) for y in opts[i + 1:] + closers),
                     key=lambda c: (c[0][2] + c[1][2], c[0][3] + c[1][3]))]
     return singles + pairs
 
@@ -376,17 +385,20 @@ def suggest(league_id: str, a: str, b: str, stance_a: str | None = None,
     seen, used_a, used_b, out = set(), set(), set(), []
     for prop in season_swaps(p):
         delta = _buyer_delta(p, prop)
-        if delta >= SWAP_MIN_GAIN:
+        if delta >= LINEUP_GAIN_MIN:
             out.append({**prop, "partner": b, "buyer_delta": delta})
     out = sorted(out, key=lambda c: -c["buyer_delta"])[:limit]
     if len(out) == limit:
         return out
+    for c in out:
+        used_a |= {n for n in c["a_sends"] if n in p.position}
+        used_b |= {n for n in c["b_sends"] if n in p.position}
     for prop in filter(None, (_balance(p, c) for c in cands if _available(p, c))):
         key = (tuple(prop["a_sends"]), tuple(prop["b_sends"]))
         if key in seen or (set(prop["a_sends"]) & used_a) or (set(prop["b_sends"]) & used_b):
             continue
         delta = _buyer_delta(p, prop)
-        if delta < -BUYER_DIP_OK:
+        if delta < -BUYER_DIP_OK or (prop.get("lineup_upgrade") and delta < LINEUP_GAIN_MIN):
             continue
         seen.add(key); used_a |= set(prop["a_sends"]); used_b |= set(prop["b_sends"])
         pile = qb_stockpile(p, prop)
@@ -517,6 +529,9 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
             else:
                 out.append({"name": info["name"], "owner": seller, "tag": "depth for them",
                             "why": f"would start for {owner} if one {info['position']} were out"})
+        else:
+            out.append({"name": info["name"], "owner": seller, "tag": "no spot in their lineup", "no_fit": True,
+                        "why": f"wouldn't start for {owner} even with a starter out"})
     for r in _branches(result):
         for t in r.get("acquire_targets") or []:   # tagged only above the trade bar
             if (t.get("from_owner") or t.get("owner")) == seller and t.get("value", 0) >= ctx.trade_thresholds.get(t.get("position"), 0):
@@ -527,6 +542,14 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
                 if (ret.get("owner") or ret.get("from_owner")) == seller and not ret.get("already_mine"):
                     out.append({"name": ret["name"], "owner": seller, "tag": f"beats their {u['move_off']}",
                                 "why": (ret.get("note") or "")[:200]})
+    if not buying:
+        wished = {f["name"] for f in out}
+        for pid in seller_roster["players"] or []:
+            info = ctx.players.get(pid)
+            if (info and info["name"] in movable and info["name"] not in wished
+                    and years_to_decline(info["position"], info["age"], info.get("usage_role")) < NO_FIT_RUNWAY):
+                out.append({"name": info["name"], "owner": seller, "tag": "not what they're collecting", "no_fit": True,
+                            "why": f"{owner} is rebuilding and {info['name']} is near or past his decline"})
     return out
 
 

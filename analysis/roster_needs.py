@@ -193,8 +193,9 @@ def _injury_drop(roster: dict, players: dict[str, dict], pos: str, starters: set
 def weakest_starter(players: dict[str, dict], starters: set[str]) -> str | None:
     """The starter producing least - the marginal lineup spot, the same one `_injury_drop`
     reasons about. Shared so `stranded_starters` and its caller's prose read the bar off one
-    definition instead of each computing their own."""
-    lineup = [p for p in starters if p in players]
+    definition instead of each computing their own. A starter with no season price (Lamar,
+    hurt) isn't a price of zero: read that way, the whole bench looked stranded behind him."""
+    lineup = [p for p in starters if p in players and players[p].get("redraft_value") is not None]
     return min(lineup, key=lambda p: players[p].get("redraft_value") or 0) if lineup else None
 
 

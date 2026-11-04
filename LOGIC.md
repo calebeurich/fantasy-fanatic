@@ -2087,7 +2087,8 @@ earlier 0.7x floor for "production-priced" pieces produced Cam Ward alone for
 Jonathan Taylor (0.69x; owner: "a slap in the face") and Price + a 2nd for Taylor
 ("probably wants to be a first"). Outside the band the LIGHT side sweetens from what
 it would move, singles then pairs, cheapest that lands first: a buyer adds 1sts and
-2nds only (3rds and 4ths aren't currency for a real chip - "at least a 2nd"; not a 1st
+2nds (3rds and 4ths aren't currency for a real chip - "at least a 2nd" - but one may sit
+beside a 1st or 2nd to close the gap, owner: "it's still capital to even out value"; not a 1st
 when a 2nd does it; same-round picks cost the same so the NEAREST year goes first, a
 '27 1st is what people actually offer, not the '29 - owner) and only to a receiver that
 wants picks (rebuild/middle - a contender wants production); a seller adds picks the
@@ -2162,6 +2163,18 @@ wanting picks. So it is its own rule, between a contender (`mode` buy) and a reb
   not years to decline: that rejected Lamar for Mahomes (4.2 years vs 5.9) because Lamar's rushing shortens
   his number, while the owner's example is the 29.8-year-old going to the rebuild for the 31.1-year-old.
 
+### Lineup upgrades (`trade_ideas._proposals`, 2026-11-03)
+
+Owner: "I don't get trade suggestions to upgrade my flex since Dallas Goedert is only a fine flex." Needs only
+count dedicated positions, and production adds only list declining veterans, so Christian Watson on a selling
+team (+5.4 a game) never came up while the trade panel tagged him as a start. Now anything the other team would
+move that "starts for them" is a proposal, kept if it adds at least 1 point a game (`LINEUP_GAIN_MIN`, the same
+bar as a season swap). The band, the trade bar and "a contender wants production, not picks" still apply, so a
+contender's starter needs a real piece coming back.
+
+Unpriced isn't zero: `weakest_starter` and the nearest-door note skip a starter with no season price. Lamar,
+hurt, read as a price of 0, and that put ten of dez's bench players in "stranded production".
+
 ### Composer tags (`trade_ideas.fits`)
 
 The tag on each piece the other team would move says why YOU would want him, from one
@@ -2184,6 +2197,11 @@ test - your lineup with him added:
   - a 748-value QB3 is a roster clogger, not a wish.
 - **"beats their X"** - an efficiency swap from your own value_upgrades whose return
   sits on that roster.
+- **"no spot in their lineup" / "not what they're collecting"** - he's greyed for this partner, even though
+  his own team would move him (owner: Pollard and Metcalf lit up with a selling partner). The first is a
+  buyer's lineup: he wouldn't start or even cover. The second is a rebuild: he isn't on its wish list and is
+  under a year from decline (`NO_FIT_RUNWAY`), the same runway logic behind what a rebuild takes in an idea.
+  Still tappable.
 
 The same tags feed the ideas generator's consolidations: "starts / level / beats" count
 as starting for the receiver, "depth" as cover.

@@ -31,13 +31,15 @@ def test_band_is_directional_in_the_buyers_view():
 
 
 def test_a_buyer_sweetens_with_1sts_and_2nds_nearest_year_first():
-    """3rds and 4ths aren't currency for a real chip ("at least a 2nd"); same-round
-    picks cost the same, so the NEAREST year is offered first ('27 1st, not '29)."""
+    """3rds and 4ths aren't currency for a real chip ("at least a 2nd"), but one can close
+    the gap beside one (owner: "still capital to even out value"); same-round picks cost
+    the same, so the NEAREST year is offered first ('27 1st, not '29)."""
     p = _pair(picks={"a": [("2027 1st", 3000), ("2029 1st", 2600), ("2027 2nd", 1000),
                            ("2027 3rd", 300)], "b": []})
     offered = [combo[0][0] for combo in ti.sweeteners(p, "a", [], light_is_buyer=True) if len(combo) == 1]
     assert offered == ["2027 2nd", "2027 1st", "2029 1st"]
-    assert not any(n == "2027 3rd" for combo in ti.sweeteners(p, "a", [], True) for n, _ in combo)
+    combos = ti.sweeteners(p, "a", [], True)
+    assert [("2027 3rd", 300)] not in combos and [("2027 2nd", 1000), ("2027 3rd", 300)] in combos
 
 
 def test_no_picks_top_up_a_side_that_does_not_take_picks():
@@ -177,3 +179,12 @@ def test_no_swap_without_a_real_season_gap_or_the_right_two_teams():
     assert not ti.season_swaps(_swap_pair(age={"Lamar": 29.8, "Mahomes": 25.0, "Jones": 31.9}))
     assert not ti.season_swaps(_swap_pair(value={"Lamar": 9000, "Mahomes": 3000, "Jones": 1215},
                                           all_picks={"a": [], "b": []}))
+
+
+def test_a_starter_they_would_move_is_an_upgrade_even_without_a_need(monkeypatch):
+    """Goedert at flex is no "need", but Watson starting over him is still an upgrade."""
+    monkeypatch.setattr(ti, "fits", lambda *a, **k: [{"name": "Watson", "tag": "starts for them (+5.4)", "why": "w"},
+                                                     {"name": "Meyers", "tag": "depth for them", "why": "m"}])
+    p = _pair(results={"a": {"mode": "buy", "my_offers": []}, "b": {"mode": "rebuild"}}, value={"Watson": 3856}, position={"Watson": "WR"})
+    props = [c for c in ti._proposals(p, "A", "B") if c.get("lineup_upgrade")]
+    assert [(c["a_sends"], c["b_sends"], c["lens"]) for c in props] == [([], ["Watson"], "buy")]

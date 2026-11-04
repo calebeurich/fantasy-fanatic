@@ -2899,3 +2899,11 @@ def test_a_team_with_no_manager_is_its_own_team(monkeypatch):
     assert names == {"u1": "dez", "open-2": "Open team 2", "open-3": "Open team 3"}
     sleeper.get_rosters.cache_clear()
     sleeper.get_users.cache_clear()
+
+
+def test_a_starter_with_no_season_price_is_not_the_stranded_bar():
+    """Lamar, hurt, has no price: read as zero, every bench player looked stranded behind him."""
+    players = {"Hurt": {"redraft_value": None, "position": "QB"}, "Low": {"redraft_value": 1000, "position": "TE"},
+               "Bench": {"redraft_value": 1500, "position": "RB"}}
+    assert roster_needs.weakest_starter(players, {"Hurt", "Low"}) == "Low"
+    assert roster_needs.stranded_starters({"players": ["Hurt", "Low", "Bench"]}, players, {"Hurt", "Low"}) == []

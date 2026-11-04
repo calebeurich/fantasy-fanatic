@@ -115,6 +115,7 @@ def find_targets(league_id: str, owner_query: str,
 
     def _nearest_door(pos):
         doors = [(slot, ctx.players[pid]) for slot, pid in filled if pid in ctx.players
+                 and ctx.players[pid].get("redraft_value") is not None
                  and (slot == pos or pos in roster_needs.FLEX_ELIGIBILITY.get(slot, ()))]
         if not doors:
             return None

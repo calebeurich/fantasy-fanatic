@@ -346,7 +346,7 @@
         white-space:nowrap;flex:none;margin-left:2px}
   .ftag.swap{color:var(--mid)}
   .ftag.wish{color:var(--rebuild)}
-  .ftag.depth{color:var(--dim)}
+  .ftag.depth,.ftag.nofit{color:var(--dim)}
   /* The tag took the name's width and names collapsed to ".." (owner's screenshot). Whenever
      a roster column is narrow, on any screen, the tag drops to its own line under the name. */
   #crostera,#crosterb{container-type:inline-size}
@@ -971,8 +971,8 @@ async function fillSide(leagueId, k) {
     .sort((x, y) => (y.tag.startsWith("beats") ? 1 : 0) - (x.tag.startsWith("beats") ? 1 : 0))
     .forEach(f => { if (!tagOf[f.name]) tagOf[f.name] = f; });
   const tag = name => { const f = tagOf[name]; if (!f) return "";
-    const cls = f.tag.startsWith("beats") ? "swap" : f.tag.startsWith("depth") ? "depth" : f.tag.startsWith("on their") ? "wish" : "";
-    const glyph = f.tag.startsWith("beats") ? "⇄ " : f.tag.startsWith("depth") ? "" : "✚ ";
+    const cls = f.no_fit ? "nofit" : f.tag.startsWith("beats") ? "swap" : f.tag.startsWith("depth") ? "depth" : f.tag.startsWith("on their") ? "wish" : "";
+    const glyph = f.tag.startsWith("beats") ? "⇄ " : f.no_fit || f.tag.startsWith("depth") ? "" : "✚ ";
     return `<span class="ftag ${cls}" title="${(f.why || "").replace(/"/g, "&quot;")}">${glyph}${f.tag}</span>`; };
   const chosen = new Set(picked(k));
   const html = ["QB", "RB", "WR", "TE"].map(pos => {
@@ -981,12 +981,14 @@ async function fillSide(leagueId, k) {
     const nStart = ordered.filter(p => p.starter).length;
     const rows = ordered.map((p, i) => {
       const priced = mv.priced.has(p.name);
-      const off = !mv.players.has(p.name) && !priced;
+      const noFit = tagOf[p.name] && tagOf[p.name].no_fit;
+      const off = (!mv.players.has(p.name) && !priced) || noFit;
       const rv = p.redraft_value || 0;
       const mk = !p.starter ? (bar && rv >= bar ? "sq" : "") : (!competing || !bar || rv >= bar) ? "st" : rv < 0.6 * bar ? "st deep" : "st under";
       const rule = "";
       const on = chosen.has(p.name);
-      const title = off ? "not something this team would move on its path — tap anyway if you insist"
+      const title = noFit ? `${other.owner} has little use for him — tap anyway if you insist`
+                  : off ? "not something this team would move on its path — tap anyway if you insist"
                   : priced ? "years still on him — only moves at a cornerstone's price" : "";
       const spare = !off && !on && (priced || !tagOf[p.name]);
       return `<div class="crow ${p.starter ? "st" : ""} ${off ? "off" : ""} ${spare ? "spare" : ""} ${on ? "on" : ""} ${tagOf[p.name] && !priced ? "tagged" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${title}" tabindex="0" role="button" aria-pressed="${on}">` +
