@@ -1309,12 +1309,17 @@ When Anthropic refuses a call (out of credit, bad key, rate limit, outage) the S
 refusal as ordinary assistant text. `AIServiceDown` catches it first, so the page says what
 happened and that the table still works, and the day's budget isn't charged.
 
-A tab left open reloads when you return after 30 minutes away, unless a question is in flight,
-text is typed or trade pieces are picked. 30 minutes: past the 15-minute idle limit on chat
-sessions and long enough that rosters and the deployed app may have changed. Switching leagues
-now also clears both trade sides: a partner carried over from XFL 2 (`shivvv`) made every trade
-request in the other league fail on 2026-10-30. An unknown owner is a 404, which the page doesn't
-retry, rather than a 500, which it retries four times.
+Back on a tab after 30 minutes away, the league refreshes in place, leaving a half-built trade
+alone; the page reloads only for a new deploy with no conversation or trade to lose, because a
+reload is a fresh conversation on purpose. 30 minutes: past the 15-minute idle limit on chat
+sessions, and long enough that rosters may have changed. Switching leagues also clears both trade
+sides: a partner carried over from XFL 2 (`shivvv`) made every trade request in the other league
+fail on 2026-10-30. An unknown owner or league is a 404, which the page doesn't retry.
+
+The page shows what it is doing: a thin moving line after 300ms of loading, so fast requests don't
+flicker, and plain words after 8 seconds, roughly past a normal wait and into a cold start. The chat
+session warms after the league table lands rather than at page load, because on one CPU its ~8s
+start-up slowed the table.
 
 The composer's "only moves at a cornerstone's price" is for tagged cornerstones only. It once
 covered every piece with runway, so it called Khalil Shakir (1,410, 2.3 years) a cornerstone.

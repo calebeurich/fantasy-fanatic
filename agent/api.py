@@ -24,7 +24,8 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 
 # NOTE (Windows dev only): do not run this app under `uvicorn --reload`. Reload puts the
@@ -36,6 +37,9 @@ from pydantic import BaseModel
 # loop before importing this module, so the policy applies too late (tried it).
 # Unaffected on Linux, which is why the container never hit this.
 
+import requests
+
+from sources import sleeper
 from analysis import format_support, roster_detail, roster_needs, team_state, trade_activity, trade_ideas, warm
 
 from analysis.league import UnknownOwner
@@ -53,6 +57,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="fantasy-fanatic agent", lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 sessions = SessionManager(_options)
 
 MAX_QUESTION_CHARS = 1000  # a real question is far shorter; this just bounds abuse
@@ -100,6 +105,9 @@ class AskRequest(BaseModel):
     # by the server, which keeps this stateless to look at and means a lost session
     # just starts a new one instead of erroring.
     session_id: str | None = None
+    # Names this one question, so a reconnecting page collects its own answer and never the
+    # previous one on the same session. A timestamp can't: phone and server clocks differ.
+    ask_id: str | None = None
     # The other side of the table: an owner name makes this a one-shot answer AS that
     # manager reacting to the proposal in `question` (COUNTERPARTY_PROMPT). Runs on its
     # own client, never on the asker's conversation; progress/partial text are keyed by
@@ -124,13 +132,26 @@ class AskResponse(BaseModel):
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+APP_VERSION = os.environ.get("K_REVISION", "local")   # Cloud Run sets this per deploy
 
 
 @app.get("/", response_class=HTMLResponse)
-def index() -> str:
+def index() -> HTMLResponse:
     """Single static page, no build step and no npm - it ships inside the same
-    container as the API, so there's nothing separate to deploy or host."""
-    return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    container as the API, so there's nothing separate to deploy or host. no-cache: the page
+    and the API deploy together, so a browser must never pair an old page with a new API."""
+    return HTMLResponse((STATIC_DIR / "index.html").read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+def robots() -> str:
+    return "User-agent: *\nDisallow: /api/\nDisallow: /ask\nDisallow: /sessions/\n"
+
+
+@app.get("/favicon.ico")
+def favicon() -> Response:
+    return Response(status_code=204)   # the page carries its icon inline
 
 
 @app.get("/health")
@@ -150,9 +171,20 @@ def defaults(request: Request) -> dict:
     t = tier(request)
     if t == "demo":
         return {"tier": "demo", "league_id": DEMO_LEAGUE, "owner": None,
-                "asks_per_visitor": budget.DEMO_ASKS_PER_VISITOR}
+                "asks_per_visitor": budget.DEMO_ASKS_PER_VISITOR, "version": APP_VERSION}
     return {"tier": "friend", "league_id": os.environ.get("FF_DEFAULT_LEAGUE"),
-            "owner": os.environ.get("FF_DEFAULT_OWNER")}
+            "owner": os.environ.get("FF_DEFAULT_OWNER"), "version": APP_VERSION}
+
+
+def _league_or_404(league_id: str) -> dict:
+    """A mistyped ID is the visitor's to fix, so say so rather than failing as a server error."""
+    try:
+        league = sleeper.get_league(league_id) if league_id.isdigit() else None
+    except requests.HTTPError:
+        league = None
+    if not league:
+        raise HTTPException(status_code=404, detail="No Sleeper league with that ID. Check it and try again.")
+    return league
 
 
 @app.get("/api/league/{league_id}", dependencies=[Depends(tier)])
@@ -170,6 +202,7 @@ def league_overview(league_id: str) -> dict:
     Free and fast in practice: `sources/cache.py` means a second view of the same
     league, or a question about it right after, reuses the same fetches.
     """
+    league = _league_or_404(league_id)
     tier = format_support.assess_format(league_id)
     if tier["tier"] == "unsupported":
         return {"league_id": league_id, "supported": False, "reason": tier["reason"]}
@@ -184,6 +217,7 @@ def league_overview(league_id: str) -> dict:
 
     return {
         "league_id": league_id,
+        "name": league.get("name"),
         "supported": True,
         "tier": tier["tier"],
         "reason": tier["reason"],
@@ -411,6 +445,36 @@ async def warm_session(session_id: str, request: Request) -> dict:
     """The page calls this on load so the first question skips the ~8s subprocess
     start-up. Only takes a free slot - see SessionManager.prewarm."""
     return {"opened": await sessions.prewarm(session_id, tier(request))}
+
+
+@app.post("/sessions/{session_id}/close")
+async def close_session(session_id: str, request: Request) -> dict:
+    """A reload or a new conversation abandons its session; this frees the slot and its memory
+    now rather than after the idle limit."""
+    tier(request)
+    await sessions.drop(session_id)
+    return {}
+
+
+class ClientError(BaseModel):
+    message: str
+    where: str = ""
+
+
+_client_error_counts: dict[str, int] = {}
+MAX_CLIENT_ERRORS_PER_VISITOR = 30
+
+
+@app.post("/client-error")
+def client_error(error: ClientError, request: Request) -> dict:
+    """Errors only the browser can see reach the logs here. Public, so capped per visitor and
+    trimmed: nothing else depends on it, and it can't be used to fill the logs."""
+    who = _visitor(request)
+    _client_error_counts[who] = _client_error_counts.get(who, 0) + 1
+    if _client_error_counts[who] <= MAX_CLIENT_ERRORS_PER_VISITOR:
+        observability.log_run({"outcome": "client_error", "error": error.message[:500], "where": error.where[:100],
+                               "user_agent": request.headers.get("user-agent", "")[:150]})
+    return {}
 
 
 @app.get("/diagnostics", dependencies=[Depends(require_key)])
@@ -712,7 +776,7 @@ async def ask(request: AskRequest, http: Request) -> AskResponse:
     if request.session_id:
         # Written whether or not anyone is still listening - that is the entire point.
         _answers[request.session_id] = {
-            "question": question, "text": result["text"], "cost_usd": result["cost_usd"],
+            "ask_id": request.ask_id, "question": question, "text": result["text"], "cost_usd": result["cost_usd"],
             "num_turns": result["num_turns"],
             "grounding_retries": result["grounding_retries"],
             "conversation_reset": created,

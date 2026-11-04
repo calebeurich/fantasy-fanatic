@@ -13,6 +13,7 @@ Smoke test: python -m analysis.trade_ideas <league_id> <owner>
 import sys
 from dataclasses import dataclass
 
+from sources.cache import ttl_cache, LEAGUE_CONFIG_TTL
 from . import roster_needs, team_state, trade_eval, trade_targets
 from .league import context
 from .team_values import age_bucket, eppg, years_to_decline
@@ -367,6 +368,7 @@ def pick_ideas(cands: list[dict], value: dict, limit: int) -> list[dict]:
     return out
 
 
+@ttl_cache(LEAGUE_CONFIG_TTL)   # seconds of work per team, on the same league data as `context`
 def ideas(league_id: str, owner: str, limit: int = 3, stance: str | None = None) -> list[dict]:
     """One team's ideas across the whole league. A waiting team (no declared stance) sees
     only buys, framed "if you decided to push" - patience needs no sell."""

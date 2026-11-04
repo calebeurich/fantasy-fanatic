@@ -4,14 +4,60 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>fantasy-fanatic</title>
+<meta name="description" content="Dynasty fantasy football advice for your Sleeper league: every team's window, trade ideas, playoff pace, and an assistant that knows your roster.">
+<meta property="og:title" content="fantasy-fanatic">
+<meta property="og:description" content="Dynasty fantasy football advice for your Sleeper league.">
+<meta name="theme-color" content="#151922">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23151922'/%3E%3Cellipse cx='16' cy='16' rx='11' ry='7' transform='rotate(-35 16 16)' fill='%234ade80'/%3E%3C/svg%3E">
 <style>
   :root{
     --bg:#0d1017; --panel:#151922; --panel2:#1b2029; --line:#262d3a;
-    --ink:#e7eaf0; --muted:#93a0b4; --dim:#6b7789;
+    --ink:#e7eaf0; --muted:#93a0b4; --dim:#808da2;
     --win:#f59e0b; --mid:#60a5fa; --rebuild:#a78bfa;
     --crit:#f87171; --thin:#fbbf24; --ok:#4ade80;
   }
+  :root{color-scheme:dark}
   *{box-sizing:border-box}
+  :focus-visible{outline:2px solid var(--mid);outline-offset:1px}
+  /* Far enough below the sticky header that scrolling to something doesn't hide its top. */
+  .msg,tr.team{scroll-margin-top:96px}
+  [hidden]{display:none!important}
+  /* A thin moving line under the tabs while anything is loading, and one line of plain words
+     when it is taking long or the connection is gone. */
+  #busy{height:2px;overflow:hidden;position:relative}
+  #busy.on::after{content:"";position:absolute;top:0;bottom:0;width:30%;background:var(--ok);animation:slide 1.2s ease-in-out infinite}
+  @keyframes slide{from{left:-30%}to{left:100%}}
+  #status{padding:6px 12px;font-size:12.5px;color:var(--thin);background:var(--panel2);border-top:1px solid var(--line)}
+  #toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:20;
+         width:max-content;max-width:min(92vw,560px);padding:10px 14px;border-radius:10px;font-size:13.5px;
+         background:var(--panel2);border:1px solid var(--muted);box-shadow:0 6px 24px rgba(0,0,0,.5)}
+  /* The league while it loads: the shape of the table, so the page doesn't jump when it lands. */
+  @keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+  .skel{height:42px;margin:6px 14px;border-radius:7px;background:linear-gradient(90deg,var(--panel2) 25%,var(--line) 50%,var(--panel2) 75%);
+        background-size:200% 100%;animation:shimmer 1.6s linear infinite}
+  .skelhead{padding:14px 14px 4px;color:var(--muted);font-size:13.5px}
+  .lhead{display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line)}
+  .lhead strong{font-size:15px}
+  .lhead .acts{margin-left:auto;display:flex;gap:6px}
+  .lg.other{opacity:.65}
+  .retry{margin-left:8px;padding:3px 10px;font-size:12px;border-radius:999px}
+  .busyfade{opacity:.5;transition:opacity .15s}
+  #tabs .badge{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-left:6px;vertical-align:1px}
+  #tabs .badge.work{background:transparent;border:1.5px solid var(--line);border-top-color:var(--ok);animation:spin .8s linear infinite;width:10px;height:10px}
+  @media (prefers-reduced-motion:reduce){
+    #busy.on::after{animation:none;width:100%;left:0;opacity:.5}
+    .skel,#tabs .badge.work{animation:none}
+    html{scroll-behavior:auto}
+  }
+  @media (max-width:600px){
+    /* iOS zooms the page when a control under 16px gets focus - selects too, not just inputs. */
+    select{font-size:16px!important}
+    .crow{padding:6px 4px}
+    .cpick{padding:5px 10px}
+    .cstance button,#pin .cstance button{padding:5px 9px}
+    .ctray{padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+  }
   body{margin:0;background:var(--bg);color:var(--ink);
        font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
   /* Three views, one on screen at a time - the page had become one long scroll of
@@ -97,7 +143,8 @@
     #overview tr.team td:nth-child(4){grid-column:2;grid-row:2}
     #overview tr.team td:nth-child(5){display:none}
     #overview tr.team td:nth-child(6){grid-column:3;grid-row:3;text-align:right}
-    #overview tr.team td:nth-child(6) .mlab{display:inline}
+    #overview tr.team .mlab{display:inline}
+    #overview tr.team .noneeds{display:none}
     #overview tr.team td:nth-child(7){grid-column:3;grid-row:2;text-align:right}
     #overview tr.team td:nth-child(8){grid-column:2;grid-row:3}
     #overview tr.team td:nth-child(9){grid-column:2/-1;grid-row:4;display:flex;flex-wrap:wrap;gap:4px}
@@ -297,12 +344,15 @@
   .ftag.swap{color:var(--mid)}
   .ftag.wish{color:var(--rebuild)}
   .ftag.depth{color:var(--dim)}
-  /* Phone: the tag took the name's width and names collapsed to ".." (owner's screenshot).
-     The tag drops to its own line under the name; numbers tighten. */
-  @media (max-width:600px){
+  /* The tag took the name's width and names collapsed to ".." (owner's screenshot). Whenever
+     a roster column is narrow, on any screen, the tag drops to its own line under the name. */
+  #crostera,#crosterb{container-type:inline-size}
+  @container (max-width:520px){
     .crow{flex-wrap:wrap;row-gap:0}
     .crow .n{flex:1 1 0;min-width:0}
-    .crow .ftag{order:9;flex-basis:100%;width:max-content;max-width:100%;margin:0 0 2px 22px;white-space:normal}
+    .crow .ftag{order:9;flex-basis:calc(100% - 22px);margin:0 0 2px 22px;padding:0;border:0;white-space:normal}
+  }
+  @media (max-width:600px){
     .crow .v{width:36px;font-size:11px}
     .crow .a{width:28px;font-size:11px}
     .cside{padding:8px 6px}
@@ -320,7 +370,10 @@
     <button type="button" data-view="ask">Ask</button>
   </nav>
   <div id="pin" style="display:none"></div>
+  <div id="busy" aria-hidden="true"></div>
+  <div id="status" role="status" hidden></div>
 </header>
+<div id="toast" role="status" hidden></div>
 <div class="brand">fantasy-fanatic · dynasty analysis · real Sleeper + FantasyCalc data</div>
 
 <main>
@@ -343,15 +396,15 @@
         <li><strong>Projections, not results.</strong> Team reads come from roster composition,
             market prices and projected points. Records and playoff pace show how the season
             is going, but they don't decide what a roster should do.</li>
-        <li><strong>Answers take up to a minute</strong>, and there's a shared daily budget —
+        <li><strong>Answers take a minute or two</strong>, and there's a shared daily budget —
             if it's spent, come back tomorrow.</li>
       </ul>
     </div>
   </details>
 
   <div class="card">
-    <h2>Find your league</h2>
-    <div class="pad">
+    <h2 id="findhead">Find your league</h2>
+    <div class="pad" id="findpad">
       <div class="row">
         <input id="username" type="text" placeholder="Your Sleeper username" autocomplete="off">
         <button id="find" class="primary" type="button">Find my leagues</button>
@@ -365,7 +418,7 @@
         </div>
       </details>
     </div>
-    <div id="overview"><div class="empty">Enter your Sleeper username to get started.</div></div>
+    <div id="overview" tabindex="-1"><div class="empty">Enter your Sleeper username to get started.</div></div>
   </div>
 </section>
 
@@ -409,18 +462,48 @@ const showCrash = msg => {
       "color:#fff;padding:10px 14px;font:13px/1.4 ui-sans-serif,system-ui,sans-serif";
     document.body.prepend(bar);
   }
-  bar.textContent = "This page hit an error and may not respond — refresh to recover. " +
-                    "If it keeps happening, tell Caleb: " + msg;
+  bar.textContent = "This page hit a problem and may not respond. ";
+  const again = document.createElement("button");
+  again.textContent = "Refresh"; again.style.cssText = "padding:3px 10px;margin:0 6px";
+  again.onclick = () => location.reload();
+  const close = document.createElement("button");
+  close.textContent = "Dismiss"; close.style.cssText = "padding:3px 10px";
+  close.onclick = () => bar.remove();
+  bar.append(again, close);
 };
-window.addEventListener("error", e => showCrash(e.message || "unknown error"));
-window.addEventListener("unhandledrejection", e => showCrash(String(e.reason).slice(0, 120)));
+// What only the browser can see goes to the server logs. Capped per page load; the URL stays
+// out of it because the friends link carries the key.
+let errorsReported = 0;
+const reportError = (message, where) => {
+  if (errorsReported++ >= 5) return;
+  fetch("/client-error", {method: "POST", headers: {"Content-Type": "application/json"}, keepalive: true,
+                          body: JSON.stringify({message: String(message).slice(0, 500), where})}).catch(() => {});
+};
+// Browser noise and other people's scripts (extensions) aren't this page failing.
+window.addEventListener("error", e => {
+  if (!e.message || /ResizeObserver|Script error/.test(e.message)) return;
+  if (e.filename && !e.filename.startsWith(location.origin)) return;
+  reportError(e.message, `${e.lineno}:${e.colno}`);
+  showCrash(e.message);
+});
+window.addEventListener("unhandledrejection", e => {
+  const why = String(e.reason && e.reason.message || e.reason);
+  if (/Failed to fetch|Load failed|NetworkError|aborted/i.test(why)) return;   // a dropped connection, handled where it matters
+  reportError(why, "promise");
+  showCrash(why);
+});
+
+// Private modes and strict settings can make storage throw, which would kill the whole page.
+const memoryStore = () => { const m = {}; return {getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; }}; };
+const usable = get => { try { const s = get(); s.setItem("ff_probe", "1"); s.removeItem("ff_probe"); return s; } catch (_) { return memoryStore(); } };
+const store = usable(() => window["local" + "Storage"]);
+const tabStore = usable(() => window.sessionStorage);
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 
 // Session id is client-generated: the server never issues one, so an expired session
 // starts a fresh conversation instead of erroring, and one tab can't reach another's.
-// localStorage, not sessionStorage: closing the tab should not throw away the
-// conversation, and reclaiming an in-flight answer needs the same id after a reload.
-let sessionId = localStorage.getItem("ff_session") || crypto.randomUUID();
-localStorage.setItem("ff_session", sessionId);
+let sessionId = newId();
 
 // The friends link carries ?key=... - it STAYS in the URL. It used to be stripped (so a
 // screenshot wouldn't leak it), but a phone discards tabs and reloads them from the bare
@@ -430,65 +513,173 @@ localStorage.setItem("ff_session", sessionId);
 // keeps a copy so a bare URL still works on a device that has seen the key.
 {
   const urlKey = new URLSearchParams(location.search).get("key");
-  if (urlKey) localStorage.setItem("ff_key", urlKey);
-  else if (localStorage.getItem("ff_key")) history.replaceState(null, "", `${location.pathname}?key=${encodeURIComponent(localStorage.getItem("ff_key"))}${location.hash}`);
+  if (urlKey) store.setItem("ff_key", urlKey);
+  else if (store.getItem("ff_key")) history.replaceState(null, "", `${location.pathname}?key=${encodeURIComponent(store.getItem("ff_key"))}${location.hash}`);
 }
-const KEY = () => localStorage.getItem("ff_key") || "";
+const KEY = () => store.getItem("ff_key") || "";
 const hdrs = extra => Object.assign({"X-FF-Key": KEY()}, extra || {});
+
+const $ = id => document.getElementById(id);
+
+// ---- what the page is doing, in one place ----
+// The moving line shows after a beat, so fast requests don't flicker it. The words show when
+// something is slow enough to wonder about - usually the app waking up from sleep.
+const BUSY_DELAY_MS = 300, SLOW_AFTER_MS = 8000;
+let inFlight = 0, slowJobs = 0;
+function renderStatus() {
+  const text = !navigator.onLine ? "You're offline. This will pick back up when you reconnect."
+             : slowJobs > 0 ? "Still working. The app sleeps when nobody's using it, and waking up can take a minute." : "";
+  $("status").textContent = text;
+  $("status").hidden = !text;
+}
+addEventListener("online", renderStatus);
+addEventListener("offline", renderStatus);
+function startJob(quiet) {
+  inFlight++;
+  let slow = false;
+  const show = setTimeout(() => { if (inFlight) $("busy").classList.add("on"); }, BUSY_DELAY_MS);
+  const watch = quiet ? null : setTimeout(() => { slow = true; slowJobs++; renderStatus(); }, SLOW_AFTER_MS);
+  return () => {
+    clearTimeout(show); clearTimeout(watch);
+    if (slow) slowJobs--;
+    if (--inFlight === 0) $("busy").classList.remove("on");
+    renderStatus();
+  };
+}
+let toastTimer = null;
+function toast(text, ms = 3500) {
+  const el = $("toast");
+  el.textContent = text; el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, ms);
+}
+$("toast").onclick = () => { $("toast").hidden = true; };
+// A dead end with a way out: what failed, and a button that tries again.
+function failed(el, text, retry) {
+  el.innerHTML = `<span class="cs warn">${esc(text)}</span>`;
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "ghost retry"; b.textContent = "try again";
+  b.onclick = e => { e.stopPropagation(); retry(); };
+  el.appendChild(b);
+}
+const whyFailed = e => (e && e.final ? e.message : "The app didn't respond.");
 
 // Every read goes through here: a phone in and out of service (the subway - owner) drops
 // single requests constantly, and one dropped packet should not mean "Couldn't load".
-// Retries network failures and 5xx a few times with backoff, waiting for the connection
-// to come back first; the ask has its own reclaim path and doesn't use this.
-async function getJSON(url, init) {
-  let last;
-  for (const wait of [0, 1500, 4000, 8000]) {
-    if (wait) await new Promise(r => setTimeout(r, wait));
-    if (!navigator.onLine) await new Promise(r => addEventListener("online", r, {once: true}));
-    try {
-      const res = await fetch(url, init);
-      if (res.status >= 500) { last = new Error(`server ${res.status}`); continue; }
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);   // 4xx: real answer, don't retry
-      return body;
-    } catch (e) { last = e; }
-  }
-  throw last;
+// Retries network failures, 5xx and 429 (Cloud Run while an instance wakes) with backoff,
+// waiting for the connection to come back first; a request that hangs gives up rather than
+// loading forever. Any other 4xx is a real answer. The ask has its own path.
+const REQUEST_TIMEOUT_MS = 120000;
+async function getJSON(url, init, {quiet = false} = {}) {
+  const done = startJob(quiet);
+  try {
+    let last;
+    for (const wait of [0, 1500, 4000, 8000]) {
+      if (wait) await new Promise(r => setTimeout(r, wait));
+      if (!navigator.onLine) await new Promise(r => addEventListener("online", r, {once: true}));
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        const res = await fetch(url, {...init, signal: ctl.signal});
+        if (res.status >= 500 || res.status === 429) { last = new Error(`server ${res.status}`); continue; }
+        const body = await res.json();
+        if (res.ok) return body;
+        throw Object.assign(new Error(body.detail || `HTTP ${res.status}`), {final: true});
+      } catch (e) {
+        if (e.final) throw e;
+        last = e;
+      } finally { clearTimeout(timer); }
+    }
+    throw last;
+  } finally { done(); }
 }
 
-// Start the conversation's subprocesses now, while the reader is still picking a
-// league - the first question then skips ~8s of start-up. Best effort.
-fetch(`/sessions/${sessionId}/warm`, {method: "POST", headers: hdrs()}).catch(() => {});
-
-const $ = id => document.getElementById(id);
+// Start the conversation's subprocesses ahead of the first question, which then skips ~8s of
+// start-up. Not at page load: on one CPU that start-up slows the league table everyone is
+// waiting for. Best effort.
+const warmSession = () => fetch(`/sessions/${sessionId}/warm`, {method: "POST", headers: hdrs()}).catch(() => {});
+const closeSession = id => fetch(`/sessions/${encodeURIComponent(id)}/close`, {method: "POST", headers: hdrs()}).catch(() => {});
+let warmed = false;
+const warmOnce = () => { if (!warmed) { warmed = true; warmSession(); } };
 // One view at a time; the hash remembers it across reloads and the back button.
-function showView(name) {
+// A tab change is a history entry, so a phone's back gesture goes to the last tab instead of
+// leaving the app, and each view comes back where you left it.
+let currentView = null;
+const viewScroll = {};
+function showView(name, {push = true} = {}) {
+  if (currentView) viewScroll[currentView] = window.scrollY;
+  const changed = currentView !== name;
+  currentView = name;
   document.querySelectorAll("section.view").forEach(v => v.classList.toggle("on", v.dataset.view === name));
-  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === name));
-  if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
-  // Ask opens on the NEWEST message (the question you just sent), other views on top.
+  document.querySelectorAll("#tabs button").forEach(b => {
+    b.classList.toggle("on", b.dataset.view === name);
+    if (b.dataset.view === name) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
+  if (location.hash !== "#" + name) history[push ? "pushState" : "replaceState"](null, "", "#" + name);
+  if (name === "ask") { setAskBadge(asking ? "work" : ""); warmOnce(); }
+  // Ask opens on the NEWEST message (the question you just sent).
   const last = name === "ask" && document.querySelector("#log .msg:last-child");
-  if (last) last.scrollIntoView({block: "start"}); else window.scrollTo({top: 0});
+  if (last) last.scrollIntoView({block: "start"});
+  else if (changed) window.scrollTo({top: viewScroll[name] || 0});
 }
+const viewFromHash = () => (["trade", "ask"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "league");
+addEventListener("popstate", () => showView(viewFromHash(), {push: false}));
 document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => showView(b.dataset.view));
+// The Ask tab says when an answer is being written, and when one is waiting for you.
+let asking = false;
+function setAskBadge(kind) {
+  const tab = document.querySelector('#tabs [data-view="ask"]');
+  tab.querySelector(".badge")?.remove();
+  if (kind) { const dot = document.createElement("span"); dot.className = "badge " + kind; tab.appendChild(dot); }
+}
+let pageTitle = "fantasy-fanatic";
+function answerArrived() {
+  if (currentView === "ask" && !document.hidden) { setAskBadge(""); return; }
+  setAskBadge("new");
+  if (document.hidden) document.title = "Answer ready · " + pageTitle;
+}
 if (matchMedia("(max-width:600px)").matches) $("intro").open = false;   // a screen of text before the table, on a phone
-showView(["trade", "ask"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "league");
+showView(viewFromHash(), {push: false});
 
 // Back after a long time away: the rosters on screen may have changed and the app may have
-// been updated, so reload - unless that would throw away something in progress.
+// been updated. A reload would wipe the conversation (a reload is a fresh start on purpose),
+// so it is kept for a new version with nothing to lose; otherwise the data just refreshes
+// in place, unless a trade is half built.
 const STALE_TAB_MS = 30 * 60 * 1000;
-let leftAt = null;
+let leftAt = null, pageVersion = null;
 const tabLeft = () => { leftAt = leftAt || Date.now(); };
-const tabBack = () => {
+const tabBack = async () => {
+  if (!document.hidden) document.title = pageTitle;
+  if (currentView === "ask" && !asking && !document.hidden) setAskBadge("");
   const away = leftAt ? Date.now() - leftAt : 0;
   leftAt = null;
-  const working = localStorage.getItem("ff_pending") || $("q").value.trim()
-                  || trade.a.picks.size || trade.b.picks.size || document.querySelector(".crow.on");
-  if (away > STALE_TAB_MS && !working) location.reload();
+  if (away < STALE_TAB_MS || asking || $("q").value.trim()) return;
+  const talking = document.querySelector("#log .msg");
+  const building = trade.a.picks.size || trade.b.picks.size || document.querySelector(".crow.on");
+  const now = await getJSON("/api/defaults", {headers: hdrs()}, {quiet: true}).catch(() => null);
+  if (now && pageVersion && now.version !== pageVersion && !talking && !building) { location.reload(); return; }
+  if (currentLeague && !building) loadLeague(currentLeague, {refresh: true});
+  if (!talking) warmSession();   // the idle limit let the ready session go
 };
 addEventListener("blur", tabLeft);
 addEventListener("focus", tabBack);
 document.addEventListener("visibilitychange", () => document.hidden ? tabLeft() : tabBack());
+
+// On a touch screen there is no hover, so these explanations were unreachable. A tap shows
+// the same words, and doesn't also open the row or pick the player underneath.
+document.addEventListener("click", e => {
+  if (!matchMedia("(hover:none)").matches) return;
+  const hint = e.target.closest(".tag[title],.need[title],.ftag[title],.flexchip[title],.pacev[title]");
+  if (!hint || !hint.title) return;
+  e.stopPropagation(); e.preventDefault();
+  toast(hint.title, 7000);
+}, true);
+// Enter and Space work on everything clickable that isn't a real button.
+document.addEventListener("keydown", e => {
+  if ((e.key !== "Enter" && e.key !== " ") || !e.target.matches("tr.team,.crow,.cpick,th.sortable")) return;
+  e.preventDefault();
+  e.target.click();
+});
 let currentLeague = null;
 let currentLeagueName = null;
 let lastCounterparty = null;   // the composer's last "both sides" ask, so a retry re-runs the other manager too
@@ -505,7 +696,7 @@ function setYou(owner, stance, opts = {}) {
   const teamChanged = owner !== myTeam, stanceChanged = (stance || "") !== myStance;
   const was = myTeam, wasStance = myStance;
   myTeam = owner; myStance = stance || "";
-  if (currentLeague) localStorage.setItem("ff_you:" + currentLeague, JSON.stringify({team: myTeam, stance: myStance}));
+  if (currentLeague) store.setItem("ff_you:" + currentLeague, JSON.stringify({team: myTeam, stance: myStance}));
   document.querySelectorAll("tr.team").forEach(x => x.classList.toggle("mine", x.dataset.owner === myTeam));
   renderPin();
   if (!myTeam) return;
@@ -570,6 +761,8 @@ $("find").onclick = async () => {
     const user = await getJSON(`https://api.sleeper.app/v1/user/${encodeURIComponent(name)}`);
     if (!user) { $("leagues").innerHTML = '<span class="cs warn">No Sleeper user by that name.</span>'; return; }
     myName = user.display_name || name;
+    store.setItem("ff_username", name);
+    store.setItem("ff_name", myName);
     // Sleeper keys leagues by season; around the rollover the new season may be empty.
     const year = new Date().getFullYear();
     let leagues = await getJSON(`https://api.sleeper.app/v1/user/${user.user_id}/leagues/nfl/${year}`);
@@ -578,9 +771,13 @@ $("find").onclick = async () => {
     }
     if (!leagues || !leagues.length) { $("leagues").innerHTML = '<span class="cs warn">No leagues found for that user.</span>'; return; }
     $("leagues").innerHTML = "";
-    leagues.forEach(l => {
+    // Dynasty first and marked: only those work here, and people often hold both kinds.
+    const isDynasty = l => (l.settings || {}).type === 2;
+    const dynasty = leagues.filter(isDynasty);
+    [...dynasty, ...leagues.filter(l => !isDynasty(l))].forEach(l => {
       const b = document.createElement("button");
-      b.type = "button"; b.className = "lg"; b.textContent = l.name;
+      b.type = "button"; b.className = "lg" + (isDynasty(l) ? "" : " other");
+      b.textContent = l.name + (isDynasty(l) ? "" : " (not dynasty)");
       b.onclick = () => {
         document.querySelectorAll(".lg").forEach(x => x.classList.remove("on"));
         b.classList.add("on");
@@ -589,14 +786,17 @@ $("find").onclick = async () => {
       };
       $("leagues").appendChild(b);
     });
-    if (leagues.length === 1) $("leagues").firstChild.click();
+    if (dynasty.length === 1) $("leagues").firstChild.click();
   } catch (e) {
-    $("leagues").innerHTML = `<span class="cs warn">Lookup failed: ${e}</span>`;
+    failed($("leagues"), "Couldn't reach Sleeper to look that up.", () => $("find").click());
   } finally {
     $("find").disabled = false;
     $("find").textContent = "Find my leagues";
   }
 };
+$("username").value = store.getItem("ff_username") || "";
+myName = store.getItem("ff_name");
+if (store.getItem("ff_last_league")) $("intro").open = false;   // they've read it
 $("username").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("find").click(); } });
 
 // ---- example paths: the question shapes the agent answers best, one click away ----
@@ -637,7 +837,7 @@ async function fetchDetail(leagueId, owner) {
 // twelve parallel fetches looked like request spam).
 async function prefetchDetails(leagueId) {
   try {
-    const all = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/teams`, {headers: hdrs()});
+    const all = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/teams`, {headers: hdrs()}, {quiet: true});
     Object.entries(all).forEach(([owner, d]) => { detailCache[leagueId + "/" + owner] = d; });
   } catch (_) { /* clicks fall back to per-team fetches */ }
 }
@@ -652,6 +852,8 @@ const movableCache = {};     // league/owner/stance -> {players:Set, picks:Set}
 const fitsCache = {};        // league/owner/stance -> [{name, owner, tag, why}] pieces elsewhere that fit him
 const freshSide = () => ({owner: null, stance: "", picks: new Set()});
 const trade = {a: freshSide(), b: freshSide()};
+const fillSeq = {a: 0, b: 0};   // only the newest fill of a side may paint it
+let detailsReady = Promise.resolve();
 let evalTimer = null;
 let trayMoreOpen = !matchMedia("(max-width:760px)").matches;   // desktop shows the impact; phone folds it
 
@@ -680,16 +882,17 @@ function renderBuilder(leagueId, owners) {
   trade.a.owner = trade.a.owner || myTeam || owners[0];
   if (trade.a.owner === myTeam && !trade.a.stance) trade.a.stance = myStance;
   trade.b.owner = trade.b.owner || owners.find(o => o !== trade.a.owner);
-  const opts = sel => owners.map(o => `<option${o === sel ? " selected" : ""}>${o}</option>`).join("");
+  if (trade.b.owner === trade.a.owner) trade.b.owner = owners.find(o => o !== trade.a.owner);
+  const opts = sel => owners.map(o => `<option value="${esc(o)}"${o === sel ? " selected" : ""}>${esc(o)}</option>`).join("");
   const side = k => `<div class="cside" id="cside${k}">
       <div class="chead">${k === "a"
-        ? `<span class="cs">you:</span><b id="cnamea" style="font-size:14px">${trade.a.owner}</b><span class="cs">— change team or stance in the bar at the top</span><span id="cstancea" hidden></span>`
+        ? `<span class="cs">you:</span><b id="cnamea" style="font-size:14px">${esc(trade.a.owner)}</b><span class="cs">— change team or stance in the bar at the top</span><span id="cstancea" hidden></span>`
         : `<span class="cs">them:</span><select id="cselb">${opts(trade.b.owner)}</select><div class="cstance" id="cstanceb"></div>`}</div>
       <div class="cmeta" id="cmeta${k}"></div>
       <div id="croster${k}"><div class="cs"><span class="spin"></span>loading roster</div></div></div>`;
-  box.innerHTML = `<div class="cs">Side A is you (set in the bar up top); pick who to trade with, tap pieces, ask. Bright = that team would move it <em>and</em> the other team has a use for it (the tag says what — hover for the why) · ` +
+  box.innerHTML = `<details class="cs"${matchMedia("(max-width:760px)").matches ? "" : " open"}><summary style="cursor:pointer">How to read this</summary>Side A is you (set in the bar up top); pick who to trade with, tap pieces, ask. Bright = that team would move it <em>and</em> the other team has a use for it (the tag says what — hover or tap for the why) · ` +
     `faded = would move it but nothing over there wants it, or only at a cornerstone's price · dim = wouldn't move it (tap anyway if you insist). ` +
-    `<span class="stmark">▸</span> starter · <span class="stmark under">▸</span> starter under the league bar · <span class="stmark deep">▸</span> well under it · <span class="stmark sq">▹</span> starter-quality on the bench.</div>` +
+    `<span class="stmark">▸</span> starter · <span class="stmark under">▸</span> starter under the league bar · <span class="stmark deep">▸</span> well under it · <span class="stmark sq">▹</span> starter-quality on the bench.</details>` +
     `<div class="csides">${side("a")}${side("b")}</div>` +
     `<div class="ctray" id="ctray"></div>`;
   document.querySelector('#tabs [data-view="trade"]').disabled = false;
@@ -697,7 +900,7 @@ function renderBuilder(leagueId, owners) {
   // changing re-fills BOTH: the tags on one roster depend on the other team.
   $("cselb").onchange = () => {
     trade.b.owner = $("cselb").value; trade.b.stance = ""; trade.b.picks = new Set();
-    $("crosterb").innerHTML = "";  // that side's picks are gone with the roster
+    $("crosterb").innerHTML = `<div class="cs"><span class="spin"></span>loading roster</div>`;  // that side's picks are gone with the roster
     Promise.all([fillSide(leagueId, "a"), fillSide(leagueId, "b")]).then(() => renderTray(leagueId));
   };
   fillSide(leagueId, "a"); fillSide(leagueId, "b");
@@ -723,7 +926,8 @@ async function fillSide(leagueId, k) {
   st.innerHTML = k === "a" ? "" : stanceOptions(row).map(([v, label]) =>
     `<button type="button" data-v="${v}" class="${trade[k].stance === v ? "on" : ""}">${label}</button>`).join("");
   st.querySelectorAll("button").forEach(b => b.onclick = () => {
-    trade[k].stance = b.dataset.v; fillSide(leagueId, "a"); fillSide(leagueId, "b");
+    trade[k].stance = b.dataset.v;
+    Promise.all([fillSide(leagueId, "a"), fillSide(leagueId, "b")]).then(() => renderTray(leagueId));
   });
   const needs = Object.entries(row.needs || {}).filter(([, n]) => n && n.level && n.level !== "ok")
     .map(([pos, n]) => `<span class="need ${n.level}" style="display:inline-block;margin:0 3px 0 0">${pos} ${n.level}</span>`).join("");
@@ -734,9 +938,21 @@ async function fillSide(leagueId, k) {
   const box = $("croster" + k);
   const other = trade[k === "a" ? "b" : "a"];
   let d, mv, fits = [];
-  try { [d, mv, fits] = await Promise.all([fetchDetail(leagueId, owner), fetchMovable(leagueId, owner, trade[k].stance),
-                                          other.owner ? fetchFits(leagueId, other.owner, other.stance, owner, trade[k].stance) : []]); }
-  catch (e) { box.innerHTML = `<div class="cs warn">couldn't load</div>`; return; }
+  const seq = ++fillSeq[k];
+  box.classList.add("busyfade");
+  const stale = () => seq !== fillSeq[k] || leagueId !== currentLeague;
+  try {
+    await detailsReady;   // one request for every roster beats one per roster
+    [d, mv, fits] = await Promise.all([fetchDetail(leagueId, owner), fetchMovable(leagueId, owner, trade[k].stance),
+                                       other.owner ? fetchFits(leagueId, other.owner, other.stance, owner, trade[k].stance) : []]);
+  } catch (e) {
+    if (stale()) return;
+    box.classList.remove("busyfade");
+    failed(box, `Couldn't load ${owner}'s roster. ${whyFailed(e)}`, () => fillSide(leagueId, k));
+    return;
+  }
+  if (stale()) return;   // a newer pick of this side, or another league, got here first
+  box.classList.remove("busyfade");
   // Tags: why the OTHER team would want this piece (its own targets / swaps / adds).
   // Swap tags ("beats their X") describe the other team's efficiency; they only mean
   // anything to me if I'm selling - a contender reading "swap Brown for Egbuka" on his
@@ -766,7 +982,7 @@ async function fillSide(leagueId, k) {
       const title = off ? "not something this team would move on its path — tap anyway if you insist"
                   : priced ? "years still on him — only moves at a cornerstone's price" : "";
       const spare = !off && !on && (priced || !tagOf[p.name]);
-      return `<div class="crow ${p.starter ? "st" : ""} ${off ? "off" : ""} ${spare ? "spare" : ""} ${on ? "on" : ""} ${tagOf[p.name] && !priced ? "tagged" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${title}">` +
+      return `<div class="crow ${p.starter ? "st" : ""} ${off ? "off" : ""} ${spare ? "spare" : ""} ${on ? "on" : ""} ${tagOf[p.name] && !priced ? "tagged" : ""}" data-name="${p.name.replace(/"/g, "&quot;")}" title="${title}" tabindex="0" role="button" aria-pressed="${on}">` +
         `<span class="n">${mk ? `<span class="stmark ${mk}">${mk === "sq" ? "▹" : "▸"}</span> ` : ""}${p.cornerstone ? "★ " : ""}${p.name}</span>${tag(p.name)}` +
         `<span class="v">${p.projected_ppg ? p.projected_ppg.toFixed(1) : ""}</span>` +
         `<span class="v">${p.redraft_value != null ? p.redraft_value.toLocaleString() : ""}</span>` +
@@ -783,13 +999,16 @@ async function fillSide(leagueId, k) {
   const seen = {};
   (d.picks || []).forEach(p => { const key = `${p.season}-${p.round}`; seen[p.pick] = seen[p.pick] || {n: 0, v: p.value, key, tier: p.tier}; seen[p.pick].n++; });
   const picks = Object.entries(seen).map(([pk, o]) =>
-    `<span class="cpick ${mv.picks.has(o.key) ? "" : "off"} ${trade[k].picks.has(pk) ? "on" : ""}" data-name="${pk}">${pk}${o.tier ? ` <span class="cs">${o.tier.toLowerCase()}</span>` : ""}${o.n > 1 ? ` ×${o.n}` : ""} <span class="cs">${(o.v || 0).toLocaleString()}</span></span>`).join("");
+    `<span class="cpick ${mv.picks.has(o.key) ? "" : "off"} ${trade[k].picks.has(pk) ? "on" : ""}" data-name="${pk}" tabindex="0" role="button">${pk}${o.tier ? ` <span class="cs">${o.tier.toLowerCase()}</span>` : ""}${o.n > 1 ? ` ×${o.n}` : ""} <span class="cs">${(o.v || 0).toLocaleString()}</span></span>`).join("");
   const nPicks = Object.keys(seen).length, nSpend = Object.values(seen).filter(o => mv.picks.has(o.key)).length;
   const pickNote = !nPicks ? "" : nSpend === 0
     ? `<span style="color:var(--rebuild);font-weight:600;letter-spacing:0;text-transform:none;float:right">keeping its picks${mv.mode === "rebuild" ? " (rebuilding)" : ""}</span>`
     : `<span style="color:var(--muted);letter-spacing:0;text-transform:none;float:right">would spend picks · ${nSpend} of ${nPicks} kinds</span>`;
   box.innerHTML = html + (picks ? `<div class="cpos">picks${pickNote}</div><div class="cpicks">${picks}</div>` : "");
-  box.querySelectorAll(".crow").forEach(r => r.onclick = () => { r.classList.toggle("on"); renderTray(leagueId); });
+  box.querySelectorAll(".crow").forEach(r => r.onclick = () => {
+    r.setAttribute("aria-pressed", r.classList.toggle("on"));
+    renderTray(leagueId);
+  });
   box.querySelectorAll(".cpick").forEach(c => c.onclick = () => {
     const nm = c.dataset.name;
     if (trade[k].picks.has(nm)) trade[k].picks.delete(nm); else trade[k].picks.add(nm);
@@ -811,19 +1030,20 @@ function picked(k) {
 function renderTray(leagueId) {
   const a = trade.a.owner, b = trade.b.owner, pa = picked("a"), pb = picked("b");
   const tray = $("ctray");
-  const line = (o, ps) => `<div class="side"><b>${o}</b> sends: ${ps.length ? ps.join(", ") : "<span class='cs'>nothing yet</span>"}</div>`;
+  const line = (o, ps) => `<div class="side"><b>${esc(o)}</b> sends: ${ps.length ? ps.join(", ") : "<span class='cs'>nothing yet</span>"}</div>`;
   const ready = pa.length && pb.length && a !== b;
   // Phone: the tray is pinned, so it stays a thin bar - the two "sends" lines and Ask -
   // with the impact and pair suggestions folded under one toggle (open on desktop).
   tray.innerHTML = line(a, pa) + line(b, pb) +
     `<div class="row" style="gap:8px;align-items:center;margin:6px 0">` +
-    `<button type="button" class="primary" id="cask" ${ready ? "" : "disabled"} style="font-size:14px;padding:10px 16px">Ask the assistant — both sides</button>` +
+    `<button type="button" class="primary" id="cask" ${ready ? "" : "disabled"} style="font-size:14px;padding:10px 16px">${ready ? "Ask the assistant — both sides" : "Pick a piece on each side"}</button>` +
     `<button type="button" class="ghost" id="cclear" style="margin-left:auto">clear</button></div>` +
     `<details class="tmore" id="tmore"${trayMoreOpen ? " open" : ""}><summary class="cs">impact & starting points for this pair</summary>` +
     `<details class="csugg" id="csugg"></details><div class="cimpact" id="cimpact">${ready ? "" : '<div class="cs">tap a piece on each side to see what the trade does to both lineups</div>'}</div></details>`;
   $("tmore").ontoggle = () => { trayMoreOpen = $("tmore").open; };
   $("cclear").onclick = () => { document.querySelectorAll(".crow.on").forEach(r => r.classList.remove("on")); trade.a.picks.clear(); trade.b.picks.clear(); document.querySelectorAll(".cpick.on").forEach(c => c.classList.remove("on")); renderTray(leagueId); };
   $("cask").onclick = () => {
+    if (asking) { toast("Still answering your last question. Ask this one when it's done."); return; }
     const stance = k => trade[k].stance ? ` (${trade[k].owner} says they'd ${trade[k].stance === "sell" ? "sell" : "press"})` : "";
     const proposal = `${a} sends ${pa.join(", ")}; ${b} sends ${pb.join(", ")}`;
     $("q").value = `Evaluate this trade for both sides: ${proposal}.${stance("a")}${stance("b")}`;
@@ -853,7 +1073,9 @@ async function showSuggestions(leagueId, a, b) {
   const key = `${leagueId}/${a}/${trade.a.stance}/${b}/${trade.b.stance}`;
   if (!suggCache[key]) {
     const q = `?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}` + (trade.a.stance ? `&stance_a=${trade.a.stance}` : "") + (trade.b.stance ? `&stance_b=${trade.b.stance}` : "");
-    suggCache[key] = getJSON(`/api/league/${encodeURIComponent(leagueId)}/suggest${q}`, {headers: hdrs()}).catch(() => []);
+    // A failure must not stick: it would claim this pair has no starting points until a reload.
+    suggCache[key] = getJSON(`/api/league/${encodeURIComponent(leagueId)}/suggest${q}`, {headers: hdrs()}, {quiet: true})
+      .catch(() => { delete suggCache[key]; return null; });
     // The fold opened onto NOTHING while this fetch ran (a tester: the dropdown
     // "doesn't always work") - say what is happening instead of showing a blank.
     $("csugg").innerHTML = `<summary><span class="spin"></span>looking for starting points for this pair</summary>`;
@@ -862,6 +1084,11 @@ async function showSuggestions(leagueId, a, b) {
   const box = $("csugg");   // re-found AFTER the await: the tray re-renders under slow fetches
   if (!box) return;
   if (trade.a.owner !== a || trade.b.owner !== b) return;   // the pair changed while we waited
+  if (!list) {
+    box.innerHTML = `<summary class="warn">couldn't load starting points for this pair — tap to try again</summary>`;
+    box.querySelector("summary").onclick = e => { e.preventDefault(); showSuggestions(leagueId, a, b); };
+    return;
+  }
   if (!list.length) { box.innerHTML = `<summary>no precomputed starting points for this pair — tap pieces to build your own</summary>`; return; }
   box.innerHTML = `<summary>${list.length} precomputed starting point${list.length > 1 ? "s" : ""} for this pair</summary><div class="list">` + list.map((s, i) =>
     `<button type="button" data-i="${i}" title="${(s.why || "").replace(/"/g, "&quot;")}">${a} ${s.a_sends.join(" + ")} ⇄ ${b} ${s.b_sends.join(" + ")}</button>`).join("") + `</div>`;
@@ -883,36 +1110,48 @@ function loadProposal(leagueId, s) {
 
 // The framer's facts for the proposal as it stands: goal line per side (lineup delta or
 // value in/out, holes opened or closed), best single piece. No verdict.
+let impactSeq = 0;
 async function showImpact(leagueId, a, pa, b, pb) {
-  const box = $("cimpact"); if (!box) return;
-  box.innerHTML = `<div class="cs"><span class="spin"></span>working out the impact</div>`;
+  if (!$("cimpact")) return;
+  $("cimpact").innerHTML = `<div class="cs"><span class="spin"></span>working out the impact</div>`;
+  const seq = ++impactSeq;
   try {
     const d = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/evaluate`, {
       method: "POST", headers: hdrs({"Content-Type": "application/json"}),
       body: JSON.stringify({owner_a: a, sends_a: pa, owner_b: b, sends_b: pb, stance_a: trade.a.stance || null, stance_b: trade.b.stance || null})});
-    if (!d.ok) { box.innerHTML = `<div class="cs warn">${d.problem}</div>`; return; }
+    const box = $("cimpact");   // re-found after the wait: every tap rebuilds the tray
+    if (seq !== impactSeq || !box) return;   // the proposal changed while this was out
+    if (!d.ok) { box.innerHTML = `<div class="cs warn">${esc(d.problem)}</div>`; return; }
     box.innerHTML = d.sides.map(s => {
       const goal = (s.goal || "").replace(/^GOAL for a (buying|selling|middle) path is [^:]+: /, "");
       const cls = /OPENS A NEW HOLE/.test(goal) ? "hole" : (s.lineup_production_delta > 0 || /value .* in for/.test(goal) && /closes/.test(goal)) ? "gain" : "";
       return `<div class="goal ${cls}"><b>${s.owner}</b> <span class="cs">(${s.path}, ${s.lens} lens)</span> — ${goal}</div>`;
     }).join("") + `<div class="cs" style="padding:0 8px">best single piece: <b>${d.best_piece.name}</b> → ${d.best_piece.to}</div>`;
-  } catch (e) { box.innerHTML = `<div class="cs warn">couldn't evaluate</div>`; }
+  } catch (e) {
+    if (seq === impactSeq && $("cimpact")) failed($("cimpact"), "Couldn't work out the impact.", () => showImpact(leagueId, a, pa, b, pb));
+  }
 }
 
 // Up to three starting points for this team across the league (deterministic, cached
 // per team). One click does the whole chain - loads the trade helper and asks - because
 // idea -> helper -> ask -> answer was "a lot of steps and a ton of info at once" (owner).
 const ideasCache = {};
+function fetchIdeas(leagueId, owner, stance) {
+  const key = `${leagueId}/${owner}/${stance}`;
+  // The promise, so a click while the first is still out shares it. A failure isn't kept.
+  ideasCache[key] = ideasCache[key] || getJSON(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/ideas?limit=8${stance ? "&stance=" + stance : ""}`, {headers: hdrs()}, {quiet: true})
+    .catch(e => { delete ideasCache[key]; throw e; });
+  return ideasCache[key];
+}
 async function fillIdeas(leagueId, owner) {
   const el = document.getElementById(`ideas-${owner.replace(/[^a-z0-9]/gi, "_")}`);
   if (!el) return;
   const stance = owner === myTeam ? myStance : "";
-  const key = `${leagueId}/${owner}/${stance}`;
-  el.innerHTML = '<span class="spin"></span>looking across the league for starting points';
+  let list;
+  el.innerHTML = '<span class="spin"></span>looking across the league for starting points — this can take 20 seconds or so';
   try {
-    if (!ideasCache[key]) ideasCache[key] = await getJSON(`/api/league/${encodeURIComponent(leagueId)}/team/${encodeURIComponent(owner)}/ideas?limit=8${stance ? "&stance=" + stance : ""}`, {headers: hdrs()});
-  } catch (_) { el.textContent = "couldn't look"; return; }
-  const list = ideasCache[key];
+    list = await fetchIdeas(leagueId, owner, stance);
+  } catch (_) { failed(el, "Couldn't look for trade ideas.", () => fillIdeas(leagueId, owner)); return; }
   if (!list.length) { el.textContent = "nothing obvious — build one in the trade helper below"; return; }
   const framing = list[0] && list[0].framing ? `<div class="cs" style="margin-bottom:4px">${owner} is waiting — these are production moves <em>${list[0].framing}</em>:</div>`
                 : stance ? `<div class="cs" style="margin-bottom:4px">under your pinned stance — <em>${stanceWord(stance)}</em>:</div>` : "";
@@ -937,6 +1176,7 @@ async function fillIdeas(leagueId, owner) {
 }
 async function openComposerWith(leagueId, owner, s, ask) {
   if (!$("cselb")) return;
+  if (ask && asking) { toast("Still answering your last question. Ask this one when it's done."); return; }
   if (owner !== myTeam) setYou(owner, "", {noTrade: true});   // side A is you, so opening their idea makes them you
   trade.a.owner = owner; trade.b.owner = s.partner; trade.a.stance = myStance; trade.b.stance = "";
   trade.a.picks = new Set(); trade.b.picks = new Set();
@@ -949,12 +1189,13 @@ async function openComposerWith(leagueId, owner, s, ask) {
 
 async function toggleDetail(tr, leagueId) {
   const open = tr.nextElementSibling;
-  if (open && open.classList.contains("detail")) { open.remove(); return; }
-  document.querySelectorAll("tr.detail").forEach(x => x.remove());
+  if (open && open.classList.contains("detail")) { open.remove(); tr.setAttribute("aria-expanded", "false"); return; }
+  document.querySelectorAll("tr.detail").forEach(x => { x.previousElementSibling?.setAttribute("aria-expanded", "false"); x.remove(); });
   const row = document.createElement("tr");
   row.className = "detail";
-  row.innerHTML = `<td colspan="100" class="cs">loading roster…</td>`;
+  row.innerHTML = `<td colspan="100" class="cs"><span class="spin"></span>loading roster…</td>`;
   tr.after(row);
+  tr.setAttribute("aria-expanded", "true");
   const owner = tr.dataset.owner;
   try {
     const d = await fetchDetail(leagueId, owner);
@@ -1034,7 +1275,7 @@ async function toggleDetail(tr, leagueId) {
     // No prose in the panel: the table is the clean part, the chip tooltip carries the
     // why, and nuance is the agent's job. The data speaks - an aging Etienne sticks
     // out by his orange age without a sentence saying so.
-    const ideasHtml = `<div class="pgroup ideas"><div class="ptitle">Trade ideas</div><div id="ideas-${owner.replace(/[^a-z0-9]/gi, "_")}" class="cs"><span class="spin"></span>looking across the league for starting points</div></div>`;
+    const ideasHtml = `<div class="pgroup ideas"><div class="ptitle">Trade ideas</div><div id="ideas-${owner.replace(/[^a-z0-9]/gi, "_")}" class="cs"><span class="spin"></span>looking across the league for starting points — this can take 20 seconds or so</div></div>`;
     row.innerHTML = `<td colspan="100"><div class="pcont">` +
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}<div class="plast">${picksHtml}${ideasHtml}</div></div>` +
@@ -1047,32 +1288,77 @@ async function toggleDetail(tr, leagueId) {
       `(shade = how deep; each position falls at its own speed)</div></div></td>`;
     fillIdeas(leagueId, owner);
   } catch (e) {
-    row.innerHTML = `<td colspan="100" class="cs warn">Couldn't load roster: ${e}</td>`;
+    row.innerHTML = `<td colspan="100"></td>`;
+    failed(row.firstChild, `Couldn't load this roster. ${whyFailed(e)}`, () => { row.remove(); toggleDetail(tr, leagueId); });
   }
 }
 
 // ---- league overview: rendered from deterministic data, never from the model ----
-async function loadLeague(id) {
+let leagueSeq = 0, leagueLoadedAt = null, lastSort = null;
+const SKELETON_ROWS = 8;
+function leagueSkeleton() {
+  const started = Date.now();
+  $("overview").innerHTML = `<div class="skelhead"><span class="spin"></span>Loading the league… <span id="skeltick"></span>` +
+    `<div class="cs">Usually a few seconds, and up to a minute if the app was asleep.</div></div>` +
+    `<div aria-hidden="true">${'<div class="skel"></div>'.repeat(SKELETON_ROWS)}</div>`;
+  const tick = setInterval(() => {
+    const el = $("skeltick");
+    if (!el) { clearInterval(tick); return; }
+    el.textContent = Math.round((Date.now() - started) / 1000) + "s";
+  }, 1000);
+}
+// Back to "no league": nothing left on screen may describe the one that just went away.
+function clearLeague() {
+  currentLeague = null; currentLeagueName = null; leagueTeams = {};
+  renderPin(); showAskContext();
+  $("builder").innerHTML = '<div class="empty">Load a league first.</div>';
+  document.querySelector('#tabs [data-view="trade"]').disabled = true;
+  $("findhead").hidden = $("findpad").hidden = false;
+  pageTitle = document.title = "fantasy-fanatic";
+}
+const agoText = at => {
+  const min = Math.round((Date.now() - at) / 60000);
+  return min < 1 ? "just now" : min < 60 ? `${min} min ago` : `${Math.round(min / 60)} hr ago`;
+};
+setInterval(() => {
+  const el = $("freshness");
+  if (el && leagueLoadedAt) el.textContent = "updated " + agoText(leagueLoadedAt);
+}, 30000);
+
+async function loadLeague(id, {refresh = false} = {}) {
   if (!id) return;
-  $("overview").innerHTML = '<div class="empty">Loading… (first load ~7s, cached after)</div>';
+  const seq = ++leagueSeq;
+  const sameLeague = id === currentLeague && document.querySelector("#overview tr.team");
+  if (!sameLeague) leagueSkeleton();
+  const refreshBtn = $("refresh");
+  if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.textContent = "Refreshing…"; }
   try {
     const d = await getJSON(`/api/league/${encodeURIComponent(id)}`, {headers: hdrs()});
+    if (seq !== leagueSeq) return;   // a newer pick of league got here first
     if (!d.supported) {
-      $("overview").innerHTML = `<div class="empty warn">Not supported: ${d.reason}</div>`;
+      clearLeague();
+      $("overview").innerHTML = `<div class="empty warn">Not supported: ${esc(d.reason)}</div>`;
+      if (store.getItem("ff_last_league") === id) store.removeItem("ff_last_league");
       return;
     }
+    const openOwner = sameLeague ? document.querySelector("tr.detail")?.previousElementSibling?.dataset.owner : null;
+    if (refresh) [detailCache, movableCache, fitsCache, suggCache, ideasCache].forEach(c => Object.keys(c).forEach(k => delete c[k]));
+    leagueLoadedAt = Date.now();
+    currentLeagueName = d.name || currentLeagueName;
+    if (currentLeagueName) { pageTitle = currentLeagueName + " · fantasy-fanatic"; if (!document.hidden) document.title = pageTitle; }
+    $("findhead").hidden = $("findpad").hidden = true;
     // A conversation is about ONE league - answers about the old league sitting above
     // questions pinned to the new one read as the assistant mixing leagues up.
     if (currentLeague && currentLeague !== id) {
       startNewConversation(`Switched leagues — started a new conversation for ${currentLeagueName || "this league"}.`);
     }
-    if (currentLeague !== id) { myTeam = null; myStance = ""; trade.a = freshSide(); trade.b = freshSide(); }
+    if (currentLeague !== id) { myTeam = null; myStance = ""; trade.a = freshSide(); trade.b = freshSide(); lastSort = null; }
     currentLeague = id;
-    localStorage.setItem("ff_last_league", id);
+    store.setItem("ff_last_league", id);
     leagueTeams = Object.fromEntries(d.teams.map(t => [t.owner, t]));
     const rows = d.teams.map(t => {
       const needs = Object.entries(t.needs)
-        .map(([pos, n]) => `<span class="need ${n.level}" title="${n.note}">${pos} ${n.level}</span>`).join("") || "—";
+        .map(([pos, n]) => `<span class="need ${n.level}" title="${esc(n.note)}">${pos} ${n.level}</span>`).join("") || '<span class="noneeds">—</span>';
       // The shade word ("steady", "falling") used to live here; the path chip now
       // carries that judgment, and two vocabularies on one row read as clutter.
       // Manager attributes start here: how much he actually trades. Sits under the name
@@ -1110,30 +1396,34 @@ async function loadLeague(id) {
       // needs, like record and pace (the draft card below says who holds which pick).
       const own = t.projected_pick ? `<div class="cs pacev" title="where this team's own next 1st projects: the likeliest slot, and the middle 80% of simulated seasons"><span class="dot"> · </span>pick ${t.projected_pick.split(" ")[0]}</div>` : "";
       const mpfCell = `<td class="cs" style="white-space:nowrap"><span class="mlab">max PF </span>${Math.round(t.max_pf || 0)}${own}</td>`;
-      return `<tr class="team" data-owner="${t.owner}" data-sv="${t.starting_production}" data-dv="${t.starter_value}" data-rec="${recKey}" data-ppg="${t.ppg || 0}" data-mpf="${t.max_pf || 0}">
+      return `<tr class="team" tabindex="0" aria-expanded="false" data-owner="${esc(t.owner)}" data-sv="${t.starting_production}" data-dv="${t.starter_value}" data-rec="${recKey}" data-ppg="${t.ppg || 0}" data-mpf="${t.max_pf || 0}">
         <td class="rk">${t.rank}</td>
-        <td class="who" style="white-space:nowrap">${t.owner}${tn}<div class="cs">${flags}</div></td>
+        <td class="who" style="white-space:nowrap">${esc(t.owner)}${tn}<div class="cs">${flags}</div></td>
         <td><span class="tag ${chip[0]} ${heat}" title="${t.path_reason.replace(/"/g, "&quot;")}">${chip[1]}</span></td>
         ${recCell}
         ${mpfCell}
-        <td class="cs" style="white-space:nowrap">${t.starting_production.toFixed(1)}
+        <td class="cs" style="white-space:nowrap"><span class="mlab">ePPG </span>${t.starting_production.toFixed(1)}
           <div class="cs">${t.pct_of_best}% of best</div>
           <div class="cs">${t.ascending_pct}% asc · ${t.declining_pct}% dec</div></td>
-        <td class="cs">${t.starter_value.toLocaleString()}<div class="cs">${firsts}</div></td>
+        <td class="cs"><span class="mlab">dynasty value </span>${t.starter_value.toLocaleString()}<div class="cs">${firsts}</div></td>
         <td>${needs}</td>
-        <td class="cs">
-          <div>${t.core.filter(c => c.cornerstone).map(c => `<strong>${c.name}</strong>`).join(", ") || "—"}</div>
+        <td class="cs" style="min-width:170px">
+          <div>${t.core.filter(c => c.cornerstone).map(c => `<strong>${c.name}</strong>`).join(", ") || '<span class="noneeds">—</span>'}</div>
           ${t.core.some(c => !c.cornerstone)
             ? `<div class="pp">${t.core.filter(c => !c.cornerstone).map(c => c.name).join(", ")}</div>` : ""}</td>
       </tr>`;
     }).join("");
     $("overview").innerHTML = `
+      <div class="lhead"><strong>${esc(currentLeagueName || "League " + id)}</strong>
+        <span class="cs" id="freshness">updated just now</span>
+        <span class="acts"><button type="button" class="ghost" id="refresh" title="Reload this table. A trade or roster move on Sleeper can take up to 10 minutes to show here.">Refresh</button>
+        <button type="button" class="ghost" id="changeleague">Change league</button></span></div>
       <table><thead><tr><th></th><th>Owner</th><th>Suggested move</th>
-        <th class="sortable" data-sort="rec" title="click to sort — playoff pace, then ePPG">Record <span class="cs">· pace</span> <span class="arrow"></span></th>
-        <th class="sortable" data-sort="ppg" title="click to sort — real points per game this season">PPG <span class="arrow"></span></th>
-        <th class="sortable" data-sort="mpf" data-dir="asc" title="click to sort, lowest first — max PF: the season's best-ball points (every week's optimal lineup), which orders the non-playoff picks">Max PF <span class="arrow"></span></th>
-        <th class="sortable" data-sort="sv" title="click to sort — expected points per game: Sleeper's season projections under this league's scoring">ePPG <span class="arrow">↓</span></th>
-        <th class="sortable" data-sort="dv" title="click to sort">Dynasty value <span class="arrow"></span></th>
+        <th class="sortable" tabindex="0" data-sort="rec" title="click to sort — playoff pace, then ePPG">Record <span class="cs">· pace</span> <span class="arrow"></span></th>
+        <th class="sortable" tabindex="0" data-sort="ppg" title="click to sort — real points per game this season">PPG <span class="arrow"></span></th>
+        <th class="sortable" tabindex="0" data-sort="mpf" data-dir="asc" title="click to sort, lowest first — max PF: the season's best-ball points (every week's optimal lineup), which orders the non-playoff picks">Max PF <span class="arrow"></span></th>
+        <th class="sortable" tabindex="0" data-sort="sv" title="click to sort — expected points per game: Sleeper's season projections under this league's scoring">ePPG <span class="arrow">↓</span></th>
+        <th class="sortable" tabindex="0" data-sort="dv" title="click to sort">Dynasty value <span class="arrow"></span></th>
         <th>Needs</th><th>Core</th></tr></thead>
       <tbody>${rows}</tbody></table>
       ${draftCard(d.teams)}
@@ -1148,26 +1438,38 @@ async function loadLeague(id) {
         <span><span class="tag p-decide hot">decide</span> press or sell — season can pick</span>
         <span><span class="tag p-sell hot">sell</span> trade aging value for future</span>
       </div>
-      <div class="note">The chip = the move each roster's <em>position</em> calls for, not what its manager is doing. Bright = decision pending; hover for why. Core: <strong>bold</strong> = build-around, <span class="pp">orange</span> = priced on this season. asc / dec = how much of the starting lineup's production comes from players still <span style="color:hsl(120,65%,58%)">gaining</span> value vs already <span style="color:hsl(25,65%,55%)">losing</span> it — the rest are in their prime, holding, so the two rarely add to 100. PPG = real points per game this season; ePPG = expected points per game (Sleeper's season projections, this league's scoring); ~% playoff pace = chance of a playoff spot if the season plays out per the projections — banked wins count, a projection edge is only likely, and nobody is ever at 0 or 100; % of best = this starting lineup's ePPG as a share of the league's best lineup; max PF = best-ball points so far (each week's optimal lineup), which orders the picks of teams that miss the playoffs, with "pick ~#" where that team's own next 1st projects. Rows rank by ePPG; click a header to re-sort (Record sorts by playoff pace, Max PF lowest first). Click a team to ask about them.</div>`;
+      <div class="note">The chip = the move each roster's <em>position</em> calls for, not what its manager is doing. Bright = decision pending; hover or tap for why. Core: <strong>bold</strong> = build-around, <span class="pp">orange</span> = priced on this season. asc / dec = how much of the starting lineup's production comes from players still <span style="color:hsl(120,65%,58%)">gaining</span> value vs already <span style="color:hsl(25,65%,55%)">losing</span> it — the rest are in their prime, holding, so the two rarely add to 100. PPG = real points per game this season; ePPG = expected points per game (Sleeper's season projections, this league's scoring); ~% playoff pace = chance of a playoff spot if the season plays out per the projections — banked wins count, a projection edge is only likely, and nobody is ever at 0 or 100; % of best = this starting lineup's ePPG as a share of the league's best lineup; max PF = best-ball points so far (each week's optimal lineup), which orders the picks of teams that miss the playoffs, with "pick ~#" where that team's own next 1st projects. Rows rank by ePPG; click a header to re-sort (Record sorts by playoff pace, Max PF lowest first). Click a team to ask about them.</div>`;
     const pick = tr => setYou(tr.dataset.owner, tr.dataset.owner === myTeam ? myStance : "");
     showAskContext();
     // Sort by either value column (a tester's ask: "sort by dynasty value"). The
     // rank number stays the contention rank - position in the league is a fact,
     // the sort is a lens. Open detail rows close first so pairs don't separate.
+    // A second click on the same header flips the order.
+    const applySort = (key, up) => {
+      document.querySelectorAll("tr.detail").forEach(x => x.remove());
+      document.querySelectorAll("#overview th.sortable .arrow").forEach(a => a.textContent = "");
+      document.querySelector(`#overview th[data-sort="${key}"] .arrow`).textContent = up ? "↑" : "↓";
+      const body = document.querySelector("#overview tbody");
+      [...body.querySelectorAll("tr.team")]
+        .sort((a, b) => (up ? -1 : 1) * ((+b.dataset[key]) - (+a.dataset[key])))
+        .forEach(tr => body.appendChild(tr));
+      lastSort = {key, up};
+    };
     document.querySelectorAll("#overview th.sortable").forEach(th => {
-      th.onclick = () => {
-        document.querySelectorAll("tr.detail").forEach(x => x.remove());
-        document.querySelectorAll("#overview th.sortable .arrow").forEach(a => a.textContent = "");
-        const up = th.dataset.dir === "asc";
-        th.querySelector(".arrow").textContent = up ? "↑" : "↓";
-        const body = document.querySelector("#overview tbody");
-        [...body.querySelectorAll("tr.team")]
-          .sort((a, b) => (up ? -1 : 1) * ((+b.dataset[th.dataset.sort]) - (+a.dataset[th.dataset.sort])))
-          .forEach(tr => body.appendChild(tr));
-      };
+      th.onclick = () => applySort(th.dataset.sort, lastSort && lastSort.key === th.dataset.sort ? !lastSort.up : th.dataset.dir === "asc");
     });
-    prefetchDetails(id).then(() => renderBuilder(id, d.teams.map(t => t.owner)));
-    const saved = JSON.parse(localStorage.getItem("ff_you:" + id) || "null");   // read before any pick overwrites it
+    if (lastSort) applySort(lastSort.key, lastSort.up);
+    $("refresh").onclick = async () => {
+      await loadLeague(id, {refresh: true});
+      if (id === currentLeague) toast("League refreshed.");
+    };
+    $("changeleague").onclick = () => {
+      $("findhead").hidden = $("findpad").hidden = false;
+      $("username").focus();
+      $("findhead").scrollIntoView({block: "center"});
+    };
+    detailsReady = prefetchDetails(id);
+    const saved = JSON.parse(store.getItem("ff_you:" + id) || "null");   // read before any pick overwrites it
     document.querySelectorAll("tr.team").forEach(tr => {
       // Click = select for asking AND toggle the expanded roster. Deterministic data
       // rendered directly, same doctrine as the table itself.
@@ -1175,20 +1477,41 @@ async function loadLeague(id) {
       // They told us their username to find this league, so which team is theirs is
       // already known - making them click it (and the agent ask for it) is a question
       // the page can answer itself.
-      if (myName && tr.dataset.owner.toLowerCase() === myName.toLowerCase()) {
+      if (!sameLeague && myName && tr.dataset.owner.toLowerCase() === myName.toLowerCase()) {
         pick(tr);
         toggleDetail(tr, id);  // seeing your own roster is why you loaded the league
       }
+      if (openOwner && tr.dataset.owner === openOwner) toggleDetail(tr, id);   // a refresh leaves it open
+      if (tr.dataset.owner === myTeam) tr.classList.add("mine");
     });
     // Back in a league you had pinned yourself in: same team, same stance, no clicks.
     if (saved && leagueTeams[saved.team] && !myTeam) setYou(saved.team, saved.stance, {silent: true});
     else if (saved && saved.team === myTeam && saved.stance) setYou(myTeam, saved.stance, {silent: true});
     renderPin();
+    // After the pin, because side A is the pin. On a refresh, only when no trade is half built:
+    // rebuilding would clear the picks.
+    if (!sameLeague || !(trade.a.picks.size || trade.b.picks.size || document.querySelector(".crow.on"))) {
+      trade.a.owner = myTeam || trade.a.owner;
+      trade.a.stance = myStance;
+      renderBuilder(id, d.teams.map(t => t.owner));
+    }
+    setTimeout(warmOnce, 0);
+    // Your own trade ideas are the slow part of opening your roster, so have them ready.
+    if (myTeam) fetchIdeas(id, myTeam, myStance).catch(() => {});
   } catch (e) {
-    $("overview").innerHTML = `<div class="empty warn">Failed to load: ${e}</div>`;
+    if (seq !== leagueSeq) return;
+    if (sameLeague) { toast("Couldn't refresh. This is still the last data that loaded."); return; }
+    clearLeague();
+    if (e.final && store.getItem("ff_last_league") === id) store.removeItem("ff_last_league");   // don't land on it again
+    $("overview").innerHTML = `<div class="empty" id="leaguefail"></div>`;
+    failed($("leaguefail"), `Couldn't load that league. ${whyFailed(e)}`, () => loadLeague(id));
+  } finally {
+    const btn = $("refresh");
+    if (btn && seq === leagueSeq) { btn.disabled = false; btn.textContent = "Refresh"; }
   }
 }
 $("load").onclick = () => { currentLeagueName = null; loadLeague($("league").value.trim()); };
+$("league").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("load").click(); } });
 
 // ---- minimal markdown: the model answers in markdown and raw ## / ** looked bad ----
 // Tables are handled because the model reaches for them constantly on this data (offer
@@ -1225,7 +1548,7 @@ function add(html, cls) {
   el.className = "msg " + (cls || "");
   el.innerHTML = html;
   $("log").appendChild(el);
-  el.scrollIntoView({behavior: "smooth", block: "end"});
+  if (currentView === "ask") el.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion:reduce)").matches ? "auto" : "smooth", block: "end"});
   return el;
 }
 
@@ -1239,25 +1562,33 @@ const HISTORY_MAX = 30;
 // killed the ENTIRE page, but only for visitors arriving via the keyed
 // link (the only path that executes replaceState). Every localhost test
 // used a bare URL, so the crash lived in production only.
-const savedHistory = () => JSON.parse(localStorage.getItem("ff_history") || "[]");
-const remember = entry => localStorage.setItem(
+const savedHistory = () => JSON.parse(store.getItem("ff_history") || "[]");
+const remember = entry => store.setItem(
   "ff_history", JSON.stringify([...savedHistory(), {...entry, at: Date.now()}].slice(-HISTORY_MAX)));
 // A day-old answer reappearing unlabelled reads as "why is this still here?" -
 // restore recent history (it's genuinely the same conversation), expire the rest.
 const HISTORY_TTL_MS = 24 * 3600 * 1000;
 const pruneHistory = () => {
   const kept = savedHistory().filter(h => h.at && Date.now() - h.at < HISTORY_TTL_MS);
-  localStorage.setItem("ff_history", JSON.stringify(kept));
+  store.setItem("ff_history", JSON.stringify(kept));
   return kept;
 };
 
 function startNewConversation(reason) {
-  sessionId = crypto.randomUUID();
-  localStorage.setItem("ff_session", sessionId);
-  localStorage.removeItem("ff_history");
-  localStorage.removeItem("ff_pending");
+  // Not closed while a question is out: closing would kill it mid-answer, and the idle limit
+  // gets to it soon enough.
+  if (!asking) closeSession(sessionId);
+  sessionId = newId();
+  tabStore.setItem("ff_tab_session", sessionId);
+  store.removeItem("ff_history");
+  store.removeItem("ff_pending");
+  // Whatever was on its way belongs to the old conversation; the box must not stay locked.
+  asking = false; askEpoch++;
+  $("send").disabled = false;
+  setAskBadge("");
   $("log").innerHTML = "";
-  add(`<p>${reason}</p>`);
+  add(`<p>${esc(reason)}</p>`);
+  warmSession();
 }
 $("reset").onclick = () => startNewConversation("Started a new conversation.");
 
@@ -1319,9 +1650,11 @@ function renderAnswer(el, d, question) {
     el.prepend(w);
   }
   const bits = [];
-  if (d.cost_usd != null) bits.push("$" + d.cost_usd.toFixed(4));
-  if (d.num_turns != null) bits.push(d.num_turns + " turns");
-  if (d.grounding_retries) bits.push(d.grounding_retries + " grounding retry");
+  if (pageTier === "friend") {   // testers' numbers; a public visitor has no use for them
+    if (d.cost_usd != null) bits.push("$" + d.cost_usd.toFixed(4));
+    if (d.num_turns != null) bits.push(d.num_turns + " turns");
+    if (d.grounding_retries) bits.push(d.grounding_retries + " grounding retry");
+  }
   if (d.budget_exhausted) bits.push("daily budget reached");
   if (d.service_down) bits.push("AI service unavailable");
   if (bits.length) {
@@ -1345,7 +1678,7 @@ function renderAnswer(el, d, question) {
           method: "POST", headers: hdrs({"Content-Type": "application/json"}),
           body: JSON.stringify({verdict: v === "👍" ? "up" : "down", comment,
                                 session_id: sessionId, question}),
-        });
+        }).catch(() => {});
         fb.textContent = "thanks — noted.";
       };
       fb.appendChild(b);
@@ -1370,7 +1703,7 @@ function typedCounterparty(typed) {
 // never touches the asker's conversation.
 async function askCounterparty(owner, proposal) {
   const cpId = `${sessionId}:cp:${Date.now()}`;
-  const card = add(`<p class="cs">how <strong>${owner}</strong> likely sees it — <span id='cpstep'><span class="spin"></span>thinking as ${owner}…</span></p><div id='cppartial'></div>`);
+  const card = add(`<p class="cs">how <strong>${esc(owner)}</strong> likely sees it — <span id='cpstep'><span class="spin"></span>thinking as ${esc(owner)}…</span></p><div id='cppartial'></div>`);
   const poll = setInterval(async () => {
     try {
       const p = await (await fetch(`/progress/${cpId}`, {headers: hdrs()})).json();
@@ -1382,9 +1715,9 @@ async function askCounterparty(owner, proposal) {
   try {
     const d = await askAndWatch({question: withContext(`Trade proposal: ${proposal}. You are ${owner} - decide it as ${owner} would.`),
                                  session_id: cpId, counterparty: owner}, cpId);
-    card.innerHTML = `<p class="cs">how <strong>${owner}</strong> likely sees it — the other side of the table, judging from its own path with the same tools</p>` + md(d.text || "(no answer)");
+    card.innerHTML = `<p class="cs">how <strong>${esc(owner)}</strong> likely sees it — the other side of the table, judging from its own path with the same tools</p>` + md(d.text || "(no answer)");
   } catch (e) {
-    card.innerHTML = `<p class="cs warn">couldn't get ${owner}'s side: ${e}</p>`;
+    card.innerHTML = `<p class="cs warn">Couldn't get ${esc(owner)}'s side of it. Ask again to retry.</p>`;
   } finally { clearInterval(poll); }
 }
 
@@ -1397,14 +1730,24 @@ async function askCounterparty(owner, proposal) {
 // staging waking from idle turned both of the owner's asks away with a 500), so nothing is
 // being written and waiting five minutes for it is a hang - fail at once instead.
 async function askAndWatch(body, id, seconds = 300) {
-  const started = Date.now();
   const ctl = new AbortController();
-  const send = fetch("/ask", {method: "POST", headers: hdrs({"Content-Type": "application/json"}),
-                              body: JSON.stringify(body), signal: ctl.signal}).then(r => {
-    if (!r.ok) throw Object.assign(new Error("refused " + r.status), {refused: true});
-    return r.json();
-  });
-  const watch = reclaim(started, seconds, id);
+  const askId = body.ask_id = body.ask_id || newId();
+  // /ask answers its own failures with a 200, so a bad status means the question never reached
+  // it: Cloud Run hadn't an instance ready. Nothing ran, so sending again is safe.
+  const send = (async () => {
+    for (const wait of [0, 3000, 8000, 15000]) {
+      if (wait) {
+        const step = $("step");
+        if (step) step.textContent = "waking the app up…";
+        await new Promise(r => setTimeout(r, wait));
+      }
+      const r = await fetch("/ask", {method: "POST", headers: hdrs({"Content-Type": "application/json"}),
+                                     body: JSON.stringify(body), signal: ctl.signal});
+      if (r.ok) return r.json();
+    }
+    throw Object.assign(new Error("refused"), {refused: true});
+  })();
+  const watch = reclaim(askId, seconds, id);
   try {
     const giveUp = new Promise((_, rej) => setTimeout(() => rej(new Error("no answer within " + seconds + "s")), (seconds + 10) * 1000));
     const d = await Promise.race([send.catch(e => e.refused ? Promise.reject(e) : watch),
@@ -1414,22 +1757,30 @@ async function askAndWatch(body, id, seconds = 300) {
   } finally { ctl.abort(); }
 }
 
-async function reclaim(since, seconds, id = sessionId) {
+async function reclaim(askId, seconds, id = sessionId) {
   const deadline = Date.now() + seconds * 1000;
   while (Date.now() < deadline) {
     await Promise.race([new Promise(r => setTimeout(r, 3000)), new Promise(r => addEventListener("online", r, {once: true}))]);
     try {
       const a = await (await fetch(`/answer/${id}`, {headers: hdrs()})).json();
-      if (a && a.finished_at && a.finished_at * 1000 > since) return a;
+      if (a && a.ask_id === askId) return a;
     } catch (_) { /* keep waiting - the network may still be coming back */ }
   }
   return null;
 }
 
+let askEpoch = 0;
 $("f").onsubmit = async e => {
   e.preventDefault();
   const typed = $("q").value.trim();
   if (!typed) return;
+  // One at a time: the chips and trade buttons submit too, and two on one conversation would
+  // tangle. The question stays in the box for when this one lands.
+  if (asking) { toast("Still answering your last question. Yours is in the box, ready to send."); showView("ask"); return; }
+  asking = true;
+  const epoch = ++askEpoch;
+  setAskBadge(currentView === "ask" ? "" : "work");
+  const askId = newId();
   const question = withContext(typed);
   $("q").value = "";
   add(`<p>${typed.replace(/</g, "&lt;")}</p>`, "me");
@@ -1437,8 +1788,8 @@ $("f").onsubmit = async e => {
   // who that is: one other team named, in a question that reads like a trade.
   const other = typedCounterparty(typed);
   if (other) { lastCounterparty = {owner: other, proposal: typed, typed}; askCounterparty(other, typed); }
-  const pending = add("<p><span id='step'>thinking…</span> <span id='tick'>0s</span>"
-                      + "<br><span class='cs'>a full answer takes about a minute — keep this tab open</span></p>"
+  const pending = add("<p><span class='spin'></span><span id='step'>thinking…</span> <span id='tick' class='cs'>0s</span>"
+                      + "<br><span class='cs'>a full answer takes a minute or two — look around meanwhile, it'll be here when it's done</span></p>"
                       + "<div id='partial'></div>");
   $("send").disabled = true;
   // A clock, the actual step, and the answer as it is written. The step comes from the
@@ -1462,18 +1813,24 @@ $("f").onsubmit = async e => {
   }, 1000);
   // Note the question as in-flight BEFORE sending, so a reload mid-answer knows to go
   // looking for it rather than showing an empty page.
-  localStorage.setItem("ff_pending", JSON.stringify({typed, question, started, session: sessionId}));
+  store.setItem("ff_pending", JSON.stringify({typed, question, started, session: sessionId, askId}));
   try {
     // A request abandoned by its client still runs to completion server-side (Cloud Run
     // keeps CPU allocated; uvicorn does not cancel), so we never re-ask - we wait for
     // the answer that is already being written. See askAndWatch.
-    const d = await askAndWatch({question, session_id: sessionId}, sessionId);
+    const d = await askAndWatch({question, session_id: sessionId, ask_id: askId}, sessionId);
+    if (epoch !== askEpoch) return;   // a new conversation started while this was out
     markReset(d);
     renderAnswer(pending, d, question);
     remember({typed, question, answer: d});
-    localStorage.removeItem("ff_pending");
+    store.removeItem("ff_pending");
+    asking = false;
+    answerArrived();
   } catch (err) {
-    if (err.refused) localStorage.removeItem("ff_pending");   // nothing to reclaim on reload
+    if (epoch !== askEpoch) return;
+    asking = false;
+    setAskBadge("");
+    if (err.refused) store.removeItem("ff_pending");   // nothing to reclaim on reload
     // "TypeError: Load failed" is Safari for "the connection died" - meaningless to the
     // reader, and it is never their fault. Say what happened and give them the button.
     pending.innerHTML = err.refused
@@ -1491,10 +1848,14 @@ $("f").onsubmit = async e => {
     pending.appendChild(again);
   } finally {
     clearInterval(ticker);
-    $("send").disabled = false;
-    $("q").focus();
+    if (epoch === askEpoch) {
+      $("send").disabled = false;
+      // On a touch screen this pops the keyboard up over the answer that just arrived.
+      if (matchMedia("(hover:hover)").matches && currentView === "ask") $("q").focus();
+    }
   }
 };
+$("q").addEventListener("focus", warmOnce);
 
 // ---- reopening the page ----
 // Redraw the conversation, and if a question was still in flight when the tab went away,
@@ -1506,21 +1867,21 @@ $("f").onsubmit = async e => {
   // thing carried across is an answer that was still being written when the tab went
   // away: the server finished it regardless (measured), so it is reclaimed once, from
   // the OLD session id, and shown - then the page is clean.
-  const raw = localStorage.getItem("ff_pending");
-  const previous = sessionId;
-  sessionId = crypto.randomUUID();
-  localStorage.setItem("ff_session", sessionId);
-  localStorage.removeItem("ff_history");
+  const raw = store.getItem("ff_pending");
+  const previous = tabStore.getItem("ff_tab_session");   // this tab's, never another tab's
+  tabStore.setItem("ff_tab_session", sessionId);
+  store.removeItem("ff_history");
+  if (previous && !raw) closeSession(previous);
   if (!raw) return;
   const p = JSON.parse(raw);
   // Anything older than a few minutes is not still running - the request would have
   // finished or the instance recycled, and a stale spinner is its own kind of lie.
-  if (Date.now() - p.started > 240000) { localStorage.removeItem("ff_pending"); return; }
+  if (Date.now() - p.started > 240000) { store.removeItem("ff_pending"); return; }
   add(`<p>${p.typed.replace(/</g, "&lt;")}</p>`, "me");
   const slot = add("<p>picking up where you left off — this answer was still being "
                    + "written when you left…</p>");
-  const d = await reclaim(p.started, 210, p.session || previous);
-  localStorage.removeItem("ff_pending");
+  const d = await reclaim(p.askId, 210, p.session || previous);
+  store.removeItem("ff_pending");
   if (d) {
     renderAnswer(slot, d, p.question);
     add(`<p class="cs">That answer was reclaimed from before the reload; this is otherwise a fresh conversation.</p>`);
@@ -1534,6 +1895,7 @@ $("f").onsubmit = async e => {
 // (no key) lands on a real league and says what the demo allows. Best effort.
 getJSON("/api/defaults", {headers: hdrs()}).then(d => {
   pageTier = d.tier || "friend";
+  pageVersion = d.version;
   if (d.tier === "demo") {
     const n = $("demonote");
     n.style.display = "block";
@@ -1546,10 +1908,15 @@ getJSON("/api/defaults", {headers: hdrs()}).then(d => {
   }
   if (currentLeague) return;
   // Friends on prod get no default league - the one they looked at last comes back.
-  const last = localStorage.getItem("ff_last_league");
+  const last = store.getItem("ff_last_league");
   if (d.league_id) { myName = d.owner || myName; loadLeague(d.league_id); }
   else if (last) loadLeague(last);
-}).catch(() => {});
+}).catch(() => {
+  // Couldn't reach the app at all: still try the league they were on, which shows its own
+  // loading state and a way to try again rather than a page that quietly does nothing.
+  const last = store.getItem("ff_last_league");
+  if (last && !currentLeague) loadLeague(last);
+});
 </script>
 </body>
 </html>

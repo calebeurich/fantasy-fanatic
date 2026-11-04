@@ -314,3 +314,44 @@ def test_an_unknown_owner_is_a_404_the_page_will_not_retry():
     response = api.unknown_owner(None, UnknownOwner("no owner matching 'shivvv'"))
     assert response.status_code == 404
     assert "shivvv" in json.loads(response.body)["detail"]
+
+
+def test_a_bad_league_id_is_the_visitors_to_fix_not_a_server_error(monkeypatch):
+    import pytest
+    import requests
+    from fastapi import HTTPException
+    from agent import api
+    with pytest.raises(HTTPException) as e:
+        api._league_or_404("notanumber")
+    assert e.value.status_code == 404
+
+    def gone(league_id):
+        raise requests.HTTPError("404")
+    monkeypatch.setattr(api.sleeper, "get_league", gone)
+    with pytest.raises(HTTPException) as e:
+        api._league_or_404("123")
+    assert e.value.status_code == 404
+    monkeypatch.setattr(api.sleeper, "get_league", lambda league_id: None)   # how Sleeper says "no such league"
+    with pytest.raises(HTTPException):
+        api._league_or_404("123")
+    monkeypatch.setattr(api.sleeper, "get_league", lambda league_id: {"name": "XFL 2"})
+    assert api._league_or_404("123")["name"] == "XFL 2"
+
+
+def test_browser_errors_reach_the_logs_but_cannot_flood_them(monkeypatch):
+    from types import SimpleNamespace
+    from agent import api
+    logged = []
+    monkeypatch.setattr(api.observability, "log_run", logged.append)
+    monkeypatch.setattr(api, "_client_error_counts", {})
+    request = SimpleNamespace(headers={"x-forwarded-for": "1.2.3.4", "user-agent": "phone"})
+    for _ in range(api.MAX_CLIENT_ERRORS_PER_VISITOR + 5):
+        api.client_error(api.ClientError(message="x" * 900, where="1:2"), request)
+    assert len(logged) == api.MAX_CLIENT_ERRORS_PER_VISITOR
+    assert len(logged[0]["error"]) == 500
+    assert logged[0]["outcome"] == "client_error"
+
+
+def test_the_page_is_never_cached_against_a_newer_api():
+    from agent import api
+    assert api.index().headers["cache-control"] == "no-cache"
