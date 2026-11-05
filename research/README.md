@@ -213,6 +213,8 @@ is reconstructed.
 
 ## Open: straight max PF can be gamed by roster shape (2026-11-04)
 
+Owner's plan for next year: max PF plus a lottery at the bottom, once this is tested.
+
 Owner: a tanking team could hold a ton of WRs and no TE or RBs, or no QBs, and hurt its best-ball score while still
 collecting dynasty value. Not tested. Rough size: two QB slots at 15-20 a game is about 30-40 points a week against a
 median 65-point season gap between neighbours in the bottom six, so it could beat the 24% bench conversion measured

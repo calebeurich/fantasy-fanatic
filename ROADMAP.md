@@ -498,10 +498,6 @@ Open gaps:
   `sources/dp_values.py` and research/market_reactions.py are the starting point.
 - **Dead-end advice:** it said to spend picks on a WR while "no WR target surfaced" for that
   team. Find out whether the target search has a real gap, or none exist.
-- **Rebuilds never buy in trade ideas:** every team in 30 live leagues (350, 2026-11-04): 16 got no ideas, 14 of them
-  rebuilds with nothing aging to sell, and 0 of 126 rebuilds were shown a buy, because their picks aren't spendable,
-  even with 5-7 1sts. The other 2 empties are contenders with no picks left. Open: should a rebuild's surplus 1sts buy
-  its wish list? The empty message also gives no reason.
 - **Reads stall during a burst of new chats:** six at once, 4 of 24 table reads were refused
   and retried, up to 24s. Answers are all delivered. Only the stateless build ends this.
 - **Row click re-pins "you":** clicking any team in the table makes it your team, and that is

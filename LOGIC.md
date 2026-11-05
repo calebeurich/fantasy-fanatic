@@ -2189,6 +2189,14 @@ A card names a partner who has never traded (`partner_never_trades`, the table's
 A card says "a late pick" for any 3rd or later (owner: "better than the 3rd 4th stuff"): what the two rounds buy
 overlaps too much for the name to mean anything (research/README). Tweak and ask still use the actual pick.
 
+### A rebuild buys by pressing, and an empty card is fine (2026-11-05)
+
+A rebuild's picks only buy once its manager picks "if pressing": spending the future is a choice to stop rebuilding,
+not a default to show every rebuild. Owner's example: BenSimonds in XFL 2 sent three 1sts and two rookies for Chase and
+Warren in Week 2, and is 5-3 and contending. Checked on 30 live leagues (350 teams, 2026-11-04): as read, 0 of 126
+rebuilds saw a buy and 16 teams saw no ideas at all (14 rebuilds, 2 contenders with almost no picks). Pressing, 122 of
+126 rebuilds saw a buy, including all 14 of the empty ones. So no surplus-picks rule was added, and an empty card stays.
+
 ### Season swaps (`trade_ideas.season_swaps`, 2026-11-03)
 
 Owner: "similar dynasty value player, but one is dead for this season. Perfect for a tanker who doesn't want
