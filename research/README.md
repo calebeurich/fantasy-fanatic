@@ -374,7 +374,7 @@ median-league games.)
 
 ## Projection snapshots (`save_projections.py`, from 2026-10-18)
 
-Run weekly in season: saves Sleeper's rest-of-season weekly lines as they stand that day
+Run daily in season (only each week's first run saves): saves Sleeper's rest-of-season weekly lines as they stand that day
 to `data/projections/<season>/` (~0.5 MB, not committed). Why: Sleeper keeps each past
 week's final projection (2025 week 5 is still served), but never what it projected for
 week 12 as of week 6 - and that view is exactly what ePPG and the playoff odds run on.

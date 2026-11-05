@@ -438,7 +438,7 @@
     <h2>Ask</h2>
     <div id="chips" class="chips" style="display:none"></div>
     <div id="log" class="pad"><div class="empty" id="hint">
-      Load a league, then click your team to get question ideas — or type anything.
+      Load a league, then pick your team in the bar above to get question ideas — or type anything.
     </div></div>
     <div class="pad" style="border-top:1px solid var(--line)">
       <div class="cs" id="askctx" style="margin-bottom:8px;display:none"></div>
@@ -704,6 +704,8 @@ function setYou(owner, stance, opts = {}) {
   document.querySelectorAll("tr.team").forEach(x => x.classList.toggle("mine", x.dataset.owner === myTeam));
   renderPin();
   if (!myTeam) return;
+  // Your own card opens instantly, and the request gives Cloud Run's warm-up the CPU it lacks between requests.
+  fetchIdeas(currentLeague, myTeam, myStance).catch(() => {});
   showChips(myTeam);
   $("q").placeholder = `ask anything about ${myTeam} or the league…`;
   showAskContext();
@@ -1168,7 +1170,12 @@ async function fillIdeas(leagueId, owner) {
   try {
     list = await fetchIdeas(leagueId, owner, stance);
   } catch (_) { failed(el, "Couldn't look for trade ideas.", () => fillIdeas(leagueId, owner)); return; }
-  if (!list.length) { el.textContent = "Nothing obvious from this roster right now. You can build your own in the Trade tab."; return; }
+  if (!list.length) {
+    const canPress = owner === myTeam && !stance && ["build", "sell"].includes((leagueTeams[owner]?.path || "").split(" - ")[0]);
+    el.textContent = canPress ? "Nothing to sell right now. Tap \"if pressing\" in the bar above to see what your picks could buy."
+                              : "Nothing obvious from this roster right now. You can build your own in the Trade tab.";
+    return;
+  }
   const framing = list[0] && list[0].framing ? `<div class="cs" style="margin-bottom:4px">${owner} is waiting — these are production moves <em>${list[0].framing}</em>:</div>`
                 : stance ? `<div class="cs" style="margin-bottom:4px">under your pinned stance — <em>${stanceWord(stance)}</em>:</div>` : "";
   const card = (s, i) => `<div class="idea" data-i="${i}" title="${(s.why || "").replace(/"/g, "&quot;")}">` +
@@ -1489,9 +1496,9 @@ async function loadLeague(id, {refresh = false} = {}) {
     detailsReady = prefetchDetails(id);
     const saved = JSON.parse(store.getItem("ff_you:" + id) || "null");   // read before any pick overwrites it
     document.querySelectorAll("tr.team").forEach(tr => {
-      // Click = select for asking AND toggle the expanded roster. Deterministic data
-      // rendered directly, same doctrine as the table itself.
-      tr.onclick = () => { pick(tr); toggleDetail(tr, id); };
+      // Click = toggle the expanded roster. Deterministic data rendered directly, same
+      // doctrine as the table itself. Looking at a team doesn't make it you.
+      tr.onclick = () => toggleDetail(tr, id);
       // They told us their username to find this league, so which team is theirs is
       // already known - making them click it (and the agent ask for it) is a question
       // the page can answer itself.

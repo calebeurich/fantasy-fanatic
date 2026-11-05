@@ -500,8 +500,6 @@ Open gaps:
   team. Find out whether the target search has a real gap, or none exist.
 - **Reads stall during a burst of new chats:** six at once, 4 of 24 table reads were refused
   and retried, up to 24s. Answers are all delivered. Only the stateless build ends this.
-- **Row click re-pins "you":** clicking any team in the table makes it your team, and that is
-  remembered. Comparing teams was the reason; it may surprise people. Owner's call.
 - **Cold starts:** 5-30s, but 58-91s every week or two through October. Startup CPU boost on both services from
   2026-11-03: the first day, 35 scale-ups, median 7.8s and none over 13.8s (before: 80, median 11-14s, 5 over 30s).
   One day can't speak to a problem that came every week or two, so compare again around 2026-11-18.

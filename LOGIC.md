@@ -2195,7 +2195,8 @@ A rebuild's picks only buy once its manager picks "if pressing": spending the fu
 not a default to show every rebuild. Owner's example: BenSimonds in XFL 2 sent three 1sts and two rookies for Chase and
 Warren in Week 2, and is 5-3 and contending. Checked on 30 live leagues (350 teams, 2026-11-04): as read, 0 of 126
 rebuilds saw a buy and 16 teams saw no ideas at all (14 rebuilds, 2 contenders with almost no picks). Pressing, 122 of
-126 rebuilds saw a buy, including all 14 of the empty ones. So no surplus-picks rule was added, and an empty card stays.
+126 rebuilds saw a buy, including all 14 of the empty ones. So no surplus-picks rule was added, and an empty card stays,
+pointing your own rebuild at "if pressing".
 
 ### Season swaps (`trade_ideas.season_swaps`, 2026-11-03)
 

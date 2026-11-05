@@ -3,7 +3,8 @@ playoff-odds replay can test real ePPG instead of ppg-to-date. Sleeper keeps eac
 week's final line, but never what it projected for week 12 back in week 6 - that view is
 what ePPG and the odds run on, and it only exists if it is saved at the time.
 
-Run weekly in season: python -m research.save_projections
+Run daily in season, so one missed day loses nothing: python -m research.save_projections
+Only the week's first run saves.
 Writes data/projections/<season>/asof-<date>-week<N>.json.gz (~0.4 MB; data/ is not
 committed - these are Sleeper's numbers, not ours to publish).
 """
@@ -24,11 +25,15 @@ def main() -> None:
     if state.get("season_type") != "regular" or not week:
         print(f"Not in the regular season ({state.get('season_type')}) - nothing saved.")
         return
+    folder = Path("data/projections") / season
+    if list(folder.glob(f"asof-*-week{week}.json.gz")):
+        print(f"Week {week} already saved.")
+        return
     weeks = {wk: [{k: r.get(k) for k in ("player_id", "team", "opponent", "stats")}
                   for r in sleeper.projection_rows(season, wk)]
              for wk in range(week, LAST_WEEK + 1)}
-    out = Path("data/projections") / season / f"asof-{datetime.date.today()}-week{week}.json.gz"
-    out.parent.mkdir(parents=True, exist_ok=True)
+    out = folder / f"asof-{datetime.date.today()}-week{week}.json.gz"
+    folder.mkdir(parents=True, exist_ok=True)
     out.write_bytes(gzip.compress(json.dumps({"season": season, "as_of_week": week,
                                               "weeks": weeks}).encode()))
     print(f"Saved weeks {week}-{LAST_WEEK} ({sum(map(len, weeks.values()))} lines) -> {out}")
