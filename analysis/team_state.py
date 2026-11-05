@@ -851,8 +851,8 @@ def classify_league(league_id: str) -> list[dict]:
     lost_own_first = {r for r, holder in next_first_holder.items() if holder != r}
     owner_of_roster = {r["roster_id"]: owner_names.get(r["owner_id"], "Unknown") for r in rosters}
 
-    # Pick capital priced WITHOUT `strategy_by_roster`: that argument prices a pick by the
-    # originating team's window, and the window is what this measure helps produce -
+    # Pick capital priced WITHOUT `tier_by_roster`: that argument prices a pick by the
+    # originating team, and that team's window is what this measure helps produce -
     # letting it in would make the label feed its own input.
     pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.fmt["num_teams"],
                                               ctx.fmt["ppr"], ctx.fmt["is_dynasty"])

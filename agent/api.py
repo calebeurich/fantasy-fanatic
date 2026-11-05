@@ -414,13 +414,13 @@ def _team_detail(ctx, roster: dict) -> dict:
 
     pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.fmt["num_teams"],
                                               ctx.fmt["ppr"], ctx.fmt["is_dynasty"])
-    # Slotted the way the board slots them (by the ORIGINATING team's window) so the page
+    # Slotted the way the board slots them (by the ORIGINATING team) so the page
     # shows Early / Mid / Late on this year's picks (owner) - raw FantasyCalc value, not
     # the market premium: `pick` keeps the base name so the composer's chips match ideas.
     picks = team_values.owned_picks(league_id, int(ctx.league["season"]),
                                     ctx.league["settings"]["draft_rounds"],
                                     [r["roster_id"] for r in ctx.rosters], pick_values,
-                                    {r["roster_id"]: r["window"] for r in states})
+                                    {r["roster_id"]: team_values.expected_pick_tier(r) for r in states})
     picks = {rid: [{**p, "pick": p["pick"].split(" (")[0]} for p in ps] for rid, ps in picks.items()}
     return {
         "owner": owner_name,

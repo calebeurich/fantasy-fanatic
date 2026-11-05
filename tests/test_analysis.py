@@ -1554,7 +1554,7 @@ def test_pick_slot_follows_the_original_team_not_the_holder(monkeypatch):
                    "2027 1st (Mid)": 2955, "2027 1st (Late)": 2263}
     owned = team_values.owned_picks(
         "L", season=2026, draft_rounds=1, roster_ids=[1, 2], pick_values=pick_values,
-        strategy_by_roster={1: "Push", 2: "Rebuild"},
+        tier_by_roster={1: "Late", 2: "Early"},
     )
     # Roster 1 (a contender) acquired roster 2's (a rebuilder's) first.
     acquired = next(p for p in owned[1] if p["originally"] == 2)
@@ -1566,6 +1566,16 @@ def test_pick_slot_follows_the_original_team_not_the_holder(monkeypatch):
     assert own_pick["value"] == 2263, "the contender's own first is a late pick"
 
 
+def test_expected_pick_tier_reads_the_simulated_slot_before_the_window():
+    from analysis.team_values import expected_pick_tier
+    winning_rebuild = {"window": "Rebuild", "pick_odds": [0, 0, 0, 0, 0.5, 0.5, 0, 0, 0]}
+    assert expected_pick_tier(winning_rebuild) == "Mid"
+    losing_contender = {"window": "Contend", "pick_odds": [0.5, 0.5, 0, 0, 0, 0, 0, 0, 0]}
+    assert expected_pick_tier(losing_contender) == "Early"
+    assert expected_pick_tier({"window": "Rebuild", "pick_odds": [0, 0, 0, 0, 0, 0, 0, 0, 1]}) == "Late"
+    assert expected_pick_tier({"window": "Rebuild", "pick_odds": None}) == "Early", "no sim: the window"
+
+
 def test_pick_falls_back_to_flat_value_when_no_tier_is_published(monkeypatch):
     """Only the next class has Early/Mid/Late prices - the honest limit, since a window
     predicts next season's finish poorly two years out. Later picks must keep the flat
@@ -1575,7 +1585,7 @@ def test_pick_falls_back_to_flat_value_when_no_tier_is_published(monkeypatch):
     owned = team_values.owned_picks(
         "L", season=2026, draft_rounds=1, roster_ids=[1],
         pick_values={"2028 1st": 2028},  # no tiered variants published
-        strategy_by_roster={1: "Rebuilding"},
+        tier_by_roster={1: "Early"},
     )
     pick = next(p for p in owned[1] if p["season"] == 2028)
     assert pick["value"] == 2028

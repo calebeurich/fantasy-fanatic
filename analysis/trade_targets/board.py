@@ -10,7 +10,7 @@ from sources import fantasycalc
 
 from .. import team_state, roster_needs, trade_activity, prior_season
 from ..league import context
-from ..team_values import (owned_picks, now_premium_bar, INSIDE_FINAL_YEAR,
+from ..team_values import (expected_pick_tier, owned_picks, now_premium_bar, INSIDE_FINAL_YEAR,
                            MIN_MEANINGFUL_RUNWAY, NOISE_BAND, NOISE_RETAINED)
 
 # A parameter, not a hard limit - "give me more" means call again with a higher number.
@@ -48,9 +48,7 @@ def build_board(league_id: str) -> Board:
     ctx = context(league_id)
     pick_values = fantasycalc.get_pick_values(ctx.fmt["num_qbs"], ctx.num_teams,
                                               ctx.fmt["ppr"], ctx.fmt["is_dynasty"])
-    # Picks keyed on the window, which is where a pick's slot actually comes from: how good
-    # the originating team finishes. Contending teams pick late, rebuilders early.
-    strategy_by_roster = {r["roster_id"]: r["window"] for r in states}
+    tier_by_roster = {r["roster_id"]: expected_pick_tier(r) for r in states}
     return Board(
         ctx=ctx,
         states=states,
@@ -67,7 +65,7 @@ def build_board(league_id: str) -> Board:
                         for rid, picks in owned_picks(league_id, int(ctx.league["season"]),
                                                       ctx.league["settings"]["draft_rounds"],
                                                       [r["roster_id"] for r in ctx.rosters], pick_values,
-                                                      strategy_by_roster).items()},
+                                                      tier_by_roster).items()},
     )
 
 

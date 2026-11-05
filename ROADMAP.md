@@ -505,10 +505,8 @@ Open gaps:
   One day can't speak to a problem that came every week or two, so compare again around 2026-11-18.
 - **Projection snapshots:** nothing runs the saver on a schedule yet, and week 8 of 2026 was missed. It can now run
   daily, since only each week's first run saves.
-- **A rebuild's own next 1st prices Early whatever its record:** 310 pressing buys across 30 leagues (2026-11-05), 105
-  spend one, and 53 of those leave the band if it prices Mid instead: 28 of 64 under .300, 20 of 29 from .300-.499, 5 of
-  12 at .500+. The next class's order comes from this season, so Early is fair for a 1-7 team and wrong for a 6-2 one.
-  Open: tier that pick by where the team stands now, not its window. It would touch every deal price, so diff it first.
+- **Stars for one bad team's 1st:** a 1-7 team can still see a 1st + 4th for Nacua. The price follows the market's Early
+  tier, and only 17% of star deals in the trade data were picks-only, so these are possible but uncommon. Not changed.
 
 **Later, not now (owner, 2026-11-03): the sellable version.** Notes from the discussion, to
 pick up after the focus above:

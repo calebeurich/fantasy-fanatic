@@ -172,11 +172,15 @@ with calibration data.
 
 Two future classes only (`FUTURE_DRAFT_YEARS` - further out is too speculative and
 rarely traded). Ownership resolves through `traded_picks`; a pick not listed is still
-its original roster's. Picks are priced by the ORIGINAL owner's window where the market
-publishes tiers - a rebuilder's 1st is an early pick whoever holds it, and Early/Late
-differ by ~2x (2027 1st: 4,487 / 2,955 / 2,263 vs flat 2,853). Only the next class has
-tiered prices (a window predicts one season's finish, not two); later picks keep the
-flat round value with `slot_basis` saying so. `pick_capital` is a sum over `owned_picks`,
+its original roster's. Picks are priced by the ORIGINAL owner's expected tier where the
+market publishes tiers - a bad team's 1st is an early pick whoever holds it, and Early/Late
+differ by ~2x (2027 1st: 4,487 / 2,955 / 2,263 vs flat 2,853). The tier is the team's
+expected slot from the season sim's `pick_odds` split in thirds (`expected_pick_tier`), since
+this season's finish sets next year's draft: a 6-2 "rebuild" no longer sells an early 1st.
+Before/after on 92 teams in 8 leagues (2026-11-05): 17 teams' picks moved a tier (12 Early to Mid, all rebuilds), 19 of
+359 as-read ideas changed, 11 of 107 pressing ones, and no team lost all its ideas.
+With no sim it falls back to the window. Only the next class has tiered prices; later picks
+keep the flat round value with `slot_basis` saying so. `pick_capital` is a sum over `owned_picks`,
 deliberately not a second ownership implementation. `pick_equivalent` maps a player value
 to the nearest pick ("about a 2027 3rd") because a raw number is hard to feel.
 

@@ -265,8 +265,15 @@ def get_players_with_roles(num_qbs: int, num_teams: int, ppr: float, is_dynasty:
 # so a window maps to a rough draft position. FantasyCalc publishes Early/Mid/Late prices
 # for the next class, which is exactly this distinction already priced by the market.
 WINDOW_TO_PICK_TIER = {"Rebuild": "Early", "Middling": "Mid", "Contend": "Late", "Push": "Late"}
-# The slot expectation stated as the contention fact behind it, not the internal label.
-PICK_TIER_REASON = {"Early": "bottom third", "Mid": "middle third", "Late": "top third"}
+
+
+def expected_pick_tier(row: dict) -> str:
+    """Where a team's next 1st should land: its simulated slot this season, else its window."""
+    odds = row.get("pick_odds")
+    if not odds:
+        return WINDOW_TO_PICK_TIER[row["window"]]
+    slot = sum(s * p for s, p in enumerate(odds, 1))
+    return "Early" if slot <= len(odds) / 3 else "Late" if slot > 2 * len(odds) / 3 else "Mid"
 
 
 # What a pick actually BUYS vs what FantasyCalc says it is worth (research/pick_premium.py,
@@ -290,12 +297,12 @@ def pick_premium(year_offset: int) -> float:
 
 def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list[int],
                 pick_values: dict[str, int],
-                strategy_by_roster: dict[int, str] | None = None) -> dict[int, list[dict]]:
+                tier_by_roster: dict[int, str] | None = None) -> dict[int, list[dict]]:
     """The individual future picks each roster currently owns, priced by the ORIGINAL
-    owner's window where the market publishes tiers (a rebuilder's 1st is an early pick
-    whoever holds it, and Early/Late differ by nearly 2x). Only the next class has tiered
-    prices - a window predicts next season's finish, not the one after - so later picks
-    keep the flat round value and every pick records `slot_basis` saying which it got."""
+    owner's expected tier where the market publishes tiers (a bad team's 1st is an early
+    pick whoever holds it, and Early/Late differ by nearly 2x). Only the next class has
+    tiered prices - this season says nothing about the one after - so later picks keep the
+    flat round value and every pick records `slot_basis` saying which it got."""
     traded = sleeper.get_traded_picks(league_id)
     traded_map = {(int(t["season"]), t["round"], t["roster_id"]): t["owner_id"] for t in traded}
 
@@ -310,8 +317,8 @@ def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list
             for rid in roster_ids:
                 current_owner = traded_map.get((pick_season, round_num, rid), rid)
 
-                # Tier by the ORIGINAL owner's window, not the holder's.
-                tier = WINDOW_TO_PICK_TIER.get((strategy_by_roster or {}).get(rid))
+                # Tier by the ORIGINAL owner, not the holder.
+                tier = (tier_by_roster or {}).get(rid)
                 tiered_value = pick_values.get(f"{name} ({tier})") if tier else None
 
                 # Indexed, not setdefault: every owner is a roster in this league, so an
@@ -325,8 +332,7 @@ def owned_picks(league_id: str, season: int, draft_rounds: int, roster_ids: list
                     "round": round_num,
                     "season": pick_season,
                     "originally": rid,  # whose pick it was, so "their own 1st" is visible
-                    "slot_basis": (f"expected {tier.lower()} - the originating team ranks in "
-                                   f"the {PICK_TIER_REASON[tier]} of current production")
+                    "slot_basis": f"expected {tier.lower()} - where the originating team is headed"
                                   if tiered_value else "flat round average (slot unknowable this far out)",
                 })
     for picks in owned.values():
