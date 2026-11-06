@@ -36,6 +36,11 @@ from . import db
 REPO = "https://github.com/calebeurich/fantasy-fanatic"
 
 
+# Prod and staging share one database: each service counts under its own name (Cloud Run sets
+# K_SERVICE), or staging's load tests would spend prod's day and the reverse.
+SCOPE = os.environ.get("K_SERVICE", "local")
+
+
 def _today():
     return datetime.now(timezone.utc).date()
 
@@ -66,7 +71,7 @@ class DailyBudget:
             try:
                 with db.connect() as conn:
                     row = conn.execute("select usd, requests from daily_spend where day = %s and tier = %s",
-                                       (self._day, self.name)).fetchone()
+                                       (self._day, f"{SCOPE}:{self.name}")).fetchone()
                 return row or (0.0, 0)
             except Exception as e:
                 _db_failed(e)
@@ -86,7 +91,7 @@ class DailyBudget:
                 with db.connect() as conn:
                     conn.execute("insert into daily_spend (day, tier, usd, requests) values (%s, %s, %s, 1) "
                                  "on conflict (day, tier) do update set usd = daily_spend.usd + excluded.usd, "
-                                 "requests = daily_spend.requests + 1", (self._day, self.name, cost_usd or 0.0))
+                                 "requests = daily_spend.requests + 1", (self._day, f"{SCOPE}:{self.name}", cost_usd or 0.0))
                 return
             except Exception as e:
                 _db_failed(e)
@@ -136,7 +141,7 @@ def visitor_allowed(ip: str) -> bool:
     global _visitor_day, _visitor_asks
     today = _today()
     if db.enabled():
-        visitor = hashlib.sha256(f"{today}:{ip}".encode()).hexdigest()[:16]
+        visitor = SCOPE + ":" + hashlib.sha256(f"{today}:{ip}".encode()).hexdigest()[:16]
         try:
             with db.connect() as conn:
                 conn.execute("delete from demo_visitors where day < %s", (today,))

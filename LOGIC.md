@@ -1970,7 +1970,9 @@ for less than half the win the first two cuts bought.
 two ceilings (dollars + a request-count backstop, since a failed call reports
 `cost_usd: None`). Since 2026-11-06 the counters and the demo's per-visitor cap live in
 Supabase Postgres (`agent/db.py`; visitors as a hash of IP and day, never the IP), so up
-to `max-instances=3` share one day and a deploy no longer resets it; without
+to `max-instances=3` share one day and a deploy no longer resets it. Prod and staging share
+the database, so each counts under its own service name (`K_SERVICE`) - on the first day
+they didn't, and staging's load tests were spending prod's budget; without
 `DATABASE_URL` they fall back to the process. Check-then-record can overshoot by the calls
 in flight at once ($0.50 each at most). `session-affinity` keeps a browser on one instance,
 because answer progress and the dropped-connection reclaim are still per instance. Those
