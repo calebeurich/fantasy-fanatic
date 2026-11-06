@@ -1,19 +1,11 @@
-# Pinned deliberately. Unpinned versions caused a real "works on my machine" failure:
-# locally `mcp` sits at 1.29.0 (which has mcp.server.fastmcp.FastMCP) only because
-# installing claude-agent-sdk downgraded it from 2.0.0 at some point. A clean install
-# in the Cloud Run container resolved to a newer mcp where FastMCP has moved, so
-# agent/mcp_server.py died at import with ModuleNotFoundError - which the SDK swallowed,
-# leaving the agent with no tools and the model confabulating answers instead of failing.
-# See LOGIC.md's "Container image" section for the full trail.
+# Pinned deliberately. Unpinned versions caused a real "works on my machine" failure: a clean
+# install in the Cloud Run container resolved to a newer mcp where FastMCP had moved, so
+# agent/mcp_server.py died at import and the agent was left with no tools, confabulating
+# answers instead of failing. See LOGIC.md's "Container image" section for the full trail.
 requests==2.32.3
 nflreadpy==0.1.5
 mcp[cli]==1.29.0
-# 0.2.165+: the SDK prices each answer from its own model table, and 0.2.134 did not
-# know Haiku 5.5 - it priced it like old Opus (~140x high), tripped max_budget_usd and
-# threw the answer away. Keep this at a release that knows MODEL (LOGIC.md).
-claude-agent-sdk==0.2.165
-# The Messages API backend (agent/tool_loop.py, CHAT_BACKEND=messages). Both stay until it
-# replaces the SDK path on the web.
+# The agent's tool loop on the Messages API (agent/tool_loop.py).
 anthropic==2.6.0
 # Conversations in Supabase Postgres (agent/conversations.py), when DATABASE_URL is set.
 psycopg[binary]==3.2.13

@@ -598,13 +598,7 @@ async function getJSON(url, init, {quiet = false} = {}) {
   } finally { done(); }
 }
 
-// Start the conversation's subprocesses ahead of the first question, which then skips ~8s of
-// start-up. Not at page load: on one CPU that start-up slows the league table everyone is
-// waiting for. Best effort.
-const warmSession = () => fetch(`/sessions/${sessionId}/warm`, {method: "POST", headers: hdrs()}).catch(() => {});
 const closeSession = id => fetch(`/sessions/${encodeURIComponent(id)}/close`, {method: "POST", headers: hdrs()}).catch(() => {});
-let warmed = false;
-const warmOnce = () => { if (!warmed) { warmed = true; warmSession(); } };
 // One view at a time; the hash remembers it across reloads and the back button.
 // A tab change is a history entry, so a phone's back gesture goes to the last tab instead of
 // leaving the app, and each view comes back where you left it.
@@ -620,7 +614,7 @@ function showView(name, {push = true} = {}) {
     if (b.dataset.view === name) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   });
   if (location.hash !== "#" + name) history[push ? "pushState" : "replaceState"](null, "", "#" + name);
-  if (name === "ask") { setAskBadge(asking ? "work" : ""); warmOnce(); }
+  if (name === "ask") setAskBadge(asking ? "work" : "");
   // Ask opens on the NEWEST message (the question you just sent).
   const last = name === "ask" && document.querySelector("#log .msg:last-child");
   if (last) last.scrollIntoView({block: "start"});
@@ -663,7 +657,6 @@ const tabBack = async () => {
   const now = await getJSON("/api/defaults", {headers: hdrs()}, {quiet: true}).catch(() => null);
   if (now && pageVersion && now.version !== pageVersion && !talking && !building) { location.reload(); return; }
   if (currentLeague && !building) loadLeague(currentLeague, {refresh: true});
-  if (!talking) warmSession();   // the idle limit let the ready session go
 };
 addEventListener("blur", tabLeft);
 addEventListener("focus", tabBack);
@@ -1524,7 +1517,6 @@ async function loadLeague(id, {refresh = false} = {}) {
       trade.a.stance = myStance;
       renderBuilder(id, d.teams.map(t => t.owner));
     }
-    setTimeout(warmOnce, 0);
     // Your own trade ideas are the slow part of opening your roster, so have them ready.
     if (myTeam) fetchIdeas(id, myTeam, myStance).catch(() => {});
   } catch (e) {
@@ -1623,7 +1615,6 @@ function startNewConversation(reason) {
   setAskBadge("");
   $("log").innerHTML = "";
   add(`<p>${esc(reason)}</p>`);
-  warmSession();
 }
 $("reset").onclick = () => startNewConversation("Started a new conversation.");
 
@@ -1890,7 +1881,6 @@ $("f").onsubmit = async e => {
     }
   }
 };
-$("q").addEventListener("focus", warmOnce);
 
 // ---- reopening the page ----
 // Redraw the conversation, and if a question was still in flight when the tab went away,

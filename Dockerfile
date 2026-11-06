@@ -1,16 +1,8 @@
 # Built and run remotely by Google Cloud Build/Cloud Run - never built locally as
 # part of the normal workflow, see LOGIC.md's "Hosting platform evaluation" section.
+# Python only: the agent is a Messages API tool loop in this process (agent/tool_loop.py), so
+# the image no longer carries Node.js or the `claude` CLI (~500MB of the old image).
 FROM python:3.12-slim
-
-# The Claude Agent SDK shells out to the `claude` CLI as its transport (see
-# agent/agent.py) - needs Node.js. Checked the real current requirement rather than
-# guessing: @anthropic-ai/claude-code needs Node 22+ as of mid-2026.
-RUN apt-get update && apt-get install -y --no-install-recommends curl gnupg \
-    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g @anthropic-ai/claude-code \
-    && apt-get purge -y curl gnupg && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY requirements.txt .
@@ -21,20 +13,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --retries 5 --timeout 60 -r requirements.txt
 COPY . .
 
-# ANTHROPIC_API_KEY is never baked into the image - .env is gitignored so it isn't
-# even present in what Cloud Build pulls from GitHub. It must be set as a real
-# Cloud Run environment variable (bound to a Secret Manager secret) when the service
-# is configured in the console - agent.py's load_dotenv() no-ops harmlessly if no
-# .env file exists, and reads straight from the real environment either way.
+# ANTHROPIC_API_KEY and DATABASE_URL are never baked into the image - .env is gitignored
+# so it isn't even present in what Cloud Build pulls from GitHub. They are Cloud Run
+# environment variables bound to Secret Manager secrets (see the deploy workflows);
+# agent.py's load_dotenv() no-ops harmlessly if no .env file exists.
 
-# Run as non-root. Not optional here: agent.py sets permission_mode="bypassPermissions",
-# which the SDK passes to the `claude` CLI as --dangerously-skip-permissions, and the
-# CLI hard-refuses that flag under root ("cannot be used with root/sudo privileges for
-# security reasons"). Cloud Run runs as root by default, so the first real deploy got
-# exactly that error - /health and /budget served fine, but every /ask failed. Also
-# just better container practice independent of the flag.
-# HOME must be a real writable directory: the claude CLI keeps config under it, and
-# Cloud Run's filesystem is in-memory tmpfs, so an unset/unwritable HOME fails oddly.
+# Run as non-root - better container practice. HOME must be a real writable directory
+# (libraries keep caches and config under it, and Cloud Run's filesystem is in-memory tmpfs).
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 ENV HOME=/home/appuser

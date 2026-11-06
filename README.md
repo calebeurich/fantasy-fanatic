@@ -36,7 +36,7 @@ sources/     Raw data clients        Sleeper (rosters, transactions, projections
     ↓
 analysis/    Deterministic logic     team reads, positional needs, trade targets, the trade framer
     ↓
-agent/       LLM layer               MCP server → Claude Agent SDK → FastAPI → static UI
+agent/       LLM layer               MCP tools → Messages API tool loop → FastAPI → static UI
 research/    Offline studies         intuitions tested against real trade data before they become constants
 ```
 
@@ -51,7 +51,7 @@ from the agent.
 |---|---|
 | `sources/` | Sleeper league/roster/transaction/projection data, FantasyCalc dynasty + redraft values, nflverse contracts, usage roles, availability |
 | `analysis/` | Age-curve runway, the three-tier team read (contention distance → composition → path), replacement-level positional needs, trade-target matching with a direction gate, the trade framer (per-side judgment, no package pricing), two-leg sequences, waivers |
-| `agent/` | MCP server (10 read-only tools), Claude Agent SDK agent, grounding checks, eval harness, tiered sessions + budgets, streaming HTTP API, static UI with a trade composer |
+| `agent/` | MCP server (10 read-only tools), a Messages API tool loop over them, grounding checks, eval harness, conversations + budgets in Supabase Postgres, streaming HTTP API, static UI with a trade composer |
 | `research/` | Studies that turned gut feel into measured constants: consolidation premiums, what a stud actually fetches by value tier, boundary-noise calibration |
 
 Three currencies, kept apart on purpose: **dynasty value** (what a piece fetches),
@@ -204,7 +204,8 @@ thumbs-down comments from league mates have been the richest source of real bugs
   question from live data; there is no corpus to search.
 - **No fine-tuning.** The reasoning lives in deterministic Python plus a prompt; the
   evals carry the quality story.
-- **One orchestrator, one model** — the Claude Agent SDK on Claude Haiku 5.5, chosen after
+- **One orchestrator, one model** — a Messages API tool loop on Claude Haiku 5.5 (the Claude
+  Agent SDK until 2026-11-06, replaced so chats stop costing a process each), the model chosen after
   measuring cost and quality (the move from Haiku 4.5, 2026-10-11: 12/12 on both, median
   answer 43s vs 60s, ~6x cheaper per eval run, half the grounding retries) — with a small LangGraph client (`agent/langgraph_client.py`,
   Qwen2.5-72B via HuggingFace) driving the identical MCP tools, to show the tool layer is

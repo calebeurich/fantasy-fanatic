@@ -1,5 +1,5 @@
 """Unit tests for the agent-side infrastructure: TTL cache, daily budget ceiling,
-the trade-grounding check, and per-session cost accounting.
+the trade-grounding check, and conversation storage.
 
 All free and offline - none of this touches the API. These were previously verified
 only by ad-hoc shell commands during development, which left nothing behind to catch
@@ -14,7 +14,6 @@ import asyncio
 
 from agent import budget
 from agent.agent import _trade_violations
-from agent.sessions import Session, SessionManager
 from sources.cache import ttl_cache
 
 
@@ -152,54 +151,23 @@ def test_grounding_is_line_scoped():
     assert _trade_violations(text, banned) == []
 
 
-# ------------------------------------------------------------ per-session cost delta
-
-def test_session_bills_the_delta_not_the_cumulative_total():
-    """total_cost_usd is cumulative for the client's lifetime. On a persistent session
-    the raw value would over-report each question and charge the budget the running
-    total every turn - draining the ceiling far faster than real spend."""
-    session = Session.__new__(Session)
-    session.cost_baseline = 0.0
-    assert session.cost_delta(0.015) == 0.015
-    assert round(session.cost_delta(0.031), 3) == 0.016
-    assert round(session.cost_delta(0.044), 3) == 0.013
-
-
-def test_session_cost_delta_handles_missing_cost():
-    session = Session.__new__(Session)
-    session.cost_baseline = 0.0
-    assert session.cost_delta(None) is None
-
-
 # ------------------------------------------------------- silent reset made visible
 
-class _FakeClient:
-    async def connect(self):
-        pass
-
-    async def disconnect(self):
-        pass
-
-
-def test_acquire_reports_when_a_known_id_gets_a_fresh_conversation(monkeypatch):
-    """A tester whose session was evicted (idle TTL, LRU, a deploy) used to get a model
-    with amnesia and no warning - the fabricated-needs incident grew from exactly that.
-    The `created` flag is what lets the page say 'this answer starts fresh'."""
-    import agent.sessions as sessions_mod
-    monkeypatch.setattr(sessions_mod, "ClaudeSDKClient", lambda options: _FakeClient())
-    manager = SessionManager(options_factory=lambda: None)
+def test_a_chat_reads_as_new_until_saved_and_again_after_it_is_dropped():
+    """A tester whose conversation was lost used to get a model with amnesia and no warning -
+    the fabricated-needs incident grew from exactly that. `load` returning None is what lets
+    the page say 'this answer starts fresh'."""
+    from agent import conversations
 
     async def scenario():
-        _, created_first = await manager.acquire("jwall-tab")
-        _, created_again = await manager.acquire("jwall-tab")
-        await manager.close_all()  # the eviction, from the client's point of view
-        _, created_after_reset = await manager.acquire("jwall-tab")
-        return created_first, created_again, created_after_reset
+        first = await conversations.load("jwall-tab")
+        await conversations.save("jwall-tab", [{"role": "user", "content": "hi"}])
+        again = await conversations.load("jwall-tab")
+        await conversations.drop("jwall-tab")
+        return first, again, await conversations.load("jwall-tab")
 
-    first, again, after_reset = asyncio.run(scenario())
-    assert first is True
-    assert again is False
-    assert after_reset is True
+    first, again, after_drop = asyncio.run(scenario())
+    assert first is None and again == [{"role": "user", "content": "hi"}] and after_drop is None
 
 
 # ----------------------------------------------------------- sleeper season chains
@@ -255,37 +223,40 @@ def test_ppg_guard_flags_prices_wearing_pergame_units():
     assert not _unit_violations("the lineup projects to score 149.3 PPG, 172 points a game at best")
 
 
-def _refusal(kind, text):
-    from claude_agent_sdk import AssistantMessage, TextBlock
-    return AssistantMessage(content=[TextBlock(text=text)], model="m", error=kind)
+def _api_error(text):
+    import anthropic
+    import httpx2
+    return anthropic.APIError(text, request=httpx2.Request("POST", "https://api.anthropic.com"), body=None)
 
 
-class _RefusingClient:
-    def __init__(self, message):
-        self.message = message
-
-    async def query(self, question):
-        pass
-
-    async def receive_response(self):
-        yield self.message
-
-
-def test_a_refused_call_is_never_shown_as_the_answer():
-    """The SDK delivers "Credit balance is too low" as ordinary assistant text."""
-    import asyncio
+def test_a_refused_call_is_never_shown_as_the_answer(monkeypatch):
+    """No credit, a bad key or an outage is a service problem to say plainly, not an answer."""
     import pytest
-    from agent.agent import AIServiceDown, _run_turn
+    from agent import tool_loop
+    from agent.agent import AIServiceDown, new_conversation
+
+    class Client:
+        class messages:
+            @staticmethod
+            def stream(**kwargs):
+                class Stream:
+                    async def __aenter__(self):
+                        raise _api_error("Your credit balance is too low to access the Anthropic API.")
+
+                    async def __aexit__(self, *a):
+                        pass
+                return Stream()
+
+    monkeypatch.setattr(tool_loop, "_api", lambda: Client())
     with pytest.raises(AIServiceDown) as e:
-        asyncio.run(_run_turn(_RefusingClient(_refusal("billing_error", "x")), "q", False))
+        asyncio.run(new_conversation().turn("q"))
     assert "out of AI credit" in e.value.message and "still work" in e.value.message
 
 
-def test_low_credit_reads_as_billing_even_when_sent_as_a_bad_request():
-    from agent.agent import _service_error
-    assert _service_error(_refusal("invalid_request", "Credit balance is too low")) == "billing_error"
-    assert _service_error(_refusal("rate_limit", "slow down")) == "rate_limit"
-    assert _service_error(_refusal(None, "a normal answer")) is None
+def test_low_credit_reads_as_billing_whatever_the_status():
+    from agent.tool_loop import _service_error
+    assert _service_error(_api_error("Your credit balance is too low")) == "billing_error"
+    assert _service_error(_api_error("overloaded")) == "server_error"
 
 
 def test_ask_says_the_service_is_down_and_charges_nothing(monkeypatch):
@@ -355,44 +326,3 @@ def test_browser_errors_reach_the_logs_but_cannot_flood_them(monkeypatch):
 def test_the_page_is_never_cached_against_a_newer_api():
     from agent import api
     assert api.index().headers["cache-control"] == "no-cache"
-
-
-def test_a_session_mid_answer_is_never_evicted_and_a_new_question_waits(monkeypatch):
-    """Six asks at once killed two answers in a load test: they came back empty and still cost."""
-    import asyncio
-    from agent import sessions as s
-
-    class FakeClient:
-        def __init__(self, options=None):
-            self.closed = False
-
-        async def connect(self):
-            pass
-
-        async def disconnect(self):
-            self.closed = True
-
-    monkeypatch.setattr(s, "ClaudeSDKClient", FakeClient)
-    monkeypatch.setattr(s, "MAX_SESSIONS", 1)
-
-    async def scenario():
-        manager = s.SessionManager(lambda: None)
-        first, _ = await manager.acquire("first")
-        waits = []
-        async with first.lock:                     # answering
-            second = asyncio.create_task(manager.acquire("second", on_wait=lambda: waits.append(1)))
-            await asyncio.sleep(0.05)
-            assert not second.done() and not first.client.closed
-            assert waits == [1]
-        # The answer finished: now its idle session may give up the slot.
-        got, created = await asyncio.wait_for(second, 3)
-        assert created and first.client.closed and got.id == "second"
-
-        monkeypatch.setattr(s, "SLOT_WAIT_SECONDS", 0)
-        async with got.lock:
-            try:
-                await manager.acquire("third")
-                raise AssertionError("should have reported busy")
-            except s.SessionBusy:
-                pass
-    asyncio.run(scenario())

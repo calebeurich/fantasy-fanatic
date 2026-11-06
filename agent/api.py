@@ -44,22 +44,18 @@ from analysis import format_support, roster_detail, roster_needs, team_state, tr
 
 from analysis.league import UnknownOwner
 from . import budget, observability
-from .agent import AIServiceDown, CHAT_BACKEND, run_query, MCP_SERVER_PATH, ToolsUnavailable, _options
-from .conversations import ConversationStore
-from .sessions import SessionBusy, SessionManager
+from . import conversations
+from .agent import AIServiceDown, run_query, MCP_SERVER_PATH, ToolsUnavailable, new_conversation
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     warm.start_from_env()
     yield
-    # Sessions hold live subprocesses; without this they'd be orphaned on shutdown.
-    await sessions.close_all()
 
 
 app = FastAPI(title="fantasy-fanatic agent", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-sessions = ConversationStore() if CHAT_BACKEND == "messages" else SessionManager(_options)
 
 MAX_QUESTION_CHARS = 1000  # a real question is far shorter; this just bounds abuse
 
@@ -436,24 +432,15 @@ def _team_detail(ctx, roster: dict) -> dict:
 
 @app.get("/sessions", dependencies=[Depends(require_key)])
 def session_status() -> dict:
-    """Visible so session count/idle time can be checked against the memory ceiling
-    rather than guessed at - each live session holds two subprocesses."""
-    return sessions.status()
-
-
-@app.post("/sessions/{session_id}/warm")
-async def warm_session(session_id: str, request: Request) -> dict:
-    """The page calls this on load so the first question skips the ~8s subprocess
-    start-up. Only takes a free slot - see SessionManager.prewarm."""
-    return {"opened": await sessions.prewarm(session_id, tier(request))}
+    return conversations.status()
 
 
 @app.post("/sessions/{session_id}/close")
 async def close_session(session_id: str, request: Request) -> dict:
-    """A reload or a new conversation abandons its session; this frees the slot and its memory
-    now rather than after the idle limit."""
+    """A reload or a new conversation abandons its chat; this deletes it now rather than after
+    a day idle."""
     tier(request)
-    await sessions.drop(session_id)
+    await conversations.drop(session_id)
     return {}
 
 
@@ -710,18 +697,13 @@ async def ask(request: AskRequest, http: Request) -> AskResponse:
             result = await run_query(question, verbose=False, on_progress=track, on_text=stream,
                                      persona=request.counterparty)
         elif request.session_id:
-            session, created = await sessions.acquire(
-                request.session_id, t, on_wait=lambda: track("waiting for a free spot, it's busy right now"))
-            # Held for the whole turn: two concurrent requests on one session would
-            # interleave on the same client and corrupt the conversation.
-            async with session.lock:
-                result = await run_query(question, verbose=False, client=session.client,
+            async with conversations.lock(request.session_id):
+                messages = await conversations.load(request.session_id)
+                created = messages is None
+                chat = new_conversation(messages=messages)
+                result = await run_query(question, verbose=False, client=chat,
                                          on_progress=track, on_text=stream)
-                # Convert the client's cumulative total into this question's own cost -
-                # see Session.cost_delta for why the raw value would both over-report
-                # and over-charge the daily budget on a persistent session.
-                result["cost_usd"] = session.cost_delta(result["cost_usd"])
-                await sessions.save(session)
+                await conversations.save(request.session_id, chat.messages)
         else:
             result = await run_query(question, verbose=False, on_progress=track, on_text=stream)
     except ToolsUnavailable:
@@ -729,7 +711,7 @@ async def ask(request: AskRequest, http: Request) -> AskResponse:
         # is the broken part) and answer once more on a fresh one; if that also has no
         # tools, say so plainly rather than show a confabulated verdict.
         if request.session_id:
-            await sessions.drop(request.session_id)
+            await conversations.drop(request.session_id)
         try:
             result = await run_query(question, verbose=False, on_progress=track, on_text=stream,
                                      persona=request.counterparty)
@@ -745,18 +727,14 @@ async def ask(request: AskRequest, http: Request) -> AskResponse:
         # run_query already logged it. A refused call costs nothing, so no ledger charge; the
         # session goes because its client still holds whatever key was just refused.
         if request.session_id:
-            await sessions.drop(request.session_id)
+            await conversations.drop(request.session_id)
         _progress.pop(request.session_id, None)
         _partial.pop(request.session_id, None)
         return AskResponse(text=e.message, service_down=True)
-    except SessionBusy:
-        return AskResponse(text=("The assistant is at capacity right now, so this one wasn't answered "
-                                 "or charged. The table, rosters and trade tools still work; try the "
-                                 "question again in a few minutes."))
     except Exception as e:
         # Log before swallowing. The detail is still withheld from the caller (internals
         # shouldn't leak from a public endpoint), but it must go *somewhere*: failures in
-        # sessions.acquire() happen outside run_query, so its try/finally never sees
+        # conversations.load() happen outside run_query, so its try/finally never sees
         # them, and this handler previously discarded the only copy. That produced
         # exactly the debugging dead-end this project already hit once with the MCP
         # subprocess - a generic message standing in for a specific, fixable error.

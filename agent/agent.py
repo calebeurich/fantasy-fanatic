@@ -1,9 +1,8 @@
-"""Local CLI agent for dynasty fantasy football analysis - Phase 2 of the agent
-build-out plan. Wraps the Phase 1 MCP server (agent/mcp_server.py) with the Claude
-Agent SDK, defaulting to Haiku (cheapest capable model, given a small starting API
-budget) with a tightly scoped, read-only tool surface: nothing beyond the
-fantasy-fanatic MCP tools (see TOOL_NAMES) is ever exposed, so there's no path to a
-file/shell/network action outside this project's own already-validated analysis code.
+"""The dynasty fantasy football agent: Haiku on a Messages API tool loop (agent/tool_loop.py)
+over the MCP server's own tools (agent/mcp_server.py), with a tightly scoped, read-only tool
+surface - nothing beyond the fantasy-fanatic tools (see TOOL_NAMES) is ever exposed, so there's
+no path to a file/shell/network action outside this project's own already-validated analysis
+code. Every answer is checked against ground truth before it is returned (the grounding guards).
 
 Run: python -m agent.agent "<question>"   (from the repo root)
 Needs ANTHROPIC_API_KEY in a .env file at the repo root (loaded automatically below) -
@@ -12,11 +11,9 @@ this is separate from any Claude.ai subscription, see LOGIC.md.
 
 import asyncio
 import json
-import os
 import re
 import sys
 import time
-from contextlib import AsyncExitStack
 from pathlib import Path
 
 MCP_SERVER_PATH = Path(__file__).resolve().parent / "mcp_server.py"
@@ -28,18 +25,6 @@ MCP_SERVER_PATH = Path(__file__).resolve().parent / "mcp_server.py"
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from dotenv import load_dotenv
-from claude_agent_sdk import (
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    AssistantMessage,
-    TextBlock,
-    ToolUseBlock,
-    ToolResultBlock,
-    UserMessage,
-    ResultMessage,
-    StreamEvent,
-)
-
 from analysis import trade_targets, roster_detail
 from . import observability, tool_loop
 
@@ -53,8 +38,6 @@ from . import observability, tool_loop
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 MODEL = "claude-haiku-5-5"  # cheapest capable model - LOGIC.md "Model: Haiku 4.5 -> 5.5"
-# "sdk" = a `claude` CLI + MCP subprocess per conversation; "messages" = agent/tool_loop.py.
-CHAT_BACKEND = os.environ.get("CHAT_BACKEND", "sdk")
 
 SERVER_KEY = "fantasy_fanatic"
 TOOL_NAMES = [
@@ -69,14 +52,6 @@ TOOL_NAMES = [
     "evaluate_trade",
     "evaluate_trade_sequence",
 ]
-# Fully-qualified MCP tool names. Setting `tools` to this explicit list (not just
-# `allowed_tools`) is what actually excludes every built-in Claude Code tool (Bash,
-# Read, Write, WebFetch, ...) rather than just gating them behind a permission prompt.
-# Audit finding (2026-08-20): the two evaluate tools were missing from this list for
-# months yet the SDK agent called evaluate_trade anyway - the list does NOT filter
-# within our own MCP server, only the built-ins. It is still the LangGraph client's
-# real filter, which silently denied that orchestrator the trade judge until now.
-FULL_TOOL_NAMES = [f"mcp__{SERVER_KEY}__{name}" for name in TOOL_NAMES]
 
 INJURY_RULE = """
 A player's `injury` (status, body_part, note, news_updated) is Sleeper's record, and null means \
@@ -257,21 +232,13 @@ STILL_WORKS = " The table, rosters and trade tools still work."
 
 
 class AIServiceDown(Exception):
-    """Anthropic refused the call itself, so there is no answer to check or show: the SDK
-    delivers the refusal as ordinary assistant text, which would otherwise read as the answer."""
+    """Anthropic refused the call itself (no credit, a bad key, rate limited, an outage), so
+    there is no answer to check or show."""
 
     def __init__(self, kind: str):
         super().__init__(kind)
         self.kind = kind
         self.message = SERVICE_DOWN_MESSAGES.get(kind, SERVICE_DOWN_FALLBACK) + STILL_WORKS
-
-
-def _service_error(msg: AssistantMessage) -> str | None:
-    """The refusal's kind, or None. The API sends low credit as a 400, so read the text too."""
-    if msg.error is None:
-        return None
-    text = " ".join(b.text for b in msg.content if isinstance(b, TextBlock)).lower()
-    return "billing_error" if "credit balance" in text else msg.error
 
 
 class ToolsUnavailable(Exception):
@@ -283,7 +250,7 @@ class ToolsUnavailable(Exception):
 
 FAKE_TOOL_CALL = re.compile(r"<function_calls>|<invoke name=", re.I)
 
-# Hard guardrails enforced by the SDK itself, not just requested in the prompt.
+# Hard guardrails enforced by the tool loop itself, not just requested in the prompt.
 MAX_TURNS = 8
 MAX_BUDGET_USD = 0.50  # per question - a single answer should never cost more than this
 
@@ -297,38 +264,9 @@ MAX_BUDGET_USD = 0.50  # per question - a single answer should never cost more t
 MAX_GROUNDING_RETRIES = 1
 
 
-def _options(persona: str | None = None) -> ClaudeAgentOptions:
-    """`persona` = an owner name: the agent speaks as that manager (COUNTERPARTY_PROMPT)
-    instead of as the advisor. Same tools, same caps."""
-    return ClaudeAgentOptions(
-        model=MODEL,
-        system_prompt=COUNTERPARTY_PROMPT.format(owner=persona) if persona else SYSTEM_PROMPT,
-        mcp_servers={
-            # sys.executable + an absolute script path, not "python -m agent.mcp_server":
-            # the subprocess would otherwise need `python` on PATH *and* the repo root as
-            # its working directory, neither of which is guaranteed (McpStdioServerConfig
-            # has no `cwd` option). Both assumptions held locally and broke on Cloud Run.
-            SERVER_KEY: {"type": "stdio", "command": sys.executable, "args": [str(MCP_SERVER_PATH)]},
-        },
-        tools=FULL_TOOL_NAMES,
-        allowed_tools=FULL_TOOL_NAMES,
-        permission_mode="bypassPermissions",  # safe: `tools` already restricts to our 6 read-only tools
-        max_turns=MAX_TURNS,
-        max_budget_usd=MAX_BUDGET_USD,
-        # Without this, the SDK auto-loads this repo's CLAUDE.md as project memory on
-        # every call - that file guides *coding* on this repo, it has nothing to do
-        # with how the fantasy agent should answer a user's question. Measured a 38%
-        # input-token reduction (3332 -> 2051 for the same trivial call) from this
-        # one line - real, paid-for waste, not a rounding error.
-        setting_sources=[],
-        # Text deltas as they are generated, so the UI can show the answer arriving
-        # instead of a spinner for the ~30s the model spends writing it.
-        include_partial_messages=True,
-    )
-
-
 def new_conversation(persona: str | None = None, messages: list | None = None) -> tool_loop.Conversation:
-    """The Messages API backend's stand-in for a ClaudeSDKClient: same prompt, tools and caps."""
+    """One conversation: the advisor's prompt, or `persona`'s voice as that team's manager
+    (COUNTERPARTY_PROMPT). Same tools and caps either way."""
     return tool_loop.Conversation(MODEL, COUNTERPARTY_PROMPT.format(owner=persona) if persona else SYSTEM_PROMPT,
                                   messages, MAX_TURNS, MAX_BUDGET_USD, f"mcp__{SERVER_KEY}__")
 
@@ -350,64 +288,6 @@ TOOL_PROGRESS = {
 
 def _progress_label(tool_name: str) -> str:
     return TOOL_PROGRESS.get(str(tool_name).split("__")[-1], str(tool_name))
-
-
-async def _run_turn(client: ClaudeSDKClient, message: str, verbose: bool,
-                    on_progress=None, on_text=None) -> dict:
-    """Sends one message on an already-open client session and collects the reply,
-    including tool *results* (not just calls) - needed to know whether a tool
-    errored (e.g. a nonexistent league_id) and what check_league_format actually
-    returned, for the observability log below. Split out from run_query so the
-    grounding-retry loop can send a second message on the same session without
-    repeating this collection logic."""
-    if isinstance(client, tool_loop.Conversation):
-        return await client.turn(message, verbose, on_progress, on_text)
-    text_parts, tool_calls, tool_results, result = [], [], [], None
-    tool_name_by_id = {}
-    streamed = ""
-    await client.query(message)
-    async for msg in client.receive_response():
-        if isinstance(msg, StreamEvent):
-            if not on_text:
-                continue
-            delta = msg.event.get("delta") or {}
-            if delta.get("type") == "text_delta":
-                streamed += delta["text"]
-                on_text(streamed)
-            elif msg.event.get("type") == "content_block_stop" and streamed:
-                streamed += "\n"  # mirrors the "\n".join over finished text blocks below
-        elif isinstance(msg, AssistantMessage):
-            if kind := _service_error(msg):
-                raise AIServiceDown(kind)
-            for block in msg.content:
-                if isinstance(block, TextBlock):
-                    text_parts.append(block.text)
-                    if verbose:
-                        print(block.text)
-                elif isinstance(block, ToolUseBlock):
-                    tool_calls.append({"name": block.name, "input": block.input})
-                    tool_name_by_id[block.id] = block.name
-                    if on_progress:
-                        on_progress(_progress_label(block.name))
-                    if verbose:
-                        print(f"[tool call: {block.name}({block.input})]")
-        elif isinstance(msg, UserMessage):
-            content = msg.content if isinstance(msg.content, list) else []
-            for block in content:
-                if isinstance(block, ToolResultBlock):
-                    tool_results.append({
-                        "name": tool_name_by_id.get(block.tool_use_id),
-                        "is_error": bool(block.is_error),
-                        "content": block.content,
-                    })
-                    if verbose and block.is_error:
-                        print(f"[tool error: {tool_name_by_id.get(block.tool_use_id)} -> {block.content}]")
-        elif isinstance(msg, ResultMessage):
-            result = msg
-            if verbose:
-                print(f"\n[{result.num_turns} turn(s), ${result.total_cost_usd:.4f}, "
-                      f"stop_reason={result.stop_reason}]")
-    return {"text": "\n".join(text_parts), "tool_calls": tool_calls, "tool_results": tool_results, "result": result}
 
 
 def _offerable_from_call(call: dict) -> set[str] | None:
@@ -633,7 +513,7 @@ def _observability_fields(tool_calls: list[dict], tool_results: list[dict]) -> d
     return {"league_ids": league_ids, "format_tier": format_tier, "tool_errors": tool_errors}
 
 
-async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient | None = None,
+async def run_query(question: str, verbose: bool = True, client: tool_loop.Conversation | None = None,
                     on_progress=None, on_text=None, persona: str | None = None) -> dict:
     """Runs one question through the agent, then deterministically checks the answer
     against ground truth before returning it: if it named a player its own trade-tool
@@ -651,101 +531,92 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
     total_turns, retries, result = 0, 0, None
     outcome, error_message, answer_text = "ok", None, None
     try:
-        # A caller may hand in a live client (agent/sessions.py does, to keep a
-        # conversation - and both the prompt cache and the MCP data cache - warm across
-        # turns). Only a client we created here gets closed here; a session's client
-        # outlives the request, so the exit stack must not tear it down.
-        async with AsyncExitStack() as stack:
-            if client is None and CHAT_BACKEND == "messages":
-                client = new_conversation(persona)
-            elif client is None:
-                client = await stack.enter_async_context(ClaudeSDKClient(options=_options(persona)))
-            turn = await _run_turn(client, question, verbose, on_progress, on_text)
-            all_tool_calls = list(turn["tool_calls"])
-            all_tool_results = list(turn["tool_results"])
-            # num_turns resets per client.query() call (verified live: 4, then 1 on
-            # a retry) but total_cost_usd is a running session total (verified live:
-            # kept climbing across the retry) - the two fields don't share the same
-            # semantics, so num_turns needs manual summing and cost_usd doesn't.
-            total_turns = turn["result"].num_turns if turn["result"] else 0
+        # A caller may hand in a conversation (agent/conversations.py does, loaded from storage).
+        client = client or new_conversation(persona)
+        turn = await client.turn(question, verbose, on_progress, on_text)
+        all_tool_calls = list(turn["tool_calls"])
+        all_tool_results = list(turn["tool_results"])
+        # num_turns counts this turn's API calls, total_cost_usd the conversation object's
+        # running total - so num_turns needs summing across a retry and cost_usd doesn't.
+        total_turns = turn["result"].num_turns if turn["result"] else 0
+        result = turn["result"]
+        # Accumulated across turns, not recomputed per-turn: a retry turn
+        # typically doesn't re-call get_trade_targets (the model already has the
+        # result in context), so a fresh per-turn computation would go empty and
+        # silently miss the same violation repeating in the corrected answer.
+        banned = _banned_trade_names(turn["tool_calls"])
+        # Recompute needs ground truth only when the answer makes a need claim at
+        # all - most answers don't, and the recompute is a real league fetch.
+        flagged, league_owner_names = (
+            _flagged_needs(turn["tool_calls"])
+            if any(w in turn["text"].lower() for w in NEED_CLAIM_WORDS)
+            else (set(), set()))
+        violations = _trade_violations(turn["text"], banned)
+        need_violations = _need_claim_violations(turn["text"], flagged, league_owner_names)
+        ballpark_violation = _ballpark_violation(turn["text"], all_tool_calls, all_tool_results)
+        unit_violations = _unit_violations(turn["text"])
+        while (violations or need_violations or ballpark_violation or unit_violations) and retries < MAX_GROUNDING_RETRIES:
+            if verbose:
+                print(f"[grounding check failed: {violations + need_violations + unit_violations + (['invented ballpark'] if ballpark_violation else [])} - retrying]")
+            # List every violation found, not just one - an earlier version only
+            # named a single offender (via next() on a set), so when an answer
+            # named two non-offerable players at once, the one retry fixed one
+            # and left the other. Found live via the eval harness re-failing
+            # after the fix looked solved manually.
+            problems = []
+            if violations:
+                names = ", ".join(f'"{n}"' for n in violations)
+                problems.append(
+                    f"You named {names} as trade-away candidates, but none of them are in "
+                    "this team's real offer list from get_trade_targets - use only players "
+                    "actually in that tool's offer or sell-candidate lists.")
+            if need_violations:
+                claims = " ".join(need_violations)
+                problems.append(
+                    f"You asserted positional needs the roster-needs data does not "
+                    f"contain: {claims} Only claim a team needs a position when the tools "
+                    f"flag that need - if you have not called get_roster_needs for this "
+                    f"league, call it rather than inferring needs.")
+            if ballpark_violation:
+                problems.append(
+                    "You quoted a ballpark / benchmark for this trade, but no tool result "
+                    "contains a BALLPARK line for it - the measured benchmark exists only "
+                    "for player-centred returns. There is no benchmark here: say so if it "
+                    "matters, and never invent one.")
+            if unit_violations:
+                quoted = ", ".join(f'"{v}"' for v in unit_violations[:4])
+                problems.append(
+                    f"You wrote {quoted} - numbers that size are season market PRICES "
+                    "(redraft value), never points. Real points-per-game numbers are two "
+                    "digits (projected_ppg, lineup deltas). Call a price a season price, "
+                    "and only quote per-game units on per-game fields.")
+            # The reader never sees this exchange, and the model must not either: a live
+            # retry opened its answer "You're absolutely right - I apologize", claimed
+            # the tool output had been "too large to display" (confabulated - the run's
+            # own log shows every payload fit), and asked the USER to paste tool results.
+            # The correction is stagecraft; only the corrected answer goes on stage.
+            correction = (
+                " ".join(problems)
+                + " Redo your answer. Write it as a fresh, complete reply to the user's "
+                "original question: no apology, no mention of this correction, no claims "
+                "about tool output size or mechanics, and never ask the user to supply "
+                "data - everything you need is in the tool results you have."
+            )
+            turn = await client.turn(correction, verbose, on_progress, on_text)
+            all_tool_calls += turn["tool_calls"]
+            all_tool_results += turn["tool_results"]
+            total_turns += turn["result"].num_turns if turn["result"] else 0
             result = turn["result"]
-            # Accumulated across turns, not recomputed per-turn: a retry turn
-            # typically doesn't re-call get_trade_targets (the model already has the
-            # result in context), so a fresh per-turn computation would go empty and
-            # silently miss the same violation repeating in the corrected answer.
-            banned = _banned_trade_names(turn["tool_calls"])
-            # Recompute needs ground truth only when the answer makes a need claim at
-            # all - most answers don't, and the recompute is a real league fetch.
-            flagged, league_owner_names = (
-                _flagged_needs(turn["tool_calls"])
-                if any(w in turn["text"].lower() for w in NEED_CLAIM_WORDS)
-                else (set(), set()))
+            banned |= _banned_trade_names(turn["tool_calls"])
+            new_flagged, new_names = _flagged_needs(turn["tool_calls"])
+            flagged |= new_flagged
+            league_owner_names |= new_names
+            retries += 1
             violations = _trade_violations(turn["text"], banned)
-            need_violations = _need_claim_violations(turn["text"], flagged, league_owner_names)
+            need_violations = _need_claim_violations(turn["text"], flagged,
+                                                     league_owner_names)
             ballpark_violation = _ballpark_violation(turn["text"], all_tool_calls, all_tool_results)
             unit_violations = _unit_violations(turn["text"])
-            while (violations or need_violations or ballpark_violation or unit_violations) and retries < MAX_GROUNDING_RETRIES:
-                if verbose:
-                    print(f"[grounding check failed: {violations + need_violations + unit_violations + (['invented ballpark'] if ballpark_violation else [])} - retrying]")
-                # List every violation found, not just one - an earlier version only
-                # named a single offender (via next() on a set), so when an answer
-                # named two non-offerable players at once, the one retry fixed one
-                # and left the other. Found live via the eval harness re-failing
-                # after the fix looked solved manually.
-                problems = []
-                if violations:
-                    names = ", ".join(f'"{n}"' for n in violations)
-                    problems.append(
-                        f"You named {names} as trade-away candidates, but none of them are in "
-                        "this team's real offer list from get_trade_targets - use only players "
-                        "actually in that tool's offer or sell-candidate lists.")
-                if need_violations:
-                    claims = " ".join(need_violations)
-                    problems.append(
-                        f"You asserted positional needs the roster-needs data does not "
-                        f"contain: {claims} Only claim a team needs a position when the tools "
-                        f"flag that need - if you have not called get_roster_needs for this "
-                        f"league, call it rather than inferring needs.")
-                if ballpark_violation:
-                    problems.append(
-                        "You quoted a ballpark / benchmark for this trade, but no tool result "
-                        "contains a BALLPARK line for it - the measured benchmark exists only "
-                        "for player-centred returns. There is no benchmark here: say so if it "
-                        "matters, and never invent one.")
-                if unit_violations:
-                    quoted = ", ".join(f'"{v}"' for v in unit_violations[:4])
-                    problems.append(
-                        f"You wrote {quoted} - numbers that size are season market PRICES "
-                        "(redraft value), never points. Real points-per-game numbers are two "
-                        "digits (projected_ppg, lineup deltas). Call a price a season price, "
-                        "and only quote per-game units on per-game fields.")
-                # The reader never sees this exchange, and the model must not either: a live
-                # retry opened its answer "You're absolutely right - I apologize", claimed
-                # the tool output had been "too large to display" (confabulated - the run's
-                # own log shows every payload fit), and asked the USER to paste tool results.
-                # The correction is stagecraft; only the corrected answer goes on stage.
-                correction = (
-                    " ".join(problems)
-                    + " Redo your answer. Write it as a fresh, complete reply to the user's "
-                    "original question: no apology, no mention of this correction, no claims "
-                    "about tool output size or mechanics, and never ask the user to supply "
-                    "data - everything you need is in the tool results you have."
-                )
-                turn = await _run_turn(client, correction, verbose, on_progress, on_text)
-                all_tool_calls += turn["tool_calls"]
-                all_tool_results += turn["tool_results"]
-                total_turns += turn["result"].num_turns if turn["result"] else 0
-                result = turn["result"]
-                banned |= _banned_trade_names(turn["tool_calls"])
-                new_flagged, new_names = _flagged_needs(turn["tool_calls"])
-                flagged |= new_flagged
-                league_owner_names |= new_names
-                retries += 1
-                violations = _trade_violations(turn["text"], banned)
-                need_violations = _need_claim_violations(turn["text"], flagged,
-                                                         league_owner_names)
-                ballpark_violation = _ballpark_violation(turn["text"], all_tool_calls, all_tool_results)
-                unit_violations = _unit_violations(turn["text"])
 
         answer_text = turn["text"]
         if FAKE_TOOL_CALL.search(answer_text or "") and not all_tool_calls:

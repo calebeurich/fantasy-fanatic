@@ -527,18 +527,13 @@ pick up after the focus above:
 - **Workload identity federation:** move the server off a long-lived Anthropic key during the
   stateless-chat build, which uses the Python SDK that supports it. Local runs keep a key.
 
-**NEXT BUILD (agreed 2026-10-29): a stateless chat backend, conversations in Supabase.**
-Owner: "many parts of this are not scalable to having even say like 10 active users at once."
-Each conversation today is a `claude` CLI process plus its own Python MCP server process, which
-loads pandas and every data cache again (staging, 2026-10-21: ~0.45Gi per concurrent ask), so
-the app caps at `MAX_SESSIONS=4` on one instance. The app already switches off everything the
-Agent SDK adds over the API (built-in tools, permissions, CLAUDE.md loading); what it uses -
-the tool loop, turn and budget caps, streaming - is a short loop on the Messages API.
-- **Plan:** measure the baseline (memory and latency per conversation) -> replace the SDK
-  session with a Messages API tool loop calling the analysis functions directly, one shared
-  cache per process -> conversation history, spend counters and visitor caps in Supabase
-  Postgres -> raise `max-instances` -> evals show answers unchanged -> load-test staging at
-  10-20 simultaneous asks. Staging only until the owner clears prod.
+**BUILT (2026-11-06): a stateless chat backend, conversations in Supabase** (LOGIC.md "Off the
+Agent SDK"). Owner had said: "many parts of this are not scalable to having even say like 10
+active users at once." Done: Messages API tool loop, conversations and the daily caps in
+Supabase Postgres, max-instances 3 with session affinity, the SDK and Node.js out of the image;
+evals 12/12; 10 chats at once on staging all answered with no slot wait. Left: cut memory from
+4Gi once usage is measured on the new image; answer progress and the dropped-connection
+reclaim are still per instance (session affinity covers it); a load test at 20.
 - **Baseline (local, Windows, 2026-10-29, one league question per session):** each
   conversation holds ~225MB (`claude` CLI) + ~400MB (its MCP server once data loads) = ~630MB;
   a second session loaded the same ~400MB again (806MB for two), the parent is 94MB. 33-41s

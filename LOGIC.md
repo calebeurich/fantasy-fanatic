@@ -1590,16 +1590,16 @@ payload are the per-block instructions (three copies of the same prose had begun
 drift). Validated through a real MCP client (`test_mcp_server.py`), because a server
 that starts fine can still misshape output.
 
-**Agent** (`agent.py`): Haiku via `ClaudeSDKClient`, guardrails SDK-enforced rather than
-requested - `tools` restricted to exactly the 7 MCP tools (which is what excludes
-built-ins, verified by a live prompt-injection attempt that had no tool to reach),
-`max_turns=8`, `max_budget_usd=$0.50/question`, `setting_sources=[]` (the SDK otherwise
-ships this repo's CLAUDE.md on every call - a measured 38% input-token cut). The system
+**Agent** (`agent.py` + `tool_loop.py`): Haiku on a Messages API tool loop, guardrails
+enforced by the loop rather than requested - the only tools are the MCP server's 10 (no
+built-ins exist to reach, verified by a live prompt-injection attempt), `MAX_TURNS=8`,
+`MAX_BUDGET_USD=$0.50/question`. Until 2026-11-06 this ran on the Claude Agent SDK (a
+`claude` CLI and an MCP subprocess per chat); see the next section for why it moved. The system
 prompt carries the doctrine no single tool result states (five principles: pick an end,
 two currencies, age is a distance, value is not additive, a trade needs a counterparty)
 plus numbered rules, each added for an observed failure.
 
-### The Messages API backend (`tool_loop.py`, `CHAT_BACKEND=messages`, 2026-11-06)
+### Off the Agent SDK: a Messages API tool loop (`tool_loop.py`, 2026-11-06)
 
 The same agent without the Agent SDK: a plain tool loop on the Messages API calling the MCP
 server's own functions in this process (through FastMCP's `call_tool`, so arguments validate and
@@ -1614,8 +1614,12 @@ prompts, tools, `MAX_TURNS`, `MAX_BUDGET_USD` and grounding checks - `_run_turn`
 rates ($0.10 / $0.50 per million, x2.5 and x5 past a 100K prompt; cache writes 1.25x input,
 reads 0.1x); caching is set by hand (system breakpoint, plus the newest message). First runs,
 local: one question 31s / $0.009 with 98K tokens read from cache; a second turn of the same
-chat 6s / $0.001. Known gap: two asks on one chat at the same moment can overwrite each other's
-history (the page sends one at a time).
+chat 6s / $0.001. Evals 12/12 on both paths, suite $0.048 vs ~$0.05. Staging with Supabase:
+10 new chats at once all answered (median 40s, max 50s, $0.039), none waited for a slot - the
+SDK path capped at 4 and queued the rest up to two minutes - and table reads stayed at 0.2s.
+The image drops Node.js and both copies of the `claude` CLI (~500MB). A chat's lock is per
+process, so two asks on one chat that land on different instances could still overwrite each
+other's history; session affinity makes that rare and the page sends one at a time.
 
 ### Zero tools, again - and the guard for it (2026-08-17)
 
@@ -1918,20 +1922,17 @@ into a field, a note on a field, or a deterministic check. Rules with rare failu
 (stop-on-error, non-dynasty refusal) deliberately do NOT get their own verify machinery;
 building it for every rule regardless of failure rate is scope creep.
 
-**Sessions** (`sessions.py`): a live client per client-supplied session id (idle TTL,
-LRU cap of 2 - each session holds two subprocesses against a 2 GiB container, per-session
-lock so concurrent turns can't interleave). Never shared between callers - the
-context-leak trap. Fixes three measured things at once: no conversation memory, the
-~4,700-token prompt-cache prefix re-CREATED at 1.25x on every fresh client (a persistent
-session re-reads at 0.1x, ~92% off the prefix per follow-up), and the MCP data cache
-living in the per-client subprocess. `cost_delta` exists because
-`ResultMessage.total_cost_usd` is cumulative per client - billing the running total
-would have drained the daily budget twice as fast as real spend.
+**Conversations** (`conversations.py`): a chat is its message list, keyed by a
+client-supplied session id and never shared between callers - the context-leak trap. Loaded,
+run and saved per turn under a per-chat lock, so concurrent turns in one process can't
+interleave. It fixes what the old per-chat SDK sessions fixed (memory across turns, the
+prompt-cache prefix re-read at 0.1x on a follow-up rather than re-created at 1.25x, one warm
+data cache) without holding a process per chat.
 
-**Cost anatomy (measured layer by layer)**: bare SDK floor 136 tokens; our system prompt
-+683; MCP framing + 7 tool schemas +1,876. ~65% of the baseline is our own content, so
-dropping the Agent SDK for the raw API would save ~a hundred tokens - if it is ever
-replaced it should be for control, not cost. Tool results are small once
+**Cost anatomy (measured layer by layer, on the SDK)**: bare SDK floor 136 tokens; our system
+prompt +683; MCP framing + 7 tool schemas +1,876. ~65% of the baseline was our own content, so
+dropping the Agent SDK saved only ~a hundred tokens - it was replaced (2026-11-06) for memory
+and concurrency, not cost. Tool results are small once
 `get_team_state` takes `owner_name` (unfiltered was ~7,846 tokens and made the model
 fall back to re-deriving windows from roster_detail - the fix was a filter, not a
 prompt). Haiku 4.5 needed a 4,096+ token cacheable block before caching activated at all.

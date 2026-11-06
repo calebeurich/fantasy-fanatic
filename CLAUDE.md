@@ -1,7 +1,7 @@
 # fantasy-fanatic
 
 Dynasty fantasy football assistant, built incrementally as a portfolio project
-demonstrating agentic AI engineering (Claude Agent SDK, MCP, RAG, evals) alongside
+demonstrating agentic AI engineering (Claude API tool use, MCP, RAG, evals) alongside
 real fantasy football utility for the author's own Sleeper league.
 
 ## Prime directive: simplicity over sophistication
@@ -69,8 +69,9 @@ Packages split by role, each with an `__init__.py`:
   per-league context), `audit.py` (the defect-family guards),
   `warm.py`, and the `trade_targets/` subpackage
 - **`agent/`** (the served product): `mcp_server.py` + `test_mcp_server.py`,
-  `agent.py` (SDK agent + grounding guards), `api.py` (FastAPI routes - thin; the
-  analysis they serve lives in `analysis/`), `sessions.py`, `budget.py`, `observability.py`,
+  `agent.py` (prompts + grounding guards), `tool_loop.py` (the Messages API tool loop),
+  `api.py` (FastAPI routes - thin; the analysis they serve lives in `analysis/`),
+  `conversations.py`, `db.py` (Supabase Postgres), `budget.py`, `observability.py`,
   `log_summary.py`, `evals.py`, `langgraph_client.py`, `static/` (the UI)
 - **`research/`** (offline studies that test intuitions against data before they
   become constants - deterministic, free to re-run, findings summarized in its
