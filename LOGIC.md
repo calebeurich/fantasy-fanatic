@@ -1605,7 +1605,10 @@ The same agent without the Agent SDK: a plain tool loop on the Messages API call
 server's own functions in this process (through FastMCP's `call_tool`, so arguments validate and
 results serialize exactly as before). A conversation is only its message list
 (`conversations.py`), so there are no subprocesses per chat, no slots to wait for, and one data
-cache per instance; the list moves to Supabase next so any instance can serve any chat. Same
+cache per instance. With `DATABASE_URL` set the list lives in Supabase Postgres (one `jsonb` row
+per chat, created on first use, deleted after a day idle), so any instance can serve any chat and
+a restart loses nothing; a load or save is ~0.3s locally. Supabase's Data API is off: the server
+is the only client, over the transaction pooler (port 6543, no prepared statements). Same
 prompts, tools, `MAX_TURNS`, `MAX_BUDGET_USD` and grounding checks - `_run_turn` hands off to
 `Conversation.turn`, which returns the same shape. Cost is computed from `usage` at Haiku 5.5's
 rates ($0.10 / $0.50 per million, x2.5 and x5 past a 100K prompt; cache writes 1.25x input,

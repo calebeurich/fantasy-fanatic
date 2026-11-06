@@ -1,14 +1,65 @@
 """Conversations for the Messages API backend (CHAT_BACKEND=messages): each is only its message
 list, so a turn loads it, runs, and saves it - no process is kept per conversation and there is
 no slot to wait for. The same methods as sessions.SessionManager, so agent/api.py serves either.
-Kept in memory here; the Supabase store replaces `_saved` (ROADMAP "NEXT BUILD")."""
+Stored in Supabase Postgres when DATABASE_URL is set (any instance can then serve any chat, and a
+restart loses nothing), in this process's memory otherwise."""
 
 import asyncio
+import os
 import time
+
+import psycopg
+from psycopg.types.json import Jsonb
 
 from .agent import new_conversation
 
 KEEP_SECONDS = 24 * 3600   # long enough to come back to a chat later in the day
+SCHEMA = """create table if not exists conversations (
+    id text primary key, messages jsonb not null, updated_at timestamptz not null default now())"""
+
+_memory: dict[str, tuple[float, list]] = {}
+_locks: dict[str, asyncio.Lock] = {}
+_schema_ready = False
+
+
+def _db() -> psycopg.Connection:
+    """The table is created on first use, so a fresh database needs no setup step."""
+    global _schema_ready
+    # prepare_threshold=None: Supabase's transaction pooler can't hold prepared statements.
+    db = psycopg.connect(os.environ["DATABASE_URL"], prepare_threshold=None, autocommit=True, connect_timeout=10)
+    if not _schema_ready:
+        db.execute(SCHEMA)
+        _schema_ready = True
+    return db
+
+
+def _load(session_id: str) -> list | None:
+    if not os.environ.get("DATABASE_URL"):
+        saved = _memory.get(session_id)
+        return list(saved[1]) if saved else None
+    with _db() as db:
+        row = db.execute("select messages from conversations where id = %s", (session_id,)).fetchone()
+    return row[0] if row else None
+
+
+def _save(session_id: str, messages: list) -> None:
+    if not os.environ.get("DATABASE_URL"):
+        now = time.time()
+        for sid in [s for s, (t, _) in _memory.items() if now - t > KEEP_SECONDS]:
+            _memory.pop(sid, None)
+        _memory[session_id] = (now, messages)
+        return
+    with _db() as db:
+        db.execute("insert into conversations (id, messages) values (%s, %s) on conflict (id) do update "
+                   "set messages = excluded.messages, updated_at = now()", (session_id, Jsonb(messages)))
+        db.execute("delete from conversations where updated_at < now() - make_interval(secs => %s)", (KEEP_SECONDS,))
+
+
+def _drop(session_id: str) -> None:
+    _memory.pop(session_id, None)
+    if os.environ.get("DATABASE_URL"):
+        with _db() as db:
+            db.execute("delete from conversations where id = %s", (session_id,))
 
 
 class Conversation:
@@ -21,30 +72,23 @@ class Conversation:
         return cumulative   # a client is rebuilt every turn, so its total is this turn's
 
 
-_saved: dict[str, tuple[float, list]] = {}
-_locks: dict[str, asyncio.Lock] = {}
-
-
 class ConversationStore:
     async def acquire(self, session_id: str, tier: str = "friend", on_wait=None) -> tuple[Conversation, bool]:
-        saved = _saved.get(session_id)
-        return Conversation(session_id, list(saved[1]) if saved else None), saved is None
+        messages = await asyncio.to_thread(_load, session_id)
+        return Conversation(session_id, messages), messages is None
 
     async def save(self, conversation: Conversation) -> None:
-        now = time.time()
-        for sid in [s for s, (t, _) in _saved.items() if now - t > KEEP_SECONDS]:
-            _saved.pop(sid, None)
-            _locks.pop(sid, None)
-        _saved[conversation.id] = (now, conversation.client.messages)
+        await asyncio.to_thread(_save, conversation.id, conversation.client.messages)
 
     async def prewarm(self, session_id: str, tier: str = "friend") -> bool:
         return False   # nothing to start: the tools already live in this process
 
     async def drop(self, session_id: str) -> None:
-        _saved.pop(session_id, None)
+        _locks.pop(session_id, None)
+        await asyncio.to_thread(_drop, session_id)
 
     async def close_all(self) -> None:
         pass
 
     def status(self) -> dict:
-        return {"backend": "messages", "saved_conversations": len(_saved)}
+        return {"backend": "messages", "store": "postgres" if os.environ.get("DATABASE_URL") else "memory"}
