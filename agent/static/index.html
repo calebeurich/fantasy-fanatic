@@ -1557,13 +1557,13 @@ function md(t) {
     const b = block
       .replace(/^#{1,4}\s*(.+)$/gm, "<h3>$1</h3>")
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/^\s*\d+[.)]\s+(.+)$/gm, "<oli>$1</oli>")
+      .replace(/^\s*(\d+)[.)]\s+(.+)$/gm, '<oli value="$1">$2</oli>')
       .replace(/^\s*[-*]\s+(.+)$/gm, "<uli>$1</uli>")
       .replace(/(^|[\s(>])\*([^*\n]+)\*(?=[\s).,;:!?<]|$)/gm, "$1<em>$2</em>")
       .replace(/`([^`\n]+)`/g, "<code>$1</code>")
-      .replace(/(<oli>[\s\S]*?<\/oli>)(?!\s*<oli>)/g, "<ol>$1</ol>")
+      .replace(/(<oli[\s\S]*?<\/oli>)(?!\s*<oli)/g, "<ol>$1</ol>")
       .replace(/(<uli>[\s\S]*?<\/uli>)(?!\s*<uli>)/g, "<ul>$1</ul>")
-      .replace(/<(\/?)[ou]li>/g, "<$1li>");
+      .replace(/<(\/?)[ou]li(?=[\s>])/g, "<$1li");
     out.push(b.match(/^<(h3|ul|ol)/) ? b : `<p>${b.replace(/\n/g, "<br>")}</p>`);
   }
   return out.join("");

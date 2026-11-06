@@ -2421,3 +2421,23 @@ Measured or confirmed, none urgent, kept so nobody re-derives them:
   best lineup and whether that team is rising - "you cannot out-wait him" is currently
   an inference nothing prompts). The full version is this file as a queryable MCP
   resource, which needs chunking design.
+
+### A rebuilding counterparty ignores this season, and counters instead of refusing (2026-11-06)
+
+Live: dezdroppedit27 offered Hurts (on IR) and a 3rd for Jordan Love. TaylaGang is on build, about 590 short,
+and its persona said NO for three reasons: Hurts "doesn't help me now", losing Love drops the starting lineup
+12 points a game, and "a 2nd alone overshoots the gap". The owner disagreed on all three. A team that deep in a
+rebuild shouldn't care about its lineup until it pivots. A player hurt this season doesn't hurt the tank, and
+he's ready for next year. And the move was to ask for the 2nd. Changes:
+
+- For a sell or build path, this season's lineup is not a reason either way until the team pivots. A lineup
+  drop or hole only helps the draft slot, and a player hurt now costs nothing this season. This widens the
+  older "a hole at a position you are selling is not a reason" rule.
+- When the persona is short, it counters with the smallest single pick that covers the gap plus its touch,
+  even with room to spare, because that's a normal opening counter. The 2026-11-04 line ("neither closes a
+  gap of a few hundred") was read as "too much, so refuse". That case is already covered by `NO VALUE GAP`.
+- The shape is a bold verdict line, then bullets, then one counter line. The old numbered prompt shape came
+  back as a numbered list split by blank lines, which the page rendered as "1." on every item. `md()` now keeps
+  each item's own number.
+
+Rerun: COUNTER, asking for a 2027 2nd, and "this season's QB slot doesn't factor in".
