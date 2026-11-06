@@ -78,18 +78,22 @@ jobs:
             --cpu 2 \
             --timeout 600 \
             --concurrency 12 \
-            --max-instances 1 \
+            --max-instances 3 \
+            --session-affinity \
             --execution-environment gen2 \
             --cpu-boost \
             --service-account "fantasy-fanatic-run@fantasy-fanatic.iam.gserviceaccount.com" \
-            --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest" \
-            --set-env-vars "^;^FF_LINK_KEY=${{ secrets.FF_LINK_KEY }};DAILY_BUDGET_USD=10.00;DAILY_MAX_REQUESTS=300;MAX_SESSIONS=4;WARM_LEAGUES=1315386978904084480,1319727865188593664,1313999558660857856,1354169522327670784;DEMO_BUDGET_USD=3.00;DEMO_ASKS_PER_VISITOR=10;DEMO_LEAGUE=1315386978904084480"
+            --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=database-url:latest" \
+            --set-env-vars "^;^CHAT_BACKEND=messages;FF_LINK_KEY=${{ secrets.FF_LINK_KEY }};DAILY_BUDGET_USD=10.00;DAILY_MAX_REQUESTS=300;MAX_SESSIONS=4;WARM_LEAGUES=1315386978904084480,1319727865188593664,1313999558660857856,1354169522327670784;DEMO_BUDGET_USD=3.00;DEMO_ASKS_PER_VISITOR=10;DEMO_LEAGUE=1315386978904084480"
 
       # The settings above are load-bearing and easy to lose in a console edit, so they
       # are declared here rather than living only as click-state:
-      #   max-instances 1             - budget.py's daily cap is an in-process counter,
-      #                                 exact only while every request lands in ONE
-      #                                 process
+      #   max-instances 3             - more than one since conversations and the daily caps
+      #                                 moved to Postgres (agent/db.py); each extra instance
+      #                                 is billed only while it serves
+      #   session-affinity            - a browser stays on one instance, because answer
+      #                                 progress and the dropped-connection reclaim
+      #                                 (api.py _progress / _answers) are per instance
       #   concurrency 12              - a cold page load fires 8-12 requests at once and
       #                                 Cloud Run holds only this many while the instance
       #                                 boots; at 2 (and at 5) the rest were turned away,
@@ -128,10 +132,14 @@ jobs:
       #                                 subprocess pair). 2 slots with LRU eviction
       #                                 silently reset a tester's conversation mid-session
       #                                 while others were asking; 4Gi covers four pairs
-      #   service-account             - a dedicated runtime identity holding exactly one
-      #                                 permission (read the anthropic-api-key secret),
+      #   CHAT_BACKEND messages       - the Messages API tool loop (agent/tool_loop.py), with
+      #   DATABASE_URL                  conversations in Supabase Postgres (the database-url
+      #                                 secret, the transaction pooler's connection string)
+      #   service-account             - a dedicated runtime identity holding exactly two
+      #                                 permissions (read the anthropic-api-key and
+      #                                 database-url secrets),
       #                                 not the default compute account, which carries
       #                                 project Editor. A compromised deploy can still
-      #                                 reach that one secret - unavoidable when the code
+      #                                 reach those secrets - unavoidable when the code
       #                                 needs it to run - but no longer inherits the
       #                                 whole project along with it.

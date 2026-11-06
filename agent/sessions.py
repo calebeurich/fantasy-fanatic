@@ -17,7 +17,8 @@ users would leak one person's conversation into another's, which is why the naiv
 "just reuse the client" version was rejected when the caching investigation first
 surfaced it.
 
-In-memory, no database - same reasoning as `budget.py`: with `max-instances=1` a
+The Agent SDK backend only (CHAT_BACKEND=sdk); conversations.py is the Messages API one.
+In-memory, no database: with `max-instances=1` a
 process-local map is exactly correct. Sessions are lost on instance recycle, which
 degrades to today's behavior (the user starts a new conversation), not to an error.
 """

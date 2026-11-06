@@ -689,9 +689,10 @@ async def ask(request: AskRequest, http: Request) -> AskResponse:
     t = tier(http)
     ledger = budget.friends if t == "friend" else budget.demo
     # Checked before calling Claude, so an exhausted budget costs nothing to serve.
-    if ledger.is_exhausted():
+    # A thread: with DATABASE_URL these are database calls, and the event loop serves everyone.
+    if await asyncio.to_thread(ledger.is_exhausted):
         return AskResponse(text=ledger.over_message, budget_exhausted=True)
-    if t == "demo" and not budget.visitor_allowed(_visitor(http)):
+    if t == "demo" and not await asyncio.to_thread(budget.visitor_allowed, _visitor(http)):
         return AskResponse(text=budget.DEMO_VISITOR_MESSAGE, budget_exhausted=True)
 
     question = request.question.strip()
@@ -736,7 +737,7 @@ async def ask(request: AskRequest, http: Request) -> AskResponse:
         except Exception as e2:  # a second no-tools run, or anything else on the retry
             observability.log_run({"question": question[:300], "outcome": "error",
                                    "error": f"retry after no_tools: {type(e2).__name__}: {e2}"})
-            ledger.record(None)
+            await asyncio.to_thread(ledger.record, None)
             _progress.pop(request.session_id, None); _partial.pop(request.session_id, None)
             return AskResponse(text=("The analysis tools didn't load for that one - nothing was answered, "
                                      "and no verdict was invented. Ask again in a moment."))
@@ -768,14 +769,14 @@ async def ask(request: AskRequest, http: Request) -> AskResponse:
         })
         # A failed call still consumed real capacity (it may have burned tokens before
         # failing), so it counts against the day rather than being free to retry in a loop.
-        ledger.record(None)
+        await asyncio.to_thread(ledger.record, None)
         _progress.pop(request.session_id, None)
         _partial.pop(request.session_id, None)
         return AskResponse(text="Something went wrong answering that. Try again, or try a different league.")
 
     _progress.pop(request.session_id, None)
     _partial.pop(request.session_id, None)
-    ledger.record(result["cost_usd"])
+    await asyncio.to_thread(ledger.record, result["cost_usd"])
     if request.session_id:
         # Written whether or not anyone is still listening - that is the entire point.
         _answers[request.session_id] = {

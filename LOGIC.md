@@ -1967,10 +1967,13 @@ for less than half the win the first two cuts bought.
 **HTTP API + budget** (`api.py`, `budget.py`): plain FastAPI, `/ask` calling the same
 `run_query` as CLI and evals. The daily ceiling is what makes a public endpoint safe -
 two ceilings (dollars + a request-count backstop, since a failed call reports
-`cost_usd: None`), in-process with no database because `max-instances=1` +
-`concurrency=1` make a counter exact (and this workload is memory-heavy, not
-horizontal). Check-then-record can overshoot by at most one call ($0.50). Those Cloud
-Run flags are load-bearing and live in the workflow, not console click-state.
+`cost_usd: None`). Since 2026-11-06 the counters and the demo's per-visitor cap live in
+Supabase Postgres (`agent/db.py`; visitors as a hash of IP and day, never the IP), so up
+to `max-instances=3` share one day and a deploy no longer resets it; without
+`DATABASE_URL` they fall back to the process. Check-then-record can overshoot by the calls
+in flight at once ($0.50 each at most). `session-affinity` keeps a browser on one instance,
+because answer progress and the dropped-connection reclaim are still per instance. Those
+Cloud Run flags are load-bearing and live in the workflow, not console click-state.
 
 **Container + CI/CD**: five real build failures recorded in git history; the durable
 lessons - pin every dependency (an unpinned `mcp` resolved to a version where `FastMCP`
