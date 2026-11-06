@@ -4,7 +4,7 @@
 # answers instead of failing. See LOGIC.md's "Container image" section for the full trail.
 requests==2.32.3
 nflreadpy==0.1.5
-mcp[cli]==1.29.0
+mcp==1.29.0
 # The agent's tool loop on the Messages API (agent/tool_loop.py).
 anthropic==2.6.0
 # Conversations in Supabase Postgres (agent/conversations.py), when DATABASE_URL is set.

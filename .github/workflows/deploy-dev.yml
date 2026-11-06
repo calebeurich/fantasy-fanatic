@@ -82,7 +82,7 @@ jobs:
             --memory 2Gi \
             --cpu 2 \
             --timeout 600 \
-            --concurrency 12 \
+            --concurrency 40 \
             --max-instances 3 \
             --session-affinity \
             --execution-environment gen2 \
@@ -99,12 +99,14 @@ jobs:
       #   session-affinity            - a browser stays on one instance, because answer
       #                                 progress and the dropped-connection reclaim
       #                                 (api.py _progress / _answers) are per instance
-      #   concurrency 12              - a cold page load fires 8-12 requests at once and
-      #                                 Cloud Run holds only this many while the instance
-      #                                 boots; at 2 (and at 5) the rest were turned away,
-      #                                 owner's asks included (staging test, 2026-10-21:
-      #                                 2 -> 2-4 of 12 through, 5 -> 5, 12 -> 12). Five
-      #                                 asks at once peaked at 2.6Gi (~0.45Gi per run).
+      #   concurrency 40              - requests one instance holds at once; beyond it Cloud
+      #                                 Run turns them away (0s 500s) while new instances
+      #                                 boot. A chat mostly waits on Anthropic, so 40 fit:
+      #                                 20 new chats at once, cold, all answered (median 57s,
+      #                                 one instance warming up); warm, median 12s, 0.55Gi.
+      #                                 At 12, the same cold burst lost 3 of 20 (2026-11-06).
+      #                                 A cold page load fires 8-12 requests at once, so
+      #                                 never below 12.
       #   cpu 2                       - starting chat processes saturated 1 CPU: of six new
       #                                 asks at once, Cloud Run turned four away (2026-11-04).
       #                                 Billed only while active, so it costs very little.
