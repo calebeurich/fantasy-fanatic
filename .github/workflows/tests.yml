@@ -41,6 +41,6 @@ jobs:
       # since they don't import every module (notably the FastAPI app and MCP server).
       - name: Check all modules import
         run: |
-          python -c "import agent.api, agent.agent, agent.mcp_server, agent.sessions, agent.budget, agent.observability"
+          python -c "import agent.api, agent.agent, agent.mcp_server, agent.tool_loop, agent.conversations, agent.db, agent.budget, agent.observability"
           python -c "import analysis.team_state, analysis.trade_targets, analysis.waiver_wire, analysis.roster_detail"
           python -c "import sources.sleeper, sources.fantasycalc, sources.contracts, sources.cache"
