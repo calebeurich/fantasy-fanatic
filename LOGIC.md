@@ -1599,6 +1599,21 @@ prompt carries the doctrine no single tool result states (five principles: pick 
 two currencies, age is a distance, value is not additive, a trade needs a counterparty)
 plus numbered rules, each added for an observed failure.
 
+### The Messages API backend (`tool_loop.py`, `CHAT_BACKEND=messages`, 2026-11-06)
+
+The same agent without the Agent SDK: a plain tool loop on the Messages API calling the MCP
+server's own functions in this process (through FastMCP's `call_tool`, so arguments validate and
+results serialize exactly as before). A conversation is only its message list
+(`conversations.py`), so there are no subprocesses per chat, no slots to wait for, and one data
+cache per instance; the list moves to Supabase next so any instance can serve any chat. Same
+prompts, tools, `MAX_TURNS`, `MAX_BUDGET_USD` and grounding checks - `_run_turn` hands off to
+`Conversation.turn`, which returns the same shape. Cost is computed from `usage` at Haiku 5.5's
+rates ($0.10 / $0.50 per million, x2.5 and x5 past a 100K prompt; cache writes 1.25x input,
+reads 0.1x); caching is set by hand (system breakpoint, plus the newest message). First runs,
+local: one question 31s / $0.009 with 98K tokens read from cache; a second turn of the same
+chat 6s / $0.001. Known gap: two asks on one chat at the same moment can overwrite each other's
+history (the page sends one at a time).
+
 ### Zero tools, again - and the guard for it (2026-08-17)
 
 The first Cloud Run deploy's worst failure came back on staging for one session: the

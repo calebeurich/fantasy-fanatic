@@ -132,6 +132,9 @@ class SessionManager:
         self._sessions[session_id] = session
         return session
 
+    async def save(self, session: Session) -> None:
+        pass   # the live client holds the conversation
+
     async def drop(self, session_id: str) -> None:
         """Throw a session away (its client is broken - no tools registered); the next
         acquire for this id builds a fresh one and reports `created`."""

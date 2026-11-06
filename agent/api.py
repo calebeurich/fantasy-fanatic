@@ -44,7 +44,8 @@ from analysis import format_support, roster_detail, roster_needs, team_state, tr
 
 from analysis.league import UnknownOwner
 from . import budget, observability
-from .agent import AIServiceDown, run_query, MCP_SERVER_PATH, ToolsUnavailable, _options
+from .agent import AIServiceDown, CHAT_BACKEND, run_query, MCP_SERVER_PATH, ToolsUnavailable, _options
+from .conversations import ConversationStore
 from .sessions import SessionBusy, SessionManager
 
 
@@ -58,7 +59,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="fantasy-fanatic agent", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-sessions = SessionManager(_options)
+sessions = ConversationStore() if CHAT_BACKEND == "messages" else SessionManager(_options)
 
 MAX_QUESTION_CHARS = 1000  # a real question is far shorter; this just bounds abuse
 
@@ -719,6 +720,7 @@ async def ask(request: AskRequest, http: Request) -> AskResponse:
                 # see Session.cost_delta for why the raw value would both over-report
                 # and over-charge the daily budget on a persistent session.
                 result["cost_usd"] = session.cost_delta(result["cost_usd"])
+                await sessions.save(session)
         else:
             result = await run_query(question, verbose=False, on_progress=track, on_text=stream)
     except ToolsUnavailable:

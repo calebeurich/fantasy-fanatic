@@ -131,7 +131,12 @@ async def case_team_read() -> None:
     assert chip in text.lower(), f"expected the path word {chip!r} in response: {text}"
     stray = re.findall(r"\b(Push|Middling|Rebuild) (window|mode|team)\b|\bin (Push|Middling|Rebuild)\b", text)
     assert not stray, f"retired window label in response: {stray}"
-    assert not re.search(r"expiring (contract|deal)|[Ww]eek \d", text), f"invented detail: {text}"
+    assert not re.search(r"expiring (contract|deal)", text), f"invented detail: {text}"
+    # The one week number a tool states: when a hurt starter is back (`back_week`).
+    from analysis import roster_detail
+    backs = {o["back_week"] for o in roster_detail.optimal_lineup(DYNASTY_LEAGUE, "dezdroppedit27").get("out_now", [])}
+    invented = {int(w) for w in re.findall(r"[Ww]eek (\d+)", text)} - backs
+    assert not invented, f"invented week {invented}: {text}"
     print(f"case_team_read: PASS (${(result['cost_usd'] or 0):.4f}, {result['num_turns']} turns)")
 
 

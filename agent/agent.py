@@ -12,6 +12,7 @@ this is separate from any Claude.ai subscription, see LOGIC.md.
 
 import asyncio
 import json
+import os
 import re
 import sys
 import time
@@ -40,7 +41,7 @@ from claude_agent_sdk import (
 )
 
 from analysis import trade_targets, roster_detail
-from . import observability
+from . import observability, tool_loop
 
 # Explicit path, not bare load_dotenv(): the default searches upward from the *working
 # directory*, so running the app from anywhere other than the repo root silently found
@@ -52,6 +53,8 @@ from . import observability
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 MODEL = "claude-haiku-5-5"  # cheapest capable model - LOGIC.md "Model: Haiku 4.5 -> 5.5"
+# "sdk" = a `claude` CLI + MCP subprocess per conversation; "messages" = agent/tool_loop.py.
+CHAT_BACKEND = os.environ.get("CHAT_BACKEND", "sdk")
 
 SERVER_KEY = "fantasy_fanatic"
 TOOL_NAMES = [
@@ -324,6 +327,12 @@ def _options(persona: str | None = None) -> ClaudeAgentOptions:
     )
 
 
+def new_conversation(persona: str | None = None, messages: list | None = None) -> tool_loop.Conversation:
+    """The Messages API backend's stand-in for a ClaudeSDKClient: same prompt, tools and caps."""
+    return tool_loop.Conversation(MODEL, COUNTERPARTY_PROMPT.format(owner=persona) if persona else SYSTEM_PROMPT,
+                                  messages, MAX_TURNS, MAX_BUDGET_USD, f"mcp__{SERVER_KEY}__")
+
+
 # What each tool is DOING, for the person waiting on a 60-90 second answer. The tool
 # names are internal jargon; a reader wants to know the machine is working and roughly
 # where it is. Missing names fall back to the raw name rather than going silent.
@@ -351,6 +360,8 @@ async def _run_turn(client: ClaudeSDKClient, message: str, verbose: bool,
     returned, for the observability log below. Split out from run_query so the
     grounding-retry loop can send a second message on the same session without
     repeating this collection logic."""
+    if isinstance(client, tool_loop.Conversation):
+        return await client.turn(message, verbose, on_progress, on_text)
     text_parts, tool_calls, tool_results, result = [], [], [], None
     tool_name_by_id = {}
     streamed = ""
@@ -645,7 +656,9 @@ async def run_query(question: str, verbose: bool = True, client: ClaudeSDKClient
         # turns). Only a client we created here gets closed here; a session's client
         # outlives the request, so the exit stack must not tear it down.
         async with AsyncExitStack() as stack:
-            if client is None:
+            if client is None and CHAT_BACKEND == "messages":
+                client = new_conversation(persona)
+            elif client is None:
                 client = await stack.enter_async_context(ClaudeSDKClient(options=_options(persona)))
             turn = await _run_turn(client, question, verbose, on_progress, on_text)
             all_tool_calls = list(turn["tool_calls"])

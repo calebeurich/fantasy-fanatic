@@ -12,6 +12,9 @@ mcp[cli]==1.29.0
 # know Haiku 5.5 - it priced it like old Opus (~140x high), tripped max_budget_usd and
 # threw the answer away. Keep this at a release that knows MODEL (LOGIC.md).
 claude-agent-sdk==0.2.165
+# The Messages API backend (agent/tool_loop.py, CHAT_BACKEND=messages). Both stay until it
+# replaces the SDK path on the web.
+anthropic==2.6.0
 python-dotenv==1.0.1
 fastapi==0.141.1
 uvicorn==0.52.1
