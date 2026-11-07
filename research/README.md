@@ -1301,3 +1301,63 @@ as the app's ePPG stands. The only information that could still beat them has to
 the box score: betting markets (ROADMAP "market-implied fantasy points from player props") or a
 second projection source for consensus. The cached data (ffopportunity weekly 2020-2025 and Sleeper
 projections plus stats, ~10 MB) is in `data/research/projection_blend/`, so the next study can reuse it.
+
+## Pace backtest on projected strength (`pace_backtest.py --projected`, 2026-11-07)
+
+Owner, after the projection study: "so our simulation models can use old right before game
+predictions as well instead of actuals?" The backtest so far fed points per game to date as each
+team's strength, because history doesn't keep the rest-of-season view the live app runs on. It does
+keep each week's final pre-game projection, which gives a projected strength one week ahead. The
+owner asked to "watch out for gotchas on the soundness", so the design is written down first.
+
+**Setup:** at week k, each team's strength is the lineup the live code would start
+(`roster_needs.fill_lineup`, league-scored `sleeper.score`) from Sleeper's week k+1 projections. It
+uses the roster as it stood in week k, and the live drift (`strength_sd` left at its default). Both
+inputs run on the same frames: completed seasons 2020-2025, weeks 3+, no IDP leagues.
+
+**Soundness traps, and how each is handled:**
+- Leak through the roster: a team's week k+1 roster includes moves made after week k, so the replay uses the
+  week k roster.
+- Leak through the horizon: week 12's final projection knows week 11's injuries. Only week k+1 is used, and it
+  stands in for every remaining week. Its own leak is at most a week of news, the same news the live app
+  has by the time it runs.
+- Byes: the bye schedule is public all season, so each remaining week re-fills the lineup without whoever is on
+  bye that week, the way the live app's weekly strengths do. The first version skipped this. It priced
+  week k+1's lineup once for every remaining week and gave an on-bye player his week k line, which the owner
+  caught ("players cant play if they are on bye"). A player on bye in week k+1 itself still prices from his
+  week k line, so his one projection isn't 0. An injured player stays at 0, as he would live.
+- Scale: projections cover only QB, RB, WR and TE, while points for include K and DEF. The live app has the same
+  gap, so the replay keeps it, and calibration shows whether it matters. IDP leagues are left out because the
+  missing share there is large and differs from team to team.
+- Selection: both inputs are scored on exactly the same team-weeks, so the comparison is paired.
+
+**Pre-registered before the first run (2026-11-07):**
+- S1: projected strength beats points per game to date on made-playoffs Brier, on the same frames.
+- S2: the gain is largest early (weeks 3-6), where points per game is noisiest, and shrinks late.
+- S3: with projected strength and the live drift, the made-playoffs deciles are calibrated within 5
+  points. If the 80%+ deciles come in more than 5 points short, the live odds are overconfident and
+  `STRENGTH_SD_SHARE` needs widening.
+
+**Result (2026-11-07), 1,858 seasons and 239,920 team-weeks, same frames for both inputs.** Brier
+score for making the playoffs, lower is better:
+
+| | all weeks | weeks 3-6 | weeks 7+ |
+|---|---|---|---|
+| points per game to date (with its widened drift) | 0.0980 | 0.1396 | 0.0740 |
+| projected strength (with the live drift) | **0.0939** | **0.1330** | **0.0714** |
+| top-k today | 0.1508 | | |
+| base rate | 0.2463 | | |
+
+- S1 HELD. Projected strength cuts the Brier score by 4.2%.
+- S2 HELD in absolute terms. The gain is 0.0066 early and 0.0026 late, though as a share it's similar (4.7% and
+  3.5%). It is not formally tested for significance, since games within a season are correlated, but it shows
+  up in both halves of the season.
+- S3 HELD. With the live drift, every decile is within 4 points of its band: 30-40% comes in at 34.4%, 80-90% at
+  84.4%, and 90%+ at 97.5%. `STRENGTH_SD_SHARE` stays as it is.
+
+**What it means:** this is the first test of the live configuration itself: projected lineup strength
+with the live noise settings. It is more accurate than the points-per-game stand-in, and it is calibrated. The live
+app projects every remaining week rather than one week ahead, so it should do at least as well, minus the at
+most one week of news this replay could see. The larger crawl also re-checks the old baseline: points per game
+scores 0.098 over 1,858 seasons, close to the 0.102 published from 131. Title odds still run hot from 40% up
+(observed 33-38%), which is one more reason they stay hidden.

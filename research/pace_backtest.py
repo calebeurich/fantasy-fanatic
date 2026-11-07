@@ -13,20 +13,32 @@ final line, but not what it projected for later weeks at the time - ePPG's view,
 `research/save_projections.py` saves from 2026 on. That validates the MATH (record + schedule + rules + the noise model), not
 projection quality.
 
-Run: python -m research.pace_backtest
+`--projected` (2026-11-07) scores a second strength on the same frames: the lineup the live
+code would start from Sleeper's week k+1 projections - see research/README.md "Pace backtest
+on projected strength" for the leaks it is built to avoid.
+
+Run: python -m research.pace_backtest [--projected]
 """
 
+import functools
+import gzip
 import json
 import math
 import statistics
+import sys
 from collections import defaultdict
 from pathlib import Path
 
+from analysis.roster_needs import fill_lineup, lineup_slots
 from analysis.season_sim import STRENGTH_SD_SHARE, WEEKLY_SD_SHARE, simulate
+from sources import sleeper
+from sources.nflverse_ids import sleeper_names
 
 CRAWL_DIR = Path("data/crawl")
 FROM_WEEK = 3   # before this, ppg-to-date is too noisy to call a strength input
 RUNS = 1000     # per frame; the live default is 5000, this keeps the replay to minutes
+PROJ_CACHE = Path("data/research/pace_projected")
+IDP = {"DL", "LB", "DB", "IDP_FLEX"}
 
 
 def season_frames(d: dict) -> list[dict]:
@@ -82,8 +94,41 @@ def season_frames(d: dict) -> list[dict]:
             "k": k, "teams": teams,
             "schedule": {r: {w: o for w, o in pair[r].items() if w > k} for r in rids},
             "settings": {**st, "playoff_week_start": season_weeks + 1},
-            "field": field, "byes": field - round1, "champ": champ})
+            "field": field, "byes": field - round1, "champ": champ,
+            "rosters": {m["roster_id"]: m.get("players") or [] for m in matchups[k]}})
     return frames
+
+
+@functools.cache
+def week_lines(season: str, week: int) -> tuple[dict, set, dict]:
+    """One week's final projections: player_id -> raw stat line, the NFL teams on bye, and
+    player_id -> NFL team. Cached on disk - past weeks don't change."""
+    path = PROJ_CACHE / f"{season}_{week}.json.gz"
+    if not path.exists():
+        rows = sleeper.projection_rows(season, week)
+        bye = sorted({r["team"] for r in rows if r.get("team")} - {r["team"] for r in rows if r.get("opponent")})
+        out = [{r["player_id"]: r["stats"] for r in rows if r.get("stats")}, bye,
+               {r["player_id"]: r.get("team") for r in rows}]
+        path.write_bytes(gzip.compress(json.dumps(out).encode()))
+    lines, bye, team = json.loads(gzip.decompress(path.read_bytes()))
+    return lines, set(bye), team
+
+
+def projected_strength(players: list, league: dict, k: int, last_week: int, position: dict) -> tuple:
+    """(eppg, {week: points}) for the week k roster: its optimal lineup on week k+1's
+    projections, league-scored the way the live app scores them, re-filled each remaining
+    week without whoever is on bye then - the bye schedule is public all season, and the
+    live app's weekly strengths route around byes the same way. A player on bye in k+1
+    itself is priced from his week k line."""
+    lines, bye, team = week_lines(league["season"], k + 1)
+    before, _, _ = week_lines(league["season"], k)
+    week = {pid: {"position": position.get(pid),
+                  "projected_ppg": sleeper.score((before if team.get(pid) in bye else lines).get(pid, {}),
+                                                 league["scoring_settings"])} for pid in players}
+    slots, flex = lineup_slots(league["roster_positions"])
+    best = lambda out: sum(week[pid]["projected_ppg"] for _, pid in fill_lineup(
+        {"players": [p for p in players if team.get(p) not in out]}, week, slots, flex))
+    return best(set()), {w: best(week_lines(league["season"], w)[1]) for w in range(k + 1, last_week + 1)}
 
 
 def _sim(frame: dict) -> dict:
@@ -105,13 +150,28 @@ def _deciles(pairs: list) -> str:
 
 
 def main():
+    projected = "--projected" in sys.argv
+    position = {p: v["position"] for p, v in sleeper_names().items()} if projected else {}
+    PROJ_CACHE.mkdir(parents=True, exist_ok=True)
     scores = defaultdict(list)   # metric -> [(p, hit)]
     seasons = 0
     for f in sorted(CRAWL_DIR.glob("*.json")):
-        frames = season_frames(json.load(open(f, encoding="utf-8")))
+        d = json.load(open(f, encoding="utf-8"))
+        league = d.get("league") or {}
+        if projected and (int(league.get("season") or 0) < 2020
+                          or IDP & set(league.get("roster_positions") or [])):
+            continue
+        frames = season_frames(d)
         seasons += bool(frames)
         for fr in frames:
             sim = _sim(fr)
+            if projected:
+                last = fr["settings"]["playoff_week_start"] - 1
+                strong = {r: projected_strength(fr["rosters"].get(r, []), league, fr["k"], last, position)
+                          for r in fr["rosters"]}
+                teams = [{**t, "eppg": strong.get(t["owner_id"], (0, {}))[0]} for t in fr["teams"]]
+                proj = simulate(teams, fr["settings"], fr["k"], fr["schedule"],
+                                strengths={r: s[1] for r, s in strong.items()}, runs=RUNS)
             n, slots = len(fr["teams"]), fr["settings"]["playoff_teams"]
             in_now = {t["owner_id"] for t in sorted(
                 fr["teams"], key=lambda t: (-t["wins"], -t["points_for"]))[:slots]}
@@ -119,6 +179,11 @@ def main():
                 me = t["owner_id"]
                 made = me in fr["field"]
                 scores["sim"].append((sim[me]["playoffs"], made))
+                if projected:
+                    scores["sim: projected"].append((proj[me]["playoffs"], made))
+                    phase = "early" if fr["k"] <= 6 else "late"
+                    scores[f"{phase}: ppg"].append((sim[me]["playoffs"], made))
+                    scores[f"{phase}: projected"].append((proj[me]["playoffs"], made))
                 scores["top-k today"].append((float(me in in_now), made))
                 scores["base rate"].append((slots / n, made))
                 if fr["byes"]:
@@ -130,6 +195,8 @@ def main():
     brier = lambda xs: sum((p - h) ** 2 for p, h in xs) / len(xs)
     print(f"{seasons} seasons, {len(scores['sim'])} team-week predictions (weeks {FROM_WEEK}+)\n")
     print(f"made the playoffs - sim said / observed / n\n{_deciles(scores['sim'])}\n")
+    if projected:
+        print(f"made the playoffs, projected strength{chr(10)}{_deciles(scores['sim: projected'])}{chr(10)}")
     print(f"title - sim said / observed / n\n{_deciles(scores['title: sim'])}\n")
     print("Brier (lower is better):")
     for name, xs in scores.items():

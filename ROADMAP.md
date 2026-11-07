@@ -593,7 +593,8 @@ for the agent. Title % stays internal (owner, 2026-10-18). Then delete the close
 Projection snapshots STARTED 2026-10-18 (`research/save_projections.py`, run weekly -
 week 6 saved) so next year's replay tests real ePPG instead of ppg-to-date. Sleeper also
 keeps each past week's FINAL line, so a 2025 replay on next-week projections (rosters per
-week are in the crawl's matchups) is possible now - not built.
+week are in the crawl's matchups) is DONE 2026-11-07 (`pace_backtest --projected`): Brier
+0.0939 against 0.0980 for ppg-to-date over 1,858 seasons, and calibrated with the live drift.
 
 **DONE 2026-10-11: GCP billing** upgraded (paid account, $5/month budget, spend cap
 configured). Original todo kept below -
