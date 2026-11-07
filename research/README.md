@@ -1238,3 +1238,66 @@ champion was in the lower half of max PF 8.0% of the time, the bottom quarter 1.
 Taxi squads don't hide points from max PF. Recomputing best-ball totals for live 2026 leagues through
 week 8, on the 416 teams where it changes the total: Sleeper's number matched exactly counting taxi
 players on 352 and leaving them out on 0. The other 64 matched neither. Benching and taxi are both closed.
+
+## Beating Sleeper's weekly projection with workload (`projection_blend.py`, 2026-11-07)
+
+Owner: "leaning back into the ML side". The question: is there information Sleeper's weekly
+projection leaves on the table? Candidate: **expected fantasy points (xFP)** from nflverse's
+ffopportunity, an xgboost model over play-by-play that prices each target and carry by where it
+happened (free, 2006 on, CC BY-SA 4.0). The common belief is that workload predicts next week
+better than points do, because points above workload (TD luck, long plays) mostly fade.
+
+**Setup:** player-weeks 2020-2025, QB/RB/WR/TE, weeks 4-17. A row needs Sleeper's pre-game
+projection, a game played (an ffopportunity row), and 3+ earlier games that season. Target:
+Sleeper's actual `pts_ppr`, in the same scoring as its projection. Trailing features use only
+earlier weeks of the same season: mean xFP and mean actual points. Fit 2020-2023, score
+2024-2025, per position, by MAE. A plain linear model per position. A tree model only if the
+linear one finds something.
+
+**Pre-registered before the first run (2026-11-07):**
+- B1: Sleeper's projection beats trailing points per game alone (lower MAE). The projection
+  is worth starting from.
+- B2: trailing xFP beats trailing points per game as a lone predictor at RB, WR and TE.
+- B3: a blend of the projection and trailing xFP beats the projection out of sample by 1%+ MAE
+  at some position. Scored against the projection recalibrated on the train years (a + b *
+  proj), so a plain scale bias doesn't count as information.
+- B4: Sleeper's misses lean the way regression says. Among players whose trailing points ran
+  above their trailing xFP, actual minus projection is negative on average (over-projected),
+  and positive for those who ran below. That would make "running hot / cold vs workload" a
+  real buy-low / sell-high signal.
+
+**Data catch first:** Sleeper's projected `pts_ppr` field does not match its own projected stat
+line. For QBs it runs about 2 points high (2024 week 6: 18.96 in the field against 16.68 from
+re-scoring the stats). The `pts_ppr` on actual stats matches exactly. The first run read the field
+and found QBs over-projected by 2.7 points in every season; re-scoring the raw lines made that
+vanish. The app was never affected, because it scores raw stats with each league's own settings
+(`sleeper.score`), but the docstring there claimed an exact match and now says which field.
+
+**Result (2026-11-07), 20,894 player-weeks, tested on 2024-2025.** Sleeper's weekly projection
+already contains the workload signal. Out-of-sample MAE:
+
+| | QB | RB | WR | TE |
+|---|---|---|---|---|
+| Sleeper projection, raw | **5.96** | **4.69** | **4.83** | **3.94** |
+| points/game so far | 6.41 | 5.08 | 5.06 | 4.19 |
+| xFP/game so far | 6.41 | 5.01 | 5.08 | 4.11 |
+| projection + xFP, fitted | 6.15 | 4.79 | 4.85 | 3.95 |
+
+- B1 HELD. The projection beats points per game so far by 4-6% at every position.
+- B2 HELD AT RB AND TE ONLY, so REJECTED as stated. xFP beats points per game at RB (5.01 vs 5.08)
+  and TE (4.11 vs 4.19). At WR the two tie (5.08 vs 5.06), and at QB they're equal (6.41).
+- B3 REJECTED. Adding xFP to the recalibrated projection improves MAE by 0.1-0.4%, under the 1% bar.
+  RMSE agrees (QB 7.76 to 7.73, others within 0.003). The raw projection also beats every least-squares
+  fit on MAE: a least-squares fit chases the mean, and the projection already sits near the median.
+- B4 REJECTED. Players running hot against their workload are not over-projected (RB +0.04, WR
+  -0.01, TE -0.24), and cold ones are not under-projected (all slightly negative). The one lean, hot
+  QBs at -0.85 over 155 games, is too small and too thin to act on. Sleeper already regresses touchdown
+  luck. The small positive misses for everyone near their workload (TE +0.77, RB +0.53) are the sample's
+  doing: a row needs a game played, which drops the projected players who sat out.
+
+**What it means:** workload stats are not an edge over Sleeper. Its projection already prices them,
+and the coefficients show it: projection weight about 0.8, xFP about 0.1. Using Sleeper's projections
+as the app's ePPG stands. The only information that could still beat them has to come from outside
+the box score: betting markets (ROADMAP "market-implied fantasy points from player props") or a
+second projection source for consensus. The cached data (ffopportunity weekly 2020-2025 and Sleeper
+projections plus stats, ~10 MB) is in `data/research/projection_blend/`, so the next study can reuse it.

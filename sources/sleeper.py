@@ -152,7 +152,8 @@ def get_nfl_state() -> dict:
 
 def score(stats: dict, scoring_settings: dict) -> float:
     """Fantasy points for a stat line under a league's scoring - the same dot product
-    Sleeper uses (verified: reproduces its pts_ppr exactly for a PPR league)."""
+    Sleeper uses for actual stats (reproduces their pts_ppr exactly; a projection's pts_ppr
+    runs ~2 points above its own stat line at QB, so never read that field)."""
     return sum(v * scoring_settings[k] for k, v in stats.items() if k in scoring_settings)
 
 

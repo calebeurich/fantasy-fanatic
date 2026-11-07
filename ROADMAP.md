@@ -399,7 +399,9 @@ number would be quietly wrong.
   (pass/rush/rec yards, receptions, anytime-TD) price THIS week; converting them to
   implied points under each league's scoring would sharpen the near term (weekly
   lineups, pace's next weeks). Rest-of-season ePPG still needs projections - props
-  rarely price beyond the coming week. Same feed and budget-cap rule as below.
+  rarely price beyond the coming week. Same feed and budget-cap rule as below. Now the only
+  candidate left: workload (nflverse xFP) adds under 0.4% to Sleeper's weekly projection out
+  of sample (research README "Beating Sleeper's weekly projection with workload", 2026-11-07).
 - **Sportsbook lines / news-flow value arb** (ordering decided 2026-08-14:
   SEASON-LONG lines first - player season totals and futures for calibration and
   draft-season/dynasty-valuation use - before any week-by-week props; weekly is an
