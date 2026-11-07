@@ -2381,6 +2381,15 @@ def test_lineup_fill_reports_which_slot_each_player_occupies():
     assert set(filled) == set(roster_needs.projected_starters(roster, players, dedicated, flex))
 
 
+def test_a_slot_whose_every_candidate_projects_negative_still_fills():
+    """Some scoring settings price a projection below zero. The near-tie band once sat
+    above a negative best and left no candidate (a crash, found replaying old seasons)."""
+    dedicated, flex = roster_needs.lineup_slots(["TE"])
+    players = _players([("TE", -1.5), ("TE", -3.0)])
+    filled = roster_needs.fill_lineup({"players": list(players)}, players, dedicated, flex)
+    assert filled == [("TE", "0")]
+
+
 def test_losing_a_starter_cascades_through_flex_from_any_eligible_position():
     """The case a manager gets wrong by hand. Lose the RB2 and the FLEX slides back into
     RB2, leaving a FLEX to fill - and it fills from RB/WR/TE, so a bench TE outproducing

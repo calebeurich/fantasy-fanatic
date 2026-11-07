@@ -628,7 +628,7 @@ def fill_lineup(roster: dict, players: dict[str, dict], slots: dict[str, int],
 
     def best_of(pool: list[str]) -> str:
         top = max(eppg(players[p]) for p in pool)
-        same = [p for p in pool if eppg(players[p]) >= top * (1 - NOISE_BAND)]
+        same = [p for p in pool if eppg(players[p]) >= top - abs(top) * NOISE_BAND]   # abs: a negative top
         return max(same, key=lambda p: (players[p].get("redraft_value") or 0, eppg(players[p])))
 
     filled: list[tuple[str, str]] = []
