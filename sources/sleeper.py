@@ -1,5 +1,6 @@
 """Minimal Sleeper API client. Smoke test: python -m sources.sleeper <username> [year] [league_id]"""
 
+import os
 import sys
 import time
 import requests
@@ -16,8 +17,17 @@ DYNASTY_TYPE = 2
 # page load makes.
 _http = requests.Session()
 
+# The public demo opens DEMO_LEAGUE under its own id with every manager renamed "Team A",
+# "Team B"...: the people in it never agreed to their handles and team names on a public page.
+# Every name in the app comes from get_users, and every cache keys on league_id, so the
+# renamed copy and the real league never share a cached name.
+DEMO_ID = "demo"
+DEMO_SOURCE = os.environ.get("DEMO_LEAGUE")
+
 
 def _get(path: str):
+    if DEMO_SOURCE and (path == f"league/{DEMO_ID}" or path.startswith(f"league/{DEMO_ID}/")):
+        path = f"league/{DEMO_SOURCE}" + path[len(f"league/{DEMO_ID}"):]
     resp = _http.get(f"{BASE}/{path}")
     resp.raise_for_status()
     return resp.json()
@@ -35,7 +45,8 @@ def get_leagues(user_id: str, year: str) -> list[dict]:
 
 @ttl_cache(LEAGUE_CONFIG_TTL)
 def get_league(league_id: str) -> dict:
-    return _get(f"league/{league_id}")
+    league = _get(f"league/{league_id}")
+    return {**league, "league_id": DEMO_ID, "name": "Demo league"} if league_id == DEMO_ID else league
 
 
 @ttl_cache(LIVE_TTL)
@@ -51,8 +62,16 @@ def _open_team_id(roster: dict) -> str:
     return f"open-{roster['roster_id']}"
 
 
+def demo_name(roster_id: int) -> str:
+    """Letters, not numbers: owner lookups match by substring, and "Team 1" is inside "Team 12"."""
+    return f"Team {chr(64 + roster_id)}" if 1 <= roster_id <= 26 else f"Team {roster_id}"
+
+
 @ttl_cache(LEAGUE_CONFIG_TTL)
 def get_users(league_id: str) -> list[dict]:
+    if league_id == DEMO_ID:
+        return [{"user_id": r["owner_id"], "display_name": demo_name(r["roster_id"]), "metadata": {}}
+                for r in get_rosters(league_id)]
     users = _get(f"league/{league_id}/users") or []
     open_teams = [{"user_id": r["owner_id"], "display_name": f"Open team {r['roster_id']}", "metadata": {}}
                   for r in get_rosters(league_id) if r["owner_id"] == _open_team_id(r)]

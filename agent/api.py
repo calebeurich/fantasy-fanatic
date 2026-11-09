@@ -66,7 +66,6 @@ MAX_QUESTION_CHARS = 1000  # a real question is far shorter; this just bounds ab
 # exists only when DEMO_BUDGET_USD > 0; otherwise a missing key is a 401 as before.
 # Unset LINK_KEY (local dev) means everyone is a friend.
 LINK_KEY = os.environ.get("FF_LINK_KEY")
-DEMO_LEAGUE = os.environ.get("DEMO_LEAGUE")   # what a key-less visitor lands on
 
 
 def tier(request: Request) -> str:
@@ -87,6 +86,15 @@ def require_key(request: Request) -> None:
     """Friends only - the endpoints that expose internals or spend real money freely."""
     if tier(request) != "friend":
         raise HTTPException(status_code=401, detail="Friends link only.")
+
+
+def league_tier(request: Request, league_id: str) -> str:
+    """`tier`, plus: the demo league's real id is friends-only - the demo opens it renamed,
+    as `sleeper.DEMO_ID`."""
+    t = tier(request)
+    if t == "demo" and league_id == sleeper.DEMO_SOURCE:
+        raise HTTPException(status_code=404, detail="No Sleeper league with that ID. Check it and try again.")
+    return t
 
 
 def _visitor(request: Request) -> str:
@@ -162,12 +170,12 @@ def defaults(request: Request) -> dict:
     (staging, so the owner lands on his own team) - otherwise NOTHING: prod friends
     land on "find your league", because opening on the author's league read as
     clutter to people who don't play in it (owner, 2026-08-21); the page remembers
-    the last league each friend looked at. Demo visitors: DEMO_LEAGUE, a real league
+    the last league each friend looked at. Demo visitors: DEMO_LEAGUE, renamed, a real league
     to look at without owning one, plus the tier so the page can say what the demo
     allows."""
     t = tier(request)
     if t == "demo":
-        return {"tier": "demo", "league_id": DEMO_LEAGUE, "owner": None,
+        return {"tier": "demo", "league_id": sleeper.DEMO_ID if sleeper.DEMO_SOURCE else None, "owner": None,
                 "asks_per_visitor": budget.DEMO_ASKS_PER_VISITOR, "version": APP_VERSION}
     return {"tier": "friend", "league_id": os.environ.get("FF_DEFAULT_LEAGUE"),
             "owner": os.environ.get("FF_DEFAULT_OWNER"), "version": APP_VERSION}
@@ -176,7 +184,7 @@ def defaults(request: Request) -> dict:
 def _league_or_404(league_id: str) -> dict:
     """A mistyped ID is the visitor's to fix, so say so rather than failing as a server error."""
     try:
-        league = sleeper.get_league(league_id) if league_id.isdigit() else None
+        league = sleeper.get_league(league_id) if league_id.isdigit() or league_id == sleeper.DEMO_ID else None
     except requests.HTTPError:
         league = None
     if not league:
@@ -184,7 +192,7 @@ def _league_or_404(league_id: str) -> dict:
     return league
 
 
-@app.get("/api/league/{league_id}", dependencies=[Depends(tier)])
+@app.get("/api/league/{league_id}", dependencies=[Depends(league_tier)])
 def league_overview(league_id: str) -> dict:
     """Deterministic league snapshot, rendered by the UI as a table rather than
     described by the model.
@@ -260,7 +268,7 @@ def league_overview(league_id: str) -> dict:
     }
 
 
-@app.get("/api/league/{league_id}/team/{owner}", dependencies=[Depends(tier)])
+@app.get("/api/league/{league_id}/team/{owner}", dependencies=[Depends(league_tier)])
 def team_detail(league_id: str, owner: str) -> dict:
     """One team expanded: full roster by position with values/ages/buckets, the picks
     with their market prices, and the team-level reads (window, clock mismatch).
@@ -271,7 +279,7 @@ def team_detail(league_id: str, owner: str) -> dict:
     return _team_detail(ctx, ctx.roster_for(owner))
 
 
-@app.get("/api/league/{league_id}/team/{owner}/movable", dependencies=[Depends(tier)])
+@app.get("/api/league/{league_id}/team/{owner}/movable", dependencies=[Depends(league_tier)])
 def movable(league_id: str, owner: str, stance: str | None = None) -> dict:
     """What this team would plausibly move, given its path (or a declared stance: press /
     sell) - the composer greys out everything else. Straight from trade_targets'
@@ -293,7 +301,7 @@ def movable(league_id: str, owner: str, stance: str | None = None) -> dict:
             "stance_note": result.get("stance_note")}
 
 
-@app.get("/api/league/{league_id}/team/{owner}/fits", dependencies=[Depends(tier)])
+@app.get("/api/league/{league_id}/team/{owner}/fits", dependencies=[Depends(league_tier)])
 def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
          seller_stance: str | None = None) -> list[dict]:
     """The composer's tags: why `owner` would want pieces on `seller`'s roster."""
@@ -302,13 +310,13 @@ def fits(league_id: str, owner: str, seller: str, stance: str | None = None,
 
 
 
-@app.get("/api/league/{league_id}/suggest", dependencies=[Depends(tier)])
+@app.get("/api/league/{league_id}/suggest", dependencies=[Depends(league_tier)])
 def suggest(league_id: str, a: str, b: str, stance_a: str | None = None, stance_b: str | None = None) -> list[dict]:
     """Starting points for one pair, click-to-load into the composer."""
     return trade_ideas.suggest(league_id, a, b, stance_a, stance_b)
 
 
-@app.get("/api/league/{league_id}/team/{owner}/ideas", dependencies=[Depends(tier)])
+@app.get("/api/league/{league_id}/team/{owner}/ideas", dependencies=[Depends(league_tier)])
 def ideas(league_id: str, owner: str, limit: int = 3, stance: str | None = None) -> list[dict]:
     """One team's starting points across the league, shown in its expanded row."""
     return trade_ideas.ideas(league_id, owner, limit, stance)
@@ -323,7 +331,7 @@ class EvaluateRequest(BaseModel):
     stance_b: str | None = None
 
 
-@app.post("/api/league/{league_id}/evaluate", dependencies=[Depends(tier)])
+@app.post("/api/league/{league_id}/evaluate", dependencies=[Depends(league_tier)])
 def evaluate(league_id: str, req: EvaluateRequest) -> dict:
     """The framer's deterministic facts for a proposed trade, so the composer can show
     impact on every tap: per side the goal line (lineup delta / value in-out, holes
@@ -341,7 +349,7 @@ def evaluate(league_id: str, req: EvaluateRequest) -> dict:
                       for s in out["sides"]]}
 
 
-@app.get("/api/league/{league_id}/teams", dependencies=[Depends(tier)])
+@app.get("/api/league/{league_id}/teams", dependencies=[Depends(league_tier)])
 def all_team_details(league_id: str) -> dict:
     """Every team's detail in one response, keyed by owner. The UI prefetches all of
     them right after the table renders so clicks are instant; as twelve parallel
@@ -686,6 +694,8 @@ async def ask(request: AskRequest, http: Request) -> AskResponse:
     if not question:
         return AskResponse(text="Ask a question about a Sleeper dynasty league.")
     question = question[:MAX_QUESTION_CHARS]
+    if t == "demo" and sleeper.DEMO_SOURCE:
+        question = question.replace(sleeper.DEMO_SOURCE, sleeper.DEMO_ID)
 
     track = (lambda step: _progress.__setitem__(request.session_id, step)) \
         if request.session_id else None

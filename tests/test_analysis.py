@@ -2920,6 +2920,34 @@ def test_a_team_with_no_manager_is_its_own_team(monkeypatch):
     sleeper.get_users.cache_clear()
 
 
+def test_the_demo_league_is_the_real_one_with_every_manager_renamed(monkeypatch):
+    """Owner: block people's names on the public demo. The real league's handles and team
+    names never reach the demo id, and the real id keeps them."""
+    from sources import sleeper
+    fetched = []
+    calls = {"league/L": {"league_id": "L", "name": "XFL 2"},
+             "league/L/rosters": [{"roster_id": 1, "owner_id": "u1"}, {"roster_id": 12, "owner_id": "u2"}],
+             "league/L/users": [{"user_id": "u1", "display_name": "bigbuttboi", "metadata": {"team_name": "Vanity"}},
+                                {"user_id": "u2", "display_name": "dez", "metadata": {}}]}
+
+    class Http:
+        def get(self, url):
+            path = url.removeprefix(sleeper.BASE + "/")
+            fetched.append(path)
+            return type("R", (), {"raise_for_status": lambda s: None, "json": lambda s: calls[path]})()
+    monkeypatch.setattr(sleeper, "_http", Http())
+    monkeypatch.setattr(sleeper, "DEMO_SOURCE", "L")
+    for fn in (sleeper.get_league, sleeper.get_rosters, sleeper.get_users):
+        fn.cache_clear()
+    demo = {u["user_id"]: (u["display_name"], u["metadata"]) for u in sleeper.get_users("demo")}
+    assert demo == {"u1": ("Team A", {}), "u2": ("Team L", {})}
+    assert sleeper.get_league("demo")["name"] == "Demo league"
+    assert {u["display_name"] for u in sleeper.get_users("L")} == {"bigbuttboi", "dez"}
+    assert "league/L/users" in fetched and not any("demo" in p for p in fetched)
+    for fn in (sleeper.get_league, sleeper.get_rosters, sleeper.get_users):
+        fn.cache_clear()
+
+
 def test_a_starter_with_no_season_price_is_not_the_stranded_bar():
     """Lamar, hurt, has no price: read as zero, every bench player looked stranded behind him."""
     players = {"Hurt": {"redraft_value": None, "position": "QB"}, "Low": {"redraft_value": 1000, "position": "TE"},
