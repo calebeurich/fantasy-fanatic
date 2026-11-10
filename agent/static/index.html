@@ -7,17 +7,23 @@
 <meta name="description" content="Dynasty fantasy football advice for your Sleeper league: every team's window, trade ideas, playoff pace, and an assistant that knows your roster.">
 <meta property="og:title" content="fantasy-fanatic">
 <meta property="og:description" content="Dynasty fantasy football advice for your Sleeper league.">
-<meta name="theme-color" content="#151922">
+<meta name="theme-color" content="#1b1f27">
 <meta name="referrer" content="no-referrer">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23151922'/%3E%3Cellipse cx='16' cy='16' rx='11' ry='7' transform='rotate(-35 16 16)' fill='%234ade80'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2313161c'/%3E%3Cellipse cx='16' cy='16' rx='11' ry='7' transform='rotate(-35 16 16)' fill='%23f97316'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#0d1017; --panel:#151922; --panel2:#1b2029; --line:#262d3a;
-    --ink:#e7eaf0; --muted:#93a0b4; --dim:#808da2;
+    --bg:#13161c; --panel:#1b1f27; --panel2:#232833; --line:#2c3240;
+    --ink:#eef0f4; --strong:#fff; --muted:#a1a8b5; --dim:#8a92a1;
+    --accent:#f97316; --onaccent:#1c1206; --mine:#262c3a; --mebubble:#222a3a;
     --win:#f59e0b; --mid:#60a5fa; --rebuild:#a78bfa;
     --crit:#f87171; --thin:#fbbf24; --ok:#4ade80;
+    --display:Archivo,ui-sans-serif,system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,monospace;
+    color-scheme:dark;
   }
-  :root{color-scheme:dark}
   *{box-sizing:border-box}
   :focus-visible{outline:2px solid var(--mid);outline-offset:1px}
   /* Far enough below the sticky header that scrolling to something doesn't hide its top. */
@@ -38,7 +44,7 @@
         background-size:200% 100%;animation:shimmer 1.6s linear infinite}
   .skelhead{padding:14px 14px 4px;color:var(--muted);font-size:13.5px}
   .lhead{display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line)}
-  .lhead strong{font-size:15px}
+  .lhead strong{font:800 18px var(--display);letter-spacing:-.01em}
   .lhead .acts{margin-left:auto;display:flex;gap:6px}
   .lg.other{opacity:.65}
   .retry{margin-left:8px;padding:3px 10px;font-size:12px;border-radius:999px}
@@ -59,16 +65,47 @@
     .ctray{padding-bottom:calc(8px + env(safe-area-inset-bottom))}
   }
   body{margin:0;background:var(--bg);color:var(--ink);
-       font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+       font:15px/1.55 Figtree,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
   /* Three views, one on screen at a time - the page had become one long scroll of
      table + rosters + trade helper + chat ("overwhelmed ... unbearable on phone" - owner).
      The tab bar IS the header: three equal thirds, nothing else up there. */
   header{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line)}
-  nav.tabs{display:grid;grid-template-columns:repeat(3,1fr)}
-  nav.tabs button{padding:13px 0;border:0;border-radius:0;border-bottom:2px solid transparent;
-                  font-size:15px;font-weight:600;color:var(--muted);background:transparent}
-  nav.tabs button.on{color:var(--ink);border-bottom-color:var(--ok);background:var(--panel2)}
+  .hbar{display:flex;align-items:center;gap:20px;max-width:1440px;margin:0 auto;padding:8px 18px}
+  .logo{font:800 18px var(--display);letter-spacing:-.01em;white-space:nowrap}
+  .logo i{font-style:normal;color:var(--accent)}
+  nav.tabs{display:flex;gap:4px}
+  nav.tabs button{padding:7px 14px;border:0;border-radius:8px;font-size:14.5px;font-weight:600;color:var(--muted);background:transparent}
+  nav.tabs button.on{color:var(--ink);background:var(--panel2)}
   nav.tabs button:disabled{opacity:.35}
+  /* Phone: the tabs are three equal thirds under the name - thumb-sized, nothing else up there. */
+  @media (max-width:600px){
+    .hbar{flex-wrap:wrap;gap:4px;padding:8px 10px 4px}
+    nav.tabs{width:100%;display:grid;grid-template-columns:repeat(3,1fr)}
+  }
+  /* Your team, on top of the league: the facts about you first, the questions one tap away. */
+  .hero{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:14px}
+  .hero .top{display:flex;align-items:center;gap:10px 12px;flex-wrap:wrap}
+  .hero h2{font:800 28px/1.05 var(--display);letter-spacing:-.02em;margin:0}
+  .hero .tag{font-size:12.5px;padding:3px 10px}
+  .hero .lname{margin-left:auto;color:var(--muted);font-size:13px}
+  .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .stat{background:var(--panel);padding:11px 14px;display:grid;gap:1px;align-content:start}
+  .lbl{font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .stat .v{font:700 25px/1.2 var(--display);font-variant-numeric:tabular-nums}
+  .stat .s{font-size:12.5px;color:var(--muted)}
+  .holes{display:grid;gap:6px}
+  .hole{display:flex;gap:10px;align-items:baseline;padding:10px 12px;border-radius:12px;font-size:14px;
+        background:color-mix(in srgb,var(--c) 10%,transparent)}
+  .hole .need{color:var(--c);background:none;border:1px solid var(--c);font-family:var(--mono);margin:0}
+  .hero .chips{padding:0}
+  .hero .chips::before{content:none}
+  .hero .chip.go{background:var(--accent);color:var(--onaccent);border-color:transparent;font-weight:600}
+  @media (max-width:700px){
+    .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .hero{padding:14px}
+    .hero h2{font-size:24px}
+    .hero .lname{margin-left:0;width:100%}
+  }
   /* The pin: who "you" are and the stance every view reads under - one thin line, every view. */
   #pin{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:5px 12px;font-size:12.5px;color:var(--muted);
        border-top:1px solid var(--line);background:var(--panel)}
@@ -80,11 +117,9 @@
     #pin select{max-width:34vw;font-size:11.5px}
     #pin .cstance button{padding:2px 6px;font-size:11px}
   }
-  .brand{color:var(--dim);font-size:11.5px;text-align:right;padding:2px 12px 0}
   section.view{display:none}
   section.view.on{display:grid;gap:18px}
   @media (max-width:600px){
-    .brand{display:none}
     main{padding:10px}
     .pad{padding:10px}
     /* iOS zooms the page on focus when an input's font is under 16px. */
@@ -98,9 +133,9 @@
   h1{font-size:15px;margin:0;letter-spacing:.3px}
   .sub{color:var(--dim);font-size:12.5px}
   main{max-width:1440px;margin:0 auto;padding:18px;display:grid;gap:18px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);
-           margin:0;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--panel2)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .card h2{font:800 17px var(--display);letter-spacing:-.01em;color:var(--ink);
+           margin:0;padding:13px 14px;border-bottom:1px solid var(--line)}
   .pad{padding:14px}
   .row{display:flex;gap:8px;flex-wrap:wrap}
   input[type=text]{flex:1;min-width:220px;padding:10px 12px;border-radius:9px;
@@ -108,64 +143,73 @@
   input::placeholder{color:var(--dim)}
   button{padding:10px 14px;border-radius:9px;border:1px solid var(--line);
     background:var(--panel2);color:var(--ink);font:inherit;cursor:pointer}
-  button.primary{background:var(--ok);color:#06240f;font-weight:600;border-color:transparent}
+  button.primary{background:var(--accent);color:var(--onaccent);font-weight:600;border-color:transparent}
   button:disabled{opacity:.45;cursor:default}
   button.ghost{background:transparent;color:var(--muted);font-size:13px;padding:6px 10px}
-  /* Wide tables scroll inside their own box on a phone instead of being clipped -
-     a tester reported the league chart was half-invisible on mobile with no way
-     to reach the rest. */
+  /* Wide tables scroll inside their own box instead of being clipped (a tester's
+     league chart was half-invisible on mobile). */
   #overview{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  #overview table{min-width:760px}
-  /* Phone: the same rows as CARDS - rank · owner · chip on top, then a stat line, needs,
-     core - instead of a nine-column table scrolled sideways. Same markup, CSS only. */
-  .pacev .dot{display:none}
+  #overview table{min-width:720px}
+  #overview td{vertical-align:middle}
   .mlab{display:none}
+  .num{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  th.r,td.r{text-align:right}
+  .who small{display:block;font-weight:400;font-size:12px;color:var(--muted);max-width:240px;
+             overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .who .tn{font-weight:400;color:var(--muted)}
+  .odds{display:flex;align-items:center;gap:10px;min-width:130px}
+  .bar{flex:1;height:6px;border-radius:3px;background:var(--panel2);min-width:50px}
+  .bar i{display:block;height:100%;border-radius:3px;background:var(--ink)}
+  .needs{display:flex;gap:4px;flex-wrap:wrap}
+  .needs .need{display:inline-block;margin:0;font-family:var(--mono)}
+  .key{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px;color:var(--muted);padding:10px 14px;border-top:1px solid var(--line)}
+  .key .need{display:inline-block;margin:0 2px;font-family:var(--mono)}
+  .facts{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:12.5px;color:var(--muted);margin-bottom:12px}
+  .facts b{color:var(--ink);font-weight:600}
   .draft{border-top:1px solid var(--line)}
   .draft>summary{cursor:pointer;list-style:none;padding:9px 14px;font-size:13px;color:var(--muted)}
   .draft>summary::before{content:"▸ ";color:var(--dim)}
   .draft[open]>summary::before{content:"▾ "}
   #overview table.dtable{min-width:0;width:auto;margin:0 14px 6px;font-variant-numeric:tabular-nums}
   .dtable td,.dtable th{padding:3px 14px 3px 0;text-align:left;vertical-align:top}
-  @media (max-width:700px){#overview table.dtable{margin:0 10px 6px}.dtable td,.dtable th{padding-right:10px}}
-  /* Phone: the card is already dense - pace joins the record's line instead of adding one. */
+  /* Phone: the same rows as cards - rank, team, move on top; record and points; the odds
+     bar; holes and value. Same markup, CSS only. */
   @media (max-width:700px){
-    .pacev{display:inline}
-    .pacev .dot{display:inline}
+    #overview table.dtable{margin:0 10px 6px}.dtable td,.dtable th{padding-right:10px}
     #overview table,#overview tbody{display:block;min-width:0}
     #overview thead{display:none}
-    #overview tr.team{display:grid;grid-template-columns:22px 1fr auto;column-gap:8px;row-gap:3px;
+    #overview tr.team{display:grid;grid-template-columns:22px minmax(0,1fr) auto;column-gap:8px;row-gap:4px;
                       padding:10px 12px;border-bottom:1px solid var(--line)}
-    #overview tr.team td{display:block;padding:0;border:0;white-space:normal!important}
+    #overview tr.team td{display:block;padding:0;border:0}
+    #overview tr.team.mine{background:var(--mine);box-shadow:inset 3px 0 var(--accent)}
+    #overview tr.team.mine>td{background:none;box-shadow:none}
     #overview tr.team td.rk{grid-column:1;grid-row:1}
     #overview tr.team td.who{grid-column:2;grid-row:1}
-    #overview tr.team td.who .cs{max-width:none!important}
+    #overview tr.team td.who small{max-width:none}
     #overview tr.team td:nth-child(3){grid-column:3;grid-row:1;justify-self:end}
-    #overview tr.team td:nth-child(4){grid-column:2;grid-row:2}
-    #overview tr.team td:nth-child(5){display:none}
-    #overview tr.team td:nth-child(6){grid-column:3;grid-row:3;text-align:right}
-    #overview tr.team .mlab{display:inline}
+    #overview tr.team td:nth-child(4){grid-column:2;grid-row:2;text-align:left}
+    #overview tr.team td:nth-child(6){grid-column:3;grid-row:2}
+    #overview tr.team td:nth-child(5){grid-column:2/-1;grid-row:3}
+    #overview tr.team td:nth-child(8){grid-column:2;grid-row:4}
+    #overview tr.team td:nth-child(7){grid-column:3;grid-row:4}
+    #overview tr.team .mlab{display:inline;font-family:Figtree,sans-serif;color:var(--muted)}
     #overview tr.team .noneeds{display:none}
-    #overview tr.team td:nth-child(7){grid-column:3;grid-row:2;text-align:right}
-    #overview tr.team td:nth-child(8){grid-column:2;grid-row:3}
-    #overview tr.team td:nth-child(9){grid-column:2/-1;grid-row:4;display:flex;flex-wrap:wrap;gap:4px}
-    #overview tr.team td:nth-child(9) .need{margin:0}
-    #overview tr.team td:nth-child(10){grid-column:2/-1;grid-row:5}
     #overview table.dtable{display:table}
     #overview table.dtable tbody{display:table-row-group}
     #overview table.dtable thead{display:table-header-group}
     #overview tr.detail{display:block}
     #overview tr.detail>td{display:block;padding:10px 12px}
-    #overview .note{grid-template-columns:1fr!important}
+  }
   }
   .msg{overflow-x:auto}
   table{width:100%;border-collapse:collapse;font-size:14px}
-  th{text-align:left;font-weight:500;color:var(--dim);font-size:11.5px;
-     text-transform:uppercase;letter-spacing:.6px;padding:8px 12px;border-bottom:1px solid var(--line)}
+  th{text-align:left;font-weight:600;color:var(--muted);font-size:11.5px;
+     text-transform:uppercase;letter-spacing:.08em;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
   td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
   tr:last-child td{border-bottom:none}
   tr.team{cursor:pointer}
   tr.team:hover{background:var(--panel2)}
-  .rk{color:var(--dim);font-variant-numeric:tabular-nums;width:26px}
+  .rk{color:var(--dim);font:700 15px var(--display);font-variant-numeric:tabular-nums;width:30px;text-align:center}
   .who{font-weight:600}
   .tag{display:inline-block;padding:1.5px 7px;border-radius:999px;font-size:11.5px;
        font-weight:600;letter-spacing:.2px}
@@ -173,23 +217,20 @@
      can't: the move, colored by family. Alignment is the chip's WEIGHT - a muted
      chip means "continue as-is", a bright bold one means a decision is pending.
      One word per chip; the reason lives in the tooltip and the expanded view. */
-  .p-contend{background:rgba(52,211,153,.15);color:#34d399}
-  .p-wait{background:rgba(96,165,250,.15);color:var(--mid)}
-  .p-build{background:rgba(167,139,250,.15);color:var(--rebuild)}
-  .p-press{background:rgba(245,158,11,.22);color:var(--win)}
-  .p-decide{background:rgba(251,146,60,.22);color:#fdba74}
-  .p-sell{background:rgba(248,113,113,.2);color:var(--crit)}
+  .p-contend{--c:var(--mid)} .p-wait{--c:var(--dim)} .p-build{--c:var(--ok)}
+  .p-press{--c:var(--win)} .p-decide{--c:var(--thin)} .p-sell{--c:var(--crit)}
+  .tag[class*="p-"]{color:var(--c);background:color-mix(in srgb,var(--c) 15%,transparent)}
   .tag.cool{opacity:.8}
   .tag.hot{font-weight:700;outline:1px solid currentColor}
   /* The production-priced core line: pieces whose price is what they do NOW
      (Henry, JT, Kelce shapes) - visually the "aging but load-bearing" row. */
-  .pp{color:hsl(25,65%,55%)}
+  .pp{color:var(--win)}
   /* One chip per line, always - inline flow let wide rows pair chips while narrow
      ones stacked them, and the mix read ragged. */
   .need{display:block;width:max-content;padding:1px 6px;border-radius:5px;
         font-size:11.5px;margin:2px 0;white-space:nowrap}
-  .critical{background:rgba(248,113,113,.15);color:var(--crit)}
-  .weak{background:rgba(251,191,36,.13);color:var(--thin)}
+  .critical{background:color-mix(in srgb,var(--crit) 15%,transparent);color:var(--crit)}
+  .weak{background:color-mix(in srgb,var(--thin) 15%,transparent);color:var(--thin)}
   .cs{color:var(--muted);font-size:12.5px}
   /* expanded team view */
   tr.detail>td{background:var(--bg);padding:12px 14px}
@@ -210,10 +251,10 @@
   .pgroup.ideas{flex:1;min-width:280px}
   .idea{display:flex;gap:8px;align-items:center;margin:3px 0;padding:6px 9px;border-radius:8px;
         border:1px solid var(--line);background:var(--panel2);font-size:12.5px;color:var(--ink)}
-  .idea b{color:#fff}
+  .idea b{color:var(--strong)}
   .iacts{display:flex;gap:4px;flex:none}
   .iacts button{padding:4px 10px;font-size:12px;border-radius:999px}
-  .iacts .ask{background:var(--ok);color:#06240f;border-color:transparent;font-weight:600}
+  .iacts .ask{background:var(--accent);color:var(--onaccent);border-color:transparent;font-weight:600}
   /* A tiny spinner INSIDE the placeholder - it disappears with the placeholder the
      moment content lands (a class left on the container pulsed forever). */
   @keyframes spin{to{transform:rotate(360deg)}}
@@ -229,7 +270,7 @@
   .prow>span:first-child{color:var(--dim);flex:1;min-width:0;display:flex;align-items:baseline;
                          flex-wrap:wrap;column-gap:4px;white-space:nowrap}
   .prow>span:first-child .nm{overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .prow.st>span:first-child{font-weight:600;color:#fff}
+  .prow.st>span:first-child{font-weight:600;color:var(--strong)}
   .prow.st>span:first-child::before{content:"▸";color:var(--ok)}
   .prow.st.under>span:first-child::before{color:var(--thin)}
   .prow.st.deep>span:first-child::before{color:var(--crit)}
@@ -244,7 +285,7 @@
   .warn{color:var(--thin)}
   #log{display:flex;flex-direction:column;gap:10px}
   .msg{padding:11px 13px;border-radius:10px;border:1px solid var(--line);background:var(--panel2)}
-  .me{background:#20283a;border-color:#2e3950}
+  .me{background:var(--mebubble);border-color:var(--line)}
   .msg h3{font-size:14px;margin:12px 0 6px}
   .msg h3:first-child{margin-top:0}
   .msg p{margin:6px 0}
@@ -252,7 +293,7 @@
   .msg hr{border:0;border-top:1px solid var(--line);margin:10px 0}
   .msg code{background:var(--bg);padding:0 4px;border-radius:4px;font-size:.92em}
   .msg .spin{margin-right:8px}
-  .msg strong{color:#fff}
+  .msg strong{color:var(--strong)}
   .msg table{margin:8px 0;font-size:13px;width:100%}
   .msg th{font-size:11px;color:var(--dim);padding:5px 9px}
   .msg td{padding:5px 9px;border-bottom:1px solid var(--line)}
@@ -265,7 +306,8 @@
       padding:8px 12px;cursor:pointer;font-size:13.5px}
   .lg:hover{border-color:var(--mid)}
   .lg.on{border-color:var(--ok);color:var(--ok)}
-  tr.team.mine{outline:1px solid var(--ok);outline-offset:-1px}
+  tr.team.mine>td{background:var(--mine)}
+  tr.team.mine>td:first-child{box-shadow:inset 3px 0 var(--accent)}
   th.sortable{cursor:pointer;white-space:nowrap}
   th.sortable:hover{color:var(--ink)}
   th.sortable .arrow{color:var(--ok)}
@@ -314,15 +356,15 @@
   .csugg .list{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
   .csugg button{font-size:12px;padding:5px 9px;border-radius:999px;background:transparent;border:1px dashed var(--line);color:var(--muted)}
   .csugg button:hover{border-color:var(--muted);color:var(--ink)}
-  .crow.on{background:rgba(231,234,240,.08);outline:1px solid var(--muted)}
+  .crow.on{background:color-mix(in srgb,var(--ink) 8%,transparent);outline:1px solid var(--muted)}
   .crow .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
-  .crow.tagged:not(.off) .n{color:#fff}
+  .crow.tagged:not(.off) .n{color:var(--strong)}
   .crow .v{width:40px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);flex:none;font-size:12px}
   .crow .a{width:30px;text-align:right;font-variant-numeric:tabular-nums;color:var(--dim);flex:none;font-size:12px}
   .cpicks{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
   .cpick{border:1px solid var(--line);border-radius:999px;padding:2px 8px;font-size:11.5px;color:var(--muted);cursor:pointer}
   .cpick.off{opacity:.3;font-style:italic;border-style:dashed}
-  .cpick.on{border-color:var(--muted);color:var(--ink);background:rgba(231,234,240,.08)}
+  .cpick.on{border-color:var(--muted);color:var(--ink);background:color-mix(in srgb,var(--ink) 8%,transparent)}
   .ctray{margin-top:10px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
   /* Phone: the tray sticks to the bottom while you tap through the two rosters above it,
      so the trade and the Ask button are always in reach. */
@@ -335,14 +377,14 @@
     section[data-view="trade"] .card{overflow:visible}   /* overflow:hidden on the card would break the sticky tray */
   }
   .ctray .side{font-size:13px;margin:2px 0}
-  .ctray .side b{color:#fff}
+  .ctray .side b{color:var(--strong)}
   .cimpact{margin-top:8px;display:grid;gap:6px}
   .cimpact .goal{font-size:12.5px;color:var(--muted);padding:6px 8px;border-left:2px solid var(--line)}
   .cimpact .goal b{color:var(--ink)}
   .cimpact .goal.hole{border-left-color:var(--crit)}
   .cimpact .goal.gain{border-left-color:var(--ok)}
   /* Why the OTHER team would want him - from its own trade-targets lists. */
-  .ftag{font-size:10px;padding:0 5px;border-radius:999px;border:1px solid var(--line);color:#6ee7a0;
+  .ftag{font-size:10px;padding:0 5px;border-radius:999px;border:1px solid var(--line);color:var(--ok);
         white-space:nowrap;flex:none;margin-left:2px}
   .ftag.swap{color:var(--mid)}
   .ftag.wish{color:var(--rebuild)}
@@ -368,21 +410,23 @@
 <body>
 <header>
   <h1 style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)">fantasy-fanatic: dynasty fantasy football advice</h1>
-  <nav class="tabs" id="tabs" aria-label="Views">
-    <button type="button" data-view="league" class="on">League</button>
-    <button type="button" data-view="trade" disabled>Trade</button>
-    <button type="button" data-view="ask">Ask</button>
-  </nav>
+  <div class="hbar">
+    <span class="logo" aria-hidden="true">fantasy<i>·</i>fanatic</span>
+    <nav class="tabs" id="tabs" aria-label="Views">
+      <button type="button" data-view="league" class="on">League</button>
+      <button type="button" data-view="trade" disabled>Trade</button>
+      <button type="button" data-view="ask">Ask</button>
+    </nav>
+  </div>
   <div id="pin" style="display:none"></div>
   <div id="busy" aria-hidden="true"></div>
   <div id="status" role="status" hidden></div>
 </header>
 <div id="toast" role="status" hidden></div>
-<div class="brand">fantasy-fanatic · dynasty analysis · real Sleeper + FantasyCalc data</div>
-
 <main>
 <section class="view on" data-view="league">
   <p id="demonote" style="display:none;margin:0;color:var(--thin);font-size:13.5px"></p>
+  <section id="hero" class="hero" hidden></section>
   <details class="card" id="intro" open>
     <summary style="cursor:pointer;font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);padding:11px 14px;background:var(--panel2)">What this is (and isn't)</summary>
     <div class="pad tldr">
@@ -453,6 +497,7 @@
 </main>
 
 <script>
+const tone = (h, sat, l) => `hsl(${h}, ${sat}%, ${l}%)`;
 // FIRST, before anything that can throw: a crash must never look like a dead button.
 // A script error above used to kill every handler silently - the page looked fine and
 // just ignored clicks, which reads as "the button doesn't work" and invites spam
@@ -723,7 +768,7 @@ function setYou(owner, stance, opts = {}) {
 const stanceWord = st => ({sell: "selling", press: "pressing"})[st] || "as read";
 function renderPin() {
   const pin = $("pin");
-  if (!currentLeague || !Object.keys(leagueTeams).length) { pin.style.display = "none"; return; }
+  if (!currentLeague || !Object.keys(leagueTeams).length) { pin.style.display = "none"; renderHero(); return; }
   const row = leagueTeams[myTeam] || {};
   const word = (row.path || "").split(" - ")[0];
   const opts = ["", ...Object.keys(leagueTeams)].map(o => `<option value="${o}"${o === (myTeam || "") ? " selected" : ""}>${o || "pick your team"}</option>`).join("");
@@ -734,6 +779,7 @@ function renderPin() {
   pin.style.display = "flex";
   $("pinsel").onchange = () => { const o = $("pinsel").value; if (o) setYou(o, ""); };
   pin.querySelectorAll("#pinstance button").forEach(b => b.onclick = () => setYou(myTeam, b.dataset.v));
+  renderHero();
 }
 
 // Questions are silently pinned to the selected league/team (withContext) - silently
@@ -1023,9 +1069,9 @@ async function fillSide(leagueId, k) {
 function ageColor(p, pos) {
   const y = p.years_to_decline;
   if (y == null) return "var(--dim)";
-  if (y >= 0) { const t = p.prime_span ? Math.max(0, Math.min(1, y / p.prime_span)) : 0.5; return `hsl(${Math.round(45 + t * 45)}, 65%, 58%)`; }
+  if (y >= 0) { const t = p.prime_span ? Math.max(0, Math.min(1, y / p.prime_span)) : 0.5; return tone(Math.round(45 + t * 45), 65, 58); }
   const tail = {QB: 6, RB: 3, WR: 4, TE: 4}[pos] || 4;
-  return `hsl(${Math.round(10 + 30 * (1 + y / tail))}, 65%, 55%)`;
+  return tone(Math.round(10 + 30 * (1 + y / tail)), 65, 55);
 }
 function picked(k) {
   return [...document.querySelectorAll(`#croster${k} .crow.on`)].map(r => r.dataset.name).concat([...trade[k].picks]);
@@ -1233,13 +1279,13 @@ async function toggleDetail(tr, leagueId) {
       const y = p.years_to_decline;
       if (y == null) return "var(--muted)";
       const tail = DECLINE_TAIL[pos] || 3;
-      if (y <= -tail) return "hsl(0, 60%, 38%)";
-      if (p.bucket === "ascending") return "hsl(120, 65%, 58%)";
+      if (y <= -tail) return tone(0, 60, 50);
+      if (p.bucket === "ascending") return tone(120, 65, 58);
       if (y >= 0) {
         const t = p.prime_span ? Math.max(0, Math.min(1, y / p.prime_span)) : 0.5;
-        return `hsl(${Math.round(45 + t * 45)}, 65%, 58%)`;
+        return tone(Math.round(45 + t * 45), 65, 58);
       }
-      return `hsl(${Math.round(10 + 30 * (1 + y / tail))}, 65%, 55%)`;
+      return tone(Math.round(10 + 30 * (1 + y / tail)), 65, 55);
     };
     // Shape = in the lineup (filled) or not (hollow); color = quality against the league
     // bar in the need chips' colors: green clears it, yellow under, red well under,
@@ -1277,7 +1323,6 @@ async function toggleDetail(tr, leagueId) {
     const seasons = Object.keys(bySeason).sort();
     const rounds = [...new Set(d.picks.map(p => p.pick.split(" ").slice(1).join(" ")))]
       .sort((a, b) => parseInt(a) - parseInt(b));
-    const kfmt = v => v >= 1000 ? (v / 1000).toFixed(1) + "k" : String(v);
     const picksHtml = d.picks.length
       ? `<div class="pgroup picks"><div class="ptitle">Picks</div>` +
         `<div class="prow phead"><span></span>` +
@@ -1293,15 +1338,26 @@ async function toggleDetail(tr, leagueId) {
     // why, and nuance is the agent's job. The data speaks - an aging Etienne sticks
     // out by his orange age without a sentence saying so.
     const ideasHtml = `<div class="pgroup ideas"><div class="ptitle">Trade ideas</div><div id="ideas-${owner.replace(/[^a-z0-9]/gi, "_")}" class="cs"><span class="spin"></span>looking across the league for starting points — this can take 20 seconds or so</div></div>`;
-    row.innerHTML = `<td colspan="100"><div class="pcont">` +
+    const t = leagueTeams[owner] || {};
+    const trades = t.never_trades ? "never trades" : t.trades ? `${t.trades} trade${t.trades === 1 ? "" : "s"}` : "no trades yet";
+    const facts = [
+      t.ppg != null ? `<span>real points/game <b>${t.ppg.toFixed(1)}</b></span>` : "",
+      t.max_pf != null ? `<span title="best-ball points so far - orders the picks of teams that miss the playoffs">max PF <b>${Math.round(t.max_pf)}</b>${t.projected_pick ? ` · own 1st projects <b>${t.projected_pick.split(" ")[0]}</b>` : ""}</span>` : "",
+      t.pct_of_best != null ? `<span><b>${t.pct_of_best}%</b> of the best lineup</span>` : "",
+      t.ascending_pct != null ? `<span title="share of the starting lineup's points from players still gaining value vs already losing it - the rest are in their prime">lineup <b>${t.ascending_pct}%</b> gaining · <b>${t.declining_pct}%</b> losing value</span>` : "",
+      `<span>${firstsText(t)}${t.pick_share > 0 ? ` · <b>${t.pick_share}%</b> of value in picks` : ""}${t.owns_next_first === false ? " · sold own next 1st" : ""}</span>`,
+      `<span>${trades}</span>`,
+      t.core && t.core.some(c => !c.cornerstone) ? `<span>priced on this season: <span class="pp">${t.core.filter(c => !c.cornerstone).map(c => c.name).join(", ")}</span></span>` : "",
+    ].filter(Boolean).join("");
+    row.innerHTML = `<td colspan="100"><div class="facts">${facts}</div><div class="pcont">` +
       `<div class="pwrap">${["QB", "RB", "WR", "TE"].map(pos =>
         d.players[pos] ? group(pos, d.players[pos]) : "").join("")}<div class="plast">${picksHtml}${ideasHtml}</div></div>` +
       `<div class="cs" style="margin-top:8px">★ cornerstone · <span style="color:var(--ok)">▸</span> starter · ` +
       `<span style="color:var(--thin)">▸</span> starter under the league bar · <span style="color:var(--crit)">▸</span> well under it · <span style="color:var(--rebuild)">▹</span> starter-quality on the bench · ePPG = expected points/game, now = this-season value, dyn = dynasty · age color = what his ` +
-      `value is doing: <span style="color:hsl(120,65%,58%)">gaining</span> · ` +
-      `<span style="color:hsl(68,65%,58%)">holding (prime)</span> · ` +
-      `<span style="color:hsl(25,65%,55%)">losing</span> · ` +
-      `<span style="color:hsl(0,60%,38%)">short-term loaner</span> ` +
+      `value is doing: <span style="color:${tone(120, 65, 58)}">gaining</span> · ` +
+      `<span style="color:${tone(68, 65, 58)}">holding (prime)</span> · ` +
+      `<span style="color:${tone(25, 65, 55)}">losing</span> · ` +
+      `<span style="color:${tone(0, 60, 50)}">short-term loaner</span> ` +
       `(shade = how deep; each position falls at its own speed)</div></div></td>`;
     fillIdeas(leagueId, owner);
   } catch (e) {
@@ -1311,6 +1367,64 @@ async function toggleDetail(tr, leagueId) {
 }
 
 // ---- league overview: rendered from deterministic data, never from the model ----
+const kfmt = v => v >= 1000 ? (v / 1000).toFixed(1) + "k" : String(v);
+const paceText = p => p < 1 ? "<1%" : p > 99 ? ">99%" : Math.round(p) + "%";
+const firstsText = t => {
+  const fc = {};
+  (t.firsts || []).forEach(y => fc[y] = (fc[y] || 0) + 1);
+  return Object.keys(fc).length
+    ? "1sts: " + Object.entries(fc).map(([y, n]) => "'" + String(y).slice(2) + (n > 1 ? "×" + n : "")).join(", ")
+    : "no future 1sts";
+};
+const LEVEL_RANK = {critical: 0, weak: 1};
+const needList = t => Object.entries(t.needs || {}).sort((a, b) => LEVEL_RANK[a[1].level] - LEVEL_RANK[b[1].level]);
+const needChips = t => needList(t).map(([pos, n]) => `<span class="need ${n.level}" title="${esc(n.note)}">${pos}</span>`).join("");
+// A hole in one line of facts: how many startable bodies for how many slots.
+const holeLine = (pos, n) => n.startable != null && n.slots
+  ? `${n.startable} startable ${pos} for ${n.slots} slot${n.slots === 1 ? "" : "s"}${n.level === "weak" ? ", thin" : ""}`
+  : `${pos} ${n.level}`;
+
+function renderHero() {
+  const el = $("hero");
+  const t = leagueTeams[myTeam];
+  if (!currentLeague || !t) { el.hidden = true; return; }
+  const [word, ...rest] = t.path.split(" - ");
+  const rec = t.record || {wins: 0, losses: 0, ties: 0};
+  const ranked = Object.values(leagueTeams).length;
+  const holes = needList(t).slice(0, 2).map(([pos, n]) =>
+    `<div class="hole" style="--c:var(${n.level === "critical" ? "--crit" : "--thin"})" title="${esc(n.note)}"><span class="need">${pos}</span><span>${holeLine(pos, n)}</span></div>`).join("");
+  el.innerHTML = `
+    <div class="top"><h2>${esc(myTeam)}</h2>
+      <span class="tag p-${word} ${t.alignment === "unaligned" ? "hot" : "cool"}" title="${esc(t.path_reason)}">${[word, ...rest].join(" · ")}</span>
+      <span class="lname">${esc(currentLeagueName || "")}</span></div>
+    <div class="stats">
+      <div class="stat"><span class="lbl">Record</span><span class="v">${rec.wins}-${rec.losses}${rec.ties ? "-" + rec.ties : ""}</span><span class="s">${t.playoff_pace != null ? paceText(t.playoff_pace) + " playoff odds" : ""}</span></div>
+      <div class="stat"><span class="lbl">Expected pts / week</span><span class="v">${t.starting_production.toFixed(1)}</span><span class="s">#${t.rank} of ${ranked} · ${t.pct_of_best}% of the best lineup</span></div>
+      <div class="stat"><span class="lbl">Lineup value</span><span class="v">${kfmt(t.starter_value)}</span><span class="s">${t.declining_pct}% of points from players losing value</span></div>
+      <div class="stat"><span class="lbl">Future 1sts</span><span class="v">${(t.firsts || []).length}</span><span class="s">${firstsText(t).replace(/^1sts: /, "")}${t.projected_pick ? ` · own next ${t.projected_pick.split(" ")[0]}` : ""}</span></div>
+    </div>
+    ${holes ? `<div class="holes">${holes}</div>` : ""}
+    <div class="chips" id="herochips"></div>`;
+  CHIPS(myTeam).forEach((q, i) => {
+    const c = document.createElement("button");
+    c.type = "button"; c.className = "chip" + (i === 0 ? " go" : ""); c.textContent = q;
+    c.onclick = () => { $("q").value = q; $("f").requestSubmit(); showView("ask"); };
+    $("herochips").appendChild(c);
+  });
+  [["See my roster", () => {
+      const tr = document.querySelector(`tr.team[data-owner="${CSS.escape(myTeam)}"]`);
+      if (!tr) return;
+      if (tr.getAttribute("aria-expanded") !== "true") toggleDetail(tr, currentLeague);
+      tr.scrollIntoView({block: "start", behavior: "smooth"});
+    }],
+   ["Build a trade", () => showView("trade")]].forEach(([label, go]) => {
+    const c = document.createElement("button");
+    c.type = "button"; c.className = "chip"; c.textContent = label; c.onclick = go;
+    $("herochips").appendChild(c);
+  });
+  el.hidden = false;
+}
+
 let leagueSeq = 0, leagueLoadedAt = null, lastSort = null;
 const SKELETON_ROWS = 8;
 function leagueSkeleton() {
@@ -1375,60 +1489,26 @@ async function loadLeague(id, {refresh = false} = {}) {
     store.setItem("ff_last_league", id);
     leagueTeams = Object.fromEntries(d.teams.map(t => [t.owner, t]));
     const rows = d.teams.map(t => {
-      const needs = Object.entries(t.needs)
-        .map(([pos, n]) => `<span class="need ${n.level}" title="${esc(n.note)}">${pos} ${n.level}</span>`).join("") || '<span class="noneeds">—</span>';
-      // The shade word ("steady", "falling") used to live here; the path chip now
-      // carries that judgment, and two vocabularies on one row read as clutter.
-      // Manager attributes start here: how much he actually trades. Sits under the name
-      // rather than in a column of its own so the table's widths hold (owner).
-      const trades = t.never_trades ? `<span class="need critical" style="display:inline-block;margin:0">never trades</span>`
-                   : t.trades ? `${t.trades} trade${t.trades === 1 ? "" : "s"}` : null;
-      const flags = [t.pick_share > 0 ? `${t.pick_share}% in picks` : null,
-                     !t.owns_next_first ? "sold own next 1st" : null, trades].filter(Boolean).join(" · ");
-      // "1sts: '26, '27×2" - the detail behind pick_share's percentage.
-      const fc = {};
-      (t.firsts || []).forEach(s => fc[s] = (fc[s] || 0) + 1);
-      const firsts = Object.keys(fc).length
-        ? "1sts: " + Object.entries(fc).map(([s, n]) =>
-            "'" + String(s).slice(2) + (n > 1 ? "×" + n : "")).join(", ")
-        : "no future 1sts";
-      // Team names are league-member-typed text going into HTML - escape them.
-      // Own line, not appended: inline it wrapped mid-name into a ragged cell.
-      const tn = t.team_name
-        ? `<div class="cs" style="font-weight:400;max-width:190px;overflow:hidden;text-overflow:ellipsis">${t.team_name.replace(/[&<>"]/g,
-            c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}</div>` : "";
-      // One vocabulary, sourced from the analysis: the path's first word IS the chip.
       const word = t.path.split(" - ")[0];
-      const chip = ["p-" + word, word];
       const heat = t.alignment === "unaligned" ? "hot" : "cool";
-      // Record sorts by playoff pace (banked wins plus the schedule ahead), ePPG breaking ties.
       const rec = t.record || {wins: 0, losses: 0, ties: 0};
+      // Record sorts by playoff pace (banked wins plus the schedule ahead), ePPG breaking ties.
       const recKey = t.playoff_pace != null ? t.playoff_pace * 1e3 + t.starting_production
                                             : rec.wins * 1e6 + rec.ties * 1e3 + t.starting_production;
-      // Pace rides under the record: a soft "if the season goes per the projections"
-      // percentage, never a gate - preseason it is pure projection, so it shows always.
-      const pace = t.playoff_pace != null ? `<div class="cs pacev" title="chance of a playoff spot if the season plays out per the projections - a pace, not a verdict"><span class="dot"> · </span>${t.playoff_pace < 1 ? "<1" : t.playoff_pace > 99 ? ">99" : "~" + t.playoff_pace}% playoff pace</div>` : "";
-      const recCell = `<td class="cs" style="white-space:nowrap">${rec.wins}-${rec.losses}${rec.ties ? "-" + rec.ties : ""}${pace}</td>` +
-                      `<td class="cs">${(t.ppg || 0).toFixed(1)}</td>`;
-      // Max PF rides with where this team's own next 1st projects - the pair a tank read
-      // needs, like record and pace (the draft card below says who holds which pick).
-      const own = t.projected_pick ? `<div class="cs pacev" title="where this team's own next 1st projects: the likeliest slot, and the middle 80% of simulated seasons"><span class="dot"> · </span>pick ${t.projected_pick.split(" ")[0]}</div>` : "";
-      const mpfCell = `<td class="cs" style="white-space:nowrap"><span class="mlab">max PF </span>${Math.round(t.max_pf || 0)}${own}</td>`;
-      return `<tr class="team" tabindex="0" aria-expanded="false" data-owner="${esc(t.owner)}" data-sv="${t.starting_production}" data-dv="${t.starter_value}" data-rec="${recKey}" data-ppg="${t.ppg || 0}" data-mpf="${t.max_pf || 0}">
+      const tn = t.team_name ? ` <span class="tn">· ${esc(t.team_name)}</span>` : "";
+      const core = t.core.filter(c => c.cornerstone).map(c => c.name).join(", ");
+      // Pace is a soft "if the season goes per the projections" percentage, never a gate.
+      const odds = t.playoff_pace != null
+        ? `<div class="odds" title="chance of a playoff spot if the season plays out per the projections - a pace, not a verdict"><div class="bar"><i style="width:${Math.max(1, t.playoff_pace)}%"></i></div><span class="num">${paceText(t.playoff_pace)}</span></div>` : "";
+      return `<tr class="team" tabindex="0" aria-expanded="false" data-owner="${esc(t.owner)}" data-sv="${t.starting_production}" data-dv="${t.starter_value}" data-rec="${recKey}">
         <td class="rk">${t.rank}</td>
-        <td class="who" style="white-space:nowrap">${esc(t.owner)}${tn}<div class="cs">${flags}</div></td>
-        <td><span class="tag ${chip[0]} ${heat}" title="${t.path_reason.replace(/"/g, "&quot;")}">${chip[1]}</span></td>
-        ${recCell}
-        ${mpfCell}
-        <td class="cs" style="white-space:nowrap"><span class="mlab">ePPG </span>${t.starting_production.toFixed(1)}
-          <div class="cs">${t.pct_of_best}% of best</div>
-          <div class="cs">${t.ascending_pct}% asc · ${t.declining_pct}% dec</div></td>
-        <td class="cs"><span class="mlab">dynasty value </span>${t.starter_value.toLocaleString()}<div class="cs">${firsts}</div></td>
-        <td>${needs}</td>
-        <td class="cs" style="min-width:170px">
-          <div>${t.core.filter(c => c.cornerstone).map(c => `<strong>${c.name}</strong>`).join(", ") || '<span class="noneeds">—</span>'}</div>
-          ${t.core.some(c => !c.cornerstone)
-            ? `<div class="pp">${t.core.filter(c => !c.cornerstone).map(c => c.name).join(", ")}</div>` : ""}</td>
+        <td class="who"><span style="white-space:nowrap">${esc(t.owner)}</span>${tn}<small>${esc(core) || "no cornerstone yet"}</small></td>
+        <td><span class="tag p-${word} ${heat}" title="${esc(t.path_reason)}">${word}</span></td>
+        <td class="num r">${rec.wins}-${rec.losses}${rec.ties ? "-" + rec.ties : ""}</td>
+        <td>${odds}</td>
+        <td class="num r"><span class="mlab">ePPG </span>${t.starting_production.toFixed(1)}</td>
+        <td class="num r" title="${esc(firstsText(t))}"><span class="mlab">value </span>${kfmt(t.starter_value)}</td>
+        <td><div class="needs">${needChips(t) || '<span class="noneeds cs">—</span>'}</div></td>
       </tr>`;
     }).join("");
     $("overview").innerHTML = `
@@ -1436,27 +1516,29 @@ async function loadLeague(id, {refresh = false} = {}) {
         <span class="cs" id="freshness">updated just now</span>
         <span class="acts"><button type="button" class="ghost" id="refresh" title="Reload this table. A trade or roster move on Sleeper can take up to 10 minutes to show here.">Refresh</button>
         <button type="button" class="ghost" id="changeleague">${pageTier === "demo" ? "Use my league" : "Change league"}</button></span></div>
-      <table><thead><tr><th></th><th>Owner</th><th>Suggested move</th>
-        <th class="sortable" tabindex="0" data-sort="rec" title="click to sort — playoff pace, then ePPG">Record <span class="cs">· pace</span> <span class="arrow"></span></th>
-        <th class="sortable" tabindex="0" data-sort="ppg" title="click to sort — real points per game this season">PPG <span class="arrow"></span></th>
-        <th class="sortable" tabindex="0" data-sort="mpf" data-dir="asc" title="click to sort, lowest first — max PF: the season's best-ball points (every week's optimal lineup), which orders the non-playoff picks">Max PF <span class="arrow"></span></th>
-        <th class="sortable" tabindex="0" data-sort="sv" title="click to sort — expected points per game: Sleeper's season projections under this league's scoring">ePPG <span class="arrow">↓</span></th>
-        <th class="sortable" tabindex="0" data-sort="dv" title="click to sort">Dynasty value <span class="arrow"></span></th>
-        <th>Needs</th><th>Core</th></tr></thead>
+      <table><thead><tr><th></th><th>Team</th><th>Move</th>
+        <th class="sortable r" tabindex="0" data-sort="rec" title="click to sort - playoff pace, then ePPG">Record <span class="arrow"></span></th>
+        <th>Playoff odds</th>
+        <th class="sortable r" tabindex="0" data-sort="sv" title="click to sort - expected points per game: Sleeper's projections under this league's scoring">ePPG <span class="arrow">↓</span></th>
+        <th class="sortable r" tabindex="0" data-sort="dv" title="click to sort - the starting lineup's dynasty value (FantasyCalc)">Value <span class="arrow"></span></th>
+        <th>Holes</th></tr></thead>
       <tbody>${rows}</tbody></table>
-      ${draftCard(d.teams)}
-      ${d.format ? `<div class="note">${d.format} — every value and lineup number here is priced for this format (FantasyCalc, not KeepTradeCut).</div>` : ""}
-      ${d.tier === "degraded" ? '<div class="note warn">Shallow league — percentile-based numbers are rougher than usual.</div>' : ""}
-      ${d.no_trade_history ? '<div class="note warn">No trades in this league yet — the team reads are less reliable this early.</div>' : ""}
-      <div class="note" style="display:grid;grid-template-columns:repeat(3,auto);gap:4px 18px;justify-content:start">
+      <div class="key">
         <span><span class="tag p-contend cool">contend</span> add production at fair prices</span>
         <span><span class="tag p-wait cool">wait</span> patience is free</span>
         <span><span class="tag p-build cool">build</span> keep stacking youth + picks</span>
         <span><span class="tag p-press hot">press</span> convert future into now</span>
-        <span><span class="tag p-decide hot">decide</span> press or sell — season can pick</span>
+        <span><span class="tag p-decide hot">decide</span> press or sell - season can pick</span>
         <span><span class="tag p-sell hot">sell</span> trade aging value for future</span>
+        <span>holes: <span class="need critical">QB</span> critical <span class="need weak">TE</span> thin</span>
       </div>
-      <div class="note">The chip = the move each roster's <em>position</em> calls for, not what its manager is doing. Bright = decision pending; hover or tap for why. Core: <strong>bold</strong> = build-around, <span class="pp">orange</span> = priced on this season. asc / dec = how much of the starting lineup's production comes from players still <span style="color:hsl(120,65%,58%)">gaining</span> value vs already <span style="color:hsl(25,65%,55%)">losing</span> it — the rest are in their prime, holding, so the two rarely add to 100. PPG = real points per game this season; ePPG = expected points per game (Sleeper's season projections, this league's scoring); ~% playoff pace = chance of a playoff spot if the season plays out per the projections — banked wins count, a projection edge is only likely, and nobody is ever at 0 or 100; % of best = this starting lineup's ePPG as a share of the league's best lineup; max PF = best-ball points so far (each week's optimal lineup), which orders the picks of teams that miss the playoffs, with "pick ~#" where that team's own next 1st projects. Rows rank by ePPG; click a header to re-sort (Record sorts by playoff pace, Max PF lowest first). Click a team to ask about them.</div>`;
+      ${draftCard(d.teams)}
+      <details class="draft"><summary>How to read this table</summary>
+        <div class="note">The chip is the move each roster's <em>position</em> calls for, not what its manager is doing. Bright = decision pending; hover or tap it for why. ePPG = expected points per game from the best lineup (Sleeper's projections, this league's scoring), and rows rank by it. Playoff odds = chance of a playoff spot if the season plays out per the projections: banked wins count, and nobody is ever at 0 or 100. Value = the starting lineup's dynasty value; hover it for the team's future 1sts. Under each team: its build-around players. Click a header to re-sort (Record sorts by playoff odds). Click a team for its roster, picks, trade ideas, and the rest of its numbers: real points per game, max PF and where its own 1st projects, how much of its lineup is gaining or losing value, and how it trades.</div>
+      </details>
+      ${d.format ? `<div class="note">${d.format} - every value and lineup number here is priced for this format (FantasyCalc, not KeepTradeCut).</div>` : ""}
+      ${d.tier === "degraded" ? '<div class="note warn">Shallow league - percentile-based numbers are rougher than usual.</div>' : ""}
+      ${d.no_trade_history ? '<div class="note warn">No trades in this league yet - the team reads are less reliable this early.</div>' : ""}`;
     const pick = tr => setYou(tr.dataset.owner, tr.dataset.owner === myTeam ? myStance : "");
     showAskContext();
     // Sort by either value column (a tester's ask: "sort by dynasty value"). The
