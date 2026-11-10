@@ -231,6 +231,7 @@
         font-size:11.5px;margin:2px 0;white-space:nowrap}
   .critical{background:color-mix(in srgb,var(--crit) 15%,transparent);color:var(--crit)}
   .weak{background:color-mix(in srgb,var(--thin) 15%,transparent);color:var(--thin)}
+  .need.later{background:none;color:var(--dim);outline:1px dashed var(--dim);outline-offset:-1px}
   .cs{color:var(--muted);font-size:12.5px}
   /* expanded team view */
   tr.detail>td{background:var(--bg);padding:12px 14px}
@@ -1378,11 +1379,17 @@ const firstsText = t => {
 };
 const LEVEL_RANK = {critical: 0, weak: 1};
 const needList = t => Object.entries(t.needs || {}).sort((a, b) => LEVEL_RANK[a[1].level] - LEVEL_RANK[b[1].level]);
-const needChips = t => needList(t).map(([pos, n]) => `<span class="need ${n.level}" title="${esc(n.note)}">${pos}</span>`).join("");
-// A hole in one line of facts: how many startable bodies for how many slots.
-const holeLine = (pos, n) => n.startable != null && n.slots
-  ? `${n.startable} startable ${pos} for ${n.slots} slot${n.slots === 1 ? "" : "s"}${n.level === "weak" ? ", thin" : ""}`
-  : `${pos} ${n.level}`;
+// A rebuilder's holes are what a contending version would lack - shown, but not as alarms.
+const later = n => n.applies_this_season === false;
+const needChips = t => needList(t).map(([pos, n]) =>
+  `<span class="need ${n.level}${later(n) ? " later" : ""}" title="${esc(n.note)}">${pos}</span>`).join("");
+const plural = (k, word) => `${k} ${word}${k === 1 ? "" : "s"}`;
+const holeLine = (pos, n) => {
+  const fact = pos === "FLEX"
+    ? `${plural(n.slots, "flex slot")} filled ${n.level === "critical" ? "below the startable bar" : "below what contenders run"}`
+    : `${n.startable || "No"} startable ${pos} for ${plural(n.slots, "slot")}${n.level === "weak" ? ", thin" : ""}`;
+  return later(n) ? `${fact} · matters only once contending` : fact;
+};
 
 function renderHero() {
   const el = $("hero");
@@ -1392,7 +1399,7 @@ function renderHero() {
   const rec = t.record || {wins: 0, losses: 0, ties: 0};
   const ranked = Object.values(leagueTeams).length;
   const holes = needList(t).slice(0, 2).map(([pos, n]) =>
-    `<div class="hole" style="--c:var(${n.level === "critical" ? "--crit" : "--thin"})" title="${esc(n.note)}"><span class="need">${pos}</span><span>${holeLine(pos, n)}</span></div>`).join("");
+    `<div class="hole" style="--c:var(${later(n) ? "--dim" : n.level === "critical" ? "--crit" : "--thin"})" title="${esc(n.note)}"><span class="need">${pos}</span><span>${holeLine(pos, n)}</span></div>`).join("");
   el.innerHTML = `
     <div class="top"><h2>${esc(myTeam)}</h2>
       <span class="tag p-${word} ${t.alignment === "unaligned" ? "hot" : "cool"}" title="${esc(t.path_reason)}">${[word, ...rest].join(" · ")}</span>
@@ -1530,7 +1537,7 @@ async function loadLeague(id, {refresh = false} = {}) {
         <span><span class="tag p-press hot">press</span> convert future into now</span>
         <span><span class="tag p-decide hot">decide</span> press or sell - season can pick</span>
         <span><span class="tag p-sell hot">sell</span> trade aging value for future</span>
-        <span>holes: <span class="need critical">QB</span> critical <span class="need weak">TE</span> thin</span>
+        <span>holes: <span class="need critical">QB</span> critical <span class="need weak">TE</span> thin <span class="need critical later">RB</span> rebuilding, not this season's problem</span>
       </div>
       ${draftCard(d.teams)}
       <details class="draft"><summary>How to read this table</summary>

@@ -725,7 +725,10 @@ Needs are measured on current production, trade relevance on dynasty value - sam
 `replacement_thresholds`, explicit `metric` required. Replacement level = the Nth-best
 player leaguewide, N = the league's starting slots at the position; a win-now lens, so a
 rebuilder's needs are "what a contending version would be short of" (`REBUILD_LENS` ships
-on their entries, and exposure is explicitly not a risk for them).
+on their entries, and exposure is explicitly not a risk for them). The page follows the same
+flag: a hole with `applies_this_season: False` renders muted and dashed with "matters only
+once contending", never in the red/amber of a real hole - in a real league 16 of 17 holes
+were rebuilders', and painting them all red drowned the two that mattered.
 
 **Count and quality are different problems with opposite fixes** - a bare count was close
 to inverted on a real league (the 2nd-best WR room read critical because its WR3 sat
