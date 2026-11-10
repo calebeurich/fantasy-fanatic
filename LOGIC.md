@@ -1740,7 +1740,10 @@ are allowed but per-visitor capped (`DEMO_ASKS_PER_VISITOR`, by X-Forwarded-For 
 IP, so one office or cafe network shares it - per UTC day) from a separate small
 `budget.demo` ledger ($10/day since 2026-11-09, up from $3 ahead of sharing the public link) with its own friendly over-message. The per-visitor cap went 3 -> 10 on
 2026-10-11 with the move to Haiku 5.5 (~$0.005-0.01 a question): ten questions is ~10
-cents, and the ledger bounds the day at roughly a thousand questions. Sessions
+cents, and the ledger bounds the day at roughly a thousand questions. The demo league
+is nobody's team, so the page opens as a sample one: the best-ranked contender with a
+real (this-season) hole - the card with the most to show and a trade question worth
+asking - labeled as a sample, with the bar above to pick any other. Sessions
 carry a tier: a friend evicts the least-recently-used session of any kind, a demo
 visitor may only evict other demo sessions and is told "busy" if the slots are all
 friends - a stranger never kills a friend's live conversation. `/sessions`,

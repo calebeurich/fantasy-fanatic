@@ -1391,6 +1391,13 @@ const holeLine = (pos, n) => {
   return later(n) ? `${fact} · matters only once contending` : fact;
 };
 
+// The public demo is nobody's team: open on the best contender with a real hole, the card that shows the most.
+const demoTeam = () => {
+  const byRank = Object.entries(leagueTeams).sort((a, b) => a[1].rank - b[1].rank);
+  const showcase = byRank.find(([, t]) => t.path.startsWith("contend") && needList(t).some(([, n]) => !later(n)));
+  return (showcase || byRank[0])[0];
+};
+
 function renderHero() {
   const el = $("hero");
   const t = leagueTeams[myTeam];
@@ -1403,7 +1410,7 @@ function renderHero() {
   el.innerHTML = `
     <div class="top"><h2>${esc(myTeam)}</h2>
       <span class="tag p-${word} ${t.alignment === "unaligned" ? "hot" : "cool"}" title="${esc(t.path_reason)}">${[word, ...rest].join(" · ")}</span>
-      <span class="lname">${esc(currentLeagueName || "")}</span></div>
+      <span class="lname">${currentLeague === "demo" ? "a sample team · pick any team in the bar above" : esc(currentLeagueName || "")}</span></div>
     <div class="stats">
       <div class="stat"><span class="lbl">Record</span><span class="v">${rec.wins}-${rec.losses}${rec.ties ? "-" + rec.ties : ""}</span><span class="s">${t.playoff_pace != null ? paceText(t.playoff_pace) + " playoff odds" : ""}</span></div>
       <div class="stat"><span class="lbl">Expected pts / week</span><span class="v">${t.starting_production.toFixed(1)}</span><span class="s">#${t.rank} of ${ranked} · ${t.pct_of_best}% of the best lineup</span></div>
@@ -1594,6 +1601,7 @@ async function loadLeague(id, {refresh = false} = {}) {
     // Back in a league you had pinned yourself in: same team, same stance, no clicks.
     if (saved && leagueTeams[saved.team] && !myTeam) setYou(saved.team, saved.stance, {silent: true});
     else if (saved && saved.team === myTeam && saved.stance) setYou(myTeam, saved.stance, {silent: true});
+    if (!myTeam && id === "demo") setYou(demoTeam(), "", {silent: true});
     renderPin();
     if (!myTeam) {
       showChips(null);
