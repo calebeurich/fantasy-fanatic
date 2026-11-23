@@ -7,17 +7,17 @@
 <meta name="description" content="Dynasty fantasy football advice for your Sleeper league: every team's window, trade ideas, playoff pace, and an assistant that knows your roster.">
 <meta property="og:title" content="fantasy-fanatic">
 <meta property="og:description" content="Dynasty fantasy football advice for your Sleeper league.">
-<meta name="theme-color" content="#1b1f27">
+<meta name="theme-color" content="#10201a">
 <meta name="referrer" content="no-referrer">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2313161c'/%3E%3Cellipse cx='16' cy='16' rx='11' ry='7' transform='rotate(-35 16 16)' fill='%23f97316'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a1411'/%3E%3Cellipse cx='16' cy='16' rx='11' ry='7' transform='rotate(-35 16 16)' fill='%23ffb020'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#13161c; --panel:#1b1f27; --panel2:#232833; --line:#2c3240;
-    --ink:#eef0f4; --strong:#fff; --muted:#a1a8b5; --dim:#8a92a1;
-    --accent:#f97316; --onaccent:#1c1206; --mine:#262c3a; --mebubble:#222a3a;
+    --bg:#0a1411; --panel:#10201a; --panel2:#162b23; --line:#21392f;
+    --ink:#eef4f0; --strong:#fff; --muted:#a3bfb2; --dim:#82a090;
+    --accent:#ffb020; --onaccent:#1f1400; --two:#34d399; --mine:#1b3529; --mebubble:#173026;
     --win:#f59e0b; --mid:#60a5fa; --rebuild:#a78bfa;
     --crit:#f87171; --thin:#fbbf24; --ok:#4ade80;
     --display:Archivo,ui-sans-serif,system-ui,sans-serif;
@@ -72,10 +72,10 @@
   header{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line)}
   .hbar{display:flex;align-items:center;gap:20px;max-width:1440px;margin:0 auto;padding:8px 18px}
   .logo{font:800 18px var(--display);letter-spacing:-.01em;white-space:nowrap;background:none;border:0;padding:0;color:var(--ink);cursor:pointer}
-  .logo i{font-style:normal;color:var(--accent)}
+  .logo i{font-style:normal;color:var(--two)}
   nav.tabs{display:flex;gap:4px}
   nav.tabs button{padding:7px 14px;border:0;border-radius:8px;font-size:14.5px;font-weight:600;color:var(--muted);background:transparent}
-  nav.tabs button.on{color:var(--ink);background:var(--panel2)}
+  nav.tabs button.on{color:var(--two);background:color-mix(in srgb,var(--two) 16%,transparent)}
   nav.tabs button:disabled{opacity:.35}
   /* Phone: the tabs are three equal thirds under the name - thumb-sized, nothing else up there. */
   @media (max-width:600px){
@@ -83,7 +83,7 @@
     nav.tabs{width:100%;display:grid;grid-template-columns:repeat(3,1fr)}
   }
   /* Your team, on top of the league: the facts about you first, the questions one tap away. */
-  .hero{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:14px}
+  .hero{background:linear-gradient(160deg,color-mix(in srgb,var(--two) 9%,var(--panel)),var(--panel) 60%);border:1px solid color-mix(in srgb,var(--two) 30%,var(--line));border-radius:16px;padding:18px;display:grid;gap:14px}
   .hero .top{display:flex;align-items:center;gap:10px 12px;flex-wrap:wrap}
   .hero h2{font:800 28px/1.05 var(--display);letter-spacing:-.02em;margin:0}
   .hero .tag{font-size:12.5px;padding:3px 10px}
@@ -161,7 +161,7 @@
   .who .tn{font-weight:400;color:var(--muted)}
   .odds{display:flex;align-items:center;gap:10px;min-width:130px}
   .bar{flex:1;height:6px;border-radius:3px;background:var(--panel2);min-width:50px}
-  .bar i{display:block;height:100%;border-radius:3px;background:var(--ink)}
+  .bar i{display:block;height:100%;border-radius:3px;background:var(--c,var(--two))}
   .needs{display:flex;gap:4px;flex-wrap:wrap}
   .needs .need{display:inline-block;margin:0;font-family:var(--mono)}
   .key{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px;color:var(--muted);padding:10px 14px;border-top:1px solid var(--line)}
@@ -312,7 +312,7 @@
   .land{padding:28px 4px 6px;max-width:640px}
   .land h2{font:800 30px/1.15 var(--display);letter-spacing:-.02em;margin:0 0 10px;text-wrap:balance}
   .land p{color:var(--muted);margin:0;font-size:15.5px}
-  #pinleague{font-size:12.5px;padding:3px 9px;max-width:38vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #pinleague{border-color:color-mix(in srgb,var(--two) 45%,var(--line));font-size:12.5px;padding:3px 9px;max-width:38vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   tr.team.mine>td{background:var(--mine)}
   tr.team.mine>td:first-child{box-shadow:inset 3px 0 var(--accent)}
   th.sortable{cursor:pointer;white-space:nowrap}
@@ -470,9 +470,9 @@
         <li><strong>Not a trade calculator.</strong> It never adds player values into a package
             price — it tells you which holding beats which, who wants whom, and why an ask is
             hard. The negotiating is yours.</li>
-        <li><strong>Projections, not results.</strong> Team reads come from roster composition,
-            market prices and projected points. Records and playoff pace show how the season
-            is going, but they don't decide what a roster should do.</li>
+        <li><strong>The season counts.</strong> Who is contending comes from playoff odds: the
+            record so far, plus the rest of the season played out on projected points. The
+            roster's makeup (who's rising, who's aging out) decides what to do about it.</li>
         <li><strong>Answers take a minute or two</strong>, and there's a shared daily budget —
             if it's spent, come back tomorrow.</li>
       </ul>
@@ -1405,6 +1405,8 @@ async function toggleDetail(tr, leagueId) {
 // ---- league overview: rendered from deterministic data, never from the model ----
 const kfmt = v => v >= 1000 ? (v / 1000).toFixed(1) + "k" : String(v);
 const paceText = p => p < 1 ? "<1%" : p > 99 ? ">99%" : Math.round(p) + "%";
+// The 75/25 lines are the ones that decide who is contending (team_state.odds_tiers).
+const paceColor = p => p >= 75 ? "var(--ok)" : p <= 25 ? "var(--crit)" : "var(--thin)";
 const firstsText = t => {
   const fc = {};
   (t.firsts || []).forEach(y => fc[y] = (fc[y] || 0) + 1);
@@ -1447,7 +1449,7 @@ function renderHero() {
       <span class="tag p-${word} ${t.alignment === "unaligned" ? "hot" : "cool"}" title="${esc(t.path_reason)}">${[word, ...rest].join(" · ")}</span>
       <span class="lname">${currentLeague === "demo" ? "a sample team · pick any team in the bar above" : esc(currentLeagueName || "")}</span></div>
     <div class="stats">
-      <div class="stat"><span class="lbl">Record</span><span class="v">${rec.wins}-${rec.losses}${rec.ties ? "-" + rec.ties : ""}</span><span class="s">${t.playoff_pace != null ? paceText(t.playoff_pace) + " playoff odds" : ""}</span></div>
+      <div class="stat"><span class="lbl">Record</span><span class="v"${t.playoff_pace != null ? ` style="color:${paceColor(t.playoff_pace)}"` : ""}>${rec.wins}-${rec.losses}${rec.ties ? "-" + rec.ties : ""}</span><span class="s">${t.playoff_pace != null ? paceText(t.playoff_pace) + " playoff odds" : ""}</span></div>
       <div class="stat"><span class="lbl">Expected pts / week</span><span class="v">${t.starting_production.toFixed(1)}</span><span class="s">#${t.rank} of ${ranked} · ${t.pct_of_best}% of the best lineup</span></div>
       <div class="stat"><span class="lbl">Lineup value</span><span class="v">${kfmt(t.starter_value)}</span><span class="s">${t.declining_pct}% of points from players losing value</span></div>
       <div class="stat"><span class="lbl">Future 1sts</span><span class="v">${(t.firsts || []).length}</span><span class="s">${firstsText(t).replace(/^1sts: /, "")}${t.projected_pick ? ` · own next ${t.projected_pick.split(" ")[0]}` : ""}</span></div>
@@ -1547,7 +1549,7 @@ async function loadLeague(id, {refresh = false} = {}) {
       const core = t.core.filter(c => c.cornerstone).map(c => c.name).join(", ");
       // Pace is a soft "if the season goes per the projections" percentage, never a gate.
       const odds = t.playoff_pace != null
-        ? `<div class="odds" title="chance of a playoff spot if the season plays out per the projections - a pace, not a verdict"><div class="bar"><i style="width:${Math.max(1, t.playoff_pace)}%"></i></div><span class="num">${paceText(t.playoff_pace)}</span></div>` : "";
+        ? `<div class="odds" title="chance of a playoff spot if the season plays out per the projections - 75%+ reads as contending, 25% or less as out of it"><div class="bar"><i style="width:${Math.max(1, t.playoff_pace)}%;--c:${paceColor(t.playoff_pace)}"></i></div><span class="num">${paceText(t.playoff_pace)}</span></div>` : "";
       return `<tr class="team" tabindex="0" aria-expanded="false" data-owner="${esc(t.owner)}" data-sv="${t.starting_production}" data-dv="${t.starter_value}" data-rec="${recKey}">
         <td class="rk">${t.rank}</td>
         <td class="who"><span style="white-space:nowrap">${esc(t.owner)}</span>${tn}<small>${esc(core) || "no cornerstone yet"}</small></td>
@@ -1566,7 +1568,7 @@ async function loadLeague(id, {refresh = false} = {}) {
         <button type="button" class="ghost tohome">${pageTier === "demo" ? "Use my league" : "Switch league"}</button></span></div>
       <div class="key">
         <span><span class="tag p-contend cool">contend</span> add production at fair prices</span>
-        <span><span class="tag p-wait cool">wait</span> patience is free</span>
+        <span><span class="tag p-wait cool">wait</span> patience is free, or the season will answer it before the deadline</span>
         <span><span class="tag p-build cool">build</span> keep stacking youth + picks</span>
         <span><span class="tag p-press hot">press</span> convert future into now</span>
         <span><span class="tag p-decide hot">decide</span> press or sell - season can pick</span>
