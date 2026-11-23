@@ -607,6 +607,73 @@ fit four leagues. Sizes came out 4/3/5, 4/4/4, 5/2/5, 5/2/5. XFL walk-through: m
 press), spugz 127.7 is an also-ran (hedged toward decide). `leverage` reads the tier,
 not a rank tertile.
 
+### Tier 1 in season is playoff odds (`odds_tiers`, 2026-11-23)
+
+Reverses the Playoff pace section's "the path chip never moves on pace". The owner, with
+the season past midseason: "it is becoming obvious that mid season playoff odds should
+impact the decision flags not just eppg. Probably should just be that instead since it
+captures eppg." The odds already price the future on ePPG (weekly optimal lineups) and
+add the banked record, so they are a strict superset of the production rank - the
+earlier worry (a 1-3 record at week 4 is noise) is handled by the odds themselves, which
+stay near the middle early on rather than by a switch date.
+
+- **contender = playoff odds 75%+; also-ran = 25% or less; the middle in between** -
+  the same `PACE_BUYER_MIN` / `PACE_SELLER_MAX` lines the deadline sentence already used,
+  reused rather than a new pair.
+- **No odds (offseason, or every team makes the playoffs) falls back to the production
+  distance below.** `tier_basis` on every row says which one placed it.
+- `contention_rank` stays the production rank - the table's # column and every "ranks
+  N of 12" sentence still mean projected lineup strength.
+- **The hedge moves with it:** odds within `PACE_EDGE` = 3 points of a line carry
+  `path_edge`. Measured, not picked: a 1% bump to one team's lineup (a routine value
+  refresh, per the table below) moved its odds by at most 2.6 points across all 24 teams
+  of two live leagues at week 11.
+- On the two live leagues at week 11, 6 of 24 paths changed, each toward what the season
+  shows: Vicdank 6-4 at 97% decide -> contend, spugz13 4-6 at 1% decide -> sell, two 7-3 /
+  8-2 teams at 98-99% decide -> contend, Paulyt101 4-6 at 51% contend -> the middle.
+- Prose followed the reversal in the same change (the defect family is labels, not math):
+  `POSTURE` no longer says "top-third in current production", `posture_note` states the
+  odds and drops "no wins behind them" for the tier, the get_team_state description and
+  the page's intro say the season counts.
+
+### Riding it out (`settles_by_deadline`, `SETTLES_TO_WAIT`)
+
+The owner's question: "when do you ride it out and see vs actually need to decide" -
+automatically, from the sims, without an odds/ePPG hybrid with a hand-picked switch week.
+
+Waiting is only worth something if the games before the trade deadline will answer "am
+I in this". `season_sim` already plays the rest of the season 5,000 times; it now also
+notes each run's record at the deadline (`deadline_played` = the deadline week minus one:
+the last week trades go through is played after the decision). Grouping the runs by that
+record gives the team's odds AT the deadline, from the same runs; `settles` is the share
+of runs whose deadline odds are outside 25-75. No extra simulation.
+
+The rule touches only the middle tier, and only a roster read of `decide`: with
+`settles >= SETTLES_TO_WAIT` it becomes **"wait - the season decides"** (alignment stays
+unaligned - the decision is pending, just not yet), otherwise it stays decide and says
+waiting won't answer it. Contenders and also-rans are unchanged; a middle roster that
+already reads wait still does. Once the deadline has no games before it, `settles` is
+None and the roster read stands.
+
+**Backtested** (`python -m research.pace_backtest --settles`): 2,009 completed crawled
+seasons, every week before each league's own deadline, the forecast scored against what
+the sim actually said at the deadline frame - the app's forecast of its own future
+answer, which is exactly what the path promises. Overall Brier 0.0969 vs 0.1099 for the
+base rate (87% of team-weeks are clear by the deadline). On the 56,116 middle-team weeks
+the rule reads, the forecast is honest at the top and **undersells settling at the low
+end** (it groups runs by record alone and ignores what points scored teach):
+
+| settles said | 0-10 | 10-20 | 20-30 | 30-40 | 40-50 | 50-60 | 60-70 | 70-80 | 80-90 |
+|---|---|---|---|---|---|---|---|---|---|
+| actually clear | 27% | 39% | 48% | 53% | 60% | 65% | 70% | 76% | 82% |
+
+So "more likely than not" sits at a forecast of about 0.3, and that is the cut, not
+0.5: at 0.3 the ride-it-out weeks were clear by the deadline 73% of the time and the
+decide weeks 40%; at 0.5 the decide group was itself a coin flip (52%). Decide is rare
+by design - 2,170 of 56,116 middle-team weeks, concentrated near the deadline. The
+reasons quote the raw forecast and say the level came true more often than not, rather
+than shipping a recalibration layer.
+
 ### Boundary noise and the hedge (`path_edge`)
 
 The tertiles are hard breakpoints on continuous measures, and the core labels used to
@@ -1398,8 +1465,9 @@ league - a 2-2 team at 75% told "this season is live" with ten weeks left is noi
 owner: "mid season is a reasonable time to be thinking about pivots." The sentence prints pace the way the table does (`pace_text`: `<1%` / `>99%`,
 never 0 or 100), `pace_note` lands in path_reason ("~12%
 playoff pace with 5 regular-season weeks left - ... the rental market reads differently
-for a team that can sell it"). The path chip itself never moves on pace - paths stay
-roster-driven, the season is context.
+for a team that can sell it"). The path chip itself never moved on pace - paths stayed
+roster-driven, the season was context - until 2026-11-23, when the odds became tier 1
+("Tier 1 in season is playoff odds"). The sentence is now added after the path is read.
 
 KNOWN APPROXIMATION - divisions: one league-wide playoff line, no division auto-bids
 (XFL 2 runs 2 divisions, and its leader may auto-qualify - a mediocre team atop a weak

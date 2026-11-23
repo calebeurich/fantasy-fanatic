@@ -1361,3 +1361,13 @@ app projects every remaining week rather than one week ahead, so it should do at
 most one week of news this replay could see. The larger crawl also re-checks the old baseline: points per game
 scores 0.098 over 1,858 seasons, close to the 0.102 published from 131. Title odds still run hot from 40% up
 (observed 33-38%), which is one more reason they stay hidden.
+
+## Does the deadline settle it? (`pace_backtest.py --settles`, 2026-11-23)
+
+The "wait - the season decides" path promises that a middle team's playoff odds will be
+clearly in or out (75%+ / 25%-) by its trade deadline. 2,009 seasons, every week before
+each league's own deadline: the sim's `settles` forecast against what it actually said at
+the deadline frame. Brier 0.0969 vs 0.1099 base rate. Honest at the top, undersells at the
+bottom - on the 56,116 middle-team weeks a forecast of 20-30% came true 48% of the time and
+30-40% came true 53%, so "more likely than not" sits at a forecast of ~0.3, which became
+`SETTLES_TO_WAIT` (ride it out: 73% clear by the deadline; decide: 40%). LOGIC.md "Riding it out".

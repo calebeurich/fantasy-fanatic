@@ -17,7 +17,13 @@ projection quality.
 code would start from Sleeper's week k+1 projections - see research/README.md "Pace backtest
 on projected strength" for the leaks it is built to avoid.
 
-Run: python -m research.pace_backtest [--projected]
+`--settles` (2026-11-23) scores `settles`, the live "ride it out" signal: at each week
+before the trade deadline, the chance the sim gives that a team's odds will be clearly in
+or out (75%+ / 25%-) by the deadline - against what the sim actually said at the deadline
+frame. That tests the app's forecast of its own future answer, which is exactly what the
+"wait - the season decides" path promises.
+
+Run: python -m research.pace_backtest [--projected | --settles]
 """
 
 import functools
@@ -131,13 +137,28 @@ def projected_strength(players: list, league: dict, k: int, last_week: int, posi
     return best(set()), {w: best(week_lines(league["season"], w)[1]) for w in range(k + 1, last_week + 1)}
 
 
-def _sim(frame: dict) -> dict:
+def _sim(frame: dict, deadline_played: int | None = None) -> dict:
     """The live drift, plus how wrong ppg-to-date is as a strength after k games - the
     live input (ePPG) doesn't carry that second term."""
     level = statistics.mean(t["eppg"] for t in frame["teams"])
     sd = math.hypot(WEEKLY_SD_SHARE * level / math.sqrt(frame["k"]), STRENGTH_SD_SHARE * level)
     return simulate(frame["teams"], frame["settings"], frame["k"], frame["schedule"], strength_sd=sd,
-                    runs=RUNS)
+                    runs=RUNS, deadline_played=deadline_played)
+
+
+def settles_pairs(frames: list, settings: dict) -> list:
+    """(settles forecast, odds actually clear at the deadline) for every team-week before
+    the deadline - the deadline read the way team_state.playoff_pace reads it."""
+    season_weeks = (settings.get("playoff_week_start") or 15) - 1
+    deadline = settings.get("trade_deadline") or 0
+    deadline = deadline if 0 < deadline <= season_weeks else season_weeks
+    at = next((fr for fr in frames if fr["k"] == deadline - 1), None)
+    if at is None:
+        return []
+    clear = {me: not 0.25 < o["playoffs"] < 0.75 for me, o in _sim(at).items()}
+    return [(o["settles"], clear[me], o["playoffs"])
+            for fr in frames if fr["k"] < deadline - 1
+            for me, o in _sim(fr, deadline - 1).items()]
 
 
 def _deciles(pairs: list) -> str:
@@ -150,6 +171,8 @@ def _deciles(pairs: list) -> str:
 
 
 def main():
+    if "--settles" in sys.argv:
+        return main_settles()
     projected = "--projected" in sys.argv
     position = {p: v["position"] for p, v in sleeper_names().items()} if projected else {}
     PROJ_CACHE.mkdir(parents=True, exist_ok=True)
@@ -201,6 +224,35 @@ def main():
     print("Brier (lower is better):")
     for name, xs in scores.items():
         print(f"  {name:12} {brier(xs):.4f}")
+
+
+def main_settles():
+    pairs, seasons = [], 0
+    for f in sorted(CRAWL_DIR.glob("*.json")):
+        d = json.load(open(f, encoding="utf-8"))
+        frames = season_frames(d)
+        got = settles_pairs(frames, (d.get("league") or {}).get("settings") or {}) if frames else []
+        seasons += bool(got)
+        pairs += got
+    brier = lambda xs: sum((p - h) ** 2 for p, h in xs) / len(xs)
+    # The rule only reads `settles` for a middle team, so that is the population that counts.
+    middle = [(p, h) for p, h, now in pairs if 0.25 < now < 0.75]
+    pairs = [(p, h) for p, h, _ in pairs]
+    base = sum(h for _, h in pairs) / len(pairs)
+    print(f"middle teams (odds 25-75% now): {len(middle)} team-weeks - settles said / observed / n"
+          f"{chr(10)}{_deciles(middle)}{chr(10)}")
+    for cut in (0.2, 0.3, 0.4, 0.5):
+        wait = [h for p, h in middle if p >= cut]
+        dec = [h for p, h in middle if p < cut]
+        print(f"  cut {cut:.1f}: ride it out {len(wait)} ({100 * sum(wait) / max(len(wait), 1):.0f}% settled), "
+              f"decide {len(dec)} ({100 * sum(dec) / max(len(dec), 1):.0f}% settled)")
+    print()
+    print(f"{seasons} seasons, {len(pairs)} team-weeks before a deadline\n")
+    print(f"odds clear at the deadline - settles said / observed / n\n{_deciles(pairs)}\n")
+    print(f"Brier: settles {brier(pairs):.4f}   base rate ({100 * base:.0f}% clear) {brier([(base, h) for _, h in pairs]):.4f}")
+    wait = [h for p, h in pairs if p >= 0.5]
+    print(f"would ride it out (settles >= 50%): {len(wait)} team-weeks, {100 * sum(wait) / len(wait):.1f}% "
+          f"actually clear by the deadline")
 
 
 if __name__ == "__main__":

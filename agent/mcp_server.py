@@ -94,25 +94,34 @@ def get_team_state(league_id: str, owner_name: str = None) -> dict:
     owner_name for one team; omit only when you need every team.
 
     THE HEADLINE for any team is its three-tier read, on every row:
-      `contention_rank` of `of_teams` - the tertile it sits in is tier 1.
+      tier 1 is `contention` (contender / fringe / also-ran): in season it is
+        `playoff_pace` - 75%+ contends, 25% or less is out of it this season, in between
+        is the middle (`tier_basis` "odds"); with no odds (offseason) it is starting
+        production against the league median (`tier_basis` "production").
+        `contention_rank` of `of_teams` is the production rank either way.
       `alignment` - "aligned" (roster composition agrees with what its rank asks;
         the path is a continue verb) or "unaligned" (a real decision is pending).
       `path` - the action: "contend" (optionally "- on a clock") / "wait" (plain =
         nothing aging out; "- production is arriving" = a wave coming) / "build" when
-        aligned; "press" / "decide" / "sell" when not. Waiting and building are earned
-        by ASCENDING or by having no clock running at all; contending is earned by rank.
-        A middle roster with pieces aging out and no wave arriving reads decide. The lean comes from rank: press = convert future into now, sell =
-        convert aging value into future, and decide (a middle rank) has NO lean -
-        letting the season decide is legitimate.
+        aligned; "press" / "decide" / "sell" when not, plus "wait - the season decides"
+        (unaligned: a middle roster that would read decide, but whose odds will more
+        likely than not be clearly in or out by the trade deadline -
+        `settles_by_deadline` is that chance - so riding it out is the move until then).
+        Waiting and building are earned by ASCENDING, by having no clock running at
+        all, or by the calendar; contending is earned by playoff odds. A middle roster
+        with pieces aging out and no wave arriving reads decide when the deadline won't
+        settle it. The lean comes from tier 1: press = convert future into now, sell =
+        convert aging value into future, and decide (the middle) has NO lean.
       `path_reason` - why, in words. OPEN with path + path_reason and support it with
         the measurements - never open with a label and walk it back.
       `posture_note` - what the path means for premiums and tempo, plus the measured
         numbers behind the read. Use its wording: these are roster-composition
         measures on PROJECTED points a game (`starting_production`, `pct_of_best` -
         Sleeper's projections under this league's scoring, rest-of-season once games
-        are played), not records: the path is a roster read. How the season is going
-        is `record` and `playoff_pace` (a soft chance of a playoff spot - say "about",
-        never certain): cite them for the season, never to override the path.
+        are played). In season the path also rests on `playoff_pace` (a soft chance of
+        a playoff spot - say "about", never certain), which banks `record` and plays the
+        rest out on those projections - so the record already counts; don't argue
+        the path against it.
         `max_pf` (best-ball points so far) and `projected_pick` (where this team's OWN
         next 1st projects, "~#3 (#2-5)") answer draft-order questions - playoff misses
         pick by lowest max PF, so benching starters doesn't move a pick;

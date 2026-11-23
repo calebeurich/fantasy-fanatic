@@ -169,10 +169,26 @@ def _aging_clause(aging_pct: float) -> str:
             f"force anything, enough to keep converting at the right price")
 
 
+# Riding it out is earned by the calendar, not the roster: a middle team whose odds are
+# more likely than not to be clearly in or out by the trade deadline can let the season
+# decide. The sim undersells that chance (it groups runs by record alone), and on 56,116
+# middle-team weeks of 2,009 past seasons a forecast of 0.3 is where "more likely than not"
+# actually sits - LOGIC.md, "Riding it out".
+SETTLES_TO_WAIT = 0.3
+RIDE_IT_OUT = (". The season is likely to answer it first: the simulator has this team's "
+               "playoff odds clearly in or out (75%+ or 25%-) by the trade deadline in {pct}% "
+               "of runs, a level that came true more often than not in past seasons - so "
+               "riding it out costs little, and if they haven't settled by then, this becomes "
+               "a decide")
+NOT_IN_TIME = (". Waiting won't answer it: the simulator has this team's playoff odds "
+               "clearly in or out by the trade deadline in only {pct}% of runs, so waiting "
+               "mostly delays the same decision")
+
+
 def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: float,
                   assets_bottom: bool, aging_pct: float = 0,
                   convertible: bool = False, clear_sells: list[str] = (),
-                  idle_youth: list[str] = ()) -> tuple[str, str, str]:
+                  idle_youth: list[str] = (), settles: float | None = None) -> tuple[str, str, str]:
     """(alignment, path, reason) for one team. Production tilt for the players, pick
     share as its own signal - measuring the sides in dynasty value instead washed out
     completely (44 of 46 teams read 'arriving', the market's youth premium reported
@@ -181,7 +197,9 @@ def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: f
     cases"): `clear_sells` - aging-out pieces that are still real trade chips, which
     make a rebuild unaligned however well its youth is arriving; `idle_youth` -
     cornerstones priced on runway that aren't producing, which make a contender
-    unaligned however calm its shares."""
+    unaligned however calm its shares. `settles` (season_sim, None when the deadline
+    has passed or there are no odds) turns a middle team's decide into a wait when the
+    season will likely answer the question before the trade deadline."""
     barbell = min(asc_pct, dec_pct) >= BARBELL_MIN_PCT
     arriving = (not barbell and asc_pct >= BARBELL_MIN_PCT
                 and asc_pct - dec_pct >= ARRIVING_MARGIN_PCT)
@@ -213,42 +231,56 @@ def alignment_for(contention: str, asc_pct: float, dec_pct: float, pick_share: f
                 "good now with no wave aging out - nothing needs buying at a premium, "
                 "nothing needs selling" + _aging_clause(aging_pct))
     if contention == "fringe":
-        if leaving or barbell:
-            why = ("holding decline a middle rank isn't cashing"
-                   if leaving else "cancellation, not calm")
-            return ("unaligned", "decide",
-                    f"{why} - both paths are live and the middle rank gives no lean, "
-                    "so letting the season pick the direction is legitimate")
-        # `convertible` is the measured war-chest concept (top-third assets under a
-        # weak lineup, small-league guarded) - a second pick-share bar here once let
-        # a convertible team read "aligned - wait" while leverage called it an
-        # unspent option (Vicdank: assets #3 on rank 7, but 22% picks missed the bar).
-        # But a war chest with NO clock running is one door, not two: press if you like,
-        # otherwise waiting costs nothing - "decide" needs a sell door (owner: "how can
-        # Ben be decide with no sell offers - why isn't he wait"; Ben 6% declining).
-        if convertible and not arriving and aging_pct >= AGING_WORTH_NOTING_PCT:
-            return ("unaligned", "decide",
-                    "an unspent war chest on an undecided roster - the option is real "
-                    "and unexercised, and the middle rank gives no lean")
-        if arriving:
-            return ("aligned", "wait - production is arriving",
-                    "next season's production is already on the roster - patience is free"
-                    + _aging_clause(aging_pct))
-        # Waiting is earned by ascending, the way contending is earned by rank (owner,
-        # 2026-08-17: "wait and build were supposed to mean you are ascending") - OR by
-        # having nothing aging out at all: a young-to-prime middle roster with no clock
-        # running has nothing forcing a move (owner: "Bergen is textbook wait, driven by
-        # the fact that he is 0% descending"). Gated on the runway clock, so a flat roster
-        # quietly expiring (qkiernat: 0/22, 42% expiring) still reads decide.
-        if aging_pct < AGING_WORTH_NOTING_PCT:
-            return ("aligned", "wait",
-                    "nothing aging out - a young-to-prime roster at a middle rank with no "
-                    "clock running, so waiting costs nothing; the season can show which "
-                    "way it leans")
+        alignment, path, why = _fringe(leaving, barbell, arriving, convertible, aging_pct)
+        if path != "decide" or settles is None:
+            return alignment, path, why
+        if settles >= SETTLES_TO_WAIT:
+            return alignment, "wait - the season decides", why + RIDE_IT_OUT.format(pct=round(100 * settles))
+        return alignment, path, why + NOT_IN_TIME.format(pct=round(100 * settles))
+    return _also_ran(clear_sells, arriving, picks_heavy, assets_bottom, leaving, barbell, aging_pct)
+
+
+def _fringe(leaving: bool, barbell: bool, arriving: bool, convertible: bool,
+            aging_pct: float) -> tuple[str, str, str]:
+    """The middle tier's read from the roster alone; `alignment_for` adds the calendar."""
+    if leaving or barbell:
+        why = ("holding decline a middle rank isn't cashing"
+               if leaving else "cancellation, not calm")
         return ("unaligned", "decide",
-                "nothing arriving at a middle rank - there is no wave to wait for, so "
-                "waiting is just holding; both paths are live and the middle rank gives "
-                "no lean, so letting the season pick the direction is legitimate")
+                f"{why} - both paths are live and the middle rank gives no lean")
+    # `convertible` is the measured war-chest concept (top-third assets under a
+    # weak lineup, small-league guarded) - a second pick-share bar here once let
+    # a convertible team read "aligned - wait" while leverage called it an
+    # unspent option (Vicdank: assets #3 on rank 7, but 22% picks missed the bar).
+    # But a war chest with NO clock running is one door, not two: press if you like,
+    # otherwise waiting costs nothing - "decide" needs a sell door (owner: "how can
+    # Ben be decide with no sell offers - why isn't he wait"; Ben 6% declining).
+    if convertible and not arriving and aging_pct >= AGING_WORTH_NOTING_PCT:
+        return ("unaligned", "decide",
+                "an unspent war chest on an undecided roster - the option is real "
+                "and unexercised, and the middle rank gives no lean")
+    if arriving:
+        return ("aligned", "wait - production is arriving",
+                "next season's production is already on the roster - patience is free"
+                + _aging_clause(aging_pct))
+    # Waiting is earned by ascending, the way contending is earned by rank (owner,
+    # 2026-08-17: "wait and build were supposed to mean you are ascending") - OR by
+    # having nothing aging out at all: a young-to-prime middle roster with no clock
+    # running has nothing forcing a move (owner: "Bergen is textbook wait, driven by
+    # the fact that he is 0% descending"). Gated on the runway clock, so a flat roster
+    # quietly expiring (qkiernat: 0/22, 42% expiring) still reads decide.
+    if aging_pct < AGING_WORTH_NOTING_PCT:
+        return ("aligned", "wait",
+                "nothing aging out - a young-to-prime roster at a middle rank with no "
+                "clock running, so waiting costs nothing; the season can show which "
+                "way it leans")
+    return ("unaligned", "decide",
+            "nothing arriving at a middle rank - there is no wave to wait for, so the "
+            "roster won't fix itself; both paths are live and the middle rank gives no lean")
+
+
+def _also_ran(clear_sells, arriving, picks_heavy, assets_bottom, leaving, barbell,
+              aging_pct) -> tuple[str, str, str]:
     # also-ran: the rank itself urges the rebuild; unaligned just means it isn't underway.
     # A real war chest counts as arriving even before the production shows - picks are
     # pure future - but the assets_bottom guard applies to both: neither an ascending
@@ -504,20 +536,20 @@ def classify(roster: dict, players: dict[str, dict], threshold: float,
 # What each path means for premiums and tempo - keyed by the path the model reads,
 # never by the internal window label (LOGIC.md, "The window-label retirement").
 POSTURE = {
-    "contend": ("Top-third in current production and the roster agrees with that rank - "
+    "contend": ("In contention this season and the roster agrees - "
                 "no clock. Still a buyer: a contender tries to win harder, and production "
                 "that upgrades a starting slot is worth acquiring at a fair price - what "
                 "this rank does NOT need is to pay a premium or spend its future to get "
                 "there. Nothing needs selling."),
     "contend - on a clock": (
-        "Top-third in current production, carried by aging production - the window is "
+        "In contention this season, carried by aging production - the window is "
         "open and closing on its own. Buying production is worth a premium here, and "
         "future picks are the right currency to pay with. Pivoting is still *available*, "
         "it just returns poorly: the current production that makes this team competitive "
         "is priced on already-realized value, so selling it converts a lot of what wins "
         "games into comparatively little dynasty value. Being decent now is itself the "
         "argument against tearing down."),
-    "press": ("Top-third in current production, but carried by two halves pulling opposite "
+    "press": ("In contention this season, but carried by two halves pulling opposite "
               "directions - the aging half is a clock of its own, and path_reason names its "
               "pieces. Premiums are still not required - this rank buys at fair prices - "
               "but 'nothing needs doing' is not true here."),
@@ -528,14 +560,20 @@ POSTURE = {
              "What this roster does not have is the free option an arriving one gets: it is "
              "not supplying next season's production by itself."),
     "wait - production is arriving": (
-        "Not top-third yet, but the roster rises on its own - your own ascending players "
+        "Not in contention yet, but the roster rises on its own - your own ascending players "
         "supply next season's production for free. Pushing now means paying a market "
         "premium for what patience delivers, so both paths are shown: push only where the "
         "price is right, otherwise keep accumulating."),
+    "wait - the season decides": (
+        "In the middle of the league with a roster that does not agree with sitting there - "
+        "but the season is likely to settle which way to go before the trade deadline, so "
+        "the decision can wait for it. Riding it out is not staying put: if the playoff odds "
+        "have not moved clearly in or out by the deadline, this becomes a decide."),
     "decide": ("In the middle of the league with a roster that does not agree with sitting "
-               "there - both directions are genuinely open, and neither is free. Waiting on "
-               "the season is still legitimate, as late as the trade deadline; what is not "
-               "is treating the middle as a place to stay."),
+               "there - both directions are genuinely open, and neither is free. The season "
+               "is unlikely to settle which before the trade deadline, so waiting on it "
+               "mostly delays the same decision; what is not legitimate is treating the "
+               "middle as a place to stay."),
     "build": ("Not in contention this season, and the roster is already young or pick-rich - "
               "the rebuild is working. Still a seller of anything aging: whatever production "
               "here doesn't fit the timeline should move to a contender while it holds a "
@@ -548,7 +586,8 @@ POSTURE = {
 
 
 def posture_note(path: str, contention_rank: int, num_teams: int, pct_of_best: int,
-                 asc_pct: int, dec_pct: int, trajectory: str = "steady") -> str:
+                 asc_pct: int, dec_pct: int, trajectory: str = "steady",
+                 pace: int | None = None) -> str:
     """What the path means for premiums and tempo, plus the measurements that produced
     the read, in words - an unlabelled number in a tool result gets a meaning invented
     for it (a bare {"diff": -11} was once narrated as games underperformed, in the
@@ -561,12 +600,15 @@ def posture_note(path: str, contention_rank: int, num_teams: int, pct_of_best: i
     deadline = (" The value still here is aging out faster than this league's - "
                 "conversion has a deadline, not just a direction."
                 if path == "sell" and trajectory == "falling" else "")
-    return (f"{lead} Current starting production ranks {contention_rank} of "
+    odds = (f" Playoff odds are {pace_text(pace)} - the record so far banked, the rest of "
+            f"the season played out on projections - and that is what places this team in "
+            f"or out of contention." if pace is not None else "")
+    return (f"{lead}{odds} Current starting production ranks {contention_rank} of "
             f"{num_teams} ({pct_of_best}% of the league's best lineup); {asc_pct}% of that "
             f"production comes from ascending players and {dec_pct}% from declining ones."
             f"{deadline} "
-            f"Both are roster-composition measures - there are no wins or points scored "
-            f"behind them.")
+            f"The production rank and those shares are roster measures with no wins behind "
+            f"them.")
 
 
 LEVERAGE_NOTE = {
@@ -621,28 +663,43 @@ CONTENDER_ABOVE_MEDIAN = 1.03
 ALSO_RAN_BELOW_MEDIAN = 0.96
 
 
-def contention_tiers(production: dict) -> tuple[dict, dict]:
+def _tiers(values: dict, lines: dict, band) -> tuple[dict, dict]:
     """owner_id -> top/middle/bottom, plus the edges: owner_id -> (the tier across the
-    nearest line, gap to it, the line) for every team within NOISE_BAND of a line - a
+    nearest line, gap to it, the line) for every team within `band(line)` of a line - a
     routine refresh could re-read it, so the label is hedged (LOGIC.md, "Boundary noise")."""
-    median = statistics.median(production.values())
-    lines = {"top": median * CONTENDER_ABOVE_MEDIAN, "bottom": median * ALSO_RAN_BELOW_MEDIAN}
     tiers, edges = {}, {}
-    for oid, p in production.items():
-        tier = "top" if p >= lines["top"] else "bottom" if p <= lines["bottom"] else "middle"
+    for oid, v in values.items():
+        tier = "top" if v >= lines["top"] else "bottom" if v <= lines["bottom"] else "middle"
         tiers[oid] = tier
         for name, line in lines.items():
-            if abs(p - line) <= line * NOISE_BAND:
-                edges[oid] = ("middle" if tier == name else name, abs(p - line), line)
+            if abs(v - line) <= band(line):
+                edges[oid] = ("middle" if tier == name else name, abs(v - line), line)
     return tiers, edges
 
 
-PATH_EDGE = (
-    "This read is within refresh noise of a tier line: {gap_pct}% of starting production "
-    "separates this team from the line, and a routine value refresh moves lineup totals "
-    "about 1%, so an ordinary update can re-read it as '{alt_path}'. That flip would be "
-    "pricing noise, not the team changing direction - treat '{alt_path}''s advice as live "
-    "alongside this one's."
+def contention_tiers(production: dict) -> tuple[dict, dict]:
+    """Tier 1 with no playoff odds (offseason, or a league where everyone makes it)."""
+    median = statistics.median(production.values())
+    return _tiers(production, {"top": median * CONTENDER_ABOVE_MEDIAN,
+                               "bottom": median * ALSO_RAN_BELOW_MEDIAN},
+                  lambda line: line * NOISE_BAND)
+
+
+def odds_tiers(paces: dict) -> tuple[dict, dict]:
+    """Tier 1 in season: playoff odds against the 75/25 lines the deadline sentence uses."""
+    return _tiers(paces, {"top": PACE_BUYER_MIN, "bottom": PACE_SELLER_MAX}, lambda line: PACE_EDGE)
+
+
+PATH_EDGE = {
+    "production": "{gap_pct}% of starting production separates this team from the line, and "
+                  "a routine value refresh moves lineup totals about 1%",
+    "odds": "its playoff odds sit {gap} points from the {line}% line, and a routine value "
+            "refresh moves odds up to about {edge} points",
+}
+PATH_EDGE_TAIL = (
+    "This read is within refresh noise of a tier line: {why}, so an ordinary update can "
+    "re-read it as '{alt_path}'. That flip would be pricing noise, not the team changing "
+    "direction - treat '{alt_path}''s advice as live alongside this one's."
 )
 
 
@@ -661,10 +718,13 @@ def path_edge(row: dict, contention_edges: dict) -> str | None:
         CONTENTION_TIER[alt_tier], row["ascending_pct"], row["declining_pct"],
         row.get("pick_share", 0), _assets_bottom(row["asset_rank"], row["of_teams"]),
         row.get("expiring_pct", 0), convertible=(row.get("leverage") == "convertible"),
-        clear_sells=row.get("aging_chips", ()), idle_youth=row.get("idle_youth", ()))
+        clear_sells=row.get("aging_chips", ()), idle_youth=row.get("idle_youth", ()),
+        settles=row.get("settles_by_deadline"))
     if alt_path == row["path"]:
         return None
-    return PATH_EDGE.format(gap_pct=round(100 * gap / ref, 1) if ref else 0, alt_path=alt_path)
+    why = PATH_EDGE[row.get("tier_basis", "production")].format(
+        gap_pct=round(100 * gap / ref, 1) if ref else 0, gap=round(gap), line=ref, edge=PACE_EDGE)
+    return PATH_EDGE_TAIL.format(why=why, alt_path=alt_path)
 
 
 def _points_for(settings: dict) -> float:
@@ -685,6 +745,9 @@ def _season_ppg(settings: dict, per_week: int = 1) -> float:
 # Symmetric at the owner's call (the first cut was 20/85 on a hunch that "sell the
 # season" deserved a higher bar than "buy" - a taste, not a measurement).
 PACE_SELLER_MAX, PACE_BUYER_MIN = 25, 75
+# Odds this close to a tier line get hedged: a 1% lineup bump (a routine value refresh)
+# moved playoff odds at most 2.6 points across 24 live teams (2026-11-23).
+PACE_EDGE = 3
 
 
 def pace_text(pace: int) -> str:
@@ -716,14 +779,16 @@ def games_per_week(settings: dict) -> int:
 _odds_memo: dict = {}
 
 
-def _odds(teams, settings, weeks_played, schedule, strengths) -> dict:
+def _odds(teams, settings, weeks_played, schedule, strengths, deadline_played) -> dict:
     """season_sim takes ~0.5s and classify_league runs several times a request; the same
     inputs always give the same odds, so they are kept by their inputs."""
-    key = repr((teams, sorted(settings.items()), weeks_played, schedule, strengths))
+    key = repr((teams, sorted(settings.items()), weeks_played, schedule, strengths, deadline_played))
     if key not in _odds_memo:
         if len(_odds_memo) > 64:
             _odds_memo.clear()
-        _odds_memo[key] = season_sim.simulate(teams, settings, weeks_played, schedule, strengths)
+        _odds_memo[key] = season_sim.simulate(
+            teams, settings, weeks_played, schedule, strengths, deadline_played=deadline_played,
+            clear_band=(PACE_SELLER_MAX / 100, PACE_BUYER_MIN / 100))
     return _odds_memo[key]
 
 
@@ -733,8 +798,9 @@ def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None,
     mathematical playoff contention"): `season_sim` plays the rest of the season out
     under the league's own rules (tiebreakers, divisions, median games). The record banks
     the past; ePPG - or that week's optimal lineup where `strengths` has one - prices the
-    future. Deadline flavor: an extreme pace mid-season sets `pace_note`, a sentence for
-    path_reason - the path itself never flips on it.
+    future. The odds are tier 1 (`odds_tiers`); `settles_by_deadline` is the chance they
+    are clearly in or out by the trade deadline. Deadline flavor: an extreme pace
+    mid-season sets `pace_note`, a sentence classify_league adds to path_reason.
 
     `schedule` is owner_id -> {week: opponent_owner_id} (Sleeper posts the season's
     pairings up front); `strengths` is owner_id -> {week: optimal-lineup projection}
@@ -749,12 +815,15 @@ def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None,
     teams = [{"owner_id": r["owner_id"], **r["record"], "points_for": r.get("points_for", 0),
               "max_pf": r.get("max_pf", 0), "eppg": r["starting_production"],
               "division": r.get("division")} for r in rows]
-    odds = _odds(teams, settings, played, schedule, strengths)
+    # The deadline week is the last one trades go through, so what is known by then is
+    # the record after the week before it.
+    odds = _odds(teams, settings, played, schedule, strengths, deadline - 1)
     to_deadline = deadline - (played + 1)   # weeks until the league's trade deadline
     for r in rows:
         r["playoff_pace"] = round(100 * odds[r["owner_id"]]["playoffs"]) if odds else None
         r["pick_odds"] = odds[r["owner_id"]]["pick"] if odds else None
         r["projected_pick"] = pick_text(r["pick_odds"]) if odds else None
+        r["settles_by_deadline"] = odds[r["owner_id"]].get("settles") if odds else None
         r["pace_note"] = None
         # The pivot window: midseason (enough games to choose on) through the deadline.
         if r["playoff_pace"] is None or played < season_weeks / 2 or to_deadline < 0:
@@ -766,8 +835,6 @@ def playoff_pace(rows: list[dict], settings: dict, schedule: dict | None = None,
                               "reads differently for a team that can sell it")
         elif r["playoff_pace"] >= PACE_BUYER_MIN:
             r["pace_note"] = f"{lead} - this season is live, and production bought now gets used"
-        if r["pace_note"]:
-            r["path_reason"] += ". " + r["pace_note"][0].upper() + r["pace_note"][1:]
 
 
 @ttl_cache(LEAGUE_CONFIG_TTL)   # same lifetime as `context`, which it reads; one idea list asks 175 times
@@ -917,7 +984,11 @@ def classify_league(league_id: str) -> list[dict]:
     asset_rank = rank_map({r["owner_id"]: r["asset_value"] for r in rows})
     trajectory_rank = rank_map(trajectory_scores)
     best_production = max(production.values()) or 1
-    tiers, contention_edges = contention_tiers(production)
+    playoff_pace(rows, league.get("settings") or {}, _season_schedule(league_id, league, rows),
+                 _weekly_strengths(league_id))
+    has_odds = all(r["playoff_pace"] is not None for r in rows)
+    tiers, contention_edges = (odds_tiers({r["owner_id"]: r["playoff_pace"] for r in rows})
+                               if has_odds else contention_tiers(production))
 
     for row in rows:
         c_rank = contention_rank[row["owner_id"]]
@@ -934,6 +1005,7 @@ def classify_league(league_id: str) -> list[dict]:
         # Every rank on a row is meaningless without it, and prose built from these ranks was
         # having to guess the denominator or leave it out.
         row["of_teams"] = num_teams
+        row["tier_basis"] = "odds" if has_odds else "production"
         row["window"] = window
         row["state"] = STATE[window]
         row["next_first_note"] = next_first_note(row["owns_next_first"], window)
@@ -973,12 +1045,15 @@ def classify_league(league_id: str) -> list[dict]:
             contention, row["ascending_pct"], row["declining_pct"], row["pick_share"],
             _assets_bottom(row["asset_rank"], num_teams), row["expiring_pct"],
             convertible=(row["leverage"] == "convertible"),
-            clear_sells=row["aging_chips"], idle_youth=row["idle_youth"])
+            clear_sells=row["aging_chips"], idle_youth=row["idle_youth"],
+            settles=row["settles_by_deadline"])
+        if row["pace_note"]:
+            row["path_reason"] += ". " + row["pace_note"][0].upper() + row["pace_note"][1:]
         # The model reads path + posture_note + path_edge; window stays an internal
         # dispatch label (LOGIC.md, "The window-label retirement").
         row["posture_note"] = posture_note(row["path"], c_rank, num_teams, row["pct_of_best"],
                                            row["ascending_pct"], row["declining_pct"],
-                                           trajectory)
+                                           trajectory, row["playoff_pace"])
         # Unaligned rows carry their specifics BY NAME - telling them how to become
         # aligned is the whole point of the bright chip. Aligned rows stay brief;
         # their specifics are the agent's job.
@@ -992,8 +1067,6 @@ def classify_league(league_id: str) -> list[dict]:
                 pick_share=row["pick_share"])
             if row["leverage"] else None)
 
-    playoff_pace(rows, league.get("settings") or {}, _season_schedule(league_id, league, rows),
-                 _weekly_strengths(league_id))
     rows.sort(key=lambda r: r["contention_rank"])
     return rows
 

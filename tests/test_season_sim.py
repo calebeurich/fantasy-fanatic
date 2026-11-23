@@ -115,3 +115,17 @@ def test_pick_text_says_settled_only_when_it_is():
 def test_everyone_in_means_no_odds():
     teams, settings = _league()
     assert ss.simulate(teams, {**settings, "playoff_teams": 12}, 6) == {}
+
+
+def test_settles_is_how_likely_the_deadline_answers_the_question():
+    """Two even teams fighting for one spot: with many weeks to the deadline, the record
+    by then usually says who is in; with one week to go it rarely does. No settles once
+    the deadline has no games before it."""
+    teams = [{"owner_id": o, "wins": 3, "losses": 3, "ties": 0, "points_for": 600, "eppg": 100}
+             for o in ("a", "b", "c", "d")]
+    settings = {"playoff_teams": 2, "playoff_week_start": 15}
+    far = ss.simulate(teams, settings, 6, deadline_played=13, runs=2000)
+    near = ss.simulate(teams, settings, 6, deadline_played=7, runs=2000)
+    assert far["a"]["settles"] > near["a"]["settles"]
+    assert 0 <= near["a"]["settles"] <= far["a"]["settles"] <= 1
+    assert "settles" not in ss.simulate(teams, settings, 6, deadline_played=6, runs=200)["a"]

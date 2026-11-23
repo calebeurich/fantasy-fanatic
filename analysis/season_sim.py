@@ -5,6 +5,7 @@ The rules were read off 131 completed crawled brackets - LOGIC.md "Season simula
 
 import random
 import statistics
+from collections import defaultdict
 
 RUNS = 5000
 
@@ -16,7 +17,8 @@ STRENGTH_SD_SHARE = 0.065  # how far a team's true level drifts over the rest of
 
 def simulate(teams: list[dict], settings: dict, weeks_played: int, schedule: dict | None = None,
              strengths: dict | None = None, strength_sd: float | None = None,
-             runs: int = RUNS, seed: int = 0) -> dict:
+             runs: int = RUNS, seed: int = 0, deadline_played: int | None = None,
+             clear_band: tuple = (0.25, 0.75)) -> dict:
     """owner_id -> {"playoffs", "bye", "title", "top3", "second", "third", "pf_leader"} as
     probabilities, plus "pick": the chance
     of each draft slot (index 0 = the 1.01) for that team's OWN next 1st.
@@ -26,7 +28,12 @@ def simulate(teams: list[dict], settings: dict, weeks_played: int, schedule: dic
     `weeks_played` is passed, not read off the record: a median league plays two a week.
     `schedule`: owner_id -> {week: opponent}; `strengths`: owner_id -> {week: projected
     points} (regular season AND playoff weeks); any gap falls back to eppg.
-    `strength_sd` overrides the drift - the backtest's input is noisier than ePPG."""
+    `strength_sd` overrides the drift - the backtest's input is noisier than ePPG.
+
+    `deadline_played`: weeks played when the trade deadline arrives. When it is still
+    ahead, each team also gets "settles" - the chance its odds AT the deadline sit outside
+    `clear_band`, i.e. that waiting for the deadline answers "am I in this". Deadline odds
+    come from these same runs, grouped by the record each run had at the deadline."""
     slots = settings.get("playoff_teams") or 0
     if not slots or slots >= len(teams):
         return {}
@@ -41,6 +48,8 @@ def simulate(teams: list[dict], settings: dict, weeks_played: int, schedule: dic
     counts = {me: {"playoffs": 0, "bye": 0, "title": 0, "top3": 0, "second": 0, "third": 0,
                    "pf_leader": 0} for me in ids}
     picks = {me: [0] * len(ids) for me in ids}
+    track = deadline_played is not None and weeks_played < deadline_played < first_playoff
+    at_deadline = {me: [] for me in ids}   # (wins at the deadline, made the field), one per run
 
     for _ in range(runs):
         drift = {me: rng.gauss(0, drift_sd) for me in ids}
@@ -62,9 +71,14 @@ def simulate(teams: list[dict], settings: dict, weeks_played: int, schedule: dic
                 median = statistics.median(week.values())
                 for me in ids:
                     wins[me] += week[me] > median
+            if w == deadline_played:
+                snap = dict(wins)
         seeds = _seed(teams, wins, pf, settings)[:slots]
         for me in seeds:
             counts[me]["playoffs"] += 1
+        if track:
+            for me in ids:
+                at_deadline[me].append((snap[me], me in seeds))
         play = lambda me, rnd: score(me, first_playoff + rnd)
         champ, byes, losers = _bracket(seeds, settings.get("playoff_seed_type") == 1, play)
         for me in byes:
@@ -79,8 +93,22 @@ def simulate(teams: list[dict], settings: dict, weeks_played: int, schedule: dic
         if len(seeds) >= 4:
             counts[order[-3]]["third"] += 1
         counts[max(pf, key=pf.get)]["pf_leader"] += 1   # regular-season points (a paid prize in XFL 2)
-    return {me: {**{k: n / runs for k, n in c.items()}, "pick": [n / runs for n in picks[me]]}
-            for me, c in counts.items()}
+    out = {me: {**{k: n / runs for k, n in c.items()}, "pick": [n / runs for n in picks[me]]}
+           for me, c in counts.items()}
+    if track:
+        for me in ids:
+            out[me]["settles"] = _settles(at_deadline[me], clear_band)
+    return out
+
+
+def _settles(runs: list, clear_band: tuple) -> float:
+    """Share of runs whose record at the deadline carries odds outside the band."""
+    by_record = defaultdict(lambda: [0, 0])
+    for wins, made in runs:
+        by_record[wins][0] += 1
+        by_record[wins][1] += made
+    low, high = clear_band
+    return sum(n for n, m in by_record.values() if not low < m / n < high) / len(runs)
 
 
 def draft_order(missed: list, champ, losers: list, wins: dict, mpf: dict, play) -> list:

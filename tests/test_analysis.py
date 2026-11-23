@@ -1253,7 +1253,10 @@ def test_window_ships_with_an_explanation_not_a_bare_number():
     note = team_state.posture_note("contend - on a clock", contention_rank=4, num_teams=12,
                                    pct_of_best=80, asc_pct=3, dec_pct=23).lower()
     assert "4 of 12" in note and "80%" in note, "the measurements that produced it"
-    assert "no wins or points scored" in note, "the note must rule out the wrong reading"
+    assert "no wins behind them" in note, "the note must rule out the wrong reading"
+    with_odds = team_state.posture_note("contend", contention_rank=4, num_teams=12, pct_of_best=80,
+                                        asc_pct=3, dec_pct=23, pace=88).lower()
+    assert "playoff odds are ~88%" in with_odds and "record so far banked" in with_odds
 
 
 def test_projected_starters_ignores_the_live_snapshot():
@@ -2730,15 +2733,14 @@ def test_playoff_pace_deadline_note_only_when_lopsided_and_started():
     """The deadline sentence speaks in the pivot window - midseason (half the regular
     season played) through the league's trade deadline - and only at an extreme pace. At
     week 4 it fired for 7 of 12 XFL teams, which was noise; the owner: "mid season is a
-    reasonable time to be thinking about pivots". It lands in path_reason, and prints
-    pace the way the table does (never 0 or 100)."""
+    reasonable time to be thinking about pivots". classify_league adds it to path_reason
+    after the path is read, and it prints pace the way the table does (never 0 or 100)."""
     from analysis.team_state import playoff_pace
     specs = [(150, 7, 0), (135, 4, 3), (136, 3, 4), (134, 4, 3), (120, 0, 7), (118, 0, 7)]
     near = _pace_rows(specs)   # 7 of 14 played = midseason; deadline week 10 is 2 weeks out
     playoff_pace(near, {"playoff_teams": 2, "playoff_week_start": 15, "trade_deadline": 10})
     assert near[0]["pace_note"] and "live" in near[0]["pace_note"] and "in 2 weeks" in near[0]["pace_note"]
     assert near[0]["pace_note"][0:3] in (">99", "~99") or near[0]["pace_note"].startswith("~")
-    assert near[0]["pace_note"] in near[0]["path_reason"].lower() or near[0]["path_reason"]
     assert near[1]["pace_note"] is None
     assert near[4]["pace_note"] and "sell" in near[4]["pace_note"]
     assert "~0%" not in near[4]["pace_note"] and "~100%" not in near[0]["pace_note"]
@@ -2982,3 +2984,26 @@ def test_a_real_share_of_the_best_piece_is_not_a_throw_in():
     assert "THIS RETURN: 1 piece" in read and "0.76x" in read and "throw-in" not in read
     read = trade_eval._package_read([price, ewers], hurts, False, 0.15, bars, start)
     assert "1 throw-in (Ewers" in read
+
+
+def test_odds_tiers_use_the_deadline_lines_and_hedge_within_refresh_noise():
+    """In season, tier 1 is playoff odds against the 75/25 lines; odds within PACE_EDGE of
+    a line carry the tier across it, the way production near its line always did."""
+    tiers, edges = team_state.odds_tiers({"a": 90, "b": 76, "c": 50, "d": 24, "e": 5})
+    assert tiers == {"a": "top", "b": "top", "c": "middle", "d": "bottom", "e": "bottom"}
+    assert edges == {"b": ("middle", 1, 75), "d": ("middle", 1, 25)}
+
+
+def test_a_middle_team_rides_it_out_only_when_the_deadline_will_answer():
+    """A middle roster with aging production reads decide - unless the season is more
+    likely than not to put its odds clearly in or out before the trade deadline, when
+    waiting for that answer is the move. Without a settles number (deadline passed, or no
+    odds) the roster read stands alone."""
+    args = ("fringe", 5, 40, 0, False, 30)
+    assert team_state.alignment_for(*args)[1] == "decide"
+    alignment, path, why = team_state.alignment_for(*args, settles=0.8)
+    assert path == "wait - the season decides" and alignment == "unaligned" and "80%" in why
+    path, why = team_state.alignment_for(*args, settles=0.2)[1:]
+    assert path == "decide" and "only 20%" in why
+    assert team_state.alignment_for("fringe", 40, 5, 0, False, 0, settles=0.1)[1] == "wait - production is arriving"
+    assert "wait - the season decides" in team_state.POSTURE
