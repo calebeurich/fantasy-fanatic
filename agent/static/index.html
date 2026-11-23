@@ -71,7 +71,7 @@
      The tab bar IS the header: three equal thirds, nothing else up there. */
   header{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line)}
   .hbar{display:flex;align-items:center;gap:20px;max-width:1440px;margin:0 auto;padding:8px 18px}
-  .logo{font:800 18px var(--display);letter-spacing:-.01em;white-space:nowrap}
+  .logo{font:800 18px var(--display);letter-spacing:-.01em;white-space:nowrap;background:none;border:0;padding:0;color:var(--ink);cursor:pointer}
   .logo i{font-style:normal;color:var(--accent)}
   nav.tabs{display:flex;gap:4px}
   nav.tabs button{padding:7px 14px;border:0;border-radius:8px;font-size:14.5px;font-weight:600;color:var(--muted);background:transparent}
@@ -115,6 +115,8 @@
   @media (max-width:600px){
     #pin{gap:4px;padding:4px 8px;font-size:11.5px}
     #pin select{max-width:34vw;font-size:11.5px}
+    #pinleague{font-size:11.5px;padding:2px 7px;max-width:30vw}
+    .land{padding:14px 2px 2px} .land h2{font-size:24px}
     #pin .cstance button{padding:2px 6px;font-size:11px}
   }
   section.view{display:none}
@@ -307,6 +309,10 @@
       padding:8px 12px;cursor:pointer;font-size:13.5px}
   .lg:hover{border-color:var(--mid)}
   .lg.on{border-color:var(--ok);color:var(--ok)}
+  .land{padding:28px 4px 6px;max-width:640px}
+  .land h2{font:800 30px/1.15 var(--display);letter-spacing:-.02em;margin:0 0 10px;text-wrap:balance}
+  .land p{color:var(--muted);margin:0;font-size:15.5px}
+  #pinleague{font-size:12.5px;padding:3px 9px;max-width:38vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   tr.team.mine>td{background:var(--mine)}
   tr.team.mine>td:first-child{box-shadow:inset 3px 0 var(--accent)}
   th.sortable{cursor:pointer;white-space:nowrap}
@@ -412,7 +418,7 @@
 <header>
   <h1 style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)">fantasy-fanatic: dynasty fantasy football advice</h1>
   <div class="hbar">
-    <span class="logo" aria-hidden="true">fantasy<i>·</i>fanatic</span>
+    <button type="button" class="logo" title="Home: find or switch leagues">fantasy<i>·</i>fanatic</button>
     <nav class="tabs" id="tabs" aria-label="Views">
       <button type="button" data-view="league" class="on">League</button>
       <button type="button" data-view="trade" disabled>Trade</button>
@@ -425,9 +431,31 @@
 </header>
 <div id="toast" role="status" hidden></div>
 <main>
-<section class="view on" data-view="league">
-  <p id="demonote" style="display:none;margin:0;color:var(--thin);font-size:13.5px"></p>
-  <section id="hero" class="hero" hidden></section>
+<section class="view" data-view="home">
+  <div class="land">
+    <h2>Dynasty trade advice that knows your league.</h2>
+    <p>Every team's window, who's aging out, what each roster is short of, and who would actually take
+    your call: read from your Sleeper league in about a minute. No sign-up.</p>
+  </div>
+  <div class="card">
+    <h2 id="findhead">Find your league</h2>
+    <div class="pad" id="findpad">
+      <div class="row">
+        <input id="username" type="text" aria-label="Your Sleeper username" placeholder="Your Sleeper username" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <button id="find" class="primary" type="button">Find my leagues</button>
+      </div>
+      <div id="leagues" class="row" style="margin-top:8px"></div>
+      <details style="margin-top:10px">
+        <summary class="cs" style="cursor:pointer">or paste a league ID</summary>
+        <div class="row" style="margin-top:8px">
+          <input id="league" type="text" aria-label="Sleeper league ID" placeholder="Sleeper league ID" autocomplete="off" inputmode="numeric">
+          <button id="load" type="button">Load</button>
+        </div>
+      </details>
+      <p id="demobox" class="cs" hidden style="margin:12px 0 0">No Sleeper league handy?
+        <button type="button" id="trydemo">Explore a sample league</button></p>
+    </div>
+  </div>
   <details class="card" id="intro" open>
     <summary style="cursor:pointer;font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);padding:11px 14px;background:var(--panel2)">What this is (and isn't)</summary>
     <div class="pad tldr">
@@ -450,24 +478,14 @@
       </ul>
     </div>
   </details>
+</section>
+
+<section class="view on" data-view="league">
+  <p id="demonote" style="display:none;margin:0;color:var(--thin);font-size:13.5px"></p>
+  <section id="hero" class="hero" hidden></section>
 
   <div class="card">
-    <h2 id="findhead">Find your league</h2>
-    <div class="pad" id="findpad">
-      <div class="row">
-        <input id="username" type="text" aria-label="Your Sleeper username" placeholder="Your Sleeper username" autocomplete="off" autocapitalize="none" spellcheck="false">
-        <button id="find" class="primary" type="button">Find my leagues</button>
-      </div>
-      <div id="leagues" class="row" style="margin-top:8px"></div>
-      <details style="margin-top:10px">
-        <summary class="cs" style="cursor:pointer">or paste a league ID</summary>
-        <div class="row" style="margin-top:8px">
-          <input id="league" type="text" aria-label="Sleeper league ID" placeholder="Sleeper league ID" autocomplete="off" inputmode="numeric">
-          <button id="load" type="button">Load</button>
-        </div>
-      </details>
-    </div>
-    <div id="overview" tabindex="-1"><div class="empty">Enter your Sleeper username to get started.</div></div>
+    <div id="overview" tabindex="-1"><div class="empty">No league open yet. <button type="button" class="tohome">Find your league</button></div></div>
   </div>
 </section>
 
@@ -661,14 +679,19 @@ function showView(name, {push = true} = {}) {
   });
   if (location.hash !== "#" + name) history[push ? "pushState" : "replaceState"](null, "", "#" + name);
   if (name === "ask") setAskBadge(asking ? "work" : "");
+  if (name === "home") listSavedLeagues();
   // Ask opens on the NEWEST message (the question you just sent).
   const last = name === "ask" && document.querySelector("#log .msg:last-child");
   if (last) last.scrollIntoView({block: "start"});
   else if (changed) window.scrollTo({top: viewScroll[name] || 0});
 }
-const viewFromHash = () => (["trade", "ask"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "league");
+const viewFromHash = () => {
+  const h = location.hash.slice(1);
+  return ["home", "league", "trade", "ask"].includes(h) ? h : store.getItem("ff_last_league") ? "league" : "home";
+};
 addEventListener("popstate", () => showView(viewFromHash(), {push: false}));
 document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => showView(b.dataset.view));
+document.addEventListener("click", e => { if (e.target.closest(".tohome, .logo")) showView("home"); });
 // The Ask tab says when an answer is being written, and when one is waiting for you.
 let asking = false;
 function setAskBadge(kind) {
@@ -757,7 +780,7 @@ function setYou(owner, stance, opts = {}) {
   if (opts.noTrade) return;
   if ((teamChanged || trade.a.owner !== myTeam) && $("cselb")) {      // side A of the trade helper IS you
     trade.a.owner = myTeam; trade.a.stance = myStance; trade.a.picks = new Set();
-    if (trade.b.owner === myTeam) trade.b.owner = Object.keys(leagueTeams).find(o => o !== myTeam);
+    if (!trade.b.owner || trade.b.owner === myTeam) trade.b.owner = Object.keys(leagueTeams).find(o => o !== myTeam);
     $("cselb").value = trade.b.owner;
     Promise.all([fillSide(currentLeague, "a"), fillSide(currentLeague, "b")]).then(() => renderTray(currentLeague));
   } else if (stanceChanged && $("cselb") && trade.a.owner === myTeam) {
@@ -773,7 +796,8 @@ function renderPin() {
   const row = leagueTeams[myTeam] || {};
   const word = (row.path || "").split(" - ")[0];
   const opts = ["", ...Object.keys(leagueTeams)].map(o => `<option value="${o}"${o === (myTeam || "") ? " selected" : ""}>${o || "pick your team"}</option>`).join("");
-  pin.innerHTML = `<span>you:</span><select id="pinsel" aria-label="Your team">${opts}</select>` +
+  pin.innerHTML = `<button type="button" class="tohome" id="pinleague" title="Switch league">${esc(currentLeagueName || "League")} ▾</button>` +
+    `<span>you:</span><select id="pinsel" aria-label="Your team">${opts}</select>` +
     (myTeam ? `<span class="tag p-${word} ${row.alignment === "unaligned" ? "hot" : "cool"}" title="${(row.path_reason || "").replace(/"/g, "&quot;")}">${word}</span>` +
       `<span class="cstance" id="pinstance">${stanceOptions(row).map(([v, label]) =>
         `<button type="button" data-v="${v}" class="${myStance === v ? "on" + (v ? " dev" : "") : ""}">${label}</button>`).join("")}</span>` : "");
@@ -795,7 +819,12 @@ function showAskContext() {
 
 // ---- find leagues by username: Sleeper's API is CORS-open, so this never touches
 // our server (or our budget) - the one thing a friend knows is their own username ----
-$("find").onclick = async () => {
+// The landing page lists a returning visitor's leagues without them retyping anything.
+function listSavedLeagues() {
+  if ($("username").value.trim() && !$("leagues").children.length) findLeagues({auto: true});
+}
+$("find").onclick = () => findLeagues();
+async function findLeagues({auto = false} = {}) {
   const name = $("username").value.trim();
   if (!name) return;
   // The button itself acknowledges the click - box text alone sits below the fold
@@ -822,7 +851,7 @@ $("find").onclick = async () => {
     const dynasty = leagues.filter(isDynasty);
     [...dynasty, ...leagues.filter(l => !isDynasty(l))].forEach(l => {
       const b = document.createElement("button");
-      b.type = "button"; b.className = "lg" + (isDynasty(l) ? "" : " other");
+      b.type = "button"; b.className = "lg" + (isDynasty(l) ? "" : " other") + (l.league_id === currentLeague ? " on" : "");
       b.textContent = l.name + (isDynasty(l) ? "" : " (not dynasty)");
       b.onclick = () => {
         document.querySelectorAll(".lg").forEach(x => x.classList.remove("on"));
@@ -832,17 +861,18 @@ $("find").onclick = async () => {
       };
       $("leagues").appendChild(b);
     });
-    if (dynasty.length === 1) $("leagues").firstChild.click();
-    else if (!currentLeague) $("overview").innerHTML = `<div class="empty">${dynasty.length ? "Pick a league above." : "None of these are dynasty leagues, which is all this works with."}</div>`;
+    if (dynasty.length === 1 && !auto) $("leagues").firstChild.click();
+    else if (!dynasty.length) $("leagues").insertAdjacentHTML("beforeend", '<span class="cs warn">None of these are dynasty leagues, which is all this works with.</span>');
   } catch (e) {
     failed($("leagues"), "Couldn't reach Sleeper to look that up.", () => $("find").click());
   } finally {
     $("find").disabled = false;
     $("find").textContent = "Find my leagues";
   }
-};
+}
 $("username").value = store.getItem("ff_username") || "";
 myName = store.getItem("ff_name");
+if (currentView === "home") listSavedLeagues();
 if (store.getItem("ff_last_league")) $("intro").open = false;   // they've read it
 $("username").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("find").click(); } });
 
@@ -941,7 +971,8 @@ function renderBuilder(leagueId, owners) {
       <div id="croster${k}"><div class="cs"><span class="spin"></span>loading roster</div></div></div>`;
   box.innerHTML = `<details class="cs"${matchMedia("(max-width:760px)").matches ? "" : " open"}><summary style="cursor:pointer">How to read this</summary>Side A is you (set in the bar up top); pick who to trade with, tap pieces, ask. Bright = that team would move it <em>and</em> the other team has a use for it (the tag says what — hover or tap for the why) · ` +
     `faded = would move it but nothing over there wants it, or only at a cornerstone's price · dim = wouldn't move it (tap anyway if you insist). ` +
-    `<span class="stmark">▸</span> starter · <span class="stmark under">▸</span> starter under the league bar · <span class="stmark deep">▸</span> well under it · <span class="stmark sq">▹</span> starter-quality on the bench.</details>` +
+    `<span class="stmark">▸</span> starter · <span class="stmark under">▸</span> starter under the league bar · <span class="stmark deep">▸</span> well under it · <span class="stmark sq">▹</span> starter-quality on the bench. ` +
+    `The age's color is what the player's value is doing: <span style="color:${tone(120, 65, 58)}">gaining</span> · <span style="color:${tone(68, 65, 58)}">holding</span> · <span style="color:${tone(25, 65, 55)}">losing</span> · <span style="color:${tone(0, 60, 50)}">short-term loaner</span>.</details>` +
     `<div class="csides">${side("a")}${side("b")}</div>` +
     `<div class="ctray" id="ctray"></div>`;
   document.querySelector('#tabs [data-view="trade"]').disabled = false;
@@ -1083,12 +1114,15 @@ function renderTray(leagueId) {
   const tray = $("ctray");
   const line = (o, ps) => `<div class="side"><b>${esc(o)}</b> sends: ${ps.length ? ps.join(", ") : "<span class='cs'>nothing yet</span>"}</div>`;
   const ready = pa.length && pb.length && a !== b;
+  // A friend's own trade reads as their side, then the other manager's (askCounterparty).
+  // The demo asks once, so its one answer covers both seats.
+  const mine = pageTier === "friend" && (myTeam === a || myTeam === b);
   // Phone: the tray is pinned, so it stays a thin bar - the two "sends" lines and Ask -
   // with the impact and pair suggestions folded under one toggle (open on desktop).
   tray.innerHTML = line(a, pa) + line(b, pb) +
     `<div class="row" style="gap:8px;align-items:center;margin:6px 0">` +
-    `<button type="button" class="primary" id="cask" ${ready ? "" : "disabled"} style="font-size:14px;padding:10px 16px">${ready ? "Ask the assistant — both sides" : "Pick a piece on each side"}</button>` +
-    `<button type="button" class="ghost" id="cclear" style="margin-left:auto">clear</button></div>` +
+    `<button type="button" class="primary" id="cask" ${ready ? "" : "disabled"} style="font-size:14px;padding:10px 16px">${!ready ? "Pick a piece on each side" : mine ? "Ask: my side, then theirs" : "Ask the assistant — both sides"}</button>` +
+    `<button type="button" id="cclear" style="margin-left:auto">Reset trade</button></div>` +
     `<details class="tmore" id="tmore"${trayMoreOpen ? " open" : ""}><summary class="cs">impact & starting points for this pair</summary>` +
     `<details class="csugg" id="csugg"></details><div class="cimpact" id="cimpact">${ready ? "" : '<div class="cs">tap a piece on each side to see what the trade does to both lineups</div>'}</div></details>`;
   $("tmore").ontoggle = () => { trayMoreOpen = $("tmore").open; };
@@ -1097,11 +1131,12 @@ function renderTray(leagueId) {
     if (asking) { toast("Still answering your last question. Ask this one when it's done."); return; }
     const stance = k => trade[k].stance ? ` (${trade[k].owner} says they'd ${trade[k].stance === "sell" ? "sell" : "press"})` : "";
     const proposal = `${a} sends ${pa.join(", ")}; ${b} sends ${pb.join(", ")}`;
-    $("q").value = `Evaluate this trade for both sides: ${proposal}.${stance("a")}${stance("b")}`;
+    $("q").value = mine ? `Evaluate this trade for me (${myTeam}): ${proposal}.${stance("a")}${stance("b")}`
+                        : `Evaluate this trade for both sides: ${proposal}.${stance("a")}${stance("b")}`;
     // The other side of the table: whichever team isn't mine reacts as its own manager,
     // in parallel, on its own card. Two agents, opposing stances, one referee (the framer).
     // Set before the submit so the typed-question path sees it and doesn't fire a second.
-    lastCounterparty = pageTier === "friend" ? {owner: myTeam === b ? a : b, proposal, typed: $("q").value} : null;
+    lastCounterparty = mine ? {owner: myTeam === b ? a : b, proposal, typed: $("q").value} : null;
     $("f").requestSubmit();
     if (lastCounterparty) askCounterparty(lastCounterparty.owner, proposal);
     showView("ask");
@@ -1458,7 +1493,6 @@ function clearLeague() {
   renderPin(); showAskContext();
   $("builder").innerHTML = '<div class="empty">Load a league first.</div>';
   document.querySelector('#tabs [data-view="trade"]').disabled = true;
-  $("findhead").hidden = $("findpad").hidden = false;
   $("chips").style.display = "none";
   pageTitle = document.title = "fantasy-fanatic";
 }
@@ -1473,6 +1507,7 @@ setInterval(() => {
 
 async function loadLeague(id, {refresh = false} = {}) {
   if (!id) return;
+  if (currentView === "home") showView("league");
   const seq = ++leagueSeq;
   const sameLeague = id === currentLeague && document.querySelector("#overview tr.team");
   if (!sameLeague) leagueSkeleton();
@@ -1492,7 +1527,6 @@ async function loadLeague(id, {refresh = false} = {}) {
     leagueLoadedAt = Date.now();
     currentLeagueName = d.name || currentLeagueName;
     if (currentLeagueName) { pageTitle = currentLeagueName + " · fantasy-fanatic"; if (!document.hidden) document.title = pageTitle; }
-    $("findhead").hidden = $("findpad").hidden = true;
     // A conversation is about ONE league - answers about the old league sitting above
     // questions pinned to the new one read as the assistant mixing leagues up.
     if (currentLeague && currentLeague !== id) {
@@ -1529,14 +1563,7 @@ async function loadLeague(id, {refresh = false} = {}) {
       <div class="lhead"><strong>${esc(currentLeagueName || "League " + id)}</strong>
         <span class="cs" id="freshness">updated just now</span>
         <span class="acts"><button type="button" class="ghost" id="refresh" title="Reload this table. A trade or roster move on Sleeper can take up to 10 minutes to show here.">Refresh</button>
-        <button type="button" class="ghost" id="changeleague">${pageTier === "demo" ? "Use my league" : "Change league"}</button></span></div>
-      <table><thead><tr><th></th><th>Team</th><th>Move</th>
-        <th class="sortable r" tabindex="0" data-sort="rec" title="click to sort - playoff pace, then ePPG">Record <span class="arrow"></span></th>
-        <th>Playoff odds</th>
-        <th class="sortable r" tabindex="0" data-sort="sv" title="click to sort - expected points per game: Sleeper's projections under this league's scoring">ePPG <span class="arrow">↓</span></th>
-        <th class="sortable r" tabindex="0" data-sort="dv" title="click to sort - the starting lineup's dynasty value (FantasyCalc)">Value <span class="arrow"></span></th>
-        <th>Holes</th></tr></thead>
-      <tbody>${rows}</tbody></table>
+        <button type="button" class="ghost tohome">${pageTier === "demo" ? "Use my league" : "Switch league"}</button></span></div>
       <div class="key">
         <span><span class="tag p-contend cool">contend</span> add production at fair prices</span>
         <span><span class="tag p-wait cool">wait</span> patience is free</span>
@@ -1546,8 +1573,15 @@ async function loadLeague(id, {refresh = false} = {}) {
         <span><span class="tag p-sell hot">sell</span> trade aging value for future</span>
         <span>holes: <span class="need critical">QB</span> critical <span class="need weak">TE</span> thin <span class="need critical later">RB</span> rebuilding, not this season's problem</span>
       </div>
+      <table><thead><tr><th></th><th>Team</th><th>Move</th>
+        <th class="sortable r" tabindex="0" data-sort="rec" title="click to sort - playoff pace, then ePPG">Record <span class="arrow"></span></th>
+        <th>Playoff odds</th>
+        <th class="sortable r" tabindex="0" data-sort="sv" title="click to sort - expected points per game: Sleeper's projections under this league's scoring">ePPG <span class="arrow">↓</span></th>
+        <th class="sortable r" tabindex="0" data-sort="dv" title="click to sort - the starting lineup's dynasty value (FantasyCalc)">Value <span class="arrow"></span></th>
+        <th>Holes</th></tr></thead>
+      <tbody>${rows}</tbody></table>
       ${draftCard(d.teams)}
-      <details class="draft"><summary>How to read this table</summary>
+      <details class="draft"${matchMedia("(max-width:760px)").matches ? "" : " open"}><summary>How to read this table</summary>
         <div class="note">The chip is the move each roster's <em>position</em> calls for, not what its manager is doing. Bright = decision pending; hover or tap it for why. ePPG = expected points per game from the best lineup (Sleeper's projections, this league's scoring), and rows rank by it. Playoff odds = chance of a playoff spot if the season plays out per the projections: banked wins count, and nobody is ever at 0 or 100. Value = the starting lineup's dynasty value; hover it for the team's future 1sts. Under each team: its build-around players. Click a header to re-sort (Record sorts by playoff odds). Click a team for its roster, picks, trade ideas, and the rest of its numbers: real points per game, max PF and where its own 1st projects, how much of its lineup is gaining or losing value, and how it trades.</div>
       </details>
       ${d.format ? `<div class="note">${d.format} - every value and lineup number here is priced for this format (FantasyCalc, not KeepTradeCut).</div>` : ""}
@@ -1576,11 +1610,6 @@ async function loadLeague(id, {refresh = false} = {}) {
     $("refresh").onclick = async () => {
       await loadLeague(id, {refresh: true});
       if (id === currentLeague) toast("League refreshed.");
-    };
-    $("changeleague").onclick = () => {
-      $("findhead").hidden = $("findpad").hidden = false;
-      $("username").focus();
-      $("findhead").scrollIntoView({block: "center"});
     };
     detailsReady = prefetchDetails(id);
     const saved = JSON.parse(store.getItem("ff_you:" + id) || "null");   // read before any pick overwrites it
@@ -2029,11 +2058,16 @@ getJSON("/api/defaults", {headers: hdrs()}).then(d => {
       `the code, evals and the reasoning behind every read are on ` +
       `<a href="https://github.com/calebeurich/fantasy-fanatic" style="color:var(--mid)">GitHub</a>.`;
   }
+  if (d.tier === "demo" && d.league_id) {
+    $("demobox").hidden = false;
+    $("trydemo").onclick = () => loadLeague(d.league_id);
+  }
   if (currentLeague) return;
-  // Friends on prod get no default league - the one they looked at last comes back.
+  // The league they looked at last comes back; staging's default league is only for a
+  // first visit, so a friend who switched away isn't snapped back to the owner's league.
   const last = store.getItem("ff_last_league");
-  if (d.league_id) { myName = d.owner || myName; loadLeague(d.league_id); }
-  else if (last) loadLeague(last);
+  if (last) loadLeague(last);
+  else if (d.league_id && d.tier !== "demo") { myName = d.owner || myName; loadLeague(d.league_id); }
 }).catch(() => {
   // Couldn't reach the app at all: still try the league they were on, which shows its own
   // loading state and a way to try again rather than a page that quietly does nothing.
