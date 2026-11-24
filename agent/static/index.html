@@ -7,17 +7,17 @@
 <meta name="description" content="Dynasty fantasy football advice for your Sleeper league: every team's window, trade ideas, playoff pace, and an assistant that knows your roster.">
 <meta property="og:title" content="fantasy-fanatic">
 <meta property="og:description" content="Dynasty fantasy football advice for your Sleeper league.">
-<meta name="theme-color" content="#10201a">
+<meta name="theme-color" content="#1a1e26">
 <meta name="referrer" content="no-referrer">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a1411'/%3E%3Cellipse cx='16' cy='16' rx='11' ry='7' transform='rotate(-35 16 16)' fill='%23ffb020'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2312151b'/%3E%3Cellipse cx='16' cy='16' rx='11' ry='7' transform='rotate(-35 16 16)' fill='%23ffb020'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#0a1411; --panel:#10201a; --panel2:#162b23; --line:#21392f;
-    --ink:#eef4f0; --strong:#fff; --muted:#a3bfb2; --dim:#82a090;
-    --accent:#ffb020; --onaccent:#1f1400; --two:#34d399; --mine:#1b3529; --mebubble:#173026;
+    --bg:#12151b; --panel:#1a1e26; --panel2:#222833; --line:#2c3340;
+    --ink:#eef0f4; --strong:#fff; --muted:#a1a8b5; --dim:#8a92a1;
+    --accent:#ffb020; --onaccent:#1f1400; --two:var(--accent); --mine:#262c3a; --mebubble:#222a3a;
     --win:#f59e0b; --mid:#60a5fa; --rebuild:#a78bfa;
     --crit:#f87171; --thin:#fbbf24; --ok:#4ade80;
     --display:Archivo,ui-sans-serif,system-ui,sans-serif;
@@ -83,7 +83,7 @@
     nav.tabs{width:100%;display:grid;grid-template-columns:repeat(3,1fr)}
   }
   /* Your team, on top of the league: the facts about you first, the questions one tap away. */
-  .hero{background:linear-gradient(160deg,color-mix(in srgb,var(--two) 9%,var(--panel)),var(--panel) 60%);border:1px solid color-mix(in srgb,var(--two) 30%,var(--line));border-radius:16px;padding:18px;display:grid;gap:14px}
+  .hero{--c:var(--two);background:linear-gradient(160deg,color-mix(in srgb,var(--c) 12%,var(--panel)),var(--panel) 65%);border:1px solid color-mix(in srgb,var(--c) 35%,var(--line));border-radius:16px;padding:18px;display:grid;gap:14px}
   .hero .top{display:flex;align-items:center;gap:10px 12px;flex-wrap:wrap}
   .hero h2{font:800 28px/1.05 var(--display);letter-spacing:-.02em;margin:0}
   .hero .tag{font-size:12.5px;padding:3px 10px}
@@ -210,6 +210,7 @@
   td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
   tr:last-child td{border-bottom:none}
   tr.team{cursor:pointer}
+  tr.team>td.rk{box-shadow:inset 3px 0 color-mix(in srgb,var(--c) 70%,transparent);color:var(--c)}
   tr.team:hover{background:var(--panel2)}
   .rk{color:var(--dim);font:700 15px var(--display);font-variant-numeric:tabular-nums;width:30px;text-align:center}
   .who{font-weight:600}
@@ -1444,6 +1445,7 @@ function renderHero() {
   const ranked = Object.values(leagueTeams).length;
   const holes = needList(t).slice(0, 2).map(([pos, n]) =>
     `<div class="hole" style="--c:var(${later(n) ? "--dim" : n.level === "critical" ? "--crit" : "--thin"})" title="${esc(n.note)}"><span class="need">${pos}</span><span>${holeLine(pos, n)}</span></div>`).join("");
+  el.className = `hero p-${word}`;
   el.innerHTML = `
     <div class="top"><h2>${esc(myTeam)}</h2>
       <span class="tag p-${word} ${t.alignment === "unaligned" ? "hot" : "cool"}" title="${esc(t.path_reason)}">${[word, ...rest].join(" · ")}</span>
@@ -1550,7 +1552,7 @@ async function loadLeague(id, {refresh = false} = {}) {
       // Pace is a soft "if the season goes per the projections" percentage, never a gate.
       const odds = t.playoff_pace != null
         ? `<div class="odds" title="chance of a playoff spot if the season plays out per the projections - 75%+ reads as contending, 25% or less as out of it"><div class="bar"><i style="width:${Math.max(1, t.playoff_pace)}%;--c:${paceColor(t.playoff_pace)}"></i></div><span class="num">${paceText(t.playoff_pace)}</span></div>` : "";
-      return `<tr class="team" tabindex="0" aria-expanded="false" data-owner="${esc(t.owner)}" data-sv="${t.starting_production}" data-dv="${t.starter_value}" data-rec="${recKey}">
+      return `<tr class="team p-${word}" tabindex="0" aria-expanded="false" data-owner="${esc(t.owner)}" data-sv="${t.starting_production}" data-dv="${t.starter_value}" data-rec="${recKey}">
         <td class="rk">${t.rank}</td>
         <td class="who"><span style="white-space:nowrap">${esc(t.owner)}</span>${tn}<small>${esc(core) || "no cornerstone yet"}</small></td>
         <td><span class="tag p-${word} ${heat}" title="${esc(t.path_reason)}">${word}</span></td>
